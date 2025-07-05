@@ -1,13 +1,10 @@
 steps:
-  # Paso 1: Construir la imagen Docker
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/proypers25-backend', '.']
 
-  # Paso 2: Subir (push) la imagen al Container Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/proypers25-backend']
 
-  # Paso 3: Desplegar en Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -19,9 +16,8 @@ steps:
       - --platform
       - managed
       - --region
-      - us-central1
+      - europe-west1
       - --allow-unauthenticated
 
 images:
   - gcr.io/$PROJECT_ID/proypers25-backend
-
