@@ -1,0 +1,49 @@
+<div class="container mt-5">
+  <h2 class="text-center mb-4">🤖 Inversión Autónoma Inteligente</h2>
+
+  <div class="mb-3">
+    <label for="monto" class="form-label">Monto a invertir (USD)</label>
+    <input type="number" id="monto" class="form-control" [(ngModel)]="monto" min="10" />
+  </div>
+
+  <div class="d-grid gap-2">
+    <button class="btn btn-primary" (click)="obtenerRecomendacion()" [disabled]="cargando">
+      {{ cargando ? 'Calculando...' : 'Obtener Recomendación' }}
+    </button>
+  </div>
+
+  <div *ngIf="error" class="alert alert-danger mt-3">{{ error }}</div>
+
+  <div *ngIf="recomendacion" class="card mt-4 border-success">
+    <div class="card-body">
+      <h5 class="card-title">📊 Recomendación de Inversión</h5>
+      <p><strong>📈 Símbolo:</strong> {{ recomendacion.simbolo }}</p>
+      <p><strong>🧠 Modelo:</strong> {{ recomendacion.tipo }}</p>
+      <p><strong>💰 Monto invertido:</strong> ${{ recomendacion.invertir }}</p>
+      <p><strong>💹 Precio actual:</strong> ${{ recomendacion.precio_actual }}</p>
+      <p><strong>📈 Precio estimado:</strong> ${{ recomendacion.precio_estimado }}</p>
+      <p><strong>📊 Rentabilidad estimada:</strong> {{ recomendacion.porcentaje }}%</p>
+      <p><strong>💵 Ganancia estimada:</strong> ${{ recomendacion.ganancia_estim }}</p>
+      <p><strong>🛒 Comprar:</strong> {{ recomendacion.comprar }}</p>
+      <p><strong>💸 Vender:</strong> {{ recomendacion.vender }}</p>
+      <p><strong>🛑 Stop Loss:</strong> ${{ recomendacion.stop_loss }}</p>
+      <p><strong>📈 Take Profit:</strong> ${{ recomendacion.take_profit }}</p>
+      <p><strong>📌 Motivo:</strong> {{ recomendacion.motivo }}</p>
+    </div>
+    <!-- 📊 Confianza Histórica -->
+    <div *ngIf="confianzaHistorica !== null" class="alert alert-info mt-3">
+      📊 <strong>Confianza Histórica:</strong> {{ confianzaHistorica | number:'1.2-2' }}
+    </div>
+
+    <!-- ⚠️ Alerta si es baja -->
+    <div *ngIf="alertaConfianza" class="alert alert-danger mt-2">
+      ⚠️ {{ alertaConfianza }}
+    </div>
+
+  </div>
+</div>
+
+
+
+
+

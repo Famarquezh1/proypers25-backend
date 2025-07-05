@@ -1,0 +1,190 @@
+<div class="container mt-5">
+  <h3 class="text-center mb-4">
+    <i class="bi bi-clock-history me-2"></i> Historial de Consultas
+  </h3>
+
+  <!-- 🔍 Filtro -->
+  <div class="row mb-3">
+    <div class="col-md-6 offset-md-3">
+      <input type="text" [(ngModel)]="filtroTexto" (input)="filtrarConsultas()" class="form-control"
+        placeholder="Filtrar por símbolo, tipo o estado..." />
+    </div>
+  </div>
+
+  <!-- 🗑 Botón eliminar seleccionadas -->
+  <div class="text-end mb-3" *ngIf="consultasFiltradas.length > 0">
+    <button class="btn btn-danger" (click)="eliminarSeleccionadas()" [disabled]="seleccionadas.size === 0">
+      <i class="bi bi-trash3-fill"></i> Eliminar Seleccionadas
+    </button>
+  </div>
+
+  <!-- Spinner de carga -->
+  <div class="text-center my-5" *ngIf="cargando">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+      <span class="visually-hidden">Cargando...</span>
+    </div>
+  </div>
+
+  <table class="table table-bordered table-hover text-center align-middle">
+    <thead class="table-primary">
+      <tr>
+        <th>#</th>
+        <th>Símbolo</th>
+        <th>Tipo</th>
+        <th>Fecha</th>
+        <th>Estado</th>
+        <th><input type="checkbox" (change)="toggleSeleccionGlobal($event, consultasFiltradas)" /></th>
+      </tr>
+    </thead>
+    <tbody>
+      <ng-container *ngFor="let consulta of consultasFiltradas; let i = index">
+        <tr (click)="toggleDetalle(consulta)" style="cursor: pointer;">
+          <td>{{ i + 1 }}</td>
+          <td>{{ consulta.simbolo }}</td>
+          <td>{{ consulta.tipo }}</td>
+          <td>{{ consulta.fecha | date:'dd-MM-yyyy HH:mm' }}</td>
+          <td>
+            <span class="badge text-bg-success" *ngIf="consulta.estado === 'completado'">✔ Completado</span>
+            <span class="badge text-bg-danger" *ngIf="consulta.estado === 'fallido'">❌ Fallido</span>
+          </td>
+          <td>
+            <input type="checkbox" [checked]="seleccionadas.has(consulta.id)"
+              (change)="toggleSeleccion(consulta.id, $event); $event.stopPropagation()" />
+          </td>
+        </tr>
+
+        <!-- 🔍 Detalle -->
+        <tr *ngIf="consulta.expandido">
+          <td colspan="6" class="text-start px-4">
+
+            <!-- 🧠 Consulta Autonoma -->
+            <ng-container *ngIf="consulta.tipo === 'autonoma' && consulta.resultado">
+              <div class="alert alert-primary">
+                <i class="bi bi-cpu"></i> <strong>Consulta Autónoma con Qiskit</strong>
+              </div>
+
+              <p><strong>💰 Inversión:</strong> ${{ consulta.resultado.invertir }}</p>
+              <p><strong>📊 Rentabilidad Estimada:</strong> {{ consulta.resultado.porcentaje }}%</p>
+              <p><strong>💸 Ganancia Estimada:</strong> ${{ consulta.resultado.ganancia_estim }}</p>
+              <p><strong>💹 Precio Actual:</strong> ${{ consulta.resultado.precio_actual }}</p>
+              <p><strong>📈 Precio Estimado:</strong> ${{ consulta.resultado.precio_estimado }}</p>
+              <p><strong>🛒 Comprar:</strong> {{ consulta.resultado.comprar }}</p>
+              <p><strong>💼 Vender:</strong> {{ consulta.resultado.vender }}</p>
+              <p><strong>🛑 Stop Loss:</strong> ${{ consulta.resultado.stop_loss }}</p>
+              <p><strong>🎯 Take Profit:</strong> ${{ consulta.resultado.take_profit }}</p>
+              <p><strong>📌 Motivo:</strong> {{ consulta.resultado.motivo }}</p>
+
+              <!-- Validación -->
+              <div *ngIf="consulta.resultado.validacion?.acierto !== null" class="alert alert-secondary mt-3">
+                <i class="bi bi-patch-check-fill text-success"></i>
+                <strong>Validación de Predicción:</strong><br />
+                <strong>📉 Precio Real:</strong> ${{ consulta.resultado.validacion.precio_real }}<br />
+                <strong>📊 Diferencia:</strong> ${{ consulta.resultado.validacion.diferencia }}<br />
+                <strong>🎯 Acertó:</strong>
+                <span [ngClass]="consulta.resultado.validacion.acierto ? 'text-success' : 'text-danger'">
+                  {{ consulta.resultado.validacion.acierto ? 'Sí ✅' : 'No ❌' }}
+                </span>
+                <br />
+                <span>{{ consulta.resultado.validacion.mensaje }}</span>
+              </div>
+            </ng-container>
+
+            <!-- 🔬 Otras Consultas Tradicionales -->
+            <ng-container *ngIf="consulta.tipo !== 'autonoma'">
+              <strong>Resultado:</strong> {{ consulta.resultado }}
+
+              <div *ngIf="consulta.probabilidadAlza" class="alert alert-info mt-2">
+                🧠 {{ consulta.probabilidadAlza }}
+              </div>
+
+              <div *ngIf="consulta.precioEstimado" class="alert alert-dark mt-2">
+                🔮 <strong>Simulación Monte Carlo</strong><br />
+                <strong>Estimación promedio:</strong> ${{ consulta.precioEstimado }}<br />
+                <strong>Intervalo estimado:</strong> {{ consulta.intervalo }}
+              </div>
+
+              <div *ngIf="consulta.sugerenciaCuantitativa" class="alert alert-warning mt-2">
+                <i class="bi bi-lightbulb"></i> <strong>Sugerencia Inteligente:</strong> {{
+                consulta.sugerenciaCuantitativa }}
+              </div>
+
+              <div *ngIf="consulta.indiceConfianzaCuantico !== null" class="alert alert-warning mt-2">
+                🧠 <strong>Confianza Cuántica:</strong> {{ consulta.indiceConfianzaCuantico }}% <br />
+                {{ consulta.mensajeConfianza }}
+              </div>
+
+              <div *ngIf="consulta.confianzaHistorica !== null" class="alert alert-info mt-2">
+              📊 <strong>Confianza Histórica:</strong> {{ consulta.confianzaHistorica | number:'1.2-2' }}
+              </div>
+
+              <div *ngIf="consulta.alertaConfianza" class="alert alert-danger mt-1">
+                ⚠️ {{ consulta.alertaConfianza }}
+              </div>
+
+
+              <div *ngIf="consulta.resultadoCuantico" class="alert alert-secondary mt-2">
+                <strong>🧪 Simulación Cuántica:</strong><br />
+                <strong>Símbolo:</strong> {{ consulta.resultadoCuantico.symbol }}<br />
+                <strong>Probabilidad de Alza:</strong> {{ consulta.resultadoCuantico.probabilidad_alza }}%<br />
+                <strong>Tipo:</strong> {{ consulta.resultadoCuantico.tipo }}<br />
+                <strong>Método:</strong> {{ consulta.resultadoCuantico.metodo }}
+              </div>
+
+              <div class="mt-2">
+                <strong>🧠 Sentimiento:</strong> {{ consulta.sentimiento || 'Sin datos' }}<br>
+                <strong>Puntaje:</strong> {{ consulta.puntajeSentimiento ?? 'N/A' }}
+              </div>
+
+              <div *ngIf="consulta.comparacionModelos">
+                <h6 class="mt-2">📊 Comparador de Modelos Predictivos</h6>
+                <ul class="list-group">
+                  <li class="list-group-item">
+                    <strong>LSTM:</strong>
+                    <span *ngIf="consulta.comparacionModelos?.LSTM?.precio_estimado">
+                      Precio Estimado: {{ consulta.comparacionModelos.LSTM.precio_estimado }}
+                    </span>
+                    <span *ngIf="!consulta.comparacionModelos?.LSTM">No disponible</span>
+                  </li>
+                  <li class="list-group-item">
+                    <strong>Monte Carlo:</strong>
+                    <span *ngIf="consulta.comparacionModelos?.MonteCarlo?.precio_estimado">
+                      Precio Estimado: {{ consulta.comparacionModelos.MonteCarlo.precio_estimado }}
+                    </span>
+                    <span *ngIf="!consulta.comparacionModelos?.MonteCarlo">No disponible</span>
+                  </li>
+                  <li class="list-group-item">
+                    <strong>Qiskit:</strong>
+                    <span *ngIf="consulta.comparacionModelos?.Qiskit?.probabilidad_alza">
+                      Probabilidad de Alza: {{ consulta.comparacionModelos.Qiskit.probabilidad_alza }}%
+                    </span>
+                    <span *ngIf="!consulta.comparacionModelos?.Qiskit">No disponible</span>
+                  </li>
+                </ul>
+              </div>
+
+
+
+            </ng-container>
+
+            <div class="text-end mt-3">
+              <button class="btn btn-outline-danger btn-sm"
+                (click)="eliminarConsulta(consulta.id); $event.stopPropagation()">
+                <i class="bi bi-trash"></i> Eliminar Consulta
+              </button>
+            </div>
+          </td>
+        </tr>
+      </ng-container>
+    </tbody>
+  </table>
+</div>
+
+
+
+
+
+
+
+
+
+
