@@ -1,5 +1,6 @@
 # Usa imagen base oficial
-FROM node:20
+FROM node:20-slim
+
 
 # Crea y entra a la carpeta de la app
 WORKDIR /usr/src/app
