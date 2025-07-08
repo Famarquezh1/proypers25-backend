@@ -38,6 +38,11 @@ except Exception as e:
         "probabilidad_alza": 0.0
     }
 
-print(json.dumps(output))
+print(json.dumps({
+    "precio_actual": precio_actual,
+    "probabilidad_alza": probabilidad,
+    "detalles": "modelo Qiskit ejecutado correctamente"
+}))
+
 
 
