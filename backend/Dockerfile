@@ -1,27 +1,50 @@
-# Base con Node y Python
 FROM node:20-slim
 
-# Instala Python 3.9 y pip
+# Instalar herramientas necesarias
 RUN apt-get update && \
-    apt-get install -y python3.9 python3.9-venv python3.9-distutils curl && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    wget \
+    ca-certificates \
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libffi-dev \
+    libncursesw5-dev \
+    xz-utils \
+    tk-dev \
+    uuid-dev \
+    liblzma-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Establece Python 3.9 como predeterminado
-RUN ln -s /usr/bin/python3.9 /usr/bin/python
+# Descargar, compilar e instalar Python 3.9.19
+RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz && \
+    tar xzf Python-3.9.19.tgz && \
+    cd Python-3.9.19 && \
+    ./configure --enable-optimizations && \
+    make -j$(nproc) && \
+    make altinstall && \
+    ln -s /usr/local/bin/python3.9 /usr/bin/python3.9 && \
+    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3.9 && \
+    cd .. && rm -rf Python-3.9.19 Python-3.9.19.tgz
 
-# Crea directorio para la app
+# Crear carpeta de trabajo
 WORKDIR /usr/src/app
 
-# Copia archivos de Node.js
+# Instalar dependencias Node.js
 COPY package*.json ./
 RUN npm install
 
-# Copia todo (incluyendo scripts Python)
+# Copiar el resto del código (incluyendo scripts Python)
 COPY . .
 
-# Expone el puerto
+# Exponer puerto para Cloud Run
 EXPOSE 3000
 
-# Comando para iniciar la app
+# Comando de arranque
 CMD ["node", "server.js"]
+
 
