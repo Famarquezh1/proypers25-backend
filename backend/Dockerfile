@@ -1,21 +1,27 @@
-# Usa imagen base oficial
+# Base con Node y Python
 FROM node:20-slim
 
+# Instala Python 3.9 y pip
+RUN apt-get update && \
+    apt-get install -y python3.9 python3.9-venv python3.9-distutils curl && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9
 
-# Crea y entra a la carpeta de la app
+# Establece Python 3.9 como predeterminado
+RUN ln -s /usr/bin/python3.9 /usr/bin/python
+
+# Crea directorio para la app
 WORKDIR /usr/src/app
 
 # Copia archivos de Node.js
 COPY package*.json ./
-
-# Instala dependencias
 RUN npm install
 
-# Copia el resto del código
+# Copia todo (incluyendo scripts Python)
 COPY . .
 
-# Expone el puerto 3000
+# Expone el puerto
 EXPOSE 3000
 
-# Comando para iniciar el backend
+# Comando para iniciar la app
 CMD ["node", "server.js"]
+
