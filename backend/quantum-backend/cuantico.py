@@ -40,7 +40,7 @@ except Exception as e:
 
 print(json.dumps({
     "precio_actual": precio_actual,
-    "probabilidad_alza": probabilidad,
+    "probabilidad_alza": probabilidad_alza,
     "detalles": "modelo Qiskit ejecutado correctamente"
 }))
 
