@@ -1,4 +1,5 @@
 // server.js
+const cronRoute = require('./routes/cron.route');
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
@@ -22,6 +23,8 @@ app.use("/api/consultar", consultaRoute);
 app.use("/api/stock/proyeccion", proyeccionRoute);
 app.use("/api", quantumRoutes);
 app.use("/api/inversion", inversionRoute);
+
+app.use('/api/cron', cronRoute);
 
 // 🔁 Carga Firestore y ejecuta validación si aún no se ha hecho hoy
 const db = require('./firebase-admin-config');
