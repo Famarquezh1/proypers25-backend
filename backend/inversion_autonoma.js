@@ -60,6 +60,8 @@ function obtenerProximaFechaHora(hora = '10:30') {
   return `${yyyy}-${mm}-${dd} ${hora}`;
 }
 
+// ... (mismos imports y funciones previas)
+
 async function recomendarInversion() {
   const resultados = [];
 
@@ -82,26 +84,25 @@ async function recomendarInversion() {
 
   for (const resultado of resultados) {
     const opciones = [
-  {
-    tipo: 'LSTM',
-    symbol: resultado.symbol,
-    valor: resultado.lstm.precio_estimado || 0,
-    precio_actual: resultado.lstm.precio_actual || 0
-  },
-  {
-    tipo: 'MonteCarlo',
-    symbol: resultado.symbol,
-    valor: resultado.montecarlo.precio_estimado || 0,
-    precio_actual: resultado.montecarlo.precio_actual || 0
-  },
-  {
-    tipo: 'Qiskit',
-    symbol: resultado.symbol,
-    valor: resultado.cuantico.probabilidad_alza || 0,
-    precio_actual: resultado.cuantico.precio_actual || 0 // ✅ CORREGIDO
-  }
-];
-
+      {
+        tipo: 'LSTM',
+        symbol: resultado.symbol,
+        valor: resultado.lstm.precio_estimado || 0,
+        precio_actual: resultado.lstm.precio_actual || 0
+      },
+      {
+        tipo: 'MonteCarlo',
+        symbol: resultado.symbol,
+        valor: resultado.montecarlo.precio_estimado || 0,
+        precio_actual: resultado.montecarlo.precio_actual || 0
+      },
+      {
+        tipo: 'Qiskit',
+        symbol: resultado.symbol,
+        valor: resultado.cuantico.probabilidad_alza || 0,
+        precio_actual: resultado.cuantico.precio_actual || 0
+      }
+    ];
 
     const mejor = opciones.reduce((a, b) => (a.valor > b.valor ? a : b));
     if (!mejorProyeccion || mejor.valor > mejorProyeccion.valor) {
@@ -110,20 +111,22 @@ async function recomendarInversion() {
   }
 
   const { valor: estimado, precio_actual } = mejorProyeccion;
-  const porcentaje = ((estimado - precio_actual) / precio_actual) * 100;
-  const gananciaEstim = (montoInicial * (porcentaje / 100)).toFixed(2);
-  const stopLoss = (precio_actual * 0.98).toFixed(2);
-  const takeProfit = (precio_actual * 1.05).toFixed(2);
-  const { confianza, alerta } = await obtenerConfianzaHistorica(mejorProyeccion.symbol);
 
+  // Validación fuerte
+  const precioValido = precio_actual > 0 && isFinite(precio_actual);
+  const porcentaje = precioValido ? ((estimado - precio_actual) / precio_actual) * 100 : 0;
+  const gananciaEstim = precioValido ? (montoInicial * (porcentaje / 100)).toFixed(2) : '0.00';
+  const stopLoss = precioValido ? (precio_actual * 0.98).toFixed(2) : '0.00';
+  const takeProfit = precioValido ? (precio_actual * 1.05).toFixed(2) : '0.00';
+  const { confianza, alerta } = await obtenerConfianzaHistorica(mejorProyeccion.symbol);
 
   const recomendacion = {
     simbolo: mejorProyeccion.symbol,
     tipo: mejorProyeccion.tipo,
     invertir: montoInicial,
-    precio_actual: precio_actual.toFixed(2),
-    precio_estimado: estimado.toFixed(2),
-    porcentaje: porcentaje.toFixed(2),
+    precio_actual: precioValido ? precio_actual.toFixed(2) : '0.00',
+    precio_estimado: precioValido ? estimado.toFixed(2) : '0.00',
+    porcentaje: precioValido ? porcentaje.toFixed(2) : '0.00',
     ganancia_estim: gananciaEstim,
     comprar: obtenerProximaFechaHora('10:30'),
     vender: obtenerProximaFechaHora('15:30'),
@@ -138,6 +141,3 @@ async function recomendarInversion() {
 }
 
 recomendarInversion();
-
-
-
