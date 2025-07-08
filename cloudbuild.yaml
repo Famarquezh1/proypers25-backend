@@ -21,3 +21,7 @@ steps:
 
 images:
   - gcr.io/$PROJECT_ID/proypers25-backend
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
