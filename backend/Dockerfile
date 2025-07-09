@@ -1,7 +1,6 @@
-# Usa imagen ligera de Node.js
 FROM node:20-slim
 
-# Instala herramientas necesarias para compilar Python y manejar pip
+# Instalar dependencias para compilar Python
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
@@ -21,37 +20,33 @@ RUN apt-get update && \
     liblzma-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Descarga y compila Python 3.9
+# Instalar Python 3.9.19 desde fuente
 RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz && \
     tar xzf Python-3.9.19.tgz && \
     cd Python-3.9.19 && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
     make altinstall && \
+    ln -s /usr/local/bin/python3.9 /usr/bin/python3.9 && \
+    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3.9 && \
     cd .. && rm -rf Python-3.9.19 Python-3.9.19.tgz
 
-# Enlaza python3.9 y pip3.9
-RUN ln -s /usr/local/bin/python3.9 /usr/bin/python3 && \
-    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3
-
-# Instala dependencias de Python necesarias para tus scripts
-RUN pip3 install --no-cache-dir yfinance qiskit pandas
-
-# Crea carpeta de trabajo
+# Crear carpeta de trabajo
 WORKDIR /usr/src/app
 
-# Copia e instala dependencias de Node.js
+# Instalar dependencias Node.js
 COPY package*.json ./
 RUN npm install
 
-# Copia el resto del código (incluyendo scripts Python)
+# Copiar el resto del código
 COPY . .
 
-# Exponer puerto 3000 para Cloud Run
+# Exponer puerto para Cloud Run
 EXPOSE 3000
 
-# Comando de inicio
+# Comando de arranque
 CMD ["node", "server.js"]
+
 
 
 
