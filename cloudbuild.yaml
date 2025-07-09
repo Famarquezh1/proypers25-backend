@@ -8,7 +8,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/proypers25-backend']
 
-  # Paso 3: Desplegar a Cloud Run
+  # Paso 3: Desplegar a Cloud Run en la región correcta
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -20,7 +20,7 @@ steps:
       - --platform
       - managed
       - --region
-      - us-central1
+      - europe-west1
       - --allow-unauthenticated
 
 images:
@@ -28,6 +28,7 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+
 
 
 
