@@ -27,9 +27,11 @@ RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
     make altinstall && \
-    ln -s /usr/local/bin/python3.9 /usr/bin/python3.9 && \
-    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3.9 && \
     cd .. && rm -rf Python-3.9.19 Python-3.9.19.tgz
+
+# Crear alias para python3 y pip3
+RUN ln -s /usr/local/bin/python3.9 /usr/bin/python3 && \
+    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3
 
 # Crear carpeta de trabajo
 WORKDIR /usr/src/app
@@ -46,6 +48,7 @@ EXPOSE 8080
 
 # Comando de arranque
 CMD ["node", "server.js"]
+
 
 
 
