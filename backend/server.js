@@ -1,4 +1,5 @@
-// server.js
+console.log('🚀 Iniciando server.js...');
+
 const cronRoute = require('./routes/cron.route');
 const express = require("express");
 const cors = require("cors");
@@ -13,9 +14,8 @@ const validarAutonomas = require('./utils/validar_autonomas');
 const ejecutarAutoaprendizaje = require('./scripts/autoaprendizaje'); // 👈 nuevo
 
 const app = express();
-const PORT = process.env.PORT;
 
-
+const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -59,6 +59,8 @@ cron.schedule('0 5 * * *', async () => {
     console.error('❌ Error durante autoaprendizaje diario:', error);
   }
 });
+
+console.log('📡 Escuchando en el puerto', PORT);
 
 app.listen(PORT, () => {
   console.log(`✅ API iniciada en http://localhost:${PORT}`);

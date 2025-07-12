@@ -42,7 +42,7 @@ RUN npm install
 COPY . .
 
 # Exponer puerto para Cloud Run
-EXPOSE 3000
+EXPOSE 8080
 
 # Comando de arranque
 CMD ["node", "server.js"]
