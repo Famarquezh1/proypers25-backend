@@ -13,7 +13,7 @@ router.get('/cuantic/:symbol', (req, res) => {
   const symbol = req.params.symbol;
   const scriptPath = path.join(__dirname, '..', 'quantum-backend');
 
-  exec(`py -3.9 cuantico.py ${symbol}`, { cwd: scriptPath }, (error, stdout, stderr) => {
+  exec(`python3 cuantico.py ${symbol}`, { cwd: scriptPath, shell: true }, (error, stdout, stderr) => {
     if (error) {
       console.error('❌ Error ejecutando Python:', error);
       return res.status(500).json({ error: 'Error en ejecución cuántica' });

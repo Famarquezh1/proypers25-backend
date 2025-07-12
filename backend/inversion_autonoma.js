@@ -11,7 +11,7 @@ const scriptDir = path.join(__dirname, 'quantum-backend');
 
 function ejecutarModelo(script, symbol) {
   return new Promise((resolve) => {
-    exec(`py -3.9 ${script} ${symbol}`, { cwd: scriptDir }, (err, stdout) => {
+    exec(`python3 ${script} ${symbol}`, { cwd: scriptDir, shell: true }, (err, stdout) => {
       if (err) return resolve({ symbol, metodo: script, error: err.message });
 
       try {
