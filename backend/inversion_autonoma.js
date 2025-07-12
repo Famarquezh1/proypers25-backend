@@ -3,9 +3,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 const db = require('./firebase-admin-config');
 
-
 const posiblesSimbolos = ['TSLA', 'AAPL', 'NVDA', 'MSFT'];
-;
 const montoInicial = 1000;
 const scriptDir = path.join(__dirname, 'quantum-backend');
 
@@ -50,7 +48,6 @@ async function obtenerConfianzaHistorica(symbol) {
   return { confianza: promedio, alerta };
 }
 
-
 function obtenerProximaFechaHora(hora = '10:30') {
   const fecha = new Date();
   fecha.setDate(fecha.getDate() + 1);
@@ -59,8 +56,6 @@ function obtenerProximaFechaHora(hora = '10:30') {
   const dd = String(fecha.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hora}`;
 }
-
-// ... (mismos imports y funciones previas)
 
 async function recomendarInversion() {
   const resultados = [];
@@ -112,7 +107,6 @@ async function recomendarInversion() {
 
   const { valor: estimado, precio_actual } = mejorProyeccion;
 
-  // Validación fuerte
   const precioValido = precio_actual > 0 && isFinite(precio_actual);
   const porcentaje = precioValido ? ((estimado - precio_actual) / precio_actual) * 100 : 0;
   const gananciaEstim = precioValido ? (montoInicial * (porcentaje / 100)).toFixed(2) : '0.00';
@@ -141,3 +135,4 @@ async function recomendarInversion() {
 }
 
 recomendarInversion();
+
