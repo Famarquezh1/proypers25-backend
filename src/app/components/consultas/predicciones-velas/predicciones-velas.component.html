@@ -395,7 +395,7 @@
       <span class="hc-stat-pill">Suprimidas: <strong>{{ highConvictionStats.suppressed }}</strong></span>
       <span class="hc-stat-pill">Pendientes: <strong>{{ highConvictionStats.pending }}</strong></span>
       <span class="hc-stat-pill">Win rate (emitidas): <strong>{{ highConvictionStats.winRateEmitted | percent:'1.0-1' }}</strong></span>
-      <span class="hc-stat-pill">Win rate (suprimidas): <strong>{{ formatRateOrNa(highConvictionStats.winRateSuppressed) }}</strong></span>
+      <span class="hc-stat-pill">Win rate (suprimidas): <strong>{{ formatSuppressedRate(highConvictionStats.winRateSuppressed, highConvictionStats.suppressed) }}</strong></span>
       <span class="hc-stat-pill">Win rate (global): <strong>{{ highConvictionStats.winRate | percent:'1.0-1' }}</strong></span>
       <span class="hc-stat-pill">Conf. promedio: <strong>{{ highConvictionStats.avgConfidence | percent:'1.0-0' }}</strong></span>
       <span class="hc-stat-pill">Estabilidad promedio: <strong>{{ highConvictionStats.avgStability | percent:'1.0-1' }}</strong></span>

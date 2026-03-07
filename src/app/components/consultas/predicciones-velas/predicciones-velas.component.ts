@@ -1150,6 +1150,13 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return `${Math.round(rate * 1000) / 10}%`;
   }
 
+  formatSuppressedRate(rate: number | null | undefined, suppressedCount: number): string {
+    if (rate == null) {
+      return suppressedCount > 0 ? 'Sin verificaciones' : 'N/A';
+    }
+    return `${Math.round(rate * 1000) / 10}%`;
+  }
+
   spotPriceSourceLabel(source: string | null | undefined): string {
     switch ((source || '').toLowerCase()) {
       case 'binance':
@@ -1231,7 +1238,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     }
 
     const cycle = latest?.prediction_cycle || latest;
-    const audit = latest?.audit || {};
+    const latestAuditSnapshot = (items || []).find((item) => {
+      const raw = Number(item?.audit?.global?.win_rate);
+      return Number.isFinite(raw);
+    });
+    const audit = latestAuditSnapshot?.audit || latest?.audit || {};
     const processedOk = Number(cycle?.processed_ok || 0);
     const emitted = Number(cycle?.signals_emitted || 0);
     const suppressed = Number(cycle?.signals_suppressed || 0);
@@ -1258,7 +1269,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       cycleDurationMs: Number(cycle?.cycle_duration_ms || 0),
       suppressionRate,
       certaintyWinRate: winRatePct > 1 ? winRatePct / 100 : winRatePct,
-      classification: String(audit?.classification || latest?.classification || 'n/a'),
+      classification: String(audit?.classification || latestAuditSnapshot?.classification || latest?.classification || 'n/a'),
       updatedAt: this.formatFirestoreDate(latest?.created_at || latest?.timestamp)
     };
   }
