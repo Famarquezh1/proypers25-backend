@@ -1,0 +1,19 @@
+PROYPERS25 - COMANDOS RAPIDOS (POWERSHELL)
+
+1) Construir imagen de backend (Cloud Build):
+gcloud builds submit backend --project=proypers2025 --tag southamerica-west1-docker.pkg.dev/proypers2025/backend-repo/backend-image:latest
+
+2) Subir/deploy a Cloud Run (usar la imagen anterior):
+gcloud run deploy proypers25-backend --project=proypers2025 --image southamerica-west1-docker.pkg.dev/proypers2025/backend-repo/backend-image:latest --platform managed --region southamerica-west1 --allow-unauthenticated
+
+3) Verificar endpoint:
+curl.exe -s -o NUL -w "%{http_code}" https://proypers25-backend-518292923158.southamerica-west1.run.app/api/velas/disponibles
+
+------------------------------------------------------------
+ATAJOS QUE YA TIENES EN ESTE PROYECTO:
+
+- Build + Deploy:
+.\despliega.bat
+
+- Solo Deploy (reusa imagen latest existente):
+.\despliega-ligero.bat
