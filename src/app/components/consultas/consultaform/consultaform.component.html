@@ -1,141 +1,136 @@
-<div class="container mt-5">
+<div class="container consulta-container mt-5">
   <h3 class="text-center mb-4">
     <i class="bi bi-bar-chart-line"></i> Consulta Financiera Inteligente
   </h3>
 
-  <!-- 🔍 Formulario -->
   <form [formGroup]="form" (ngSubmit)="enviarConsulta()" class="mb-4">
-    <div class="row g-3 justify-content-center">
-      <div class="col-md-4">
-        <input type="text" class="form-control" formControlName="simbolo" placeholder="Símbolo (Ej: AAPL)" />
+    <div class="row g-3 form-grid">
+      <div class="col-12 col-sm-6 col-lg-4">
+        <input type="text" class="form-control" formControlName="simbolo" placeholder="Simbolo (Ej: AAPL)" />
       </div>
-      <div class="col-md-4">
-        <select class="form-select" formControlName="tipo">
-          <option value="largo">📈 Largo Plazo</option>
-          <option value="corto">📉 Venta en Corto</option>
-          <option value="intradia">⏱️ Intradía</option>
+      <div class="col-12 col-sm-6 col-lg-4">
+        <select class="form-select" formControlName="tipo" *ngIf="false">
+          <option value="largo">Largo plazo</option>
+          <option value="corto">Venta en corto</option>
+          <option value="intradia">Intradia</option>
         </select>
       </div>
-      <div class="col-md-2 d-grid">
-        <button class="btn btn-primary" [disabled]="cargando" type="submit">
+      <div class="col-12 col-sm-6 col-lg-4">
+        <select class="form-select" formControlName="horizonte">
+          <option value="largo">Largo plazo (15/30/90 dias)</option>
+          <option value="corto">Corto plazo (1-3 dias)</option>
+          <option value="intradia">Intradia (mismo dia)</option>
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-4">
+        <select class="form-select" formControlName="direccion">
+          <option value="alza">Direccion: alza</option>
+          <option value="baja">Direccion: baja (venta en corto)</option>
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-4" *ngIf="form.get('horizonte')?.value === 'largo'">
+        <select class="form-select" formControlName="horizonteDias">
+          <option value="15">15 dias</option>
+          <option value="30">30 dias</option>
+          <option value="90">90 dias</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Horizonte = tiempo; direccion = alza o baja.</small>
+      </div>
+      <div class="col-12 col-lg-4 d-grid">
+        <button type="submit" class="btn btn-primary" [disabled]="cargando">
           {{ cargando ? 'Consultando...' : 'Consultar' }}
         </button>
       </div>
     </div>
   </form>
 
-  <!-- 📋 Resultado -->
-  <div *ngIf="resultado" class="card border-success mb-3">
-    <div class="card-header bg-success text-white fw-bold">📋 Resultado</div>
+  <div *ngIf="resultado" class="card border-success result-card mb-3">
+    <div class="card-header bg-success text-white">Resultado</div>
     <div class="card-body">
-      <p class="card-text">{{ resultado }}</p>
+      <p>{{ resultado }}</p>
       <p *ngIf="riesgo"><strong>Riesgo:</strong> {{ riesgo }}</p>
       <p *ngIf="probabilidadAlza"><strong>Probabilidad:</strong> {{ probabilidadAlza }}</p>
+      <p *ngIf="horizonteLabel"><strong>Horizonte:</strong> {{ horizonteLabel }}</p>
+      <p *ngIf="direccion"><strong>Direccion:</strong> {{ direccion === 'baja' ? 'Baja' : 'Alza' }}</p>
     </div>
   </div>
 
-  <!-- 🧠 Sugerencia Cuantitativa -->
-  <div *ngIf="sugerenciaCuantitativa" class="card border-warning mb-4">
-    <div class="card-header bg-warning text-dark fw-bold">
-      🧠 Sugerencia Inteligente
-    </div>
-    <div class="card-body">
-      <p class="mb-2">{{ sugerenciaCuantitativa }}</p>
-      <small class="text-muted">Recomendación basada en múltiples análisis y simulaciones.</small>
-    </div>
-  </div>
-
-  <!-- 📊 Indicadores Técnicos -->
   <div *ngIf="resultadoExtendido || variacionPorcentual || tendenciaVolumen || volatilidadDiaria || rsi"
     class="card border-info mb-4">
-    <div class="card-header bg-info text-white fw-bold">📊 Indicadores Técnicos</div>
+    <div class="card-header bg-info text-white">Indicadores tecnicos</div>
     <div class="card-body">
-      <p *ngIf="variacionPorcentual"><strong>Variación:</strong> {{ variacionPorcentual }}</p>
-      <p *ngIf="tendenciaVolumen"><strong>Volumen:</strong> {{ tendenciaVolumen }}</p>
-      <p *ngIf="volatilidadDiaria"><strong>Volatilidad:</strong> {{ volatilidadDiaria }}</p>
-      <p *ngIf="rsi"><strong>RSI:</strong> {{ rsi }}</p>
-      <p *ngIf="resultadoExtendido"><strong>Análisis Ampliado:</strong> {{ resultadoExtendido }}</p>
+      <div class="row row-cols-1 row-cols-md-2 g-2">
+        <div *ngIf="variacionPorcentual" class="col">
+          <strong>Variacion:</strong> {{ variacionPorcentual }}
+        </div>
+        <div *ngIf="tendenciaVolumen" class="col">
+          <strong>Volumen:</strong> {{ tendenciaVolumen }}
+        </div>
+        <div *ngIf="volatilidadDiaria" class="col">
+          <strong>Volatilidad:</strong> {{ volatilidadDiaria }}
+        </div>
+        <div *ngIf="rsi" class="col">
+          <strong>RSI:</strong> {{ rsi }}
+        </div>
+        <div *ngIf="resultadoExtendido" class="col-12">
+          <strong>Analisis ampliado:</strong> {{ resultadoExtendido }}
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- 🔮 Proyección Monte Carlo -->
+  <div *ngIf="sugerenciaCuantitativa" class="card border-warning mb-4">
+    <div class="card-header bg-warning text-dark">Sugerencia inteligente</div>
+    <div class="card-body d-flex flex-column gap-2">
+      <p class="mb-0">{{ sugerenciaCuantitativa }}</p>
+      <small class="text-muted">Recomendacion basada en simulaciones y analisis multiple.</small>
+    </div>
+  </div>
+
   <div *ngIf="proyeccionMonteCarlo" class="card border-primary mb-4">
-    <div class="card-header bg-primary text-white fw-bold">🔮 Proyección Monte Carlo</div>
+    <div class="card-header bg-primary text-white">Proyeccion Monte Carlo</div>
     <div class="card-body">
-      <p><strong>Método:</strong> {{ proyeccionMonteCarlo.metodo }}</p>
-      <p><strong>Proyección:</strong> {{ proyeccionMonteCarlo.proyeccion }}</p>
-      <p><strong>Precio Estimado:</strong> ${{ proyeccionMonteCarlo.precio_estimado }}</p>
-      <p><strong>Intervalo de Confianza:</strong> ${{ proyeccionMonteCarlo.intervalo_confianza[0] }} – ${{
-        proyeccionMonteCarlo.intervalo_confianza[1] }}</p>
+      <div class="row row-cols-1 row-cols-md-2 g-2">
+        <div class="col">
+          <strong>Metodo:</strong> {{ proyeccionMonteCarlo.metodo }}
+        </div>
+        <div class="col">
+          <strong>Proyeccion:</strong> {{ proyeccionMonteCarlo.proyeccion }}
+        </div>
+        <div class="col">
+          <strong>Precio estimado:</strong> ${{ proyeccionMonteCarlo.precio_estimado }}
+        </div>
+        <div class="col">
+          <strong>Intervalo:</strong> ${{ proyeccionMonteCarlo.intervalo_confianza[0] }} - ${{
+          proyeccionMonteCarlo.intervalo_confianza[1] }}
+        </div>
+      </div>
     </div>
     <div class="card-body">
-      <canvas baseChart [data]="chartData" [options]="chartOptions" chartType="bar"></canvas>
+      <div class="chart-section">
+        <canvas baseChart [data]="chartData" [options]="chartOptions" chartType="bar"></canvas>
+      </div>
     </div>
   </div>
 
-  <!-- 🧠 Confianza Cuántica -->
   <div *ngIf="indiceConfianzaCuantico !== null" class="card border-warning mb-4">
-    <div class="card-header bg-warning text-dark fw-bold">🧠 Confianza Cuántica</div>
+    <div class="card-header bg-warning text-dark">Confianza cuantica</div>
     <div class="card-body">
-      <p><strong>Índice:</strong> {{ indiceConfianzaCuantico }}%</p>
+      <p><strong>Indice:</strong> {{ indiceConfianzaCuantico }}%</p>
       <p>{{ mensajeConfianza }}</p>
     </div>
   </div>
 
-  <!-- 🧠 Análisis de Sentimiento -->
-  <div *ngIf="sentimiento" class="alert alert-warning mt-3">
-    <h5>🧠 Análisis de Sentimiento</h5>
+  <div *ngIf="sentimiento" class="alert alert-warning">
+    <h5>Analisis de sentimiento</h5>
     <p>{{ sentimiento }}</p>
     <p><strong>Puntaje:</strong> {{ puntajeSentimiento }}</p>
   </div>
 
-  <!-- 📰 Noticias -->
-      <!-- 📰 Noticias (ocultas visualmente pero presentes en el DOM) -->
-<div class="invisible-news">
-  <div class="alert alert-info mt-3">
-    📰 {{ resumenNoticias }}
-  </div>
-
-  <div class="mt-4">
-    <h5 class="mb-3">🗞️ Noticias recientes relacionadas:</h5>
-
-    <div
-      *ngFor="let noticia of noticias"
-      class="card mb-3 shadow-sm border-start border-4"
-      [ngClass]="{
-        'border-success': noticia.sentimiento > 0.3,
-        'border-danger': noticia.sentimiento < -0.3,
-        'border-secondary': noticia.sentimiento <= 0.3 && noticia.sentimiento >= -0.3
-      }"
-    >
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">
-            {{ noticia.resumen }} -
-            <span class="text-primary">{{ noticia.fuente }}</span>
-          </h6>
-          <small class="text-muted">{{ noticia.fecha | date: 'short' }}</small>
-        </div>
-        <p class="mt-2 mb-2">{{ noticia.titulo }}</p>
-        <a
-          [href]="noticia.url"
-          target="_blank"
-          class="btn btn-outline-primary btn-sm"
-        >
-          Leer noticia completa
-        </a>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-
-  <!-- 🔍 Fundamentos del Resultado -->
   <div *ngIf="pesosAnalisis && getClaves(pesosAnalisis).length" class="card mt-4 border-info">
-    <div class="card-header bg-info text-white fw-bold">
-      🔍 Fundamentos del Resultado
-    </div>
+    <div class="card-header bg-info text-white">Fundamentos del resultado</div>
     <ul class="list-group list-group-flush">
       <li *ngFor="let clave of getClaves(pesosAnalisis)" class="list-group-item d-flex justify-content-between">
         <span>{{ clave }}</span>
@@ -144,60 +139,111 @@
     </ul>
   </div>
 
-  <hr>
-
-  <!-- 🧠 Simulación Cuántica -->
-  <div *ngIf="resultadoCuantico" class="card border-dark mb-4">
-    <div class="card-header bg-dark text-white fw-bold">
-      🧠 Simulación Cuántica
-    </div>
-    <div class="card-body mb-4">
-      <p><strong>Símbolo:</strong> {{ resultadoCuantico.symbol }}</p>
-      <p><strong>Probabilidad de Alza:</strong> {{ resultadoCuantico.probabilidad_alza }}%</p>
-      <p><strong>Tipo de Resultado:</strong> {{ resultadoCuantico.tipo }}</p>
-      <p><strong>Método Cuántico:</strong> {{ resultadoCuantico.metodo }}</p>
+  <div *ngIf="resultadoCuantico && resultadoCuantico.symbol" class="card border-dark mb-4">
+    <div class="card-header bg-dark text-white">Simulacion cuantica</div>
+    <div class="card-body">
+      <p><strong>Simbolo:</strong> {{ resultadoCuantico.symbol }}</p>
+      <p><strong>Probabilidad alza:</strong> {{ resultadoCuantico.probabilidad_alza }}%</p>
+      <p><strong>Tipo:</strong> {{ resultadoCuantico.tipo }}</p>
+      <p><strong>Metodo cuantico:</strong> {{ resultadoCuantico.metodo }}</p>
     </div>
   </div>
 
-  <hr>
+  <div *ngIf="comparacionModelos" class="card mt-4 border-dark comparador-card">
+    <div class="card-header bg-dark text-white">Comparador de modelos</div>
+    <div class="card-body">
+      <div class="row row-cols-1 row-cols-md-3 g-3">
 
-  <!-- 🧠 Comparador de Modelos -->
-<div *ngIf="comparacionModelos && (comparacionModelos.LSTM || comparacionModelos.MonteCarlo || comparacionModelos.Qiskit)" class="card mt-4 border-dark">
-  <div class="card-header bg-dark text-white">🧠 Comparador de Modelos Predictivos</div>
-  <div class="card-body">
-    <div class="row">
-      <div class="col-md-4" *ngIf="comparacionModelos.LSTM">
-        <h5>LSTM</h5>
-        <p><strong>Precio Estimado:</strong> {{ comparacionModelos.LSTM.precio_estimado }}</p>
-      </div>
-      <div class="col-md-4" *ngIf="comparacionModelos.MonteCarlo">
-        <h5>Monte Carlo</h5>
-        <b>Precio Estimado:</b> {{ comparacionModelos.MonteCarlo?.precio_estimado }}
-      </div>
-      <div class="col-md-4" *ngIf="comparacionModelos.Qiskit">
-        <h5>Qiskit</h5>
-        <p><strong>Probabilidad de Alza:</strong> {{ comparacionModelos.Qiskit.probabilidad_alza }}%</p>
+        <div class="col">
+          <div class="card border-primary h-100">
+            <div class="card-body">
+              <h5 class="card-title text-primary">LSTM</h5>
+              <ng-container *ngIf="comparacionModelos.LSTM; else lstmVacio">
+                <ul class="list-unstyled mb-0">
+                  <li *ngIf="comparacionModelos.LSTM.error" class="text-danger">
+                    <strong>Error:</strong> {{ comparacionModelos.LSTM.error }}
+                  </li>
+                  <li *ngIf="comparacionModelos.LSTM.warning" class="text-warning">
+                    <strong>Advertencia:</strong> {{ comparacionModelos.LSTM.warning }}
+                  </li>
+                  <li *ngIf="comparacionModelos.LSTM.precio_estimado">
+                    <strong>Precio estimado:</strong> ${{ comparacionModelos.LSTM.precio_estimado }}
+                  </li>
+                  <li *ngIf="comparacionModelos.LSTM.porcentaje">
+                    <strong>Variacion estimada:</strong> {{ comparacionModelos.LSTM.porcentaje }}%
+                  </li>
+                  <li *ngIf="comparacionModelos.LSTM.error_entrenamiento">
+                    <strong>Error entrenamiento:</strong> {{ comparacionModelos.LSTM.error_entrenamiento }}
+                  </li>
+                </ul>
+              </ng-container>
+              <ng-template #lstmVacio>
+                <p class="text-muted mb-0">Sin datos del modelo.</p>
+              </ng-template>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="card border-success h-100">
+            <div class="card-body">
+              <h5 class="card-title text-success">Monte Carlo</h5>
+              <ng-container *ngIf="comparacionModelos.MonteCarlo; else monteVacio">
+                <ul class="list-unstyled mb-0">
+                  <li *ngIf="comparacionModelos.MonteCarlo.error" class="text-danger">
+                    <strong>Error:</strong> {{ comparacionModelos.MonteCarlo.error }}
+                  </li>
+                  <li *ngIf="comparacionModelos.MonteCarlo.warning" class="text-warning">
+                    <strong>Advertencia:</strong> {{ comparacionModelos.MonteCarlo.warning }}
+                  </li>
+                  <li *ngIf="comparacionModelos.MonteCarlo.precio_estimado">
+                    <strong>Precio estimado:</strong> ${{ comparacionModelos.MonteCarlo.precio_estimado }}
+                  </li>
+                  <li *ngIf="comparacionModelos.MonteCarlo.metodo">
+                    <strong>Metodo:</strong> {{ comparacionModelos.MonteCarlo.metodo }}
+                  </li>
+                </ul>
+              </ng-container>
+              <ng-template #monteVacio>
+                <p class="text-muted mb-0">Sin datos del modelo.</p>
+              </ng-template>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="card border-warning h-100">
+            <div class="card-body">
+              <h5 class="card-title text-warning">Qiskit</h5>
+              <ng-container *ngIf="comparacionModelos.Qiskit; else qiskitVacio">
+                <ul class="list-unstyled mb-0">
+                  <li *ngIf="comparacionModelos.Qiskit.error" class="text-danger">
+                    <strong>Error:</strong> {{ comparacionModelos.Qiskit.error }}
+                  </li>
+                  <li *ngIf="comparacionModelos.Qiskit.warning" class="text-warning">
+                    <strong>Advertencia:</strong> {{ comparacionModelos.Qiskit.warning }}
+                  </li>
+                  <li *ngIf="comparacionModelos.Qiskit.probabilidad_alza !== undefined">
+                    <strong>Probabilidad de alza:</strong> {{ comparacionModelos.Qiskit.probabilidad_alza }}%
+                  </li>
+                  <li *ngIf="comparacionModelos.Qiskit.metodo">
+                    <strong>Metodo cuantico:</strong> {{ comparacionModelos.Qiskit.metodo }}
+                  </li>
+                </ul>
+              </ng-container>
+              <ng-template #qiskitVacio>
+                <p class="text-muted mb-0">Sin datos del modelo.</p>
+              </ng-template>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
+
+  <div *ngIf="confianzaHistorica !== null">
+    <p><strong>Confianza historica:</strong> {{ confianzaHistorica | number:'1.2-2' }}</p>
+    <p *ngIf="alertaConfianza">{{ alertaConfianza }}</p>
+  </div>
 </div>
-
-<hr>
-
-<div *ngIf="confianzaHistorica !== null">
-  <p><strong>Confianza histórica:</strong> {{ confianzaHistorica | number:'1.2-2' }}</p>
-  <p *ngIf="alertaConfianza">{{ alertaConfianza }}</p>
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-
-
-

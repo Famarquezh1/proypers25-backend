@@ -6,9 +6,9 @@ const generarSentimiento = (texto) => {
   const resultado = sentiment.analyze(texto);
   const puntaje = resultado.comparative;
 
-  let resumen = '🤖 Sentimiento neutral';
-  if (puntaje > 0.3) resumen = '📈 Sentimiento positivo';
-  else if (puntaje < -0.3) resumen = '📉 Sentimiento negativo';
+  let resumen = 'Sentimiento neutral';
+  if (puntaje > 0.3) resumen = 'Sentimiento positivo';
+  else if (puntaje < -0.3) resumen = 'Sentimiento negativo';
 
   return {
     texto: resumen,
@@ -17,4 +17,3 @@ const generarSentimiento = (texto) => {
 };
 
 module.exports = { generarSentimiento };
-

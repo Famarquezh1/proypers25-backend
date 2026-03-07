@@ -1,0 +1,610 @@
+<div class="velas-panel">
+  <h2>Predicciones de Velas</h2>
+  <div class="control-row mb-3">
+    <div class="form-group">
+      <label for="symbolSelect">Símbolo</label>
+      <select id="symbolSelect" class="form-select" [(ngModel)]="candidatoSymbol">
+        <option *ngFor="let symbol of symbols" [value]="symbol">{{ symbol }}</option>
+      </select>
+    </div>
+    <div class="form-group" *ngIf="executionMode !== 'event_driven'">
+      <label for="timeframeSelect">Timeframe</label>
+      <select id="timeframeSelect" class="form-select" [(ngModel)]="selectedTimeframe">
+        <option *ngFor="let tf of timeframes" [value]="tf">{{ tf }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="modeSelect">Modo de ejecución</label>
+      <select id="modeSelect" class="form-select" [(ngModel)]="executionMode">
+        <option *ngFor="let mode of executionModes" [value]="mode.value">{{ mode.label }}</option>
+      </select>
+      <p *ngIf="executionMode === 'event_driven'" class="text-muted small mt-1">
+        Event-Driven ejecuta según micro-impulsos; el timeframe solo sirve de contexto y no altera las ventanas de entrada/salida.
+      </p>
+    </div>
+    <div class="form-group">
+      <label for="montoInput">Monto (USD)</label>
+      <input id="montoInput" type="number" class="form-control" [(ngModel)]="monto" min="10" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-success me-2" (click)="generarPrediccion()" [disabled]="cargando">Generar</button>
+    </div>
+  </div>
+
+  <div *ngIf="mensaje" class="alert alert-info">{{ mensaje }}</div>
+
+  <div class="opportunities-panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <h3 class="mb-0">Oportunidades próximas</h3>
+        <p class="text-muted small mb-0">Solo setups operables y señales emitidas con ventana activa o próxima.</p>
+      </div>
+    </div>
+
+    <ng-container *ngIf="latestTelegramAlert$ | async as latestAlert">
+      <div *ngIf="latestAlert" class="telegram-alert-banner">
+        <strong>Última alerta Telegram:</strong>
+        {{ latestAlert.symbol }} · {{ telegramAlertDirection(latestAlert) }} · {{ latestTelegramAlertDate(latestAlert) }}
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="telegramNotifications$ | async as telegramAlerts">
+      <div *ngIf="telegramAlerts.length" class="telegram-history mb-3">
+        <div class="telegram-history-header">
+          <h4 class="mb-0">Pre-alertas Telegram recientes</h4>
+          <span class="text-muted small">Enviadas y cruzadas con su resultado actual</span>
+        </div>
+        <div class="telegram-history-sections">
+          <div class="telegram-history-section" *ngIf="telegramWinNotifications$ | async as telegramWins">
+            <div class="telegram-history-section-title">
+              Victorias confirmadas <span class="text-muted">({{ telegramWins.length }})</span>
+            </div>
+            <div class="telegram-history-empty" *ngIf="!telegramWins.length">Aún no hay pre-alertas con WIN.</div>
+            <div class="telegram-history-carousel" *ngIf="telegramWins.length">
+              <div class="telegram-history-card telegram-history-card-win" *ngFor="let alert of telegramWins">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <div>
+                    <strong>{{ alert.symbol }}</strong>
+                    <div class="small text-muted">{{ latestTelegramAlertDate(alert) }}</div>
+                  </div>
+                  <span [class]="telegramAlertOutcomeClass(alert)">{{ telegramAlertOutcome(alert) }}</span>
+                </div>
+
+                <div class="telegram-history-metrics">
+                  <span>{{ telegramAlertDirection(alert) }}</span>
+                  <span>Conf. {{ normalizePercent(alert.confidence) | percent:'1.0-0' }}</span>
+                  <span>Stability {{ normalizePercent(alert.stability) | percent:'1.0-0' }}</span>
+                  <span>Spot {{ alert.spot_price | number:'1.2-2' }}</span>
+                </div>
+
+                <div class="small">
+                  <strong>Ventana vigilada:</strong> {{ telegramAlertWindow(alert) }}
+                </div>
+                <div class="small" *ngIf="alert.trade_plan">
+                  <strong>Entrada:</strong> {{ alert.trade_plan.entry_price | number:'1.2-4' }}
+                  · <strong>SL:</strong> {{ alert.trade_plan.stop_loss | number:'1.2-4' }}
+                  · <strong>TP:</strong> {{ alert.trade_plan.take_profit | number:'1.2-4' }}
+                </div>
+                <div class="small text-muted" *ngIf="alert.trade_plan">
+                  Salida objetivo: {{ alert.trade_plan.target_exit_price | number:'1.2-4' }}
+                  · R:R {{ alert.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
+                </div>
+                <div class="small text-muted">
+                  Resultado actual: {{ verificationOutcomeLabel(alert.linkedPrediction || alert) }}
+                </div>
+                <div class="small text-muted">
+                  {{ telegramAlertRemarks(alert) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="telegram-history-section" *ngIf="telegramPendingNotifications$ | async as telegramPending">
+            <div class="telegram-history-section-title">
+              Pendientes y resto <span class="text-muted">({{ telegramPending.length }})</span>
+            </div>
+            <div class="telegram-history-empty" *ngIf="!telegramPending.length">No hay alertas pendientes o en seguimiento.</div>
+            <div class="telegram-history-carousel" *ngIf="telegramPending.length">
+              <div class="telegram-history-card" *ngFor="let alert of telegramPending">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <div>
+                    <strong>{{ alert.symbol }}</strong>
+                    <div class="small text-muted">{{ latestTelegramAlertDate(alert) }}</div>
+                  </div>
+                  <span [class]="telegramAlertOutcomeClass(alert)">{{ telegramAlertOutcome(alert) }}</span>
+                </div>
+
+                <div class="telegram-history-metrics">
+                  <span>{{ telegramAlertDirection(alert) }}</span>
+                  <span>Conf. {{ normalizePercent(alert.confidence) | percent:'1.0-0' }}</span>
+                  <span>Stability {{ normalizePercent(alert.stability) | percent:'1.0-0' }}</span>
+                  <span>Spot {{ alert.spot_price | number:'1.2-2' }}</span>
+                </div>
+
+                <div class="small">
+                  <strong>Ventana vigilada:</strong> {{ telegramAlertWindow(alert) }}
+                </div>
+                <div class="small" *ngIf="alert.trade_plan">
+                  <strong>Entrada:</strong> {{ alert.trade_plan.entry_price | number:'1.2-4' }}
+                  · <strong>SL:</strong> {{ alert.trade_plan.stop_loss | number:'1.2-4' }}
+                  · <strong>TP:</strong> {{ alert.trade_plan.take_profit | number:'1.2-4' }}
+                </div>
+                <div class="small text-muted" *ngIf="alert.trade_plan">
+                  Salida objetivo: {{ alert.trade_plan.target_exit_price | number:'1.2-4' }}
+                  · R:R {{ alert.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
+                </div>
+                <div class="small text-muted">
+                  Resultado actual: {{ verificationOutcomeLabel(alert.linkedPrediction || alert) }}
+                </div>
+                <div class="small text-muted">
+                  {{ telegramAlertRemarks(alert) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="oportunidades$ | async as oportunidades">
+      <p *ngIf="!oportunidades.length" class="text-muted mb-0">
+        No hay oportunidades manuales operables en este momento.
+      </p>
+
+      <div *ngIf="oportunidades.length" class="opportunities-grid">
+        <div class="opportunity-card" *ngFor="let item of oportunidades">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <div>
+              <strong>{{ item.simbolo }}</strong>
+              <div class="small text-muted">
+                {{ item.direction === 'down' ? 'Baja' : item.direction === 'up' ? 'Alza' : 'Neutral' }}
+                · Prioridad {{ opportunityPriority(item) }}
+              </div>
+            </div>
+            <span [class]="opportunityStateClass(item)">{{ opportunityState(item) }}</span>
+          </div>
+
+          <div class="opportunity-metrics">
+            <span>Conf. {{ item.confidence | percent:'1.0-0' }}</span>
+            <span>Stability {{ item.stability | percent:'1.0-0' }}</span>
+            <span>Quantum {{ item.quantum | percent:'1.0-0' }}</span>
+          </div>
+
+          <div [class]="opportunityCountdownClass(item)">
+            <span>{{ opportunityWindowLabel(item) }}</span>
+            <strong>{{ opportunityCountdown(item) }}</strong>
+          </div>
+
+          <div class="small text-muted">
+            Entrada local: {{ opportunityLocalWindow(item, 'start') }} – {{ opportunityLocalWindow(item, 'end') }}
+          </div>
+          <div class="small text-muted">
+            UTC: {{ item.entry_window?.start }} – {{ item.entry_window?.end }}
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="monitoring-panel mb-4" *ngIf="monitoringSnapshots$ | async as monitoringSnapshots">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <h3 class="mb-0">Monitoreo del sistema</h3>
+        <p class="text-muted small mb-0">Resumen operativo del ciclo y certeza auditada (solo lectura).</p>
+      </div>
+      <span class="text-muted small">Actualizado: {{ monitoringSummary.updatedAt }}</span>
+    </div>
+
+    <div *ngIf="monitoringSnapshots.length; else noMonitoringData" class="monitoring-stats">
+      <span class="monitor-pill">S&iacute;mbolos: <strong>{{ monitoringSummary.symbolsTotal }}</strong></span>
+      <span class="monitor-pill">Procesados: <strong>{{ monitoringSummary.processedOk }}</strong></span>
+      <span class="monitor-pill">Fallidos: <strong>{{ monitoringSummary.failed }}</strong></span>
+      <span class="monitor-pill">Emitidas: <strong>{{ monitoringSummary.emitted }}</strong></span>
+      <span class="monitor-pill">Suprimidas: <strong>{{ monitoringSummary.suppressed }}</strong></span>
+      <span class="monitor-pill">Supresi&oacute;n: <strong>{{ monitoringSummary.suppressionRate | percent:'1.0-1' }}</strong></span>
+      <span class="monitor-pill">Duraci&oacute;n ciclo: <strong>{{ (monitoringSummary.cycleDurationMs / 1000) | number:'1.0-0' }}s</strong></span>
+      <span class="monitor-pill">Certeza auditada: <strong>{{ monitoringSummary.certaintyWinRate | percent:'1.0-1' }}</strong></span>
+      <span class="monitor-pill">Clasificaci&oacute;n: <strong>{{ monitoringSummary.classification }}</strong></span>
+      <span class="monitor-pill">Última emisión: <strong>{{ lastEmissionAt }}</strong> <span *ngIf="lastEmissionCount > 0">({{ lastEmissionCount }})</span></span>
+    </div>
+
+    <div *ngIf="monitoringTrend.length" class="monitoring-trend">
+      <span class="monitor-pill monitor-trend-pill" *ngFor="let point of monitoringTrend">
+        {{ point.createdAtLabel }}: <strong>{{ point.winRate | percent:'1.0-1' }}</strong>
+      </span>
+    </div>
+  </div>
+  <ng-template #noMonitoringData>
+    <p class="text-muted mb-0">A&uacute;n no hay snapshots de monitoreo.</p>
+  </ng-template>
+
+  <div class="binance-config-panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <h3 class="mb-0">Binance Bot Config</h3>
+        <p class="text-muted small mb-0">Reglas operativas del bot (off / dry-run / live).</p>
+      </div>
+      <button class="btn btn-sm btn-primary" (click)="guardarBinanceConfig()" [disabled]="binanceConfigSaving">
+        {{ binanceConfigSaving ? 'Guardando...' : 'Guardar configuración' }}
+      </button>
+    </div>
+
+    <div class="binance-config-grid">
+      <div class="form-group">
+        <label>Modo</label>
+        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.mode">
+          <option value="off">off</option>
+          <option value="dry-run">dry-run</option>
+          <option value="live">live</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>% uso fondos</label>
+        <input class="form-control form-control-sm" type="number" min="1" max="100" [(ngModel)]="binanceConfig.use_funds_percent" />
+      </div>
+      <div class="form-group">
+        <label>Capital referencia (USDT)</label>
+        <input class="form-control form-control-sm" type="number" min="5" [(ngModel)]="binanceConfig.account_capital_usdt" />
+      </div>
+      <div class="form-group">
+        <label>Leverage</label>
+        <input class="form-control form-control-sm" type="number" min="1" max="25" [(ngModel)]="binanceConfig.default_leverage" />
+      </div>
+      <div class="form-group">
+        <label>Margin Type</label>
+        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.margin_type">
+          <option value="CROSSED">CROSSED</option>
+          <option value="ISOLATED">ISOLATED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Order Type</label>
+        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.order_type">
+          <option value="MARKET">MARKET</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Max trades diarios</label>
+        <input class="form-control form-control-sm" type="number" min="1" max="20" [(ngModel)]="binanceConfig.max_daily_trades" />
+      </div>
+      <div class="form-group">
+        <label>Min confidence</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_confidence" />
+      </div>
+      <div class="form-group">
+        <label>Min quantum</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_quantum" />
+      </div>
+      <div class="form-group">
+        <label>Min timing</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_timing" />
+      </div>
+      <div class="form-group">
+        <label>Min context score</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="4" step="1" [(ngModel)]="binanceConfig.min_context_score" />
+      </div>
+      <div class="form-group">
+        <label>Min R:R</label>
+        <input class="form-control form-control-sm" type="number" min="0.5" max="10" step="0.1" [(ngModel)]="binanceConfig.min_risk_reward" />
+      </div>
+      <div class="form-group">
+        <label>Min movimiento esperado %</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="10" step="0.1" [(ngModel)]="binanceConfig.min_expected_move_pct" />
+      </div>
+      <div class="form-group">
+        <label>Sizing dinámico</label>
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="checkbox" id="dynamicSizingEnabled" [(ngModel)]="binanceConfig.dynamic_sizing_enabled" />
+          <label class="form-check-label small" for="dynamicSizingEnabled">Activar</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Factor contexto bajo</label>
+        <input class="form-control form-control-sm" type="number" min="0.1" max="2" step="0.05" [(ngModel)]="binanceConfig.sizing_low_context_factor" />
+      </div>
+      <div class="form-group">
+        <label>Factor contexto alto</label>
+        <input class="form-control form-control-sm" type="number" min="0.1" max="3" step="0.05" [(ngModel)]="binanceConfig.sizing_high_context_factor" />
+      </div>
+      <div class="form-group">
+        <label>Símbolos permitidos (coma)</label>
+        <input class="form-control form-control-sm" type="text" [(ngModel)]="binanceConfig.symbols_allowlist_text" placeholder="BTCUSDT, ETHUSDT, XRPUSDT" />
+      </div>
+      <div class="form-group">
+        <label>TP/SL automáticos</label>
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="checkbox" id="tpSlEnabled" [(ngModel)]="binanceConfig.enable_tp_sl" />
+          <label class="form-check-label small" for="tpSlEnabled">Activar</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>TP buffer %</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="2" step="0.01" [(ngModel)]="binanceConfig.tp_buffer_pct" />
+      </div>
+      <div class="form-group">
+        <label>SL buffer %</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="2" step="0.01" [(ngModel)]="binanceConfig.sl_buffer_pct" />
+      </div>
+      <div class="form-group">
+        <label>Early-exit drawdown %</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="5" step="0.01" [(ngModel)]="binanceConfig.early_exit_drawdown_pct" />
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="checkbox" id="earlyExitEnabled" [(ngModel)]="binanceConfig.early_exit_enabled" />
+          <label class="form-check-label small" for="earlyExitEnabled">Activar early-exit</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="high-conviction-panel mb-4">
+    <h3>High Conviction</h3>
+    <div class="hc-filters">
+      <div class="hc-filter-group">
+        <div class="hc-filter-group-title">Rango temporal</div>
+        <div class="hc-filter-item">
+          <label for="hcFilterSelect">Rango</label>
+          <select
+            id="hcFilterSelect"
+            class="form-select form-select-sm"
+            [(ngModel)]="highConvictionFilter"
+            (change)="onHighConvictionFilterChange()"
+          >
+            <option value="recent">Recientes</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+            <option value="custom">Personalizado</option>
+          </select>
+        </div>
+        <div class="hc-filter-item" *ngIf="highConvictionFilter === 'custom'">
+          <label for="hcFromDate">Desde</label>
+          <input id="hcFromDate" type="date" class="form-control form-control-sm" [(ngModel)]="highConvictionFrom" />
+        </div>
+        <div class="hc-filter-item" *ngIf="highConvictionFilter === 'custom'">
+          <label for="hcToDate">Hasta</label>
+          <input id="hcToDate" type="date" class="form-control form-control-sm" [(ngModel)]="highConvictionTo" />
+        </div>
+        <div class="hc-filter-item hc-filter-action" *ngIf="highConvictionFilter === 'custom'">
+          <button class="btn btn-sm btn-outline-secondary" (click)="applyCustomHighConvictionRange()">Aplicar</button>
+        </div>
+      </div>
+      <div class="hc-filter-group">
+        <div class="hc-filter-group-title">Estado</div>
+        <div class="hc-filter-item">
+          <label for="hcOutcomeFilter">Resultado</label>
+          <select
+            id="hcOutcomeFilter"
+            class="form-select form-select-sm"
+            [(ngModel)]="highConvictionOutcomeFilter"
+            (change)="onHighConvictionOutcomeFilterChange()"
+          >
+            <option value="all">Todos</option>
+            <option value="win">Solo WIN</option>
+            <option value="loss">Solo LOSS</option>
+            <option value="pendiente">Solo pendiente</option>
+            <option value="suprimida">Solo suprimida</option>
+            <option value="parcial">Solo parcial</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="hc-stats" *ngIf="highConvictionStats.total > 0">
+      <span class="hc-stat-pill">Total: <strong>{{ highConvictionStats.total }}</strong></span>
+      <span class="hc-stat-pill">WIN: <strong>{{ highConvictionStats.wins }}</strong></span>
+      <span class="hc-stat-pill">LOSS: <strong>{{ highConvictionStats.losses }}</strong></span>
+      <span class="hc-stat-pill">Suprimidas: <strong>{{ highConvictionStats.suppressed }}</strong></span>
+      <span class="hc-stat-pill">Pendientes: <strong>{{ highConvictionStats.pending }}</strong></span>
+      <span class="hc-stat-pill">Win rate (emitidas): <strong>{{ highConvictionStats.winRateEmitted | percent:'1.0-1' }}</strong></span>
+      <span class="hc-stat-pill">Win rate (suprimidas): <strong>{{ formatRateOrNa(highConvictionStats.winRateSuppressed) }}</strong></span>
+      <span class="hc-stat-pill">Win rate (global): <strong>{{ highConvictionStats.winRate | percent:'1.0-1' }}</strong></span>
+      <span class="hc-stat-pill">Conf. promedio: <strong>{{ highConvictionStats.avgConfidence | percent:'1.0-0' }}</strong></span>
+      <span class="hc-stat-pill">Estabilidad promedio: <strong>{{ highConvictionStats.avgStability | percent:'1.0-1' }}</strong></span>
+    </div>
+    <div class="hc-weekly-stats" *ngIf="weeklyStability.length">
+      <span class="hc-stat-pill hc-week-pill" *ngFor="let week of weeklyStability">
+        {{ week.weekLabel }}: <strong>{{ week.winRate | percent:'1.0-0' }}</strong> ({{ week.total }})
+      </span>
+    </div>
+
+    <ng-container *ngIf="highConvictionSignals$ | async as hcSignals">
+      <p *ngIf="!hcSignals.length" class="text-muted">
+        No hay señales High Conviction activas.
+      </p>
+
+      <div *ngIf="hcSignals.length" class="high-conviction-carousel">
+        <div class="high-conviction-card" *ngFor="let signal of hcSignals" (click)="toggleHighConvictionDetails(signal.id)">
+          <div class="high-conviction-compact">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>{{ signal.symbol || 'N/A' }}</strong>
+              <span [class]="highConvictionStatusClass(signal)">{{ highConvictionOutcome(signal) }}</span>
+            </div>
+            <div class="small text-muted">{{ formatFirestoreDate(signal.created_at || signal.timestamp) }}</div>
+            <div class="mt-2">
+              <strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}
+            </div>
+            <div class="mt-1">
+              <strong>Binance:</strong>
+              <span [class]="highConvictionBinanceStatusClass(signal)">{{ highConvictionBinanceStatus(signal) }}</span>
+            </div>
+          </div>
+
+          <div *ngIf="isHighConvictionExpanded(signal.id)" class="high-conviction-details">
+            <div><strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}</div>
+            <div><strong>Quantum:</strong> {{ normalizePercent(signal.quantum_score) | percent:'1.0-0' }}</div>
+            <div><strong>Timing:</strong> {{ normalizePercent(signal.timing_score) | percent:'1.0-0' }}</div>
+            <hr />
+            <div>
+              <strong>Window start:</strong>
+              {{ highConvictionWindowLocal(signal, 'start') }} (local)
+              <span class="text-muted">· {{ highConvictionWindowValue(signal, 'start') }} UTC</span>
+            </div>
+            <div>
+              <strong>Window end:</strong>
+              {{ highConvictionWindowLocal(signal, 'end') }} (local)
+              <span class="text-muted">· {{ highConvictionWindowValue(signal, 'end') }} UTC</span>
+            </div>
+            <hr />
+            <div><strong>Precio spot:</strong> {{ resolvePrice(signal, 'spot') ?? '—' }}</div>
+            <div><strong>Precio esperado:</strong> {{ resolvePrice(signal, 'estimated') ?? '—' }}</div>
+            <div><strong>Precio real:</strong> {{ resolvePrice(signal, 'real') ?? '—' }}</div>
+            <div>
+              <strong>Binance ejecución:</strong>
+              <span [class]="highConvictionBinanceStatusClass(signal)">{{ highConvictionBinanceStatus(signal) }}</span>
+            </div>
+            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.order_id">
+              order_id: {{ highConvictionBinanceExecution(signal)?.order_id }}
+            </div>
+            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.exits?.tp_order_id">
+              tp_order_id: {{ highConvictionBinanceExecution(signal)?.exits?.tp_order_id }}
+            </div>
+            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.exits?.sl_order_id">
+              sl_order_id: {{ highConvictionBinanceExecution(signal)?.exits?.sl_order_id }}
+            </div>
+            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.reason">
+              motivo: {{ highConvictionBinanceExecution(signal)?.reason }}
+            </div>
+            <div>
+              <strong>verification_outcome:</strong>
+              {{
+                signal.verification_outcome ||
+                signal.verification?.verification_outcome ||
+                signal.verification?.outcome_label ||
+                signal.linkedPrediction?.verification?.verification_outcome ||
+                signal.linkedPrediction?.verification?.outcome_label ||
+                '—'
+              }}
+            </div>
+            <div><strong>remarks:</strong> {{ highConvictionRemarks(signal) }}</div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="cards-grid" *ngIf="predicciones$ | async as predicciones">
+    <div class="card mb-3" *ngFor="let pred of predicciones">
+      <div class="card-body">
+        <div class="prediction-header" (click)="togglePredictionDetails(pred.id)">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+              {{ pred.simbolo }}
+              <small *ngIf="pred.execution_mode !== 'event_driven'">({{ pred.timeframe }})</small>
+            </h5>
+            <span [ngClass]="statusClass(pred.status)" class="status-badge">{{ pred.status }}</span>
+          </div>
+        </div>
+
+        <div *ngIf="isPredictionExpanded(pred.id)" class="prediction-details mt-3">
+          <p *ngIf="pred.execution_mode === 'event_driven'" class="mb-1 text-muted small">
+            Mode: Event-Driven · Micro-impulse execution (windows ≈20–60s)
+          </p>
+          <p *ngIf="pred.execution_mode !== 'event_driven'" class="mb-1">
+            Entry {{ formatLocalTime(pred.entry_time) }} – Exit {{ formatLocalTime(pred.exit_time) }}
+          </p>
+          <p *ngIf="pred.execution_mode !== 'event_driven'" class="mb-0 text-muted small">
+            {{ offsetLabel(pred.entry_time) }}
+          </p>
+          <p *ngIf="pred.execution_mode === 'event_driven'" class="mb-0 text-muted small">
+            {{ eventDrivenOffsetLabel(pred.entry_window?.start) }}
+          </p>
+          <p class="mb-0 text-muted">{{ pred.observaciones }}</p>
+
+          <p class="mb-1 mt-2">
+            <strong>Modo:</strong> {{ pred.execution_mode === 'event_driven' ? 'Event-driven' : 'Timeframe' }}
+          </p>
+          <p class="mb-1">
+            <strong>Precio spot:</strong> ${{ pred.spot_price | number:'1.2-2' }}
+            · Dirección: {{ pred.direction === 'down' ? 'Baja' : pred.direction === 'up' ? 'Alza' : 'Neutral' }}
+          </p>
+          <p class="mb-1 text-muted small">
+            Fuente spot: {{ spotPriceSourceLabel(pred.spot_price_source) }}
+          </p>
+          <p class="mb-1">
+            <strong>Delta esperado:</strong> {{ pred.expected_delta_pct | number:'1.2-2' }}%
+            · <strong>Impacto estimado:</strong> ${{ pred.model_price_estimate | number:'1.2-2' }}
+          </p>
+          <div class="trade-plan-card mb-3" *ngIf="pred.trade_plan">
+            <p class="trade-plan-title mb-1">Plan operativo sugerido</p>
+            <p class="mb-1">
+              <strong>Entrada:</strong> {{ pred.trade_plan.entry_price | number:'1.2-4' }}
+              · <strong>Stop Loss:</strong> {{ pred.trade_plan.stop_loss | number:'1.2-4' }}
+            </p>
+            <p class="mb-1">
+              <strong>Take Profit:</strong> {{ pred.trade_plan.take_profit | number:'1.2-4' }}
+              · <strong>Salida objetivo:</strong> {{ pred.trade_plan.target_exit_price | number:'1.2-4' }}
+            </p>
+            <p class="mb-0 text-muted small">
+              Riesgo/unidad: {{ pred.trade_plan.risk_per_unit | number:'1.2-4' }}
+              · Recompensa/unidad: {{ pred.trade_plan.reward_per_unit | number:'1.2-4' }}
+              · R:R {{ pred.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
+            </p>
+          </div>
+
+          <div *ngIf="pred.execution_mode === 'event_driven'" class="mb-3 border rounded p-3 bg-light">
+            <p class="mb-1">
+              <strong>{{ windowDayLabel(pred, 'entry') }}:</strong>
+              {{ formatUtcClockToLocal(pred.entry_window?.start, pred.entry_time) }} –
+              {{ formatUtcClockToLocal(pred.entry_window?.end, pred.entry_time) }} (Hora local)
+              <br />
+              <span class="text-muted small">{{ pred.entry_window?.start }} – {{ pred.entry_window?.end }} UTC</span>
+            </p>
+            <p class="mb-1">
+              <strong>Duración esperada:</strong>
+              {{ pred.expected_duration_seconds?.min }} – {{ pred.expected_duration_seconds?.max }} seg
+            </p>
+            <p class="mb-1">
+              <strong>{{ windowDayLabel(pred, 'exit') }}:</strong>
+              {{ formatUtcClockToLocal(pred.exit_window?.start, pred.exit_time) }} –
+              {{ formatUtcClockToLocal(pred.exit_window?.end, pred.exit_time) }} (Hora local)
+              <br />
+              <span class="text-muted small">{{ pred.exit_window?.start }} – {{ pred.exit_window?.end }} UTC</span>
+            </p>
+            <p class="mb-1">
+              <strong>Ventana de salida:</strong> {{ pred.exit_window_seconds?.min }} – {{ pred.exit_window_seconds?.max }} seg
+              · Tiempo máximo: {{ pred.max_time_seconds ?? pred.exit_window_seconds?.max }} seg
+            </p>
+            <p class="mb-0 text-muted small">{{ eventDrivenOffsetLabel(pred.entry_window?.start) }}</p>
+          </div>
+
+          <div *ngIf="pred.execution_mode === 'event_driven' && monto > 0" class="projection-card mb-3">
+            <p class="projection-label mb-1">Estimated impact based on expected micro-impulse</p>
+            <div class="projection-values">
+              <span>Favorable: {{ formatCurrency(projectionFor(pred).gain) }}</span>
+              <span>Adverse: {{ formatCurrency(projectionFor(pred).loss) }}</span>
+            </div>
+            <p class="text-muted disclaimer mb-0">
+              This is an approximate delta projection. Not a guaranteed result or price target.
+            </p>
+          </div>
+
+          <p class="mb-1 text-muted small">
+            {{ pred.signal_emitted ? 'Se emitió señal (control de calidad superado).' : 'Se suprimió señal.' }}
+            <span *ngIf="!pred.signal_emitted && pred.suppression_reason">
+              Motivo: {{ pred.suppression_reason }}.
+            </span>
+          </p>
+          <p *ngIf="pred.exit_window_seconds" class="mb-1 text-muted small">
+            Ventana de salida: {{ pred.exit_window_seconds.min }}-{{ pred.exit_window_seconds.max }} seg
+            · Tiempo máximo: {{ pred.max_time_seconds ?? pred.exit_window_seconds.max }} seg
+          </p>
+          <p class="mb-1">Confianza: {{ pred.confianza | percent:'1.0-0' }}</p>
+          <p class="mb-1 text-info small">
+            Quantum: {{ pred.quantum_model || 'n/a' }} · Score {{ (pred.quantum_score ?? 0) | percent:'1.0-0' }}
+          </p>
+          <p class="mb-1 text-muted small">Resultado: {{ verificationOutcomeLabel(pred) }}</p>
+          <p *ngIf="pred.verification" class="text-muted mb-1">
+            Verificación: {{ pred.verification.remarks }} · Precio real: ${{ pred.verification.final_price }}
+          </p>
+          <button
+            *ngIf="pred.status === 'pendiente'"
+            class="btn btn-sm btn-outline-secondary"
+            (click)="verificar(pred)"
+            [disabled]="verificandoId === pred.id || cargando"
+          >
+            {{ verificandoId === pred.id ? 'Verificando…' : 'Verificar ahora' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

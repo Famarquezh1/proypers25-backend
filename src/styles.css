@@ -1,1 +1,10 @@
-/* You can add global styles to this file, and also import other style files */
+@media (max-width: 768px) {
+  .card {
+    margin-bottom: 1rem;
+  }
+
+  .navbar-brand {
+    font-size: 1.2rem;
+  }
+}
+

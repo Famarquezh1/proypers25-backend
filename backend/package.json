@@ -11,9 +11,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
     "axios": "^1.10.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
+    "dayjs": "^1.11.19",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
     "mathjs": "^14.5.2",

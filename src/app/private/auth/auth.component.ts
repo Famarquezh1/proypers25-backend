@@ -1,40 +1,73 @@
-import { Component } from '@angular/core';
+// src/app/private/auth/auth.component.ts
+import { Component, inject, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
+import { AuthService } from '../../servicios/auth.service';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Auth, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
-import { RouterModule } from '@angular/router';
-import { browserLocalPersistence, setPersistence } from 'firebase/auth';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 @Component({
   selector: 'app-auth',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './auth.component.html',
   styleUrls: ['./auth.component.css']
 })
-export class AuthComponent {
-  error = '';
+export class AuthComponent implements OnInit {
+  private router = inject(Router);
+  private authService = inject(AuthService);
+  private fb = inject(FormBuilder);
+  form: FormGroup = this.fb.group({
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', Validators.required]
+  });
+  error: string | null = null;
 
-  constructor(private auth: Auth, private router: Router) {}
+  async ngOnInit(): Promise<void> {
+    console.log('[AuthComponent] ngOnInit');
+    const handledRedirect = await this.authService.handleRedirect();
+    console.log('[AuthComponent] handleRedirect resultado', handledRedirect);
+    if (handledRedirect) {
+      this.router.navigate(['/dashboard']);
+      return;
+    }
 
-  async loginWithGoogle() {
-  try {
-    await setPersistence(this.auth, browserLocalPersistence); // ✅ establece persistencia
+    const loggedIn = await this.authService.isLoggedIn();
+    console.log('[AuthComponent] isLoggedIn resultado', loggedIn);
+    if (loggedIn) {
+      this.router.navigate(['/dashboard']);
+    }
+  }
 
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(this.auth, provider);
-    const user = result.user;
+  async login(): Promise<void> {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
 
-    const token = await user.getIdToken();
-    localStorage.setItem('token', token);
+    const { email, password } = this.form.value;
+    try {
+      await this.authService.loginWithEmail(email, password);
+      this.router.navigate(['/dashboard']);
+    } catch (err: any) {
+      console.error('Login email error:', err);
+      this.error = err.message || 'Error de inicio de sesión';
+    }
+  }
 
-    this.router.navigate(['/dashboard']);
-  } catch (err: any) {
-    this.error = err.message || 'Error al iniciar sesión con Google';
+  async loginWithGoogle(): Promise<void> {
+    try {
+      await this.authService.loginWithGoogle();
+      this.router.navigate(['/dashboard']);
+    } catch (err: any) {
+      console.error('Login Google error:', err);
+      this.error = err.message || 'Error de inicio con Google';
+    }
   }
 }
 
 
-}
+
+
+
+
 

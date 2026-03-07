@@ -1,13 +1,23 @@
-# montecarlo.py corregido y blindado
+# montecarlo.py
 import json
 import sys
 import numpy as np
 import yfinance as yf
 
 def obtener_datos(simbolo):
-    data = yf.download(simbolo, period="6mo", interval="1d", progress=False)
+    data = yf.download(
+        simbolo,
+        period="6mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=False,
+        threads=False
+    )
     if data.empty or 'Close' not in data:
-        raise ValueError(f"No se pudieron obtener datos válidos para {simbolo}")
+        ticker = yf.Ticker(simbolo)
+        data = ticker.history(period="6mo", interval="1d")
+    if data.empty or 'Close' not in data:
+        raise ValueError(f"No se pudieron obtener datos validos para {simbolo}")
     precios = data['Close'].dropna().values.flatten()
     if precios.size < 2:
         raise ValueError("Datos insuficientes para simular Monte Carlo")
@@ -16,7 +26,7 @@ def obtener_datos(simbolo):
 def simulacion_montecarlo(simbolo, precios, dias=15, simulaciones=1000):
     retornos = np.diff(np.log(precios))
     if len(retornos) == 0 or np.isnan(retornos).any():
-        raise ValueError("Retornos inválidos para simulación")
+        raise ValueError("Retornos invalidos para simulacion")
 
     media = np.mean(retornos)
     std_dev = np.std(retornos)
@@ -59,5 +69,3 @@ if __name__ == "__main__":
         print(json.dumps(resultado, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
-
-

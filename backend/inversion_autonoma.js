@@ -48,13 +48,71 @@ async function obtenerConfianzaHistorica(symbol) {
   return { confianza: promedio, alerta };
 }
 
-function obtenerProximaFechaHora(hora = '10:30') {
-  const fecha = new Date();
-  fecha.setDate(fecha.getDate() + 1);
-  const yyyy = fecha.getFullYear();
-  const mm = String(fecha.getMonth() + 1).padStart(2, '0');
-  const dd = String(fecha.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hora}`;
+function isTradingDay(date) {
+  const day = date.getDay();
+  return day >= 1 && day <= 5;
+}
+
+function nextTradingDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  do {
+    next.setDate(next.getDate() + 1);
+  } while (!isTradingDay(next));
+  return next;
+}
+
+function getNYNow() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+}
+
+function formatNY(date) {
+  const opts = {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  };
+  const parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(date);
+  const map = {};
+  parts.forEach(({ type, value }) => {
+    map[type] = value;
+  });
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
+}
+
+function minutesToTime(date, minutes) {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  day.setMinutes(minutes);
+  return day;
+}
+
+function getTradeTimes() {
+  const nyNow = getNYNow();
+  let tradingDay = isTradingDay(nyNow) ? nyNow : nextTradingDay(nyNow);
+  const marketOpen = 9 * 60 + 30;
+  const marketClose = 16 * 60;
+  let currentMinutes = tradingDay.getHours() * 60 + tradingDay.getMinutes();
+  if (currentMinutes >= marketClose) {
+    tradingDay = nextTradingDay(tradingDay);
+    currentMinutes = marketOpen;
+  }
+  if (currentMinutes < marketOpen) {
+    currentMinutes = marketOpen;
+  }
+  const buyMinutes = Math.min(
+    marketClose - 30,
+    Math.ceil((currentMinutes + 15) / 15) * 15
+  );
+  const sellMinutes = marketClose - 15;
+  return {
+    comprar: formatNY(minutesToTime(tradingDay, buyMinutes)),
+    vender: formatNY(minutesToTime(tradingDay, sellMinutes))
+  };
 }
 
 async function recomendarInversion() {
@@ -114,6 +172,8 @@ async function recomendarInversion() {
   const takeProfit = precioValido ? (precio_actual * 1.05).toFixed(2) : '0.00';
   const { confianza, alerta } = await obtenerConfianzaHistorica(mejorProyeccion.symbol);
 
+  const tiempos = getTradeTimes();
+
   const recomendacion = {
     simbolo: mejorProyeccion.symbol,
     tipo: mejorProyeccion.tipo,
@@ -122,8 +182,8 @@ async function recomendarInversion() {
     precio_estimado: precioValido ? estimado.toFixed(2) : '0.00',
     porcentaje: precioValido ? porcentaje.toFixed(2) : '0.00',
     ganancia_estim: gananciaEstim,
-    comprar: obtenerProximaFechaHora('10:30'),
-    vender: obtenerProximaFechaHora('15:30'),
+    comprar: tiempos.comprar,
+    vender: tiempos.vender,
     stop_loss: stopLoss,
     take_profit: takeProfit,
     motivo: `Mayor proyección encontrada en modelo ${mejorProyeccion.tipo}`,

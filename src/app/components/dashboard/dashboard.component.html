@@ -1,0 +1,15 @@
+<div *ngIf="cargando" class="text-center mt-5">
+  <div class="spinner-border text-primary" role="status"></div>
+</div>
+
+<div *ngIf="!cargando">
+  <app-navbar></app-navbar>
+  <div class="container mt-4">
+    <router-outlet></router-outlet>
+  </div>
+</div>
+
+
+
+
+

@@ -1,33 +1,38 @@
 steps:
-  # Paso 1: Construir imagen desde la carpeta backend
+  # Paso 1: Construir imagen Docker y etiquetarla para Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/proypers25-backend', '.']
+    args:
+      [
+        'build',
+        '-t',
+        'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest',
+        '.'
+      ]
     dir: backend
 
-  # Paso 2: Push de la imagen
+  # Paso 2: Subir imagen a Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/proypers25-backend']
+    args:
+      ['push', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest']
 
-  # Paso 3: Desplegar a Cloud Run en la región correcta
+  # Paso 3: Desplegar a Cloud Run desde Artifact Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
-      - run
-      - deploy
-      - proypers25-backend
-      - --image
-      - gcr.io/$PROJECT_ID/proypers25-backend
-      - --platform
-      - managed
-      - --region
-      - europe-west1
-      - --allow-unauthenticated
+      [
+        'run', 'deploy', 'proypers25-backend',
+        '--image', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest',
+        '--platform', 'managed',
+        '--region', 'southamerica-west1',
+        '--allow-unauthenticated'
+      ]
 
 images:
-  - gcr.io/$PROJECT_ID/proypers25-backend
+  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+
 
 
 

@@ -1,48 +1,66 @@
-import yfinance as yf
 import json
-import sys
 import random
+import sys
 
-symbol = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
+import yfinance as yf
 
-try:
+def obtener_precio(symbol):
     ticker = yf.Ticker(symbol)
-    precio_actual = ticker.info.get('regularMarketPrice', None)
+    info = ticker.info or {}
+    precio = info.get("regularMarketPrice")
+    if precio is None:
+        hist = ticker.history(period="1d", interval="1m")
+        if not hist.empty:
+            precio = float(hist["Close"].iloc[-1])
+    if precio is None:
+        data = yf.download(
+            symbol,
+            period="5d",
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
+            threads=False
+        )
+        if not data.empty and "Close" in data:
+            precio = float(data["Close"].dropna().iloc[-1])
+    if precio is None:
+        raise ValueError("No se pudo obtener precio actual ni historico.")
+    return float(precio)
 
-    # Respaldo con cierre anterior si no hay precio actual
-    if not precio_actual:
-        historial = ticker.history(period='1d')
-        if not historial.empty:
-            precio_actual = historial['Close'].iloc[-1]
-        else:
-            raise ValueError("No se pudo obtener el precio actual ni histórico.")
 
-    # Simulación simple de probabilidad de alza
-    probabilidad_alza = round(random.uniform(0.3, 0.8), 2)
+def parse_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
+def main():
+    symbol = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
+    precio_arg = parse_float(sys.argv[2]) if len(sys.argv) > 2 else None
     output = {
         "symbol": symbol,
-        "metodo": "Qiskit básico",
+        "metodo": "Qiskit basico",
         "tipo": "experimental",
-        "precio_actual": float(precio_actual),
-        "probabilidad_alza": probabilidad_alza
-    }
-
-except Exception as e:
-    output = {
-        "symbol": symbol,
-        "metodo": "Qiskit básico",
-        "tipo": "experimental",
-        "error": str(e),
         "precio_actual": 0.0,
         "probabilidad_alza": 0.0
     }
 
-print(json.dumps({
-    "precio_actual": precio_actual,
-    "probabilidad_alza": probabilidad_alza,
-    "detalles": "modelo Qiskit ejecutado correctamente"
-}))
+    try:
+        if precio_arg is not None:
+            precio_actual = precio_arg
+        else:
+            precio_actual = obtener_precio(symbol)
+        probabilidad_alza = round(random.uniform(30, 80), 2)  # porcentaje
+        output["precio_actual"] = precio_actual
+        output["probabilidad_alza"] = probabilidad_alza
+    except Exception as e:
+        # Evita fallar duro: mantiene salida "experimental" con aviso
+        output["precio_actual"] = 0.0
+        output["probabilidad_alza"] = round(random.uniform(30, 80), 2)
+        output["warning"] = str(e)
 
+    print(json.dumps(output))
 
+if __name__ == "__main__":
+    main()
 

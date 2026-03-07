@@ -1,0 +1,18 @@
+node_modules
+npm-debug.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.DS_Store
+
+# Carpetas temporales o generadas
+modelos_lstm/
+tmp/
+.env
+
+# Docker y otros
+.dockerignore
+.docker/
+

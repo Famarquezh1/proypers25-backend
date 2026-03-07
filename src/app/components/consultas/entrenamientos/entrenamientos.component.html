@@ -1,0 +1,73 @@
+<div class="contenedor">
+  <h2>Historial de Entrenamientos</h2>
+
+  <section class="pendings" *ngIf="pendingJobs.length">
+    <h3>Trabajos recientes</h3>
+    <div class="job-card" *ngFor="let job of pendingJobs">
+      <header class="job-header">
+        <div>
+          <strong>{{ job.metadata?.trigger || 'Scheduler' }}</strong>
+          <span class="badge">{{ job.status || 'pending' }}</span>
+        </div>
+        <small>Iniciado {{ job.createdAt | date: 'short' }}</small>
+      </header>
+
+      <div class="progress">
+        <div class="progress-track">
+          <div class="progress-fill" [style.width.%]="getJobProgress(job)"></div>
+        </div>
+        <span>{{ getJobProgress(job) }} % completado</span>
+      </div>
+
+      <div class="symbol-logs" *ngIf="getSymbolKeys(job).length">
+        <div class="symbol-row" *ngFor="let symbol of getSymbolKeys(job)">
+          <span class="symbol">{{ symbol }}</span>
+          <span class="status" [ngClass]="statusClass(job.logsRecord?.[symbol]?.status)">
+            {{ job.logsRecord?.[symbol]?.status || 'pendiente' }}
+          </span>
+          <small *ngIf="job.logsRecord?.[symbol]?.reason">
+            {{ job.logsRecord?.[symbol]?.reason }}
+          </small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="filtro">
+    <input
+      type="text"
+      [(ngModel)]="filtroTexto"
+      (input)="filtrar()"
+      placeholder="Filtrar por símbolo..."
+    />
+  </div>
+
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <table class="tabla" *ngIf="entrenamientosFiltrados.length">
+    <thead>
+      <tr>
+        <th>Símbolo</th>
+        <th>Método</th>
+        <th>Error de entrenamiento</th>
+        <th>Mejora</th>
+        <th>Fecha</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let e of entrenamientosFiltrados">
+        <td>{{ e.simbolo }}</td>
+        <td>{{ e.metodo || 'N/A' }}</td>
+        <td>{{ e.error_entrenamiento ?? 'N/A' }}</td>
+        <td>
+          {{ e.mejora != null ? (e.mejora | number: '1.2-2') + ' %' : 'N/A' }}
+        </td>
+        <td>{{ e.timestamp | date: 'short' }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div *ngIf="!entrenamientosFiltrados.length && !error">
+    <p>No hay entrenamientos registrados.</p>
+  </div>
+</div>

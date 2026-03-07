@@ -1,0 +1,11 @@
+const fs = require('fs');
+const path = 'backend/routes/validacion.route.js';
+let text = fs.readFileSync(path, 'utf-8');
+const start = text.indexOf("router.post('/metrics/recompute'");
+if (start < 0) throw new Error('start not found');
+const end = text.indexOf('});', start);
+if (end < 0) throw new Error('end not found');
+const insertPos = end + 3;
+const addition = "\n\nrouter.post('/recompute-historico', async (req, res) => {\n  try {\n    const { limit } = req.body;\n    const processed = await revalidarHistorico({ limit });\n    res.json({ processed });\n  } catch (error) {\n    console.error('Error al revalidar el historico:', error);\n    res.status(500).json({ error: 'No se pudo revalidar el historico' });\n  }\n});\n";
+text = text.slice(0, insertPos) + addition + text.slice(insertPos);
+fs.writeFileSync(path, text, 'utf-8');

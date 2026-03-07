@@ -1,21 +1,26 @@
-// auth.guard.ts
-import { CanActivateFn } from '@angular/router';
+// src/app/private/guards/auth.guard.ts
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { getAuth } from 'firebase/auth';
+import { CanActivateFn, Router } from '@angular/router';
+import { AuthService } from '../../servicios/auth.service';
 
-export const AuthGuard: CanActivateFn = () => {
+export const AuthGuard: CanActivateFn = async () => {
+  const authService = inject(AuthService);
   const router = inject(Router);
-  const auth = getAuth();
-  const user = auth.currentUser;
 
-  if (user) {
-    return true;
-  } else {
+  const isLogged = await authService.isLoggedIn();
+  if (!isLogged) {
     router.navigate(['/login']);
     return false;
   }
+
+  return true;
 };
+
+
+
+
+
+
 
 
 

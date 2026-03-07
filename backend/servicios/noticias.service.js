@@ -3,28 +3,28 @@ const axios = require('axios');
 const Sentiment = require('sentiment');
 const sentiment = new Sentiment();
 
-const API_KEY = 'f7ecd4aa1f6042998c784e1af808617e'; // 🔐 Puedes mover esto a una variable de entorno
+const API_KEY = 'f7ecd4aa1f6042998c784e1af808617e'; // Considera mover esto a variable de entorno
 
 async function obtenerNoticiasConSentimiento(simbolo) {
   const url = `https://newsapi.org/v2/everything?q=${simbolo}&sortBy=publishedAt&language=en&apiKey=${API_KEY}`;
 
   try {
     const response = await axios.get(url);
-    const articulos = response.data.articles.slice(0, 5); // Limita a 5 noticias recientes
+    const articulos = response.data.articles.slice(0, 5);
 
-    const analisis = articulos.map(art => {
-      const analisis = sentiment.analyze(art.title);
+    const analisis = articulos.map((art) => {
+      const analisisItem = sentiment.analyze(art.title);
       return {
         titulo: art.title,
         fuente: art.source.name,
         url: art.url,
         fecha: art.publishedAt,
-        sentimiento: analisis.comparative,
-        resumen: analisis.comparative > 0.3
-          ? '📈 Positivo'
-          : analisis.comparative < -0.3
-          ? '📉 Negativo'
-          : '🤖 Neutral'
+        sentimiento: analisisItem.comparative,
+        resumen: analisisItem.comparative > 0.3
+          ? 'Positivo'
+          : analisisItem.comparative < -0.3
+            ? 'Negativo'
+            : 'Neutral'
       };
     });
 
@@ -32,16 +32,16 @@ async function obtenerNoticiasConSentimiento(simbolo) {
 
     return {
       resumen: promedio > 0.3
-        ? '📈 Tendencia positiva en noticias'
+        ? 'Tendencia positiva en noticias'
         : promedio < -0.3
-        ? '📉 Noticias negativas predominan'
-        : '🤖 Sentimiento mixto o neutral',
+          ? 'Noticias negativas predominan'
+          : 'Sentimiento mixto o neutral',
       promedio,
       articulos: analisis
     };
   } catch (err) {
-    console.error('❌ Error al obtener noticias:', err.message);
-    return { resumen: '⚠️ No se pudieron obtener noticias.', articulos: [], promedio: null };
+    console.error('Error al obtener noticias:', err.message);
+    return { resumen: 'No se pudieron obtener noticias.', articulos: [], promedio: null };
   }
 }
 

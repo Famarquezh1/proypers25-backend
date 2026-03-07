@@ -18,6 +18,8 @@ RUN apt-get update && \
     tk-dev \
     uuid-dev \
     liblzma-dev \
+    python3-distutils \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar Python 3.9.19 desde fuente
@@ -29,25 +31,37 @@ RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz && \
     make altinstall && \
     cd .. && rm -rf Python-3.9.19 Python-3.9.19.tgz
 
-# Crear alias para python3 y pip3
-RUN ln -s /usr/local/bin/python3.9 /usr/bin/python3 && \
-    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3
+# Configurar python3 y pip3 con update-alternatives (más seguro que ln -s)
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.9 1 && \
+    update-alternatives --install /usr/bin/pip3 pip3 /usr/local/bin/pip3.9 1
 
-# Crear carpeta de trabajo
+# Instalar paquetes Python requeridos (ahora incluye Qiskit)
+RUN pip3 install --no-cache-dir yfinance==0.2.36 tensorflow numpy pandas scikit-learn joblib qiskit
+RUN python3 -c "import yfinance, numpy, pandas"
+
+ENV PYTHON_BIN=/usr/local/bin/python3.9
+
+# Crear carpeta persistente para los modelos LSTM
+RUN mkdir -p /usr/src/app/modelos_lstm
+
+# Carpeta de trabajo para la app Node.js
 WORKDIR /usr/src/app
 
-# Instalar dependencias Node.js
+# Instalar dependencias de Node.js
 COPY package*.json ./
 RUN npm install
 
-# Copiar el resto del código
+# Copiar todo el código del backend
 COPY . .
 
-# Exponer puerto para Cloud Run
+# Exponer el puerto 8080 para Cloud Run
 EXPOSE 8080
 
-# Comando de arranque
+# Comando para iniciar el servidor
 CMD ["node", "server.js"]
+
+
+
 
 
 

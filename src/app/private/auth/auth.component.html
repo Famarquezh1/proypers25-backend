@@ -1,7 +1,41 @@
-<div class="auth-box">
-  <h2>🔐 Iniciar Sesión</h2>
-  <button (click)="loginWithGoogle()">Iniciar sesión con Google</button>
-  <p *ngIf="error" class="error">{{ error }}</p>
+<!-- src/app/private/auth/auth.component.html -->
+
+<div class="login-container">
+  <h2 class="login-title">Iniciar Sesión</h2>
+
+  <form [formGroup]="form" (ngSubmit)="login()" class="login-form">
+    <label>
+      Correo electrónico
+      <input type="email" formControlName="email" placeholder="usuario@correo.com" />
+    </label>
+    <div class="error" *ngIf="form.get('email')?.invalid && (form.get('email')?.touched || form.get('email')?.dirty)">
+      <span *ngIf="form.get('email')?.errors?.['required']">El correo es obligatorio.</span>
+      <span *ngIf="form.get('email')?.errors?.['email']">Ingresa un email válido.</span>
+    </div>
+
+    <label>
+      Contraseña
+      <input type="password" formControlName="password" placeholder="••••••••" />
+    </label>
+    <div class="error" *ngIf="form.get('password')?.invalid && (form.get('password')?.touched || form.get('password')?.dirty)">
+      <span>La contraseña es obligatoria.</span>
+    </div>
+
+    <button type="submit" class="primary-btn">Entrar con correo</button>
+  </form>
+
+  <div class="divider">o</div>
+
+  <button class="google-btn" (click)="loginWithGoogle()">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon" alt="Google icon" />
+    Iniciar sesión con Google
+  </button>
+
+  <div *ngIf="error" class="mt-3 text-danger">
+    {{ error }}
+  </div>
 </div>
+
+
 
 

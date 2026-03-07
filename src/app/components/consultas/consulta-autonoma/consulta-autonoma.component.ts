@@ -1,9 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, inject, Injector, runInInjectionContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { Firestore, collection, addDoc, serverTimestamp } from '@angular/fire/firestore';
+import { environment } from '../../../../environments/environment';
+
 
 @Component({
   selector: 'app-consulta-autonoma',
@@ -20,6 +22,8 @@ export class ConsultaAutonomaComponent {
   confianzaHistorica: number | null = null;
   alertaConfianza: string = '';
 
+  private injector = inject(Injector);
+
   constructor(private http: HttpClient, private firestore: Firestore) {}
 
   async obtenerRecomendacion() {
@@ -30,7 +34,9 @@ export class ConsultaAutonomaComponent {
     this.alertaConfianza = '';
 
     try {
-      const respuesta = await this.http.get<any>('http://localhost:3000/api/inversion/recomendacion').toPromise();
+      const respuesta = await this.http
+        .get<any>(`${environment.apiUrl}/api/inversion/recomendacion`)
+        .toPromise();
 
       const porcentaje = parseFloat(respuesta.porcentaje || '0');
       const ganancia_estim = ((this.monto * porcentaje) / 100).toFixed(2);
@@ -49,20 +55,21 @@ export class ConsultaAutonomaComponent {
 
       this.recomendacion = recomendacionFinal;
 
-      // 🔁 Aprendizaje histórico
       this.confianzaHistorica = isNaN(parseFloat(respuesta.confianzaHistorica))
         ? null
         : parseFloat(respuesta.confianzaHistorica);
       this.alertaConfianza = respuesta.alertaConfianza || '';
 
-      const ref = collection(this.firestore, 'consultas');
-      await addDoc(ref, {
-        simbolo: respuesta.simbolo,
-        tipo: 'autonoma',
-        monto: this.monto,
-        fecha: serverTimestamp(),
-        estado: 'completado',
-        resultado: recomendacionFinal
+      await runInInjectionContext(this.injector, async () => {
+        const ref = collection(this.firestore, 'consultas');
+        await addDoc(ref, {
+          simbolo: respuesta.simbolo,
+          tipo: 'inversion_autonoma',
+          monto: this.monto,
+          fecha: serverTimestamp(),
+          estado: 'completado',
+          resultado: recomendacionFinal
+        });
       });
 
     } catch (err) {
