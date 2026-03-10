@@ -5,7 +5,7 @@ const { fetchCandles } = require('../services/dataSources/fetchCandles');
 const { applyLearningAdjustments } = require('../lib/learningConfig');
 const { evaluateEventContextFilter } = require('../lib/event_context_filter');
 const { adjustExecutionTargets } = require('../lib/context_execution_adjuster');
-const { executeHighConvictionTrade } = require('../lib/binanceFuturesExecutor');
+const { executeSignalTrade } = require('../lib/binanceFuturesExecutor');
 const {
   shouldSendManualPreAlert,
   sendManualPreAlertNotification,
@@ -836,14 +836,20 @@ async function generarPrediccion({
     created_at: now.toISOString()
   });
 
+  let preAlertDecision = { ok: false, reason: 'not_evaluated' };
+  let preAlertNotification = { sent: false, channel: 'none', reason: 'not_evaluated' };
+  let highConvictionDecision = { ok: false, reason: 'not_evaluated' };
+  let highConvictionSignalData = null;
+  let highConvictionNotification = { sent: false, channel: 'none', reason: 'not_evaluated' };
+
   try {
-    const preAlertDecision = await shouldSendManualPreAlert(db, {
+    preAlertDecision = await shouldSendManualPreAlert(db, {
       ...recomendacion,
       id: docRef.id,
       trade_plan: finalTradePlan
     });
     if (preAlertDecision.ok) {
-      await sendManualPreAlertNotification(db, {
+      preAlertNotification = await sendManualPreAlertNotification(db, {
         ...recomendacion,
         id: docRef.id,
         trade_plan: finalTradePlan
@@ -855,41 +861,125 @@ async function generarPrediccion({
 
   // High Conviction Mode: only for event-driven signals that pass strict thresholds.
   try {
-    const decision = await shouldEmitHighConvictionSignal(db, {
-      ...recomendacion,
-      confianza: Number(reweighted.confidence_after.toFixed(4)),
-      quantum_score: Number(quantumScore.toFixed(4)),
-      timing_score: Number(timingScore.toFixed(4))
-    });
-    if (decision.ok) {
-      const signalData = await registerHighConvictionSignal(db, {
+    if (!signalEmitted) {
+      highConvictionDecision = { ok: false, reason: 'not_emitted' };
+    } else if (direction !== 'up' && direction !== 'down') {
+      highConvictionDecision = { ok: false, reason: 'neutral_direction' };
+    } else {
+      highConvictionDecision = await shouldEmitHighConvictionSignal(db, {
+        ...recomendacion,
+        confianza: Number(reweighted.confidence_after.toFixed(4)),
+        quantum_score: Number(quantumScore.toFixed(4)),
+        timing_score: Number(timingScore.toFixed(4))
+      });
+    }
+
+    if (highConvictionDecision.ok) {
+      highConvictionSignalData = await registerHighConvictionSignal(db, {
         ...recomendacion,
         id: docRef.id,
         status,
         trade_plan: finalTradePlan
       });
-      const notificationResult = await sendHighConvictionNotification(signalData);
-      const executionResult = await executeHighConvictionTrade(db, signalData);
-      if (signalData?.id) {
-        await db.collection('high_conviction_signals').doc(signalData.id).update({
-          telegram_notification: {
-            sent: Boolean(notificationResult?.sent),
-            channel: notificationResult?.channel || 'unknown',
-            sent_at: new Date().toISOString()
-          },
-          binance_execution: {
-            attempted: true,
-            executed: Boolean(executionResult?.executed),
-            dry_run: Boolean(executionResult?.dry_run),
-            reason: executionResult?.reason || null,
-            order_id: executionResult?.order_id || null,
-            updated_at: new Date().toISOString()
-          }
-        });
-      }
+      highConvictionNotification = await sendHighConvictionNotification(highConvictionSignalData);
     }
   } catch (err) {
     console.warn('[HIGH_CONVICTION] skipped', err?.message || err);
+  }
+
+  let binanceExecution = {
+    attempted: false,
+    executed: false,
+    dry_run: false,
+    reason: 'not_attempted'
+  };
+  let binanceSourceProfile = 'none';
+
+  try {
+    if (signalEmitted && (direction === 'up' || direction === 'down')) {
+      binanceSourceProfile = highConvictionSignalData
+        ? 'high_conviction'
+        : (preAlertDecision.ok ? 'manual_prealert' : 'event_emitted');
+
+      const executionPayload = {
+        ...recomendacion,
+        id: docRef.id,
+        prediction_id: docRef.id,
+        symbol: symbolInput,
+        confidence: Number(reweighted.confidence_after.toFixed(4)),
+        quantum_score: Number(quantumScore.toFixed(4)),
+        timing_score: Number(timingScore.toFixed(4)),
+        context_score: contextFilter.context_score,
+        expected_move_percent: Number(expectedDeltaPct.toFixed(4)),
+        trade_plan: finalTradePlan,
+        spot_price: spot,
+        estimated_window: recomendacion.entry_window_utc || recomendacion.entry_window,
+        timestamp: now.toISOString()
+      };
+
+      const executionResult = await executeSignalTrade(db, executionPayload, {
+        source: binanceSourceProfile,
+        source_profile: binanceSourceProfile
+      });
+
+      binanceExecution = {
+        attempted: executionResult?.reason !== 'already_processed',
+        executed: Boolean(executionResult?.executed),
+        dry_run: Boolean(executionResult?.dry_run),
+        reason: executionResult?.reason || null,
+        order_id: executionResult?.order_id || null,
+        source_profile: binanceSourceProfile,
+        updated_at: new Date().toISOString()
+      };
+    } else {
+      binanceExecution = {
+        attempted: false,
+        executed: false,
+        dry_run: false,
+        reason: !signalEmitted ? 'signal_not_emitted' : 'neutral_direction',
+        source_profile: 'none',
+        updated_at: new Date().toISOString()
+      };
+    }
+  } catch (err) {
+    binanceExecution = {
+      attempted: true,
+      executed: false,
+      dry_run: false,
+      reason: `error:${err?.message || 'unknown'}`,
+      source_profile: binanceSourceProfile,
+      updated_at: new Date().toISOString()
+    };
+    console.warn('[BINANCE_EXECUTION] skipped', err?.message || err);
+  }
+
+  if (highConvictionSignalData?.id) {
+    try {
+      await db.collection('high_conviction_signals').doc(highConvictionSignalData.id).update({
+        telegram_notification: {
+          sent: Boolean(highConvictionNotification?.sent),
+          channel: highConvictionNotification?.channel || 'unknown',
+          reason: highConvictionNotification?.reason || null,
+          sent_at: new Date().toISOString()
+        },
+        binance_execution: binanceExecution
+      });
+    } catch (err) {
+      console.warn('[HIGH_CONVICTION] binance update skipped', err?.message || err);
+    }
+  }
+
+  try {
+    await db.collection('velas_predicciones').doc(docRef.id).update({
+      high_conviction_decision: highConvictionDecision,
+      manual_prealert_decision: preAlertDecision,
+      manual_prealert_notification: preAlertNotification,
+      binance_route_source: binanceSourceProfile,
+      binance_execution: binanceExecution,
+      updated_at: now.toISOString()
+    });
+  } catch (err) {
+    console.warn('[PREDICCION] post-update skipped', err?.message || err);
   }
 
   return { id: docRef.id, ...recomendacion, status, verification: null };

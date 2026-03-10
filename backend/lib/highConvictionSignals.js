@@ -1,11 +1,20 @@
 const { FieldValue } = require('firebase-admin/firestore');
 
+const HIGH_CONVICTION_MAX_DAILY_SIGNALS = Math.max(
+  1,
+  Number(process.env.HIGH_CONVICTION_MAX_DAILY_SIGNALS || 20)
+);
+const HIGH_CONVICTION_SYMBOL_COOLDOWN_HOURS = Math.max(
+  0,
+  Number(process.env.HIGH_CONVICTION_SYMBOL_COOLDOWN_HOURS || 4)
+);
+
 const DEFAULTS = {
   minConfidence: 0.85,
   minQuantum: 0.8,
   minTiming: 0.75,
-  maxDailySignals: 3,
-  symbolCooldownHours: 4
+  maxDailySignals: HIGH_CONVICTION_MAX_DAILY_SIGNALS,
+  symbolCooldownHours: HIGH_CONVICTION_SYMBOL_COOLDOWN_HOURS
 };
 const STABILITY_VERSION = Number(process.env.STABILITY_VERSION || 1);
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -21,10 +30,12 @@ const MANUAL_PREALERT_MIN_STABILITY = Number(process.env.MANUAL_PREALERT_MIN_STA
 const MANUAL_PREALERT_MIN_TIMEFRAME_MINUTES = Number(process.env.MANUAL_PREALERT_MIN_TIMEFRAME_MINUTES || 5);
 const MANUAL_PREALERT_SYMBOL_COOLDOWN_MINUTES = Number(process.env.MANUAL_PREALERT_SYMBOL_COOLDOWN_MINUTES || 120);
 
-function startOfDayUTC(date = new Date()) {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
+function startOfDayInTimezone(date = new Date(), timezone = ALERT_TIMEZONE) {
+  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+  const tzMidnight = new Date(tzDate);
+  tzMidnight.setHours(0, 0, 0, 0);
+  const offsetMs = date.getTime() - tzDate.getTime();
+  return new Date(tzMidnight.getTime() + offsetMs);
 }
 
 function isEventDriven(prediction) {
@@ -350,7 +361,7 @@ async function shouldEmitHighConvictionSignal(db, prediction, options = {}) {
     return { ok: false, reason: 'timing_low' };
   }
 
-  const todayStart = startOfDayUTC();
+  const todayStart = startOfDayInTimezone(new Date(), ALERT_TIMEZONE);
   const dailySnapshot = await db
     .collection('high_conviction_signals')
     .where('created_at', '>=', todayStart)

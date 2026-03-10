@@ -3,7 +3,7 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { getBinanceBotConfig } = require('./binanceBotConfig');
 
 const BINANCE_EXECUTION_ENABLED = process.env.BINANCE_EXECUTION_ENABLED === 'true';
-const BINANCE_EXECUTION_DRY_RUN = process.env.BINANCE_EXECUTION_DRY_RUN !== 'false';
+const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN || '').toLowerCase() === 'true';
 const BINANCE_FUTURES_BASE_URL = process.env.BINANCE_FUTURES_BASE_URL || 'https://fapi.binance.com';
 const BINANCE_API_KEY = process.env.BINANCE_API_KEY || '';
 const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET || '';
@@ -12,6 +12,7 @@ const BINANCE_TRADE_NOTIONAL_USDT = Math.max(5, Number(process.env.BINANCE_TRADE
 const BINANCE_MIN_CONFIDENCE = Number(process.env.BINANCE_EXEC_MIN_CONFIDENCE || 0.9);
 const BINANCE_MIN_QUANTUM = Number(process.env.BINANCE_EXEC_MIN_QUANTUM || 0.85);
 const BINANCE_MIN_TIMING = Number(process.env.BINANCE_EXEC_MIN_TIMING || 0.8);
+const SOURCE_PROFILE_KEYS = new Set(['high_conviction', 'event_emitted', 'manual_prealert']);
 
 function normalizePercent(value) {
   const n = Number(value ?? 0);
@@ -121,6 +122,29 @@ function resolveSizingFactor(signalData, config) {
   return 1;
 }
 
+function resolveSourceProfileKey(sourceProfile) {
+  const key = String(sourceProfile || 'high_conviction').toLowerCase();
+  if (SOURCE_PROFILE_KEYS.has(key)) return key;
+  return 'high_conviction';
+}
+
+function buildEffectiveConfig(config, sourceProfile) {
+  const profileKey = resolveSourceProfileKey(sourceProfile);
+  const profile =
+    config?.execution_profiles && typeof config.execution_profiles === 'object'
+      ? (config.execution_profiles[profileKey] || {})
+      : {};
+  const mode = profile.mode && profile.mode !== 'inherit' ? profile.mode : config.mode;
+  const profileAllowlist = Array.isArray(profile.symbols_allowlist) ? profile.symbols_allowlist : null;
+  return {
+    ...config,
+    ...profile,
+    mode,
+    symbols_allowlist: profileAllowlist && profileAllowlist.length > 0 ? profileAllowlist : config.symbols_allowlist,
+    source_profile: profileKey
+  };
+}
+
 function buildExecutionIntent(signalData, config) {
   const symbol = toBinanceSymbol(signalData?.symbol || signalData?.simbolo);
   const direction = signalData?.direction;
@@ -160,26 +184,29 @@ function buildExecutionIntent(signalData, config) {
   };
 }
 
-async function validateExecutionIntent(db, intent, config) {
+async function validateExecutionIntent(db, intent, config, options = {}) {
+  const sourceProfile = resolveSourceProfileKey(options.source_profile);
   if (!BINANCE_EXECUTION_ENABLED) return { ok: false, reason: 'disabled_by_env' };
+  if (config.enabled === false) return { ok: false, reason: 'profile_disabled' };
   if (config.mode === 'off') return { ok: false, reason: 'mode_off' };
   if (!intent.symbol) return { ok: false, reason: 'symbol_missing' };
   if (!intent.side) return { ok: false, reason: 'neutral_direction' };
   if (!Number.isFinite(intent.quantity) || intent.quantity <= 0) return { ok: false, reason: 'invalid_quantity' };
-  if (Array.isArray(config.symbols_allowlist) && config.symbols_allowlist.length > 0) {
+  if (!config.allow_unlisted_symbols && Array.isArray(config.symbols_allowlist) && config.symbols_allowlist.length > 0) {
     if (!config.symbols_allowlist.includes(intent.symbol)) return { ok: false, reason: 'symbol_not_allowed' };
   }
-  if (intent.confidence < Number(config.min_confidence || BINANCE_MIN_CONFIDENCE)) return { ok: false, reason: 'confidence_low' };
-  if (intent.quantum < Number(config.min_quantum || BINANCE_MIN_QUANTUM)) return { ok: false, reason: 'quantum_low' };
-  if (intent.timing < Number(config.min_timing || BINANCE_MIN_TIMING)) return { ok: false, reason: 'timing_low' };
-  if (intent.context_score < Number(config.min_context_score || 0)) return { ok: false, reason: 'context_score_low' };
-  if (intent.risk_reward_ratio < Number(config.min_risk_reward || 0)) return { ok: false, reason: 'risk_reward_low' };
-  if (intent.expected_move_percent < Number(config.min_expected_move_pct || 0)) return { ok: false, reason: 'expected_move_low' };
+  if (intent.confidence < Number(config.min_confidence ?? BINANCE_MIN_CONFIDENCE)) return { ok: false, reason: 'confidence_low' };
+  if (intent.quantum < Number(config.min_quantum ?? BINANCE_MIN_QUANTUM)) return { ok: false, reason: 'quantum_low' };
+  if (intent.timing < Number(config.min_timing ?? BINANCE_MIN_TIMING)) return { ok: false, reason: 'timing_low' };
+  if (intent.context_score < Number(config.min_context_score ?? 0)) return { ok: false, reason: 'context_score_low' };
+  if (intent.risk_reward_ratio < Number(config.min_risk_reward ?? 0)) return { ok: false, reason: 'risk_reward_low' };
+  if (intent.expected_move_percent < Number(config.min_expected_move_pct ?? 0)) return { ok: false, reason: 'expected_move_low' };
 
   const todayStart = startOfUtcDay();
   const daily = await db
     .collection('binance_execution_intents')
     .where('status', '==', 'executed')
+    .where('source_profile', '==', sourceProfile)
     .where('created_at', '>=', todayStart)
     .limit(Number(config.max_daily_trades || 1))
     .get();
@@ -251,39 +278,58 @@ async function placeExitOrders(intent) {
   };
 }
 
-async function executeHighConvictionTrade(db, signalData) {
+async function executeSignalTrade(db, signalData, options = {}) {
+  const sourceProfile = resolveSourceProfileKey(options.source_profile || options.source || 'high_conviction');
   const config = await getBinanceBotConfig(db);
-  const intent = buildExecutionIntent(signalData, config);
-  const validation = await validateExecutionIntent(db, intent, config);
-  const modeDryRun = config.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
+  const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
+  const intent = buildExecutionIntent(signalData, effectiveConfig);
+  const predictionId = signalData?.prediction_id || signalData?.id || null;
+
+  if (predictionId) {
+    const existing = await db
+      .collection('binance_execution_intents')
+      .where('prediction_id', '==', predictionId)
+      .where('source_profile', '==', sourceProfile)
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      return { executed: false, reason: 'already_processed', dry_run: false, skipped: true };
+    }
+  }
+
+  const validation = await validateExecutionIntent(db, intent, effectiveConfig, { source_profile: sourceProfile });
+  const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
 
   const baseLog = {
-    source: 'high_conviction',
+    source: options.source || sourceProfile,
+    source_profile: sourceProfile,
+    prediction_id: predictionId,
     created_at: FieldValue.serverTimestamp(),
     dry_run: modeDryRun,
     enabled: BINANCE_EXECUTION_ENABLED,
-    config_mode: config.mode,
+    config_mode: effectiveConfig.mode,
     config_snapshot: {
-      use_funds_percent: config.use_funds_percent,
-      account_capital_usdt: config.account_capital_usdt,
-      default_leverage: config.default_leverage,
-      max_daily_trades: config.max_daily_trades,
-      symbols_allowlist: config.symbols_allowlist,
-      min_confidence: config.min_confidence,
-      min_quantum: config.min_quantum,
-      min_timing: config.min_timing,
-      min_context_score: config.min_context_score,
-      min_risk_reward: config.min_risk_reward,
-      min_expected_move_pct: config.min_expected_move_pct,
-      early_exit_enabled: config.early_exit_enabled,
-      early_exit_drawdown_pct: config.early_exit_drawdown_pct,
-      margin_type: config.margin_type,
-      order_type: config.order_type,
-      enable_tp_sl: config.enable_tp_sl,
-      tp_order_type: config.tp_order_type,
-      sl_order_type: config.sl_order_type,
-      tp_buffer_pct: config.tp_buffer_pct,
-      sl_buffer_pct: config.sl_buffer_pct
+      use_funds_percent: effectiveConfig.use_funds_percent,
+      account_capital_usdt: effectiveConfig.account_capital_usdt,
+      default_leverage: effectiveConfig.default_leverage,
+      max_daily_trades: effectiveConfig.max_daily_trades,
+      symbols_allowlist: effectiveConfig.symbols_allowlist,
+      allow_unlisted_symbols: Boolean(effectiveConfig.allow_unlisted_symbols),
+      min_confidence: effectiveConfig.min_confidence,
+      min_quantum: effectiveConfig.min_quantum,
+      min_timing: effectiveConfig.min_timing,
+      min_context_score: effectiveConfig.min_context_score,
+      min_risk_reward: effectiveConfig.min_risk_reward,
+      min_expected_move_pct: effectiveConfig.min_expected_move_pct,
+      early_exit_enabled: effectiveConfig.early_exit_enabled,
+      early_exit_drawdown_pct: effectiveConfig.early_exit_drawdown_pct,
+      margin_type: effectiveConfig.margin_type,
+      order_type: effectiveConfig.order_type,
+      enable_tp_sl: effectiveConfig.enable_tp_sl,
+      tp_order_type: effectiveConfig.tp_order_type,
+      sl_order_type: effectiveConfig.sl_order_type,
+      tp_buffer_pct: effectiveConfig.tp_buffer_pct,
+      sl_buffer_pct: effectiveConfig.sl_buffer_pct
     },
     validation,
     intent
@@ -328,8 +374,9 @@ async function executeHighConvictionTrade(db, signalData) {
 
   const openedAt = new Date().toISOString();
   const openPositionRef = await db.collection('binance_open_positions').add({
-    source: 'high_conviction',
-    prediction_id: signalData?.prediction_id || signalData?.id || null,
+    source: options.source || sourceProfile,
+    source_profile: sourceProfile,
+    prediction_id: predictionId,
     symbol: intent.symbol,
     side: intent.side,
     quantity: intent.quantity,
@@ -342,8 +389,8 @@ async function executeHighConvictionTrade(db, signalData) {
     opened_at: openedAt,
     status: 'open',
     mode: 'live',
-    early_exit_enabled: Boolean(config.early_exit_enabled),
-    early_exit_drawdown_pct: Number(config.early_exit_drawdown_pct || 0),
+    early_exit_enabled: Boolean(effectiveConfig.early_exit_enabled),
+    early_exit_drawdown_pct: Number(effectiveConfig.early_exit_drawdown_pct || 0),
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp()
   });
@@ -367,7 +414,12 @@ async function executeHighConvictionTrade(db, signalData) {
   };
 }
 
+async function executeHighConvictionTrade(db, signalData) {
+  return executeSignalTrade(db, signalData, { source: 'high_conviction', source_profile: 'high_conviction' });
+}
+
 module.exports = {
+  executeSignalTrade,
   executeHighConvictionTrade,
   toBinanceSymbol,
   getMarkPrice,
