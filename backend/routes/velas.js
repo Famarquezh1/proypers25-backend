@@ -3,6 +3,8 @@ const router = express.Router();
 const entrenarVelas = require('../scripts/entrenamientoVelas');
 const prediccionVelas = require('../scripts/prediccionVelas');
 const verificarPrediccionVelas = require('../scripts/verificacionVelas');
+const { fetchBinanceSpot } = require('../services/dataSources/binance');
+const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
 const db = require('../firebase-admin-config');
 const FieldValue = require('firebase-admin').firestore.FieldValue;
 
@@ -39,6 +41,21 @@ const handleError = (res, err, message = 'Error interno') => {
   console.error(message, err);
   res.status(500).json({ error: message });
 };
+
+const CRON_SECRET = process.env.CRON_SECRET || '';
+
+function requireCronSecret(req, res) {
+  if (!CRON_SECRET) {
+    res.status(500).json({ error: 'CRON_SECRET no configurado en backend.' });
+    return false;
+  }
+  const incoming = req.get('x-cron-secret') || '';
+  if (incoming !== CRON_SECRET) {
+    res.status(401).json({ error: 'No autorizado. x-cron-secret inválido.' });
+    return false;
+  }
+  return true;
+}
 
 router.get('/disponibles', (_req, res) => {
   res.json({
@@ -156,6 +173,96 @@ router.post('/prediccion', async (req, res) => {
     res.json(prediction);
   } catch (err) {
     handleError(res, err, 'Error al generar predicción de velas');
+  }
+});
+
+// Test manual controlado para validar conexión/permiso real con Binance Futures sin esperar HC.
+// Requiere x-cron-secret y ejecuta 1 intento con payload sintético.
+router.post('/binance/test-order', async (req, res) => {
+  if (!requireCronSecret(req, res)) return;
+
+  const {
+    symbol = 'ETH-USD',
+    direction = 'up',
+    source_profile = 'manual_prealert'
+  } = req.body || {};
+
+  if (direction !== 'up' && direction !== 'down') {
+    return res.status(400).json({ error: 'direction debe ser up o down.' });
+  }
+
+  try {
+    const normalizedSymbol = String(symbol || '').toUpperCase();
+    let spotPrice = 0;
+    try {
+      const fetchedSpot = await fetchBinanceSpot(normalizedSymbol);
+      spotPrice = Number(fetchedSpot?.price || 0);
+    } catch (_) {
+      spotPrice = 0;
+    }
+    if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
+      const futuresSymbol = toBinanceSymbol(normalizedSymbol);
+      if (futuresSymbol) {
+        spotPrice = Number(await getMarkPrice(futuresSymbol));
+      }
+    }
+    if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
+      return res.status(400).json({ error: 'No se pudo obtener spot válido para test.' });
+    }
+
+    const deltaPct = 0.6;
+    const rr = 1.67;
+    const riskPct = Number((deltaPct / rr).toFixed(4));
+    const tpPrice = direction === 'up'
+      ? Number((spotPrice * (1 + deltaPct / 100)).toFixed(8))
+      : Number((spotPrice * (1 - deltaPct / 100)).toFixed(8));
+    const slPrice = direction === 'up'
+      ? Number((spotPrice * (1 - riskPct / 100)).toFixed(8))
+      : Number((spotPrice * (1 + riskPct / 100)).toFixed(8));
+
+    const testSignal = {
+      id: `manual-test-${Date.now()}`,
+      prediction_id: `manual-test-${Date.now()}`,
+      symbol: normalizedSymbol,
+      direction,
+      confidence: 0.99,
+      quantum_score: 0.99,
+      timing_score: 0.99,
+      context_score: 4,
+      expected_move_percent: deltaPct,
+      spot_price: spotPrice,
+      trade_plan: {
+        entry_price: spotPrice,
+        stop_loss: slPrice,
+        take_profit: tpPrice,
+        target_exit_price: tpPrice,
+        risk_reward_ratio: rr
+      },
+      estimated_window: {
+        start: new Date().toISOString(),
+        end: new Date(Date.now() + 60 * 1000).toISOString()
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    const result = await executeSignalTrade(db, testSignal, {
+      source: 'manual_test',
+      source_profile
+    });
+
+    return res.status(200).json({
+      ok: true,
+      mode: 'binance_test_order',
+      symbol: normalizedSymbol,
+      source_profile,
+      result
+    });
+  } catch (err) {
+    console.error('[BINANCE_TEST_ORDER] error', err?.message || err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'binance_test_order_failed'
+    });
   }
 });
 

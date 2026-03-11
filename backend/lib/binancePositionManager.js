@@ -27,6 +27,42 @@ function getOpenMinutes(openedAt) {
   if (!Number.isFinite(openedMs) || openedMs <= 0) return 0;
   return (Date.now() - openedMs) / 60000;
 }
+function resolveExchangeOutcome(pnlPct) {
+  const pnl = Number(pnlPct || 0);
+  if (!Number.isFinite(pnl)) return 'UNKNOWN';
+  if (pnl > 0) return 'WIN';
+  if (pnl < 0) return 'LOSS';
+  return 'BREAKEVEN';
+}
+
+async function updateExecutionIntentOutcome(db, position, payload) {
+  const predictionId = position?.prediction_id;
+  const sourceProfile = String(position?.source_profile || position?.source || 'high_conviction');
+  if (!predictionId) return;
+
+  const snap = await db
+    .collection('binance_execution_intents')
+    .where('prediction_id', '==', predictionId)
+    .where('source_profile', '==', sourceProfile)
+    .where('status', '==', 'executed')
+    .limit(1)
+    .get();
+
+  if (snap.empty) return;
+  const ref = snap.docs[0].ref;
+  await ref.set(
+    {
+      execution_audit: {
+        win_exchange: payload?.win_exchange || 'UNKNOWN',
+        closed_at: payload?.closed_at || nowIso(),
+        close_reason: payload?.close_reason || null,
+        close_pnl_pct: Number(payload?.close_pnl_pct || 0)
+      },
+      updated_at: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+}
 
 function shouldEarlyExit(position, config, markPrice) {
   const side = position?.side;
@@ -127,12 +163,20 @@ async function runBinancePositionManagerCycle(db) {
         status: 'closed',
         closed_at: nowIso(),
         close_reason: decision.reason,
+        win_exchange: resolveExchangeOutcome(decision.pnl_pct),
         manager_last_check_at: nowIso(),
         mark_price: markPrice,
         unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
         opened_minutes: Number(decision.opened_minutes.toFixed(2)),
         close_order: closeOrder || { skipped: 'already_closed' },
         updated_at: FieldValue.serverTimestamp()
+      });
+
+      await updateExecutionIntentOutcome(db, position, {
+        win_exchange: resolveExchangeOutcome(decision.pnl_pct),
+        closed_at: nowIso(),
+        close_reason: decision.reason,
+        close_pnl_pct: Number(decision.pnl_pct.toFixed(4))
       });
 
       closed += 1;
@@ -168,4 +212,6 @@ async function runBinancePositionManagerCycle(db) {
 module.exports = {
   runBinancePositionManagerCycle
 };
+
+
 

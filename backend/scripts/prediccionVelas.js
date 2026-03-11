@@ -910,12 +910,19 @@ async function generarPrediccion({
         quantum_score: Number(quantumScore.toFixed(4)),
         timing_score: Number(timingScore.toFixed(4)),
         context_score: contextFilter.context_score,
-        expected_move_percent: Number(expectedDeltaPct.toFixed(4)),
+        expected_move_percent: Number(expectedMovePercent.toFixed(4)),
         trade_plan: finalTradePlan,
-        spot_price: spot,
+        spot_price: Number.isFinite(spotPrice) ? spotPrice : Number(recomendacion.spot_price),
         estimated_window: recomendacion.entry_window_utc || recomendacion.entry_window,
         timestamp: now.toISOString()
       };
+
+      if (!Number.isFinite(executionPayload.spot_price)) {
+        throw new Error('spot_price_invalid');
+      }
+      if (!Number.isFinite(executionPayload.expected_move_percent)) {
+        throw new Error('expected_move_percent_invalid');
+      }
 
       const executionResult = await executeSignalTrade(db, executionPayload, {
         source: binanceSourceProfile,
@@ -986,3 +993,4 @@ async function generarPrediccion({
 }
 
 module.exports = generarPrediccion;
+
