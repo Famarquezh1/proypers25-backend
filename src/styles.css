@@ -1,4 +1,4 @@
-@media (max-width: 768px) {
+﻿@media (max-width: 768px) {
   .card {
     margin-bottom: 1rem;
   }
@@ -8,3 +8,215 @@
   }
 }
 
+:root {
+  --bg-color: #f5f7fb;
+  --surface-color: #ffffff;
+  --text-color: #1f2937;
+  --muted-text-color: #6b7280;
+  --border-color: #dbe1ea;
+  --input-bg: #ffffff;
+  --chip-bg: #eef2f7;
+}
+
+body {
+  background: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body.theme-light {
+  --bg-color: #f5f7fb;
+  --surface-color: #ffffff;
+  --text-color: #1f2937;
+  --muted-text-color: #6b7280;
+  --border-color: #dbe1ea;
+  --input-bg: #ffffff;
+  --chip-bg: #eef2f7;
+}
+
+body.theme-dark {
+  --bg-color: #0b1220;
+  --surface-color: #111a2b;
+  --text-color: #e5ecf6;
+  --muted-text-color: #98a6bb;
+  --border-color: #2a3a55;
+  --input-bg: #162238;
+  --chip-bg: #1c2a42;
+}
+
+body.theme-dark .container,
+body.theme-dark .container-fluid,
+body.theme-dark .card,
+body.theme-dark .table,
+body.theme-dark .modal-content,
+body.theme-dark .alert,
+body.theme-dark .dropdown-menu,
+body.theme-dark .velas-panel,
+body.theme-dark .opportunities-panel,
+body.theme-dark .monitoring-panel,
+body.theme-dark .binance-config-panel,
+body.theme-dark .signal-intel-panel,
+body.theme-dark .high-conviction-panel {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.theme-dark .text-muted {
+  color: var(--muted-text-color) !important;
+}
+
+body.theme-dark .form-control,
+body.theme-dark .form-select,
+body.theme-dark .form-check-input,
+body.theme-dark textarea {
+  background-color: var(--input-bg) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.theme-dark .form-control::placeholder,
+body.theme-dark textarea::placeholder {
+  color: var(--muted-text-color);
+}
+
+body.theme-dark .table {
+  --bs-table-bg: var(--surface-color);
+  --bs-table-color: var(--text-color);
+  --bs-table-border-color: var(--border-color);
+}
+
+body.theme-dark .navbar {
+  border: 1px solid var(--border-color);
+}
+
+body.theme-dark .badge,
+body.theme-dark .monitor-pill,
+body.theme-dark .hc-stat-pill {
+  background-color: var(--chip-bg) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.theme-dark a {
+  color: #9ec8ff;
+}
+
+body.theme-dark hr,
+body.theme-dark .border,
+body.theme-dark .border-top,
+body.theme-dark .border-bottom,
+body.theme-dark .border-start,
+body.theme-dark .border-end {
+  border-color: var(--border-color) !important;
+}
+
+body.theme-dark .job-panel,
+body.theme-dark .symbol-card,
+body.theme-dark .opportunity-card,
+body.theme-dark .telegram-history-card,
+body.theme-dark .high-conviction-card,
+body.theme-dark .projection-card,
+body.theme-dark .trade-plan-card,
+body.theme-dark .event-timer,
+body.theme-dark .telegram-alert-banner,
+body.theme-dark .opp-countdown,
+body.theme-dark .opportunity-metrics span,
+body.theme-dark .telegram-history-metrics span {
+  background: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.theme-dark .opportunities-panel,
+body.theme-dark .monitoring-panel,
+body.theme-dark .binance-config-panel,
+body.theme-dark .signal-intel-panel,
+body.theme-dark .high-conviction-panel,
+body.theme-dark .job-panel {
+  background: #0f172a !important;
+  color: #e6edf7 !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .opportunities-panel h1,
+body.theme-dark .opportunities-panel h2,
+body.theme-dark .opportunities-panel h3,
+body.theme-dark .opportunities-panel h4,
+body.theme-dark .monitoring-panel h1,
+body.theme-dark .monitoring-panel h2,
+body.theme-dark .monitoring-panel h3,
+body.theme-dark .monitoring-panel h4,
+body.theme-dark .binance-config-panel h1,
+body.theme-dark .binance-config-panel h2,
+body.theme-dark .binance-config-panel h3,
+body.theme-dark .binance-config-panel h4,
+body.theme-dark .signal-intel-panel h1,
+body.theme-dark .signal-intel-panel h2,
+body.theme-dark .signal-intel-panel h3,
+body.theme-dark .signal-intel-panel h4,
+body.theme-dark .high-conviction-panel h1,
+body.theme-dark .high-conviction-panel h2,
+body.theme-dark .high-conviction-panel h3,
+body.theme-dark .high-conviction-panel h4 {
+  color: #e6edf7 !important;
+}
+
+body.theme-dark .opportunities-panel .text-muted,
+body.theme-dark .monitoring-panel .text-muted,
+body.theme-dark .binance-config-panel .text-muted,
+body.theme-dark .signal-intel-panel .text-muted,
+body.theme-dark .high-conviction-panel .text-muted,
+body.theme-dark .opportunities-panel .small,
+body.theme-dark .monitoring-panel .small,
+body.theme-dark .binance-config-panel .small,
+body.theme-dark .signal-intel-panel .small,
+body.theme-dark .high-conviction-panel .small,
+body.theme-dark .binance-config-panel label {
+  color: #9fb2cc !important;
+}
+
+body.theme-dark .high-conviction-details,
+body.theme-dark .prediction-details {
+  border-top-color: var(--border-color) !important;
+}
+
+body.theme-dark .signal-intel-panel .signal-intel-card,
+body.theme-dark .signal-intel-panel .signal-intel-card *,
+body.theme-dark .signal-intel-panel .signal-intel-table,
+body.theme-dark .signal-intel-panel .signal-intel-row,
+body.theme-dark .signal-intel-panel .signal-intel-row span,
+body.theme-dark .signal-intel-panel strong,
+body.theme-dark .signal-intel-panel h3,
+body.theme-dark .signal-intel-panel h4 {
+  color: #e6edf7 !important;
+}
+
+body.theme-dark .signal-intel-panel .signal-intel-head,
+body.theme-dark .signal-intel-panel .signal-intel-head span,
+body.theme-dark .signal-intel-panel .signal-intel-help,
+body.theme-dark .signal-intel-panel .signal-intel-empty,
+body.theme-dark .signal-intel-panel .text-muted,
+body.theme-dark .signal-intel-panel .small {
+  color: #9fb2cc !important;
+}
+
+body.theme-dark .signal-intel-panel .alert,
+body.theme-dark .signal-intel-panel .alert-warning {
+  background: #1a2438 !important;
+  color: #e6edf7 !important;
+  border-color: #475569 !important;
+}
+
+body.theme-dark .signal-intel-panel .btn-outline-primary {
+  color: #c7dbff !important;
+  border-color: #5b88c9 !important;
+  background: transparent !important;
+}
+
+body.theme-dark .signal-intel-panel .btn-outline-primary:hover,
+body.theme-dark .signal-intel-panel .btn-outline-primary:focus {
+  background: #1d4f91 !important;
+  color: #f8fbff !important;
+  border-color: #7fb1ff !important;
+}

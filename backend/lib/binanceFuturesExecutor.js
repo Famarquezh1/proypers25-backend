@@ -119,6 +119,12 @@ function toBinanceSymbol(symbol) {
   return upper.replace(/[^A-Z0-9]/g, '');
 }
 
+function toSystemUsdSymbol(binanceSymbol) {
+  const upper = String(binanceSymbol || '').toUpperCase();
+  if (!upper.endsWith('USDT')) return upper;
+  return `${upper.slice(0, -4)}-USD`;
+}
+
 function getOrderSide(direction) {
   if (direction === 'up') return 'BUY';
   if (direction === 'down') return 'SELL';
@@ -186,6 +192,13 @@ function decimalsFromStep(step) {
   return parts[1].replace(/0+$/, '').length;
 }
 
+function toPlainFixed(value, decimals) {
+  const n = Number(value || 0);
+  const d = Math.max(0, Number(decimals || 0));
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(d);
+}
+
 function floorToStep(value, step) {
   const v = Number(value || 0);
   const st = Number(step || 0);
@@ -223,6 +236,7 @@ async function getFuturesSymbolRules(symbol) {
   if (!info) return null;
   const filters = Array.isArray(info.filters) ? info.filters : [];
   const lot = filters.find(f => f.filterType === 'LOT_SIZE') || {};
+  const marketLot = filters.find(f => f.filterType === 'MARKET_LOT_SIZE') || {};
   const price = filters.find(f => f.filterType === 'PRICE_FILTER') || {};
 
   const rules = {
@@ -230,6 +244,8 @@ async function getFuturesSymbolRules(symbol) {
     pricePrecision: Number(info.pricePrecision),
     stepSize: Number(lot.stepSize || 0),
     minQty: Number(lot.minQty || 0),
+    marketStepSize: Number(marketLot.stepSize || 0),
+    marketMinQty: Number(marketLot.minQty || 0),
     tickSize: Number(price.tickSize || 0)
   };
   exchangeInfoCache.set(symbol, { fetchedAt: now, rules });
@@ -240,26 +256,40 @@ function applyIntentPrecision(intent, rules) {
   if (!rules) return intent;
   const adjusted = { ...intent };
 
-  adjusted.quantity = floorToStep(adjusted.quantity, rules.stepSize);
-  if (Number.isFinite(rules.minQty) && rules.minQty > 0) {
-    if (adjusted.quantity < rules.minQty) {
-      adjusted.quantity = Number(rules.minQty);
+  // For market orders Binance may enforce MARKET_LOT_SIZE instead of LOT_SIZE.
+  const isMarketOrder = String(adjusted.order_type || '').toUpperCase() === 'MARKET';
+  const qtyStep = isMarketOrder && Number(rules.marketStepSize) > 0 ? Number(rules.marketStepSize) : Number(rules.stepSize);
+  const qtyMin = isMarketOrder && Number(rules.marketMinQty) > 0 ? Number(rules.marketMinQty) : Number(rules.minQty);
+
+  adjusted.quantity = floorToStep(adjusted.quantity, qtyStep);
+  if (Number.isFinite(qtyMin) && qtyMin > 0) {
+    if (adjusted.quantity < qtyMin) {
+      adjusted.quantity = Number(qtyMin);
     }
-    adjusted.quantity = floorToStep(adjusted.quantity, rules.stepSize);
+    adjusted.quantity = floorToStep(adjusted.quantity, qtyStep);
   }
 
   adjusted.entry_price = roundToTick(adjusted.entry_price, rules.tickSize);
   adjusted.take_profit = roundToTick(adjusted.take_profit, rules.tickSize);
   adjusted.stop_loss = roundToTick(adjusted.stop_loss, rules.tickSize);
 
+  const qtyStepDecimals = decimalsFromStep(qtyStep);
   if (Number.isFinite(rules.quantityPrecision) && rules.quantityPrecision >= 0) {
-    adjusted.quantity = Number(adjusted.quantity.toFixed(rules.quantityPrecision));
+    const qtyPrecision = qtyStepDecimals > 0
+      ? Math.min(Number(rules.quantityPrecision), qtyStepDecimals)
+      : Number(rules.quantityPrecision);
+    adjusted.quantity = Number(adjusted.quantity.toFixed(qtyPrecision));
+    adjusted._quantity_precision = qtyPrecision;
+  } else if (qtyStepDecimals > 0) {
+    adjusted.quantity = Number(adjusted.quantity.toFixed(qtyStepDecimals));
+    adjusted._quantity_precision = qtyStepDecimals;
   }
   if (Number.isFinite(rules.pricePrecision) && rules.pricePrecision >= 0) {
     adjusted.entry_price = Number(adjusted.entry_price.toFixed(rules.pricePrecision));
     adjusted.take_profit = Number(adjusted.take_profit.toFixed(rules.pricePrecision));
     adjusted.stop_loss = Number(adjusted.stop_loss.toFixed(rules.pricePrecision));
   }
+  adjusted._quantity_step = qtyStep;
 
   return adjusted;
 }
@@ -317,10 +347,13 @@ function buildEffectiveConfig(config, sourceProfile) {
       : {};
   const mode = profile.mode && profile.mode !== 'inherit' ? profile.mode : config.mode;
   const profileAllowlist = Array.isArray(profile.symbols_allowlist) ? profile.symbols_allowlist : null;
+  const allowUnlistedGlobal = Boolean(config.allow_unlisted_symbols);
+  const allowUnlistedProfile = Boolean(profile.allow_unlisted_symbols);
   return {
     ...config,
     ...profile,
     mode,
+    allow_unlisted_symbols: allowUnlistedGlobal || allowUnlistedProfile,
     symbols_allowlist: profileAllowlist && profileAllowlist.length > 0 ? profileAllowlist : config.symbols_allowlist,
     source_profile: profileKey
   };
@@ -335,7 +368,12 @@ function buildExecutionIntent(signalData, config) {
   const timing = normalizePercent(signalData?.timing_score);
 
   const sizingFactor = resolveSizingFactor(signalData, config);
-  const notionalUsdt = resolveNotional(config) * sizingFactor;
+  const computedNotional = resolveNotional(config) * sizingFactor;
+  const notionalCap = Number(config?.max_notional_usdt || 0);
+  const notionalUsdt =
+    Number.isFinite(notionalCap) && notionalCap > 0
+      ? Math.max(5, Math.min(computedNotional, notionalCap))
+      : Math.max(5, computedNotional);
   const entry = Number(signalData?.trade_plan?.entry_price || signalData?.spot_price || 0);
   const quantity = entry > 0 ? Number((notionalUsdt / entry).toFixed(6)) : 0;
 
@@ -347,6 +385,31 @@ function buildExecutionIntent(signalData, config) {
     quantum,
     timing,
     context_score: Number(signalData?.context_score || 0),
+    context_quality: Number(
+      signalData?.context_quality ??
+        signalData?.event_context_filter?.context_quality ??
+        NaN
+    ),
+    structural_context_score: Number(
+      signalData?.structural_context_score ??
+        signalData?.event_context_filter?.structural_context_score ??
+        NaN
+    ),
+    volatility_context_score: Number(
+      signalData?.volatility_context_score ??
+        signalData?.event_context_filter?.volatility_context_score ??
+        NaN
+    ),
+    volume_flow_context_score: Number(
+      signalData?.volume_flow_context_score ??
+        signalData?.event_context_filter?.volume_flow_context_score ??
+        NaN
+    ),
+    liquidity_context_score: Number(
+      signalData?.liquidity_context_score ??
+        signalData?.event_context_filter?.liquidity_context_score ??
+        NaN
+    ),
     expected_move_percent: Number(signalData?.expected_move_percent || signalData?.expected_delta_pct || 0),
     risk_reward_ratio: Number(signalData?.trade_plan?.risk_reward_ratio || 0),
     entry_price: entry,
@@ -365,6 +428,32 @@ function buildExecutionIntent(signalData, config) {
   };
 }
 
+async function hasEnoughRecentValidRecords(db, intent, config) {
+  const minRequired = Math.max(0, Math.floor(Number(config?.min_recent_valid_records || 0)));
+  if (!minRequired) return true;
+
+  const windowMinutes = Math.max(30, Math.floor(Number(config?.recent_records_window_minutes || 180)));
+  const fromTs = Date.now() - windowMinutes * 60 * 1000;
+  const systemSymbol = toSystemUsdSymbol(intent.symbol);
+
+  try {
+    const snap = await db
+      .collection('velas_predicciones')
+      .where('simbolo', '==', systemSymbol)
+      .limit(Math.max(minRequired * 4, 20))
+      .get();
+    const recent = snap.docs.filter((doc) => {
+      const data = doc.data() || {};
+      const createdAt = parseDateLike(data.created_at || data.timestamp);
+      const spot = Number(data.spot_price || data.precio_actual || 0);
+      return createdAt && createdAt.getTime() >= fromTs && Number.isFinite(spot) && spot > 0;
+    });
+    return recent.length >= minRequired;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function validateExecutionIntent(db, intent, config, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile);
   if (!BINANCE_EXECUTION_ENABLED) return { ok: false, reason: 'disabled_by_env' };
@@ -379,9 +468,20 @@ async function validateExecutionIntent(db, intent, config, options = {}) {
   if (intent.confidence < Number(config.min_confidence ?? BINANCE_MIN_CONFIDENCE)) return { ok: false, reason: 'confidence_low' };
   if (intent.quantum < Number(config.min_quantum ?? BINANCE_MIN_QUANTUM)) return { ok: false, reason: 'quantum_low' };
   if (intent.timing < Number(config.min_timing ?? BINANCE_MIN_TIMING)) return { ok: false, reason: 'timing_low' };
-  if (intent.context_score < Number(config.min_context_score ?? 0)) return { ok: false, reason: 'context_score_low' };
+  const minContextQuality = Number(config.min_context_quality ?? 0);
+  const hasContextQuality = Number.isFinite(Number(intent.context_quality));
+  if (minContextQuality > 0 && hasContextQuality) {
+    if (Number(intent.context_quality) < minContextQuality) return { ok: false, reason: 'context_quality_low' };
+  } else if (intent.context_score < Number(config.min_context_score ?? 0)) {
+    return { ok: false, reason: 'context_score_low' };
+  }
   if (intent.risk_reward_ratio < Number(config.min_risk_reward ?? 0)) return { ok: false, reason: 'risk_reward_low' };
   if (intent.expected_move_percent < Number(config.min_expected_move_pct ?? 0)) return { ok: false, reason: 'expected_move_low' };
+  if (intent.notional_usdt > Number(config.max_notional_usdt || Number.MAX_SAFE_INTEGER)) {
+    return { ok: false, reason: 'notional_cap_exceeded' };
+  }
+  const hasRecentRecords = await hasEnoughRecentValidRecords(db, intent, config);
+  if (!hasRecentRecords) return { ok: false, reason: 'insufficient_recent_records' };
 
   const todayStart = startOfUtcDay();
   const daily = await db
@@ -392,6 +492,23 @@ async function validateExecutionIntent(db, intent, config, options = {}) {
     .limit(Number(config.max_daily_trades || 1))
     .get();
   if (daily.size >= Number(config.max_daily_trades || 1)) return { ok: false, reason: 'daily_trade_limit' };
+  const symbolCooldownMinutes = Math.max(0, Math.floor(Number(config.symbol_cooldown_minutes || 0)));
+  if (symbolCooldownMinutes > 0) {
+    const cooldownStart = new Date(Date.now() - symbolCooldownMinutes * 60 * 1000);
+    const recentExecuted = await db
+      .collection('binance_execution_intents')
+      .where('status', '==', 'executed')
+      .where('source_profile', '==', sourceProfile)
+      .where('created_at', '>=', cooldownStart)
+      .limit(50)
+      .get();
+    const hasRecentSameSymbol = recentExecuted.docs.some((doc) => {
+      const data = doc.data() || {};
+      const symbol = data?.intent?.symbol || null;
+      return symbol === intent.symbol;
+    });
+    if (hasRecentSameSymbol) return { ok: false, reason: 'symbol_cooldown_active' };
+  }
 
   if (!BINANCE_API_KEY || !BINANCE_API_SECRET) return { ok: false, reason: 'missing_api_credentials' };
   return { ok: true };
@@ -437,13 +554,19 @@ async function placeReduceOnlyTpLimit(intent, rules = null) {
     tpPrice = Number(tpPrice.toFixed(rules.pricePrecision));
   }
 
+  const qtyPrecision = Number.isFinite(intent?._quantity_precision)
+    ? Number(intent._quantity_precision)
+    : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
+
   return signedRequest('/fapi/v1/order', {
     symbol: intent.symbol,
     side: oppositeSide,
     type: 'LIMIT',
     timeInForce: 'GTC',
-    price: tpPrice,
-    quantity: intent.quantity,
+    price: Number.isFinite(rules?.pricePrecision) && rules.pricePrecision >= 0
+      ? toPlainFixed(tpPrice, rules.pricePrecision)
+      : String(tpPrice),
+    quantity: toPlainFixed(intent.quantity, qtyPrecision),
     reduceOnly: true
   });
 }
@@ -464,13 +587,20 @@ async function placeExitOrders(intent, rules = null) {
     slStopPrice = Number(slStopPrice.toFixed(rules.pricePrecision));
   }
 
+  const qtyPrecision = Number.isFinite(intent?._quantity_precision)
+    ? Number(intent._quantity_precision)
+    : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
+  const pricePrecision = Number.isFinite(rules?.pricePrecision) && rules.pricePrecision >= 0
+    ? Number(rules.pricePrecision)
+    : 8;
+
   try {
     const tpRes = await signedRequest('/fapi/v1/order', {
       symbol: intent.symbol,
       side: oppositeSide,
       type: intent.tp_order_type,
-      stopPrice: tpStopPrice,
-      quantity: intent.quantity,
+      stopPrice: toPlainFixed(tpStopPrice, pricePrecision),
+      quantity: toPlainFixed(intent.quantity, qtyPrecision),
       reduceOnly: true,
       workingType: 'MARK_PRICE'
     });
@@ -479,8 +609,8 @@ async function placeExitOrders(intent, rules = null) {
       symbol: intent.symbol,
       side: oppositeSide,
       type: intent.sl_order_type,
-      stopPrice: slStopPrice,
-      quantity: intent.quantity,
+      stopPrice: toPlainFixed(slStopPrice, pricePrecision),
+      quantity: toPlainFixed(intent.quantity, qtyPrecision),
       reduceOnly: true,
       workingType: 'MARK_PRICE'
     });
@@ -494,7 +624,11 @@ async function placeExitOrders(intent, rules = null) {
     };
   } catch (err) {
     if (!isAlgoUnsupportedError(err)) {
-      throw err;
+      return {
+        placed: false,
+        reason: 'exit_order_failed',
+        error: String(err?.message || err)
+      };
     }
 
     // Fallback: algunas cuentas de futures rechazan STOP/TP en este endpoint (-4120).
@@ -562,10 +696,15 @@ async function executeSignalTrade(db, signalData, options = {}) {
       max_daily_trades: effectiveConfig.max_daily_trades,
       symbols_allowlist: effectiveConfig.symbols_allowlist,
       allow_unlisted_symbols: Boolean(effectiveConfig.allow_unlisted_symbols),
+      max_notional_usdt: Number(effectiveConfig.max_notional_usdt || 0),
+      min_recent_valid_records: Number(effectiveConfig.min_recent_valid_records || 0),
+      recent_records_window_minutes: Number(effectiveConfig.recent_records_window_minutes || 0),
+      symbol_cooldown_minutes: Number(effectiveConfig.symbol_cooldown_minutes || 0),
       min_confidence: effectiveConfig.min_confidence,
       min_quantum: effectiveConfig.min_quantum,
       min_timing: effectiveConfig.min_timing,
       min_context_score: effectiveConfig.min_context_score,
+      min_context_quality: effectiveConfig.min_context_quality,
       min_risk_reward: effectiveConfig.min_risk_reward,
       min_expected_move_pct: effectiveConfig.min_expected_move_pct,
       early_exit_enabled: effectiveConfig.early_exit_enabled,
@@ -599,15 +738,38 @@ async function executeSignalTrade(db, signalData, options = {}) {
     return { executed: false, reason: 'dry_run', dry_run: true };
   }
 
-  const marginRes = await setMarginType(preciseIntent.symbol, preciseIntent.margin_type);
-  const leverageRes = await setLeverage(preciseIntent.symbol, preciseIntent.leverage);
-  const orderRes = await signedRequest('/fapi/v1/order', {
-    symbol: preciseIntent.symbol,
-    side: preciseIntent.side,
-    type: preciseIntent.order_type,
-    quantity: preciseIntent.quantity
-  });
-  const exitsRes = await placeExitOrders(preciseIntent, rules);
+  let marginRes = null;
+  let leverageRes = null;
+  let orderRes = null;
+  let exitsRes = null;
+  const qtyPrecision = Number.isFinite(preciseIntent?._quantity_precision)
+    ? Number(preciseIntent._quantity_precision)
+    : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
+  try {
+    marginRes = await setMarginType(preciseIntent.symbol, preciseIntent.margin_type);
+    leverageRes = await setLeverage(preciseIntent.symbol, preciseIntent.leverage);
+    orderRes = await signedRequest('/fapi/v1/order', {
+      symbol: preciseIntent.symbol,
+      side: preciseIntent.side,
+      type: preciseIntent.order_type,
+      quantity: toPlainFixed(preciseIntent.quantity, qtyPrecision)
+    });
+    exitsRes = await placeExitOrders(preciseIntent, rules);
+  } catch (err) {
+    await db.collection('binance_execution_intents').add({
+      ...baseLog,
+      status: 'failed',
+      failure_stage: 'live_order',
+      error_message: String(err?.message || err),
+      exchange_response: {
+        margin: marginRes,
+        leverage: leverageRes,
+        order: orderRes,
+        exits: exitsRes
+      }
+    });
+    throw err;
+  }
   const tpOrderId = exitsRes?.tp?.orderId || exitsRes?.tp_limit?.orderId || null;
   const slOrderId = exitsRes?.sl?.orderId || null;
   const executionAudit = buildExecutionAudit(signalData, new Date());

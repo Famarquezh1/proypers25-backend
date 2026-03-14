@@ -36,6 +36,8 @@ const EVENT_CONTEXT_FILTER_MODE =
     : 'observe';
 const CONTEXT_EXECUTION_ADJUSTMENT_ENABLED =
   process.env.CONTEXT_EXECUTION_ADJUSTMENT_ENABLED === 'true';
+const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
+const PREDICCION_VERBOSE_LOGS = process.env.PREDICCION_VERBOSE_LOGS === 'true';
 
 function pricePrecision(value) {
   const n = Number(value);
@@ -72,6 +74,88 @@ function normalizeSymbol(symbol) {
   return normalized;
 }
 
+function withExternalTimeout(promiseFactory, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} timeout after ${EXTERNAL_DATA_TIMEOUT_MS}ms`)),
+      EXTERNAL_DATA_TIMEOUT_MS
+    );
+  });
+  return Promise.race([Promise.resolve().then(() => promiseFactory()), timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
+function sanitizeForFirestore(value) {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForFirestore(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, nestedValue]) => {
+      acc[key] = sanitizeForFirestore(nestedValue);
+      return acc;
+    }, {});
+  }
+  return value;
+}
+
+function compactDecisionLog(label, payload) {
+  console.log(label, {
+    symbol: payload?.symbol,
+    timeframe: payload?.timeframe,
+    signal_emitted: payload?.signal_emitted,
+    quality_gate_passed: payload?.quality_gate_passed,
+    gate_reason: payload?.gate_reason,
+    suppression_reason: payload?.suppression_reason,
+    context_score: payload?.event_context_filter?.context_score ?? null,
+    context_quality: payload?.event_context_filter?.context_quality ?? null,
+    allow_event: payload?.event_context_filter?.allow_event ?? null,
+    would_block_event: payload?.event_context_filter?.would_block_event ?? null
+  });
+}
+
+function buildDefaultContextFilter(overrides = {}) {
+  return {
+    compression_detected: false,
+    range_break_detected: false,
+    volume_confirmation: false,
+    volatility_expansion_detected: false,
+    context_score: 0,
+    context_quality: null,
+    allow_event: true,
+    would_block_event: false,
+    event_context_filter_mode: EVENT_CONTEXT_FILTER_MODE,
+    relative_volume: null,
+    volume_acceleration: null,
+    volatility_expansion_ratio: null,
+    structural_context_score: null,
+    volatility_context_score: null,
+    volume_flow_context_score: null,
+    liquidity_context_score: null,
+    context_layer_breakdown: null,
+    compression_duration: 0,
+    compression_tightness: null,
+    break_efficiency: null,
+    close_location_value: null,
+    wick_imbalance: null,
+    volume_persistence_score: null,
+    volatility_slope: null,
+    compression_energy: 0,
+    expansion_impulse: null,
+    expansion_imbalance: null,
+    fake_breakout_penalty: null,
+    fake_breakout_detected: false,
+    liquidity_trap_risk: null,
+    session_microstructure_score: null,
+    structural_break_acceptance: null,
+    metrics: null,
+    details: null,
+    ...overrides
+  };
+}
+
 async function fetchAlphaVantageSpot(symbol) {
   if (!ALPHA_VANTAGE_KEY) {
     throw new Error('AlphaVantage key missing');
@@ -80,7 +164,9 @@ async function fetchAlphaVantageSpot(symbol) {
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(
     cleanSymbol
   )}&apikey=${ALPHA_VANTAGE_KEY}`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTERNAL_DATA_TIMEOUT_MS);
+  const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
   const data = await response.json();
   const quote = data['Global Quote'];
   if (!quote) {
@@ -114,7 +200,7 @@ async function obtenerSpotPrice(symbol, timeframe = '5m') {
 
   const yahooSymbol = symbol === 'BTC-USDT' ? 'BTC-USD' : symbol;
   try {
-    const quote = await yahooFinance.quote(yahooSymbol);
+    const quote = await withExternalTimeout(() => yahooFinance.quote(yahooSymbol), 'Yahoo quote');
     if (quote?.regularMarketPrice) {
       return { price: Number(quote.regularMarketPrice), source: 'yahoo' };
     }
@@ -403,21 +489,7 @@ async function generarPrediccion({
   }
 
   const precioActual = spotPrice;
-  let contextFilter = {
-    compression_detected: false,
-    range_break_detected: false,
-    volume_confirmation: false,
-    volatility_expansion_detected: false,
-    context_score: 0,
-    allow_event: true,
-    would_block_event: false,
-    event_context_filter_mode: EVENT_CONTEXT_FILTER_MODE,
-    relative_volume: null,
-    volume_acceleration: null,
-    volatility_expansion_ratio: null,
-    metrics: null,
-    details: null
-  };
+  let contextFilter = buildDefaultContextFilter();
   const impulseMetrics = computeImpulseMetrics();
   const impulseMinPercent = timeframe === '1m' ? 0.2 : 0.5;
 
@@ -443,21 +515,11 @@ async function generarPrediccion({
         mode: EVENT_CONTEXT_FILTER_MODE
       });
     } catch (err) {
-      contextFilter = {
-        compression_detected: false,
-        range_break_detected: false,
-        volume_confirmation: false,
-        volatility_expansion_detected: false,
-        context_score: 0,
+      contextFilter = buildDefaultContextFilter({
         allow_event: EVENT_CONTEXT_FILTER_MODE === 'observe',
         would_block_event: true,
-        event_context_filter_mode: EVENT_CONTEXT_FILTER_MODE,
-        relative_volume: null,
-        volume_acceleration: null,
-        volatility_expansion_ratio: null,
-        metrics: null,
         details: { error: err?.message || 'context_filter_failed' }
-      };
+      });
     }
   }
 
@@ -625,6 +687,7 @@ async function generarPrediccion({
         },
         {
           context_score: contextFilter.context_score,
+          context_quality: contextFilter.context_quality,
           volatility_expansion_ratio: contextFilter.volatility_expansion_ratio,
           relative_volume: contextFilter.relative_volume,
           volume_acceleration: contextFilter.volume_acceleration
@@ -655,6 +718,8 @@ async function generarPrediccion({
   }
 
   const decision_pre_learning = {
+    symbol: symbolInput,
+    timeframe,
     signal_emitted: signalEmitted,
     quality_gate_passed: actualGateInfo.pass,
     gate_reason: actualGateInfo.reason,
@@ -664,6 +729,7 @@ async function generarPrediccion({
       mode: EVENT_CONTEXT_FILTER_MODE,
       allow_event: contextFilter.allow_event,
       context_score: contextFilter.context_score,
+      context_quality: contextFilter.context_quality,
       would_block_event: contextFilter.would_block_event,
       shadow: {
         mode: shadowMode,
@@ -674,6 +740,8 @@ async function generarPrediccion({
     }
   };
   const decision_post_learning = {
+    symbol: symbolInput,
+    timeframe,
     signal_emitted: signalEmittedPost,
     quality_gate_passed: postGateInfo.pass,
     gate_reason: postGateInfo.reason,
@@ -683,6 +751,7 @@ async function generarPrediccion({
       mode: EVENT_CONTEXT_FILTER_MODE,
       allow_event: contextFilter.allow_event,
       context_score: contextFilter.context_score,
+      context_quality: contextFilter.context_quality,
       would_block_event: contextFilter.would_block_event,
       shadow: {
         mode: shadowMode,
@@ -693,14 +762,21 @@ async function generarPrediccion({
     }
   };
   if (LEARNING_MODE === 'observe') {
-    console.log('decision_pre_learning', decision_pre_learning);
-    console.log('decision_post_learning', decision_post_learning);
+    if (PREDICCION_VERBOSE_LOGS) {
+      console.log('decision_pre_learning', decision_pre_learning);
+      console.log('decision_post_learning', decision_post_learning);
+    } else {
+      compactDecisionLog('decision_pre_learning', decision_pre_learning);
+      compactDecisionLog('decision_post_learning', decision_post_learning);
+    }
     console.log('confidence_reweighting', {
+      symbol: symbolInput,
+      timeframe,
       before: reweighted.confidence_before,
       after: reweighted.confidence_after,
       notes: reweighted.notes
     });
-    if (EVENT_CONTEXT_FILTER_ENABLED) {
+    if (EVENT_CONTEXT_FILTER_ENABLED && PREDICCION_VERBOSE_LOGS) {
       console.log('event_context_filter', {
         compression_detected: contextFilter.compression_detected,
         range_break_detected: contextFilter.range_break_detected,
@@ -722,7 +798,7 @@ async function generarPrediccion({
         }
       });
     }
-    if (CONTEXT_EXECUTION_ADJUSTMENT_ENABLED) {
+    if (CONTEXT_EXECUTION_ADJUSTMENT_ENABLED && PREDICCION_VERBOSE_LOGS) {
       console.log('execution_adjustment', executionAdjustment);
     }
   }
@@ -783,11 +859,39 @@ async function generarPrediccion({
     relative_volume: contextFilter.relative_volume,
     volume_acceleration: contextFilter.volume_acceleration,
     context_score: contextFilter.context_score,
+    context_quality: contextFilter.context_quality,
+    structural_context_score: contextFilter.structural_context_score,
+    volatility_context_score: contextFilter.volatility_context_score,
+    volume_flow_context_score: contextFilter.volume_flow_context_score,
+    liquidity_context_score: contextFilter.liquidity_context_score,
+    context_layer_breakdown: contextFilter.context_layer_breakdown,
+    compression_duration: contextFilter.compression_duration,
+    compression_tightness: contextFilter.compression_tightness,
+    break_efficiency: contextFilter.break_efficiency,
+    close_location_value: contextFilter.close_location_value,
+    wick_imbalance: contextFilter.wick_imbalance,
+    volume_persistence_score: contextFilter.volume_persistence_score,
+    volatility_slope: contextFilter.volatility_slope,
+    compression_energy: contextFilter.compression_energy,
+    expansion_impulse: contextFilter.expansion_impulse,
+    expansion_imbalance: contextFilter.expansion_imbalance,
+    fake_breakout_penalty: contextFilter.fake_breakout_penalty,
+    fake_breakout_detected: contextFilter.fake_breakout_detected,
+    liquidity_trap_risk: contextFilter.liquidity_trap_risk,
+    session_microstructure_score: contextFilter.session_microstructure_score,
+    structural_break_acceptance: contextFilter.structural_break_acceptance,
     event_context_filter: {
       enabled: EVENT_CONTEXT_FILTER_ENABLED,
       mode: EVENT_CONTEXT_FILTER_MODE,
+      context_score: contextFilter.context_score,
+      context_quality: contextFilter.context_quality,
       allow_event: contextFilter.allow_event,
       would_block_event: contextFilter.would_block_event,
+      structural_context_score: contextFilter.structural_context_score,
+      volatility_context_score: contextFilter.volatility_context_score,
+      volume_flow_context_score: contextFilter.volume_flow_context_score,
+      liquidity_context_score: contextFilter.liquidity_context_score,
+      context_layer_breakdown: contextFilter.context_layer_breakdown,
       shadow: {
         mode: shadowMode,
         would_block_event: contextWouldBlock,
@@ -828,13 +932,15 @@ async function generarPrediccion({
 
   const status = signalEmitted ? 'pendiente' : 'suprimida';
 
-  const docRef = await db.collection('velas_predicciones').add({
-    ...recomendacion,
-    status,
-    verification: null,
-    timestamp: now.toISOString(),
-    created_at: now.toISOString()
-  });
+  const docRef = await db.collection('velas_predicciones').add(
+    sanitizeForFirestore({
+      ...recomendacion,
+      status,
+      verification: null,
+      timestamp: now.toISOString(),
+      created_at: now.toISOString()
+    })
+  );
 
   let preAlertDecision = { ok: false, reason: 'not_evaluated' };
   let preAlertNotification = { sent: false, channel: 'none', reason: 'not_evaluated' };
@@ -901,7 +1007,7 @@ async function generarPrediccion({
         ? 'high_conviction'
         : (preAlertDecision.ok ? 'manual_prealert' : 'event_emitted');
 
-      const executionPayload = {
+      const executionPayload = sanitizeForFirestore({
         ...recomendacion,
         id: docRef.id,
         prediction_id: docRef.id,
@@ -910,12 +1016,17 @@ async function generarPrediccion({
         quantum_score: Number(quantumScore.toFixed(4)),
         timing_score: Number(timingScore.toFixed(4)),
         context_score: contextFilter.context_score,
+        context_quality: contextFilter.context_quality,
+        structural_context_score: contextFilter.structural_context_score,
+        volatility_context_score: contextFilter.volatility_context_score,
+        volume_flow_context_score: contextFilter.volume_flow_context_score,
+        liquidity_context_score: contextFilter.liquidity_context_score,
         expected_move_percent: Number(expectedMovePercent.toFixed(4)),
         trade_plan: finalTradePlan,
         spot_price: Number.isFinite(spotPrice) ? spotPrice : Number(recomendacion.spot_price),
         estimated_window: recomendacion.entry_window_utc || recomendacion.entry_window,
         timestamp: now.toISOString()
-      };
+      });
 
       if (!Number.isFinite(executionPayload.spot_price)) {
         throw new Error('spot_price_invalid');
@@ -962,29 +1073,33 @@ async function generarPrediccion({
 
   if (highConvictionSignalData?.id) {
     try {
-      await db.collection('high_conviction_signals').doc(highConvictionSignalData.id).update({
-        telegram_notification: {
-          sent: Boolean(highConvictionNotification?.sent),
-          channel: highConvictionNotification?.channel || 'unknown',
-          reason: highConvictionNotification?.reason || null,
-          sent_at: new Date().toISOString()
-        },
-        binance_execution: binanceExecution
-      });
+      await db.collection('high_conviction_signals').doc(highConvictionSignalData.id).update(
+        sanitizeForFirestore({
+          telegram_notification: {
+            sent: Boolean(highConvictionNotification?.sent),
+            channel: highConvictionNotification?.channel || 'unknown',
+            reason: highConvictionNotification?.reason || null,
+            sent_at: new Date().toISOString()
+          },
+          binance_execution: binanceExecution
+        })
+      );
     } catch (err) {
       console.warn('[HIGH_CONVICTION] binance update skipped', err?.message || err);
     }
   }
 
   try {
-    await db.collection('velas_predicciones').doc(docRef.id).update({
-      high_conviction_decision: highConvictionDecision,
-      manual_prealert_decision: preAlertDecision,
-      manual_prealert_notification: preAlertNotification,
-      binance_route_source: binanceSourceProfile,
-      binance_execution: binanceExecution,
-      updated_at: now.toISOString()
-    });
+    await db.collection('velas_predicciones').doc(docRef.id).update(
+      sanitizeForFirestore({
+        high_conviction_decision: highConvictionDecision,
+        manual_prealert_decision: preAlertDecision,
+        manual_prealert_notification: preAlertNotification,
+        binance_route_source: binanceSourceProfile,
+        binance_execution: binanceExecution,
+        updated_at: now.toISOString()
+      })
+    );
   } catch (err) {
     console.warn('[PREDICCION] post-update skipped', err?.message || err);
   }

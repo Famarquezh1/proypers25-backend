@@ -15,10 +15,16 @@ const DEFAULT_CONFIG = {
   sl_buffer_pct: 0,
   max_daily_trades: 1,
   symbols_allowlist: [],
+  allow_unlisted_symbols: false,
+  max_notional_usdt: 35,
+  min_recent_valid_records: 0,
+  recent_records_window_minutes: 180,
+  symbol_cooldown_minutes: 0,
   min_confidence: 0.9,
   min_quantum: 0.85,
   min_timing: 0.8,
   min_context_score: 3,
+  min_context_quality: 0,
   min_risk_reward: 1.2,
   min_expected_move_pct: 0.4,
   early_exit_enabled: false,
@@ -42,7 +48,8 @@ const DEFAULT_EXECUTION_PROFILES = {
     min_confidence: 0.85,
     min_quantum: 0.7,
     min_timing: 0.7,
-    min_context_score: 0
+    min_context_score: 0,
+    min_context_quality: 0
   },
   manual_prealert: {
     enabled: true,
@@ -51,7 +58,8 @@ const DEFAULT_EXECUTION_PROFILES = {
     min_confidence: 0.82,
     min_quantum: 0.78,
     min_timing: 0.7,
-    min_context_score: 0
+    min_context_score: 0,
+    min_context_quality: 0
   }
 };
 
@@ -104,10 +112,27 @@ function normalizeProfileConfig(baseConfig, rawProfile, defaultProfile) {
     sl_buffer_pct: Math.max(0, Number(profile.sl_buffer_pct ?? baseConfig.sl_buffer_pct)),
     max_daily_trades: Math.max(1, Math.floor(Number(profile.max_daily_trades ?? baseConfig.max_daily_trades))),
     symbols_allowlist: normalizeSymbolsAllowlist(profile.symbols_allowlist),
+    max_notional_usdt: Math.max(5, Number(profile.max_notional_usdt ?? baseConfig.max_notional_usdt)),
+    min_recent_valid_records: Math.max(
+      0,
+      Math.floor(Number(profile.min_recent_valid_records ?? baseConfig.min_recent_valid_records))
+    ),
+    recent_records_window_minutes: Math.max(
+      30,
+      Math.floor(Number(profile.recent_records_window_minutes ?? baseConfig.recent_records_window_minutes))
+    ),
+    symbol_cooldown_minutes: Math.max(
+      0,
+      Math.floor(Number(profile.symbol_cooldown_minutes ?? baseConfig.symbol_cooldown_minutes))
+    ),
     min_confidence: Number(profile.min_confidence ?? baseConfig.min_confidence),
     min_quantum: Number(profile.min_quantum ?? baseConfig.min_quantum),
     min_timing: Number(profile.min_timing ?? baseConfig.min_timing),
     min_context_score: Math.max(0, Math.min(4, Number(profile.min_context_score ?? baseConfig.min_context_score))),
+    min_context_quality: Math.max(
+      0,
+      Math.min(100, Number(profile.min_context_quality ?? baseConfig.min_context_quality))
+    ),
     min_risk_reward: Math.max(0.1, Number(profile.min_risk_reward ?? baseConfig.min_risk_reward)),
     min_expected_move_pct: Math.max(0, Number(profile.min_expected_move_pct ?? baseConfig.min_expected_move_pct)),
     early_exit_enabled: Boolean(profile.early_exit_enabled ?? baseConfig.early_exit_enabled),
@@ -132,10 +157,28 @@ function normalizeConfig(raw) {
   cfg.tp_buffer_pct = Math.max(0, Number(cfg.tp_buffer_pct ?? 0));
   cfg.sl_buffer_pct = Math.max(0, Number(cfg.sl_buffer_pct ?? 0));
   cfg.max_daily_trades = Math.max(1, Math.floor(Number(cfg.max_daily_trades ?? DEFAULT_CONFIG.max_daily_trades)));
+  cfg.allow_unlisted_symbols = cfg.allow_unlisted_symbols === true;
+  cfg.max_notional_usdt = Math.max(5, Number(cfg.max_notional_usdt ?? DEFAULT_CONFIG.max_notional_usdt));
+  cfg.min_recent_valid_records = Math.max(
+    0,
+    Math.floor(Number(cfg.min_recent_valid_records ?? DEFAULT_CONFIG.min_recent_valid_records))
+  );
+  cfg.recent_records_window_minutes = Math.max(
+    30,
+    Math.floor(Number(cfg.recent_records_window_minutes ?? DEFAULT_CONFIG.recent_records_window_minutes))
+  );
+  cfg.symbol_cooldown_minutes = Math.max(
+    0,
+    Math.floor(Number(cfg.symbol_cooldown_minutes ?? DEFAULT_CONFIG.symbol_cooldown_minutes))
+  );
   cfg.min_confidence = Number(cfg.min_confidence ?? DEFAULT_CONFIG.min_confidence);
   cfg.min_quantum = Number(cfg.min_quantum ?? DEFAULT_CONFIG.min_quantum);
   cfg.min_timing = Number(cfg.min_timing ?? DEFAULT_CONFIG.min_timing);
   cfg.min_context_score = Math.max(0, Math.min(4, Number(cfg.min_context_score ?? DEFAULT_CONFIG.min_context_score)));
+  cfg.min_context_quality = Math.max(
+    0,
+    Math.min(100, Number(cfg.min_context_quality ?? DEFAULT_CONFIG.min_context_quality))
+  );
   cfg.min_risk_reward = Math.max(0.1, Number(cfg.min_risk_reward ?? DEFAULT_CONFIG.min_risk_reward));
   cfg.min_expected_move_pct = Math.max(0, Number(cfg.min_expected_move_pct ?? DEFAULT_CONFIG.min_expected_move_pct));
   cfg.early_exit_enabled = Boolean(cfg.early_exit_enabled);

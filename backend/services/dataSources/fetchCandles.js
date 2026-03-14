@@ -3,6 +3,20 @@ const { fetchBinanceCandles } = require('./binance');
 
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || null;
 const ENABLE_BINANCE = process.env.ENABLE_BINANCE === 'true';
+const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
+
+function withExternalTimeout(promiseFactory, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} timeout after ${EXTERNAL_DATA_TIMEOUT_MS}ms`)),
+      EXTERNAL_DATA_TIMEOUT_MS
+    );
+  });
+  return Promise.race([Promise.resolve().then(() => promiseFactory()), timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
 
 const ALPHA_INTERVAL_MAP = {
   '1m': '1min',
@@ -33,7 +47,9 @@ async function fetchAlphaCandles(symbol, interval) {
   const url = `https://www.alphavantage.co/query?function=CRYPTO_INTRADAY&symbol=${encodeURIComponent(
     baseSymbol
   )}&market=USD&interval=${encodeURIComponent(alphaInterval)}&outputsize=compact&apikey=${ALPHA_VANTAGE_KEY}`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTERNAL_DATA_TIMEOUT_MS);
+  const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
   if (!response.ok) {
     throw new Error(`AlphaVantage status ${response.status}`);
   }
@@ -78,11 +94,15 @@ async function fetchYahooCandles(symbol, timeframe) {
   const now = new Date();
   const lookbackDays = lookbackDaysForTimeframe(timeframe);
   const period1 = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
-  const rows = await yahooFinance.historical(symbol, {
-    period1,
-    period2: now,
-    interval: timeframe
-  });
+  const rows = await withExternalTimeout(
+    () =>
+      yahooFinance.historical(symbol, {
+        period1,
+        period2: now,
+        interval: timeframe
+      }),
+    'Yahoo candles'
+  );
   return (rows || []).map((row) => ({
     timestamp: row.date || row.timestamp || row.datetime || row.time,
     open: row.open,

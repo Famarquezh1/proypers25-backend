@@ -2,7 +2,7 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
+import { Observable, forkJoin, of } from 'rxjs';
 import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
@@ -19,6 +19,40 @@ interface WeeklyStability {
 interface MonitoringTrendItem {
   createdAtLabel: string;
   winRate: number;
+}
+
+interface SignalIntelBucket {
+  bucket: string;
+  total: number;
+  win_rate: number | null;
+  expectancy: number | null;
+}
+
+interface SuppressedSymbolEdgeItem {
+  symbol: string;
+  total_signals: number;
+  win_rate: number | null;
+  expectancy: number | null;
+  avg_MFE: number | null;
+  avg_MAE: number | null;
+}
+
+interface RankedSignalItem {
+  simbolo: string;
+  timestamp: string | null;
+  direction: string;
+  timeframe: string;
+  confidence: number | null;
+  context_score: number | null;
+  signal_ranking_score: number | null;
+  ranking_percentile: number | null;
+  top_signal_flag: boolean;
+  is_top_signal_global: boolean;
+  is_top_signal_symbol: boolean;
+  is_top_signal_regime: boolean;
+  is_ranked_operable: boolean;
+  ranking_regime: string;
+  ranking_position_global: number | null;
 }
 
 @Component({
@@ -101,6 +135,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   weeklyStability: WeeklyStability[] = [];
   monitoringSummary = {
     symbolsTotal: 0,
+    symbolsRequested: 0,
+    symbolsExcludedCooldown: 0,
     processedOk: 0,
     failed: 0,
     emitted: 0,
@@ -109,9 +145,108 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     suppressionRate: 0,
     certaintyWinRate: 0,
     classification: 'n/a',
-    updatedAt: 'â€”'
+    topFailureSymbols: [] as string[],
+    updatedAt: '—'
   };
   monitoringTrend: MonitoringTrendItem[] = [];
+  signalIntelLoading = false;
+  signalIntelError = '';
+  signalIntelUpdatedAt = '—';
+  signalIntelSummary = {
+    totalSignals: 0,
+    emitted: 0,
+    suppressed: 0,
+    suppressedVerified: 0,
+    pending: 0,
+    winRateEmitted: null as number | null,
+    winRateSuppressed: null as number | null,
+    winRateGlobal: null as number | null,
+    expectancyEmitted: null as number | null,
+    expectancyGlobal: null as number | null
+  };
+  signalIntelSuppressedSummary = {
+    totalSuppressed: 0,
+    wins: 0,
+    losses: 0,
+    winRateSuppressed: null as number | null,
+    expectancySuppressed: null as number | null,
+    deltaVsEmitted: null as number | null,
+    leadTimeAvg: null as number | null
+  };
+  signalIntelExecutionSummary = {
+    signalAdherence: null as number | null,
+    manualTradeRate: null as number | null,
+    executionDisciplineScore: null as number | null,
+    lateExitRate: null as number | null,
+    earlyExitRate: null as number | null,
+    slViolationRate: null as number | null,
+    profitCaptureRatio: null as number | null,
+    edgeDecay: null as number | null,
+    executionSlippagePct: null as number | null,
+    realWinRate: null as number | null,
+    realExpectancy: null as number | null,
+    modelWinRate: null as number | null,
+    dataSource: 'N/A'
+  };
+  signalIntelExecutionTopSymbols: SuppressedSymbolEdgeItem[] = [];
+  signalIntelTopSymbols: Array<{
+    symbol: string;
+    total_signals: number;
+    win_rate: number | null;
+    expectancy: number | null;
+  }> = [];
+  signalIntelSuppressedTopSymbols: SuppressedSymbolEdgeItem[] = [];
+  signalIntelContextQualityBuckets: SignalIntelBucket[] = [];
+  signalIntelSuppressedContextBuckets: Array<SignalIntelBucket & { mfe: number | null }> = [];
+  signalIntelRankedSignals: RankedSignalItem[] = [];
+  signalIntelRankingSummary = {
+    enabled: true,
+    avgRankingPercentile: null as number | null,
+    operableCount: 0,
+    topGlobalCount: 0,
+    topSymbolCount: 0,
+    topRegimeCount: 0,
+    minRankingRecommended: null as number | null,
+    minContextQualityRecommended: null as number | null
+  };
+  signalIntelRankingRegimes: Array<{
+    regime: string;
+    total: number;
+    operable: number;
+    avg_score: number | null;
+  }> = [];
+  signalIntelContextSummary = {
+    enabled: false,
+    mode: 'observe',
+    bestBucket: 'N/A',
+    bestBucketWinRate: null as number | null,
+    bestBucketExpectancy: null as number | null
+  };
+  signalIntelContextRegimes: Array<{
+    regime: string;
+    total: number;
+    win_rate: number | null;
+    expectancy: number | null;
+  }> = [];
+  signalIntelAdaptiveProfile = {
+    adaptiveTp: null as number | null,
+    adaptiveSl: null as number | null,
+    adaptiveHorizon: null as number | null,
+    learningStatus: 'N/A',
+    lastCalibrationTime: '—',
+    edgeQualityScore: null as number | null,
+    recalibrated: false
+  };
+  signalIntelAdaptiveRankingProfile = {
+    minRankingScoreRecommended: null as number | null,
+    minContextQualityRecommended: null as number | null,
+    calibrationVersion: 'N/A'
+  };
+  signalIntelAdaptiveContextProfile = {
+    bestBucket: 'N/A',
+    bestBucketWinRate: null as number | null,
+    bestBucketExpectancy: null as number | null
+  };
   lastEmissionAt = '—';
   lastEmissionCount = 0;
   nowTs = Date.now();
@@ -133,8 +268,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     min_quantum: 0.85,
     min_timing: 0.8,
     min_context_score: 3,
+    min_context_quality: 0,
     min_risk_reward: 1.2,
     min_expected_move_pct: 0.4,
+    allow_unlisted_symbols: false,
     symbols_allowlist_text: '',
     early_exit_enabled: false,
     early_exit_drawdown_pct: 0.25
@@ -163,6 +300,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     this.cargarTelegramNotifications();
     this.cargarMonitoringSnapshots();
     this.cargarBinanceConfig();
+    this.cargarSignalIntelligence();
   }
 
   ngOnDestroy(): void {
@@ -191,21 +329,21 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
   generarPrediccion(): void {
     if (!this.candidatoSymbol) {
-      this.mensaje = 'Selecciona un sÃ­mbolo vÃ¡lido.';
+      this.mensaje = 'Selecciona un símbolo válido.';
       return;
     }
     this.cargando = true;
-    this.mensaje = 'Generando predicciÃ³n...';
+    this.mensaje = 'Generando predicción...';
     this.velasService
       .generarPrediccion(this.candidatoSymbol, this.selectedTimeframe, this.monto, this.executionMode)
       .pipe(finalize(() => (this.cargando = false)))
       .subscribe({
         next: (prediccion) => {
-          this.mensaje = `PredicciÃ³n para ${prediccion.simbolo} registrada.`;
+          this.mensaje = `Predicción para ${prediccion.simbolo} registrada.`;
           this.cargarPredicciones();
         },
         error: () => {
-          this.mensaje = 'No se pudo generar la predicciÃ³n.';
+          this.mensaje = 'No se pudo generar la predicción.';
         }
       });
   }
@@ -219,11 +357,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       finalize(() => (this.verificandoId = null))
     ).subscribe({
       next: (resultado) => {
-      this.mensaje = resultado.verification?.remarks || 'VerificaciÃ³n completada.';
+      this.mensaje = resultado.verification?.remarks || 'Verificación completada.';
       this.cargarPredicciones();
     },
     error: () => {
-      this.mensaje = 'FallÃ³ la verificaciÃ³n.';
+      this.mensaje = 'Falló la verificación.';
     }
   });
   }
@@ -256,7 +394,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   formatLocalTime(value: string): string {
-    if (!value) return 'â€”';
+    if (!value) return '—';
     const date = new Date(value);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
   }
@@ -272,17 +410,17 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (!windowStart) return '';
     const offset = this.offsetMinutesFromUTC(windowStart);
     if (!offset) {
-      return 'Tu reloj coincide con UTC para la ventana de ejecuciÃ³n.';
+      return 'Tu reloj coincide con UTC para la ventana de ejecución.';
     }
     const sign = offset > 0 ? '+' : '';
-    return `Tu reloj estÃ¡ ${sign}${offset} min respecto a UTC para la ventana de entrada.`;
+    return `Tu reloj está ${sign}${offset} min respecto a UTC para la ventana de entrada.`;
   }
 
   offsetLabel(value: string): string {
     const offset = this.offsetMinutesFromUTC(value);
     if (!offset) return 'coincide con UTC';
     const sign = offset > 0 ? '+' : '';
-    return `Tu reloj estÃ¡ ${sign}${offset} min respecto a UTC`;
+    return `Tu reloj está ${sign}${offset} min respecto a UTC`;
   }
 
   private formatCountdown(ms: number): string {
@@ -301,10 +439,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       return `${prefix} (UTC)`;
     }
     if (exitEnd && exitEnd.getTime() < now.getTime()) {
-      return `${prefix} (UTC Â· Expirada)`;
+      return `${prefix} (UTC · Expirada)`;
     }
     const dayLabel = this.labelForDay(targetDate, now);
-    return `${prefix} (UTC Â· ${dayLabel})`;
+    return `${prefix} (UTC · ${dayLabel})`;
   }
 
   opportunityState(item: any): string {
@@ -355,7 +493,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (item.signal_emitted || item.stability >= 0.8) {
       return 'Media';
     }
-    return 'ObservaciÃ³n';
+    return 'Observación';
   }
 
   private getEventDrivenWindowDates(pred: any): {
@@ -484,7 +622,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       date.getUTCMonth() === tomorrow.getUTCMonth() &&
       date.getUTCDate() === tomorrow.getUTCDate()
     ) {
-      return 'MaÃ±ana';
+      return 'Mañana';
     }
     return date.toISOString().slice(0, 10);
   }
@@ -592,6 +730,230 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       }),
       shareReplay(1)
     );
+  }
+
+  cargarSignalIntelligence(refresh = false): void {
+    this.signalIntelLoading = true;
+    this.signalIntelError = '';
+    forkJoin({
+      intelligence: this.velasService.obtenerSignalIntelligenceAudit({
+        refresh,
+        days: 30,
+        maxDocs: 25000
+      }),
+      suppressed: this.velasService.obtenerSuppressedValidationAudit({
+        refresh,
+        days: 30,
+        maxDocs: 250,
+        concurrency: 6
+      }),
+      execution: this.velasService.obtenerExecutionVsModelAudit({
+        refresh,
+        days: 30,
+        maxDocs: 250,
+        concurrency: 6,
+        matchWindowMinutes: 5
+      })
+    })
+      .pipe(finalize(() => (this.signalIntelLoading = false)))
+      .subscribe({
+        next: ({ intelligence, suppressed, execution }) => {
+          const report = intelligence?.report || {};
+          const totals = report?.totals || {};
+          const winRates = report?.win_rates || {};
+          const states = report?.states || {};
+          const suppressedReport = suppressed?.report || {};
+          const suppressedSummary = suppressedReport?.suppressed_summary || {};
+          const suppressedComparative = suppressedReport?.comparative_analysis || {};
+          const suppressedLeadTime = suppressedReport?.lead_time || {};
+          const executionReport = execution?.report || {};
+          const executionQuality = executionReport?.execution_quality || {};
+          const executionDiscipline = executionReport?.execution_discipline || {};
+          const modelEdge = executionReport?.model_edge || {};
+          const adaptiveProfile = report?.adaptive_calibration || {};
+          const adaptiveProfiles = report?.adaptive_profiles || {};
+          const rankingSummary = report?.ranking_summary || {};
+          const contextIntelligenceSummary = report?.context_intelligence_summary || {};
+          const rankingProfile = adaptiveProfiles?.ranking_profile || {};
+          const contextProfile = adaptiveProfiles?.context_profile || {};
+
+          this.signalIntelUpdatedAt = this.formatFirestoreDate(
+            intelligence?.fetched_at ||
+              execution?.fetched_at ||
+              suppressed?.fetched_at ||
+              executionReport?.generated_at ||
+              report?.generated_at ||
+              suppressedReport?.generated_at
+          );
+          this.signalIntelSummary = {
+            totalSignals: Number(totals?.total_signals || 0),
+            emitted: Number(totals?.emitted || 0),
+            suppressed: Number(totals?.suppressed || 0),
+            suppressedVerified: Number(totals?.suppressed_verified || 0),
+            pending: Number(totals?.pending || 0),
+            winRateEmitted: this.toRate(winRates?.win_rate_emitidas),
+            winRateSuppressed: this.toRate(winRates?.win_rate_suprimidas),
+            winRateGlobal: this.toRate(winRates?.win_rate_global),
+            expectancyEmitted: this.toNullableNum(states?.emitidas?.expectancy?.expectancy),
+            expectancyGlobal: this.toNullableNum(states?.global?.expectancy?.expectancy)
+          };
+          this.signalIntelSuppressedSummary = {
+            totalSuppressed: Number(suppressedSummary?.total_suppressed || 0),
+            wins: Number(suppressedSummary?.wins || 0),
+            losses: Number(suppressedSummary?.losses || 0),
+            winRateSuppressed: this.toRate(suppressedSummary?.win_rate_suprimidas),
+            expectancySuppressed: this.toNullableNum(suppressedSummary?.expectancy_suprimidas),
+            deltaVsEmitted: this.toNullableNum(suppressedComparative?.delta_expectancy),
+            leadTimeAvg: this.toNullableNum(suppressedLeadTime?.lead_time_avg)
+          };
+          this.signalIntelExecutionSummary = {
+            signalAdherence: this.toRate(executionDiscipline?.signal_adherence ?? executionQuality?.signal_adherence),
+            manualTradeRate: this.toRate(executionDiscipline?.manual_trade_rate ?? executionQuality?.manual_trade_rate),
+            executionDisciplineScore: this.toNullableNum(executionDiscipline?.execution_discipline_score),
+            lateExitRate: this.toRate(executionDiscipline?.late_exit_rate ?? executionQuality?.late_exit_rate),
+            earlyExitRate: this.toRate(executionDiscipline?.early_exit_rate ?? executionQuality?.early_exit_rate),
+            slViolationRate: this.toRate(
+              executionDiscipline?.sl_violation_rate ?? executionQuality?.sl_violation_rate
+            ),
+            profitCaptureRatio: this.toNullableNum(
+              executionDiscipline?.profit_capture_ratio ?? executionQuality?.profit_capture_ratio
+            ),
+            edgeDecay: this.toNullableNum(executionDiscipline?.edge_decay ?? executionQuality?.edge_decay),
+            executionSlippagePct: this.toNullableNum(executionQuality?.execution_slippage_pct),
+            realWinRate: this.toRate(executionQuality?.real_win_rate),
+            realExpectancy: this.toNullableNum(executionQuality?.real_expectancy),
+            modelWinRate: this.toRate(modelEdge?.matched_model_win_rate ?? modelEdge?.model_win_rate),
+            dataSource: String(executionReport?.config?.trades_source || 'N/A')
+          };
+          this.signalIntelAdaptiveProfile = {
+            adaptiveTp: this.toNullableNum(adaptiveProfile?.adaptive_tp),
+            adaptiveSl: this.toNullableNum(adaptiveProfile?.adaptive_sl),
+            adaptiveHorizon: this.toNullableNum(
+              adaptiveProfile?.adaptive_horizon_seconds ?? adaptiveProfile?.adaptive_horizon
+            ),
+            learningStatus: String(adaptiveProfile?.learning_status || 'N/A'),
+            lastCalibrationTime: this.formatFirestoreDate(
+              adaptiveProfile?.last_calibration_time || adaptiveProfile?.updated_at
+            ),
+            edgeQualityScore: this.toNullableNum(adaptiveProfile?.edge_quality_score),
+            recalibrated: Boolean(adaptiveProfile?.recalibrated)
+          };
+          this.signalIntelAdaptiveRankingProfile = {
+            minRankingScoreRecommended: this.toNullableNum(rankingProfile?.min_signal_ranking_score_recommended),
+            minContextQualityRecommended: this.toNullableNum(rankingProfile?.min_context_quality_recommended),
+            calibrationVersion: String(adaptiveProfiles?.calibration_version || rankingProfile?.calibration_version || 'N/A')
+          };
+          this.signalIntelAdaptiveContextProfile = {
+            bestBucket: String(contextProfile?.best_context_bucket || 'N/A'),
+            bestBucketWinRate: this.toRate(contextProfile?.best_context_bucket_win_rate),
+            bestBucketExpectancy: this.toNullableNum(contextProfile?.best_context_bucket_expectancy)
+          };
+          this.signalIntelRankingSummary = {
+            enabled: Boolean(rankingSummary?.enabled ?? true),
+            avgRankingPercentile: this.toNullableNum(rankingSummary?.avg_ranking_percentile),
+            operableCount: Number(rankingSummary?.operable_count || 0),
+            topGlobalCount: Number(rankingSummary?.top_global_count || 0),
+            topSymbolCount: Number(rankingSummary?.top_symbol_count || 0),
+            topRegimeCount: Number(rankingSummary?.top_regime_count || 0),
+            minRankingRecommended: this.toNullableNum(rankingProfile?.min_signal_ranking_score_recommended),
+            minContextQualityRecommended: this.toNullableNum(rankingProfile?.min_context_quality_recommended)
+          };
+          this.signalIntelRankingRegimes = Array.isArray(rankingSummary?.regime_summary)
+            ? rankingSummary.regime_summary.map((item: any) => ({
+                regime: String(item?.regime || 'unknown'),
+                total: Number(item?.total || 0),
+                operable: Number(item?.operable || 0),
+                avg_score: this.toNullableNum(item?.avg_score)
+              }))
+            : [];
+          this.signalIntelContextSummary = {
+            enabled: Boolean(contextIntelligenceSummary?.enabled),
+            mode: String(contextIntelligenceSummary?.mode || 'observe'),
+            bestBucket: String(contextIntelligenceSummary?.best_context_bucket?.bucket || 'N/A'),
+            bestBucketWinRate: this.toRate(contextIntelligenceSummary?.best_context_bucket?.win_rate),
+            bestBucketExpectancy: this.toNullableNum(contextIntelligenceSummary?.best_context_bucket?.expectancy)
+          };
+          this.signalIntelContextRegimes = Array.isArray(contextIntelligenceSummary?.regime_performance)
+            ? contextIntelligenceSummary.regime_performance.map((item: any) => ({
+                regime: String(item?.regime || 'unknown'),
+                total: Number(item?.total || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy)
+              }))
+            : [];
+
+          this.signalIntelTopSymbols = Array.isArray(report?.symbol_performance)
+            ? report.symbol_performance
+                .slice(0, 8)
+                .map((item: any) => ({
+                  symbol: String(item?.symbol || 'UNKNOWN'),
+                  total_signals: Number(item?.total_signals || 0),
+                  win_rate: this.toRate(item?.win_rate),
+                  expectancy: this.toNullableNum(item?.expectancy)
+                }))
+            : [];
+          this.signalIntelSuppressedTopSymbols = Array.isArray(suppressedReport?.performance_by_symbol)
+            ? suppressedReport.performance_by_symbol.slice(0, 8).map((item: any) => ({
+                symbol: String(item?.symbol || 'UNKNOWN'),
+                total_signals: Number(item?.total_signals || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy),
+                avg_MFE: this.toNullableNum(item?.avg_MFE),
+                avg_MAE: this.toNullableNum(item?.avg_MAE)
+              }))
+            : [];
+          this.signalIntelExecutionTopSymbols = Array.isArray(executionReport?.performance_by_symbol)
+            ? executionReport.performance_by_symbol.slice(0, 8).map((item: any) => ({
+                symbol: String(item?.symbol || 'UNKNOWN'),
+                total_signals: Number(item?.total_signals || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy),
+                avg_MFE: this.toNullableNum(item?.avg_MFE),
+                avg_MAE: this.toNullableNum(item?.avg_MAE)
+              }))
+            : [];
+          this.signalIntelRankedSignals = Array.isArray(report?.ranked_signals)
+            ? report.ranked_signals.slice(0, 8).map((item: any) => ({
+                simbolo: String(item?.simbolo || item?.symbol || 'UNKNOWN'),
+                timestamp: item?.timestamp || null,
+                direction: String(item?.direction || 'neutral'),
+                timeframe: String(item?.timeframe || 'unknown'),
+                confidence: this.toRate(item?.confidence),
+                context_score: this.toNullableNum(item?.context_score),
+                signal_ranking_score: this.toNullableNum(item?.signal_ranking_score),
+                ranking_percentile: this.toNullableNum(item?.ranking_percentile),
+                top_signal_flag: Boolean(item?.top_signal_flag),
+                is_top_signal_global: Boolean(item?.is_top_signal_global),
+                is_top_signal_symbol: Boolean(item?.is_top_signal_symbol),
+                is_top_signal_regime: Boolean(item?.is_top_signal_regime),
+                is_ranked_operable: Boolean(item?.is_ranked_operable),
+                ranking_regime: String(item?.ranking_regime || 'unknown'),
+                ranking_position_global: this.toNullableNum(item?.ranking_position_global)
+              }))
+            : [];
+
+          this.signalIntelContextQualityBuckets = Array.isArray(report?.context_quality_buckets)
+            ? report.context_quality_buckets.map((item: any) => ({
+                bucket: String(item?.bucket || 'unknown'),
+                total: Number(item?.total || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy)
+              }))
+            : [];
+          this.signalIntelSuppressedContextBuckets = Array.isArray(suppressedReport?.context_quality?.buckets)
+            ? suppressedReport.context_quality.buckets.map((item: any) => ({
+                bucket: String(item?.bucket || 'unknown'),
+                total: Number(item?.total_signals || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy),
+                mfe: this.toNullableNum(item?.MFE)
+              }))
+            : [];
+        },
+        error: (err) => {
+          this.signalIntelError = err?.error?.error || err?.message || 'No se pudo cargar Signal Intelligence.';
+        }
+      });
   }
 
   onHighConvictionFilterChange(): void {
@@ -746,8 +1108,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
         min_quantum: Number(config.min_quantum ?? this.binanceConfig.min_quantum),
         min_timing: Number(config.min_timing ?? this.binanceConfig.min_timing),
         min_context_score: Number(config.min_context_score ?? this.binanceConfig.min_context_score),
+        min_context_quality: Number(config.min_context_quality ?? this.binanceConfig.min_context_quality),
         min_risk_reward: Number(config.min_risk_reward ?? this.binanceConfig.min_risk_reward),
         min_expected_move_pct: Number(config.min_expected_move_pct ?? this.binanceConfig.min_expected_move_pct),
+        allow_unlisted_symbols: Boolean(config.allow_unlisted_symbols),
         early_exit_enabled: Boolean(config.early_exit_enabled),
         early_exit_drawdown_pct: Number(
           config.early_exit_drawdown_pct ?? this.binanceConfig.early_exit_drawdown_pct
@@ -785,8 +1149,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       min_quantum: Number(this.binanceConfig.min_quantum),
       min_timing: Number(this.binanceConfig.min_timing),
       min_context_score: Number(this.binanceConfig.min_context_score),
+      min_context_quality: Number(this.binanceConfig.min_context_quality),
       min_risk_reward: Number(this.binanceConfig.min_risk_reward),
       min_expected_move_pct: Number(this.binanceConfig.min_expected_move_pct),
+      allow_unlisted_symbols: Boolean(this.binanceConfig.allow_unlisted_symbols),
       symbols_allowlist: symbols,
       early_exit_enabled: Boolean(this.binanceConfig.early_exit_enabled),
       early_exit_drawdown_pct: Number(this.binanceConfig.early_exit_drawdown_pct),
@@ -1000,25 +1366,26 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   private hasSuppressedVerification(signal: any): boolean {
-    return Boolean(
-      signal?.linkedPrediction?.verification ||
-      signal?.verification ||
-      signal?.verification_outcome
-    );
+    const outcome = (
+      signal?.suppressed_verification?.counterfactual_outcome ||
+      signal?.linkedPrediction?.suppressed_verification?.counterfactual_outcome ||
+      signal?.linkedPrediction?.verification?.suppressed_verification?.counterfactual_outcome ||
+      signal?.verification?.suppressed_verification?.counterfactual_outcome ||
+      signal?.verification?.counterfactual_outcome ||
+      signal?.counterfactual_outcome ||
+      ''
+    ).toString().toUpperCase();
+    return outcome.includes('WIN') || outcome.includes('LOSS');
   }
 
   private isSuppressedWin(signal: any): boolean {
-    const success = signal?.linkedPrediction?.verification?.success;
-    if (typeof success === 'boolean') {
-      return success;
-    }
-
     const outcome = (
-      signal?.linkedPrediction?.verification?.verification_outcome ||
-      signal?.linkedPrediction?.verification?.outcome_label ||
-      signal?.verification?.verification_outcome ||
-      signal?.verification?.outcome_label ||
-      signal?.verification_outcome ||
+      signal?.suppressed_verification?.counterfactual_outcome ||
+      signal?.linkedPrediction?.suppressed_verification?.counterfactual_outcome ||
+      signal?.linkedPrediction?.verification?.suppressed_verification?.counterfactual_outcome ||
+      signal?.verification?.suppressed_verification?.counterfactual_outcome ||
+      signal?.verification?.counterfactual_outcome ||
+      signal?.counterfactual_outcome ||
       ''
     ).toString().toUpperCase();
 
@@ -1131,9 +1498,9 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   formatFirestoreDate(value: any): string {
-    if (!value) return 'â€”';
+    if (!value) return '—';
     const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
-    if (Number.isNaN(date.getTime())) return 'â€”';
+    if (Number.isNaN(date.getTime())) return '—';
     return date.toLocaleString();
   }
 
@@ -1155,6 +1522,36 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       return suppressedCount > 0 ? 'Sin verificaciones' : 'N/A';
     }
     return `${Math.round(rate * 1000) / 10}%`;
+  }
+
+  formatPctOrNA(value: number | null | undefined): string {
+    if (value == null || !isFinite(value)) return 'N/A';
+    return `${(value * 100).toFixed(1)}%`;
+  }
+
+  formatEdge(value: number | null | undefined): string {
+    if (value == null || !isFinite(value)) return 'N/A';
+    return `${value.toFixed(3)}%`;
+  }
+
+  formatScoreOrNA(value: number | null | undefined): string {
+    if (value == null || !isFinite(value)) return 'N/A';
+    return `${Math.round(value)}`;
+  }
+
+  formatSecondsOrNA(value: number | null | undefined): string {
+    if (value == null || !isFinite(value)) return 'N/A';
+    return `${Math.round(value)}s`;
+  }
+
+  private toRate(value: any): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? (n > 1 ? n / 100 : n) : null;
+  }
+
+  private toNullableNum(value: any): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
 
   spotPriceSourceLabel(source: string | null | undefined): string {
@@ -1211,6 +1608,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
   private computeMonitoringSummary(items: any[]): {
     symbolsTotal: number;
+    symbolsRequested: number;
+    symbolsExcludedCooldown: number;
     processedOk: number;
     failed: number;
     emitted: number;
@@ -1219,12 +1618,15 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     suppressionRate: number;
     certaintyWinRate: number;
     classification: string;
+    topFailureSymbols: string[];
     updatedAt: string;
   } {
     const latest = (items || [])[0];
     if (!latest) {
       return {
         symbolsTotal: 0,
+        symbolsRequested: 0,
+        symbolsExcludedCooldown: 0,
         processedOk: 0,
         failed: 0,
         emitted: 0,
@@ -1233,7 +1635,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
         suppressionRate: 0,
         certaintyWinRate: 0,
         classification: 'n/a',
-        updatedAt: 'â€”'
+        topFailureSymbols: [],
+        updatedAt: '—'
       };
     }
 
@@ -1246,6 +1649,12 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     const processedOk = Number(cycle?.processed_ok || 0);
     const emitted = Number(cycle?.signals_emitted || 0);
     const suppressed = Number(cycle?.signals_suppressed || 0);
+    const topFailureSymbols = Array.isArray(cycle?.failure_reasons_top)
+      ? cycle.failure_reasons_top
+          .slice(0, 4)
+          .map((item: any) => String(item?.symbol || '').trim())
+          .filter((item: string) => !!item)
+      : [];
     const baseForSuppression = processedOk > 0 ? processedOk : emitted + suppressed;
     const suppressionRate = baseForSuppression > 0 ? suppressed / baseForSuppression : 0;
     const winRatePct = Number(audit?.global?.win_rate ?? 0);
@@ -1262,6 +1671,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
     return {
       symbolsTotal: Number(cycle?.symbols_total || 0),
+      symbolsRequested: Number(cycle?.symbols_requested || cycle?.symbols_total || 0),
+      symbolsExcludedCooldown: Number(cycle?.symbols_excluded_cooldown || 0),
       processedOk,
       failed: Number(cycle?.failed || 0),
       emitted,
@@ -1270,6 +1681,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       suppressionRate,
       certaintyWinRate: winRatePct > 1 ? winRatePct / 100 : winRatePct,
       classification: String(audit?.classification || latestAuditSnapshot?.classification || latest?.classification || 'n/a'),
+      topFailureSymbols,
       updatedAt: this.formatFirestoreDate(latest?.created_at || latest?.timestamp)
     };
   }

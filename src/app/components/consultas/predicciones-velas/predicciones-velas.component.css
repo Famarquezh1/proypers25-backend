@@ -45,42 +45,11 @@
   background: #fff;
 }
 
-.opportunities-panel {
-  border: 1px solid #dbe4f0;
-  border-radius: 0.9rem;
-  padding: 1rem;
-  background: linear-gradient(180deg, #f9fbff 0%, #f2f7ff 100%);
-}
-
-.monitoring-panel {
-  border: 1px solid #d1fae5;
-  border-radius: 0.9rem;
-  padding: 1rem;
-  background: linear-gradient(180deg, #f7fff9 0%, #effcf3 100%);
-}
-
-.monitoring-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.35rem 0 0.8rem;
-}
-
-.monitor-pill {
-  font-size: 0.8rem;
-  border: 1px solid #bbf7d0;
-  border-radius: 999px;
-  padding: 0.2rem 0.55rem;
-  background: #ffffff;
-  color: #14532d;
-}
-
-.monitoring-trend {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.3rem;
-}
+.opportunities-panel{border:1px solid #dbe4f0;border-radius:.9rem;padding:1rem;background:linear-gradient(180deg,#f9fbff 0%,#f2f7ff 100%)}
+.monitoring-panel{border:1px solid #d1fae5;border-radius:.9rem;padding:1rem;background:linear-gradient(180deg,#f7fff9 0%,#effcf3 100%)}
+.monitoring-stats{display:flex;flex-wrap:wrap;gap:.5rem;margin:.35rem 0 .8rem}
+.monitor-pill{font-size:.8rem;border:1px solid #bbf7d0;border-radius:999px;padding:.2rem .55rem;background:#fff;color:#14532d}
+.monitoring-trend{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.3rem}
 
 .monitor-trend-pill {
   white-space: nowrap;
@@ -91,6 +60,91 @@
   border-radius: 0.9rem;
   padding: 1rem;
   background: linear-gradient(180deg, #fffef7 0%, #fff9eb 100%);
+}
+
+.signal-intel-panel {
+  border: 1px solid #dbe4f0;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
+}
+
+.signal-intel-help {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.signal-intel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.8rem;
+}
+
+.signal-intel-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.75rem;
+}
+
+.signal-intel-card h4 {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+}
+
+.signal-intel-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.signal-intel-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+  align-items: center;
+}
+
+.signal-intel-row-wide {
+  grid-template-columns: 1.2fr 0.7fr 0.9fr 0.9fr 0.8fr 0.8fr;
+}
+
+.signal-intel-row-rank {
+  grid-template-columns: 1.2fr 0.8fr 0.9fr 0.9fr 0.7fr;
+}
+
+.signal-intel-span-3 {
+  grid-column: span 3;
+}
+
+.signal-intel-head {
+  font-weight: 700;
+  color: #475569;
+}
+
+.signal-intel-empty {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+body.theme-dark .signal-intel-panel {
+  background: #0f172a !important;
+  color: #e6edf7 !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .signal-intel-card {
+  background: #111a2b !important;
+  color: #e6edf7 !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .signal-intel-help,
+body.theme-dark .signal-intel-head,
+body.theme-dark .signal-intel-empty {
+  color: #9fb2cc !important;
 }
 
 .binance-config-grid {

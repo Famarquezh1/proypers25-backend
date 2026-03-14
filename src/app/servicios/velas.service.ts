@@ -73,4 +73,64 @@ export class VelasService {
   getDisponibles(): Observable<VelasDisponibles> {
     return this.http.get<VelasDisponibles>(`${this.apiUrl}/api/velas/disponibles`);
   }
+
+  obtenerSignalIntelligenceAudit(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/audit-signal-intelligence`, { params: httpParams });
+  }
+
+  obtenerSuppressedValidationAudit(params?: {
+    refresh?: boolean;
+    days?: number;
+    maxDocs?: number;
+    concurrency?: number;
+  }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    if (params?.concurrency) httpParams = httpParams.set('concurrency', String(params.concurrency));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/audit-suppressed-validation`, { params: httpParams });
+  }
+
+  obtenerExecutionVsModelAudit(params?: {
+    refresh?: boolean;
+    days?: number;
+    maxDocs?: number;
+    concurrency?: number;
+    matchWindowMinutes?: number;
+  }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    if (params?.concurrency) httpParams = httpParams.set('concurrency', String(params.concurrency));
+    if (params?.matchWindowMinutes) {
+      httpParams = httpParams.set('matchWindowMinutes', String(params.matchWindowMinutes));
+    }
+    return this.http.get<any>(`${this.apiUrl}/api/velas/audit-execution-vs-model`, { params: httpParams });
+  }
+
+  obtenerRankingSummary(params?: { limit?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.limit) httpParams = httpParams.set('limit', String(params.limit));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/ranking-summary`, { params: httpParams });
+  }
+
+  obtenerAdaptiveProfiles(params?: { days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/adaptive-profiles`, { params: httpParams });
+  }
+
+  obtenerContextIntelligenceSummary(params?: { days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/context-intelligence-summary`, { params: httpParams });
+  }
 }

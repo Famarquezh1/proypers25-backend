@@ -392,31 +392,232 @@ function computeExpansionImbalance(candles, direction, rangeBreak, compressionMe
   };
 }
 
-function computeContextQuality({
+function resolveLastTimestamp(candles) {
+  const normalized = clampCandles(candles);
+  if (!normalized.length) return null;
+  return normalized[normalized.length - 1]?.timestamp || normalized[normalized.length - 1]?.time || null;
+}
+
+function resolveUtcHour(timestamp) {
+  const date = timestamp ? new Date(timestamp) : null;
+  if (!date || !Number.isFinite(date.getTime())) return null;
+  return date.getUTCHours();
+}
+
+function computeLiquidityTrapRisk(candles, direction, rangeBreak) {
+  const normalized = clampCandles(candles);
+  if (normalized.length < RANGE_LOOKBACK + 1) {
+    return {
+      liquidity_trap_risk: null,
+      swept_extreme: false,
+      closed_back_inside_range: false,
+      enough_data: false
+    };
+  }
+
+  const baseWindow = normalized.slice(-(RANGE_LOOKBACK + 1), -1);
+  const last = normalized[normalized.length - 1];
+  const priorHigh = Math.max(...baseWindow.map((c) => safeNum(c?.high)));
+  const priorLow = Math.min(...baseWindow.map((c) => safeNum(c?.low)));
+  const close = safeNum(last?.close);
+  const high = safeNum(last?.high);
+  const low = safeNum(last?.low);
+  const range = Math.max(EPS, high - low);
+
+  let sweptExtreme = false;
+  let closedBackInsideRange = false;
+
+  if (direction === 'up') {
+    sweptExtreme = high > priorHigh;
+    closedBackInsideRange = sweptExtreme && close <= priorHigh;
+  } else if (direction === 'down') {
+    sweptExtreme = low < priorLow;
+    closedBackInsideRange = sweptExtreme && close >= priorLow;
+  } else {
+    sweptExtreme = high > priorHigh || low < priorLow;
+    closedBackInsideRange = close <= priorHigh && close >= priorLow;
+  }
+
+  const penetration = direction === 'down'
+    ? Math.max(0, priorLow - low)
+    : Math.max(0, high - priorHigh);
+  const risk = sweptExtreme && closedBackInsideRange ? clamp01((penetration / range) + 0.35) : 0;
+
+  return {
+    liquidity_trap_risk: risk,
+    swept_extreme: sweptExtreme,
+    closed_back_inside_range: closedBackInsideRange,
+    enough_data: true,
+    recent_high: rangeBreak?.recent_high ?? priorHigh,
+    recent_low: rangeBreak?.recent_low ?? priorLow
+  };
+}
+
+function computeSessionMicrostructureScore(candles, volumeConfirmation, volatilitySlopeMetrics) {
+  const normalized = clampCandles(candles);
+  if (!normalized.length) {
+    return {
+      session_microstructure_score: null,
+      session_bucket: 'unknown',
+      enough_data: false
+    };
+  }
+
+  const hour = resolveUtcHour(resolveLastTimestamp(normalized));
+  const relativeVolume = clamp01(safeNum(volumeConfirmation?.relative_volume) / 2.2);
+  const slopeScore = clamp01(
+    safeNum(volatilitySlopeMetrics?.volatility_slope) /
+      Math.max(EPS, safeNum(volatilitySlopeMetrics?.atr_short_current) * 0.2)
+  );
+
+  let sessionBase = 0.45;
+  let sessionBucket = 'off_peak';
+  if (hour != null) {
+    if ((hour >= 12 && hour <= 17) || (hour >= 0 && hour <= 2)) {
+      sessionBase = 0.75;
+      sessionBucket = 'high_liquidity';
+    } else if ((hour >= 6 && hour <= 8) || (hour >= 18 && hour <= 20)) {
+      sessionBase = 0.6;
+      sessionBucket = 'transition';
+    }
+  }
+
+  return {
+    session_microstructure_score: Math.round(clamp01(sessionBase * 0.55 + relativeVolume * 0.25 + slopeScore * 0.2) * 1000) / 1000,
+    session_bucket: sessionBucket,
+    enough_data: true
+  };
+}
+
+function computeStructuralBreakAcceptance(candles, direction, rangeBreak) {
+  const normalized = clampCandles(candles);
+  if (normalized.length < RANGE_LOOKBACK + 2) {
+    return {
+      structural_break_acceptance: null,
+      consecutive_valid_closes: 0,
+      retest_accepted: false,
+      enough_data: false
+    };
+  }
+
+  const lastTwo = normalized.slice(-2);
+  const levelHigh = safeNum(rangeBreak?.recent_high);
+  const levelLow = safeNum(rangeBreak?.recent_low);
+  const atr = computeAtr(normalized, ATR_SHORT_PERIOD) || computeAtr(normalized, ATR_MEDIUM_PERIOD) || 0;
+  const tolerance = atr > 0 ? atr * 0.2 : 0;
+
+  let consecutiveValidCloses = 0;
+  if (direction === 'up' && levelHigh > 0) {
+    consecutiveValidCloses = lastTwo.filter((c) => safeNum(c?.close) >= levelHigh).length;
+  } else if (direction === 'down' && levelLow > 0) {
+    consecutiveValidCloses = lastTwo.filter((c) => safeNum(c?.close) <= levelLow).length;
+  }
+
+  const last = lastTwo[lastTwo.length - 1];
+  let retestAccepted = false;
+  if (direction === 'up' && levelHigh > 0) {
+    retestAccepted = safeNum(last?.low) <= levelHigh + tolerance && safeNum(last?.close) >= levelHigh;
+  } else if (direction === 'down' && levelLow > 0) {
+    retestAccepted = safeNum(last?.high) >= levelLow - tolerance && safeNum(last?.close) <= levelLow;
+  }
+
+  const acceptanceScore = clamp01(consecutiveValidCloses / 2) * 0.7 + (retestAccepted ? 0.3 : 0);
+  return {
+    structural_break_acceptance: Math.round(acceptanceScore * 1000) / 1000,
+    consecutive_valid_closes: consecutiveValidCloses,
+    retest_accepted: retestAccepted,
+    enough_data: true
+  };
+}
+
+function computeContextLayers({
   compressionMetrics,
   breakEfficiencyMetrics,
+  volumeConfirmation,
   volumePersistenceMetrics,
   volatilitySlopeMetrics,
   closeLocationMetrics,
   wickMetrics,
-  rangeBreak
+  expansionMetrics,
+  liquidityTrapMetrics,
+  sessionMicrostructureMetrics,
+  structuralBreakAcceptanceMetrics
 }) {
+  const structuralContextScore = clamp01(
+    safeNum(breakEfficiencyMetrics?.break_efficiency) * 0.35 +
+      safeNum(closeLocationMetrics?.close_location_value) * 0.25 +
+      safeNum(structuralBreakAcceptanceMetrics?.structural_break_acceptance) * 0.25 +
+      (1 - clamp01(safeNum(wickMetrics?.wick_imbalance))) * 0.15
+  );
+
   const compressionDurationScore = clamp01(safeNum(compressionMetrics?.compression_duration) / 12);
-  const breakEfficiencyScore = clamp01(safeNum(breakEfficiencyMetrics?.break_efficiency));
-  const volumePersistenceScore = clamp01(safeNum(volumePersistenceMetrics?.volume_persistence_score));
+  const compressionTightnessScore = 1 - clamp01(safeNum(compressionMetrics?.compression_tightness) / 0.8);
+  const volatilitySlopeScore = clamp01(
+    safeNum(volatilitySlopeMetrics?.volatility_slope) /
+      Math.max(EPS, safeNum(volatilitySlopeMetrics?.atr_short_current) * 0.25)
+  );
+  const expansionImbalanceScore = clamp01(safeNum(expansionMetrics?.expansion_imbalance) / 2.5);
+  const volatilityContextScore = clamp01(
+    compressionDurationScore * 0.25 +
+      compressionTightnessScore * 0.25 +
+      volatilitySlopeScore * 0.25 +
+      expansionImbalanceScore * 0.25
+  );
 
-  const atrShortCurrent = Math.max(EPS, safeNum(volatilitySlopeMetrics?.atr_short_current));
-  const volatilitySlopeRaw = safeNum(volatilitySlopeMetrics?.volatility_slope);
-  const volatilitySlopeScore = clamp01(volatilitySlopeRaw / (atrShortCurrent * 0.25));
-  const closeLocationScore = clamp01(safeNum(closeLocationMetrics?.close_location_value));
+  const relativeVolumeScore = clamp01(safeNum(volumeConfirmation?.relative_volume) / 2.2);
+  const volumeAccelerationScore = clamp01(safeNum(volumeConfirmation?.volume_acceleration) / 1.8);
+  const volumeFlowContextScore = clamp01(
+    relativeVolumeScore * 0.35 +
+      volumeAccelerationScore * 0.25 +
+      clamp01(safeNum(volumePersistenceMetrics?.volume_persistence_score)) * 0.4
+  );
+
+  const liquidityContextScore = clamp01(
+    (1 - clamp01(safeNum(liquidityTrapMetrics?.liquidity_trap_risk))) * 0.45 +
+      (1 - clamp01(safeNum(wickMetrics?.wick_imbalance))) * 0.2 +
+      safeNum(sessionMicrostructureMetrics?.session_microstructure_score) * 0.2 +
+      safeNum(structuralBreakAcceptanceMetrics?.structural_break_acceptance) * 0.15
+  );
+
+  return {
+    structural_context_score: Math.round(structuralContextScore * 1000) / 1000,
+    volatility_context_score: Math.round(volatilityContextScore * 1000) / 1000,
+    volume_flow_context_score: Math.round(volumeFlowContextScore * 1000) / 1000,
+    liquidity_context_score: Math.round(liquidityContextScore * 1000) / 1000
+  };
+}
+
+function computeContextQuality({
+  compressionMetrics,
+  breakEfficiencyMetrics,
+  volumeConfirmation,
+  volumePersistenceMetrics,
+  volatilitySlopeMetrics,
+  closeLocationMetrics,
+  wickMetrics,
+  rangeBreak,
+  expansionMetrics,
+  liquidityTrapMetrics,
+  sessionMicrostructureMetrics,
+  structuralBreakAcceptanceMetrics
+}) {
   const wickImbalance = clamp01(safeNum(wickMetrics?.wick_imbalance));
-
-  const weighted =
-    compressionDurationScore * 0.2 +
-    breakEfficiencyScore * 0.3 +
-    volumePersistenceScore * 0.2 +
-    volatilitySlopeScore * 0.15 +
-    closeLocationScore * 0.15;
+  const breakEfficiencyScore = clamp01(safeNum(breakEfficiencyMetrics?.break_efficiency));
+  const closeLocationScore = clamp01(safeNum(closeLocationMetrics?.close_location_value));
+  const liquidityTrapRisk = clamp01(safeNum(liquidityTrapMetrics?.liquidity_trap_risk));
+  const layers = computeContextLayers({
+    compressionMetrics,
+    breakEfficiencyMetrics,
+    volumeConfirmation,
+    volumePersistenceMetrics,
+    volatilitySlopeMetrics,
+    closeLocationMetrics,
+    wickMetrics,
+    expansionMetrics,
+    liquidityTrapMetrics,
+    sessionMicrostructureMetrics,
+    structuralBreakAcceptanceMetrics
+  });
 
   let penalty = 0;
   if (wickImbalance > 0.45) {
@@ -426,10 +627,25 @@ function computeContextQuality({
   if (fakeBreakout) {
     penalty += 0.25;
   }
+  if (closeLocationScore < 0.35) {
+    penalty += clamp01((0.35 - closeLocationScore) / 0.35) * 0.18;
+  }
+  if (liquidityTrapRisk > 0.5) {
+    penalty += clamp01((liquidityTrapRisk - 0.5) / 0.5) * 0.22;
+  }
+
+  const weighted =
+    safeNum(layers.structural_context_score) * 0.32 +
+    safeNum(layers.volatility_context_score) * 0.24 +
+    safeNum(layers.volume_flow_context_score) * 0.22 +
+    safeNum(layers.liquidity_context_score) * 0.22;
 
   return {
     context_quality: Math.max(0, Math.min(100, (weighted - penalty) * 100)),
-    fake_breakout_detected: fakeBreakout
+    fake_breakout_detected: fakeBreakout,
+    fake_breakout_penalty: Math.round(penalty * 1000) / 1000,
+    context_layer_breakdown: layers,
+    ...layers
   };
 }
 
@@ -445,15 +661,27 @@ function evaluateEventContextFilter({ candles, direction, currentPrice, mode = '
   const volumePersistenceMetrics = computeVolumePersistence(candles);
   const volatilitySlopeMetrics = computeVolatilitySlope(candles);
   const expansionMetrics = computeExpansionImbalance(candles, direction, rangeBreak, compressionMetrics);
+  const liquidityTrapMetrics = computeLiquidityTrapRisk(candles, direction, rangeBreak);
+  const sessionMicrostructureMetrics = computeSessionMicrostructureScore(
+    candles,
+    volumeConfirmation,
+    volatilitySlopeMetrics
+  );
+  const structuralBreakAcceptanceMetrics = computeStructuralBreakAcceptance(candles, direction, rangeBreak);
 
   const quality = computeContextQuality({
     compressionMetrics,
     breakEfficiencyMetrics,
+    volumeConfirmation,
     volumePersistenceMetrics,
     volatilitySlopeMetrics,
     closeLocationMetrics,
     wickMetrics,
-    rangeBreak
+    rangeBreak,
+    expansionMetrics,
+    liquidityTrapMetrics,
+    sessionMicrostructureMetrics,
+    structuralBreakAcceptanceMetrics
   });
 
   const contextScore =
@@ -496,9 +724,19 @@ function evaluateEventContextFilter({ candles, direction, currentPrice, mode = '
     volume_persistence_score: volumePersistenceMetrics.volume_persistence_score,
     volatility_slope: volatilitySlopeMetrics.volatility_slope,
     compression_energy: compressionMetrics.compression_energy,
+    expansion_impulse: expansionMetrics.expansion_impulse,
     expansion_imbalance: expansionMetrics.expansion_imbalance,
+    fake_breakout_penalty: quality.fake_breakout_penalty,
+    liquidity_trap_risk: liquidityTrapMetrics.liquidity_trap_risk,
+    session_microstructure_score: sessionMicrostructureMetrics.session_microstructure_score,
+    structural_break_acceptance: structuralBreakAcceptanceMetrics.structural_break_acceptance,
     context_quality: quality.context_quality,
     fake_breakout_detected: quality.fake_breakout_detected,
+    structural_context_score: quality.structural_context_score,
+    volatility_context_score: quality.volatility_context_score,
+    volume_flow_context_score: quality.volume_flow_context_score,
+    liquidity_context_score: quality.liquidity_context_score,
+    context_layer_breakdown: quality.context_layer_breakdown,
     metrics: {
       event_context_total_checked: stats.checked,
       event_context_passed: stats.passed,
@@ -517,7 +755,10 @@ function evaluateEventContextFilter({ candles, direction, currentPrice, mode = '
       wick_metrics: wickMetrics,
       volume_persistence_metrics: volumePersistenceMetrics,
       volatility_slope_metrics: volatilitySlopeMetrics,
-      expansion_metrics: expansionMetrics
+      expansion_metrics: expansionMetrics,
+      liquidity_trap_metrics: liquidityTrapMetrics,
+      session_microstructure_metrics: sessionMicrostructureMetrics,
+      structural_break_acceptance_metrics: structuralBreakAcceptanceMetrics
     }
   };
 }

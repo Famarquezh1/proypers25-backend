@@ -3,6 +3,7 @@ import { Component, OnInit } from '@angular/core';
 import { AuthService } from '../../servicios/auth.service';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterModule } from '@angular/router';
+import { ThemeService } from '../../servicios/theme.service';
 
 @Component({
   selector: 'app-navbar',
@@ -13,6 +14,7 @@ import { RouterLink, RouterModule } from '@angular/router';
 })
 export class NavbarComponent implements OnInit {
   logueado = false;
+  themeMode: 'light' | 'dark' = 'light';
 
   items = [
     { nombre: 'Formulario', ruta: 'form' },
@@ -23,16 +25,27 @@ export class NavbarComponent implements OnInit {
     { nombre: 'Historial Velas', ruta: 'historial-velas' },
   ];
 
-  constructor(public authService: AuthService) {}
+  constructor(
+    public authService: AuthService,
+    private themeService: ThemeService
+  ) {}
 
   ngOnInit(): void {
     this.authService.isLoggedIn().then((estado) => {
       this.logueado = estado;
     });
+    this.themeMode = this.themeService.currentMode;
+    this.themeService.mode$.subscribe((mode) => {
+      this.themeMode = mode;
+    });
   }
 
   cerrarSesion() {
     this.authService.logout();
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggleMode();
   }
 }
 

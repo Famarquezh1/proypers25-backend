@@ -1,4 +1,4 @@
-<div class="velas-panel">
+﻿<div class="velas-panel">
   <h2>Predicciones de Velas</h2>
   <div class="control-row mb-3">
     <div class="form-group">
@@ -196,7 +196,9 @@
     </div>
 
     <div *ngIf="monitoringSnapshots.length; else noMonitoringData" class="monitoring-stats">
+      <span class="monitor-pill">Solicitados: <strong>{{ monitoringSummary.symbolsRequested }}</strong></span>
       <span class="monitor-pill">S&iacute;mbolos: <strong>{{ monitoringSummary.symbolsTotal }}</strong></span>
+      <span class="monitor-pill" *ngIf="monitoringSummary.symbolsExcludedCooldown > 0">En cooldown: <strong>{{ monitoringSummary.symbolsExcludedCooldown }}</strong></span>
       <span class="monitor-pill">Procesados: <strong>{{ monitoringSummary.processedOk }}</strong></span>
       <span class="monitor-pill">Fallidos: <strong>{{ monitoringSummary.failed }}</strong></span>
       <span class="monitor-pill">Emitidas: <strong>{{ monitoringSummary.emitted }}</strong></span>
@@ -208,6 +210,11 @@
       <span class="monitor-pill">Última emisión: <strong>{{ lastEmissionAt }}</strong> <span *ngIf="lastEmissionCount > 0">({{ lastEmissionCount }})</span></span>
     </div>
 
+    <div *ngIf="monitoringSummary.topFailureSymbols.length" class="monitoring-stats" style="margin-top:-0.15rem;">
+      <span class="text-muted small">Símbolos con fallos recientes:</span>
+      <span class="monitor-pill text-danger border-danger-subtle" *ngFor="let symbol of monitoringSummary.topFailureSymbols">{{ symbol }}</span>
+    </div>
+
     <div *ngIf="monitoringTrend.length" class="monitoring-trend">
       <span class="monitor-pill monitor-trend-pill" *ngFor="let point of monitoringTrend">
         {{ point.createdAtLabel }}: <strong>{{ point.winRate | percent:'1.0-1' }}</strong>
@@ -217,6 +224,315 @@
   <ng-template #noMonitoringData>
     <p class="text-muted mb-0">A&uacute;n no hay snapshots de monitoreo.</p>
   </ng-template>
+
+  <div class="signal-intel-panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <h3 class="mb-0">Signal Intelligence</h3>
+        <p class="text-muted small mb-0">Auditoría estadística del detector y del contexto (solo lectura).</p>
+        <p class="signal-intel-help mb-0">
+          ¿Para qué sirve? Mide si las señales emitidas realmente tienen ventaja estadística (edge).
+          <span class="d-block">Ejemplo: expectancy &gt; 0 y win_rate alto = contexto favorable.</span>
+          <span class="d-block">También revela si Binance está ejecutando con disciplina o degradando el edge.</span>
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small">Actualizado: {{ signalIntelUpdatedAt }}</span>
+        <button class="btn btn-sm btn-outline-primary" (click)="cargarSignalIntelligence(true)" [disabled]="signalIntelLoading">
+          {{ signalIntelLoading ? 'Actualizando...' : 'Actualizar' }}
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="signalIntelError" class="alert alert-warning py-2 mb-2">
+      {{ signalIntelError }}
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Total: <strong>{{ signalIntelSummary.totalSignals }}</strong></span>
+      <span class="monitor-pill">Emitidas: <strong>{{ signalIntelSummary.emitted }}</strong></span>
+      <span class="monitor-pill">Suprimidas: <strong>{{ signalIntelSummary.suppressed }}</strong></span>
+      <span class="monitor-pill">Suprimidas verificadas: <strong>{{ signalIntelSummary.suppressedVerified }}</strong></span>
+      <span class="monitor-pill">Pendientes: <strong>{{ signalIntelSummary.pending }}</strong></span>
+      <span class="monitor-pill">Win rate emitidas: <strong>{{ formatPctOrNA(signalIntelSummary.winRateEmitted) }}</strong></span>
+      <span class="monitor-pill">Win rate suprimidas: <strong>{{ formatPctOrNA(signalIntelSummary.winRateSuppressed) }}</strong></span>
+      <span class="monitor-pill">Win rate global: <strong>{{ formatPctOrNA(signalIntelSummary.winRateGlobal) }}</strong></span>
+      <span class="monitor-pill">Expectancy emitidas: <strong>{{ formatEdge(signalIntelSummary.expectancyEmitted) }}</strong></span>
+      <span class="monitor-pill">Expectancy global: <strong>{{ formatEdge(signalIntelSummary.expectancyGlobal) }}</strong></span>
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Suprimidas auditadas: <strong>{{ signalIntelSuppressedSummary.totalSuppressed }}</strong></span>
+      <span class="monitor-pill">Wins contrafactuales: <strong>{{ signalIntelSuppressedSummary.wins }}</strong></span>
+      <span class="monitor-pill">Losses contrafactuales: <strong>{{ signalIntelSuppressedSummary.losses }}</strong></span>
+      <span class="monitor-pill">Win rate suprimidas auditadas: <strong>{{ formatPctOrNA(signalIntelSuppressedSummary.winRateSuppressed) }}</strong></span>
+      <span class="monitor-pill">Expectancy suprimidas: <strong>{{ formatEdge(signalIntelSuppressedSummary.expectancySuppressed) }}</strong></span>
+      <span class="monitor-pill">Delta vs emitidas: <strong>{{ formatEdge(signalIntelSuppressedSummary.deltaVsEmitted) }}</strong></span>
+      <span class="monitor-pill">Lead time promedio: <strong>{{ signalIntelSuppressedSummary.leadTimeAvg != null ? (signalIntelSuppressedSummary.leadTimeAvg | number:'1.0-1') + 's' : 'N/A' }}</strong></span>
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Signal adherence: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.signalAdherence) }}</strong></span>
+      <span class="monitor-pill">Manual trades: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.manualTradeRate) }}</strong></span>
+      <span class="monitor-pill">Execution discipline score: <strong>{{ formatScoreOrNA(signalIntelExecutionSummary.executionDisciplineScore) }}/100</strong></span>
+      <span class="monitor-pill">Late exit rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.lateExitRate) }}</strong></span>
+      <span class="monitor-pill">Early exit rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.earlyExitRate) }}</strong></span>
+      <span class="monitor-pill">SL violation rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.slViolationRate) }}</strong></span>
+      <span class="monitor-pill">Profit capture ratio: <strong>{{ signalIntelExecutionSummary.profitCaptureRatio != null ? (signalIntelExecutionSummary.profitCaptureRatio | number:'1.2-2') + 'x' : 'N/A' }}</strong></span>
+      <span class="monitor-pill">Edge decay: <strong>{{ formatEdge(signalIntelExecutionSummary.edgeDecay) }}</strong></span>
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Adaptive TP: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveTp) }}</strong></span>
+      <span class="monitor-pill">Adaptive SL: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveSl) }}</strong></span>
+      <span class="monitor-pill">Adaptive horizon: <strong>{{ formatSecondsOrNA(signalIntelAdaptiveProfile.adaptiveHorizon) }}</strong></span>
+      <span class="monitor-pill">Learning status: <strong>{{ signalIntelAdaptiveProfile.learningStatus }}</strong></span>
+      <span class="monitor-pill">Edge quality score: <strong>{{ formatScoreOrNA(signalIntelAdaptiveProfile.edgeQualityScore) }}/100</strong></span>
+      <span class="monitor-pill">Última calibración: <strong>{{ signalIntelAdaptiveProfile.lastCalibrationTime }}</strong></span>
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Ranking habilitado: <strong>{{ signalIntelRankingSummary.enabled ? 'Sí' : 'No' }}</strong></span>
+      <span class="monitor-pill">Operables rankeadas: <strong>{{ signalIntelRankingSummary.operableCount }}</strong></span>
+      <span class="monitor-pill">Top global: <strong>{{ signalIntelRankingSummary.topGlobalCount }}</strong></span>
+      <span class="monitor-pill">Top por símbolo: <strong>{{ signalIntelRankingSummary.topSymbolCount }}</strong></span>
+      <span class="monitor-pill">Top por régimen: <strong>{{ signalIntelRankingSummary.topRegimeCount }}</strong></span>
+      <span class="monitor-pill">Percentil medio: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.avgRankingPercentile) }}</strong></span>
+      <span class="monitor-pill">Contexto recomendado: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.minContextQualityRecommended) }}</strong></span>
+      <span class="monitor-pill">Ranking recomendado: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.minRankingRecommended) }}</strong></span>
+    </div>
+
+    <div class="signal-intel-grid" *ngIf="!signalIntelError">
+      <div class="signal-intel-card">
+        <h4>Adaptive calibration</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Adaptive TP</span>
+            <span>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveTp) }}</span>
+            <span>Adaptive SL</span>
+            <span>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveSl) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Adaptive horizon</span>
+            <span>{{ formatSecondsOrNA(signalIntelAdaptiveProfile.adaptiveHorizon) }}</span>
+            <span>Edge quality score</span>
+            <span>{{ formatScoreOrNA(signalIntelAdaptiveProfile.edgeQualityScore) }}/100</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Learning status</span>
+            <span>{{ signalIntelAdaptiveProfile.learningStatus }}</span>
+            <span>Recalibrado</span>
+            <span>{{ signalIntelAdaptiveProfile.recalibrated ? 'Sí' : 'No' }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Última calibración</span>
+            <span class="signal-intel-span-3">{{ signalIntelAdaptiveProfile.lastCalibrationTime }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Adaptive profiles</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Versión calibración</span>
+            <span>{{ signalIntelAdaptiveRankingProfile.calibrationVersion }}</span>
+            <span>Bucket contexto líder</span>
+            <span>{{ signalIntelAdaptiveContextProfile.bestBucket }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Min rank recomendado</span>
+            <span>{{ formatScoreOrNA(signalIntelAdaptiveRankingProfile.minRankingScoreRecommended) }}</span>
+            <span>Min context quality</span>
+            <span>{{ formatScoreOrNA(signalIntelAdaptiveRankingProfile.minContextQualityRecommended) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Win rate bucket líder</span>
+            <span>{{ formatPctOrNA(signalIntelAdaptiveContextProfile.bestBucketWinRate) }}</span>
+            <span>Expectancy bucket líder</span>
+            <span>{{ formatEdge(signalIntelAdaptiveContextProfile.bestBucketExpectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Top ranked recent signals</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelRankedSignals.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelRankedSignals.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-rank">
+            <span>Símbolo</span><span>Rank</span><span>%il</span><span>Conf.</span><span>Operable</span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-rank" *ngFor="let s of signalIntelRankedSignals">
+            <span>{{ s.simbolo }}</span>
+            <span>{{ s.signal_ranking_score != null ? (s.signal_ranking_score | number:'1.1-1') : 'N/A' }}</span>
+            <span>{{ formatScoreOrNA(s.ranking_percentile) }}</span>
+            <span>{{ formatPctOrNA(s.confidence) }}</span>
+            <span>{{ s.is_ranked_operable ? 'Sí' : 'No' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Ranking por régimen</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelRankingRegimes.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelRankingRegimes.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Régimen</span><span>Total</span><span>Operables</span><span>Score medio</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let item of signalIntelRankingRegimes">
+            <span>{{ item.regime }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ item.operable }}</span>
+            <span>{{ formatScoreOrNA(item.avg_score) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Top símbolos por edge</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelTopSymbols.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelTopSymbols.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let s of signalIntelTopSymbols">
+            <span>{{ s.symbol }}</span>
+            <span>{{ s.total_signals }}</span>
+            <span>{{ formatPctOrNA(s.win_rate) }}</span>
+            <span>{{ formatEdge(s.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Disciplina de ejecución</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Win rate modelo</span>
+            <span>{{ formatPctOrNA(signalIntelExecutionSummary.modelWinRate) }}</span>
+            <span>Win rate real</span>
+            <span>{{ formatPctOrNA(signalIntelExecutionSummary.realWinRate) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Expectancy real</span>
+            <span>{{ formatEdge(signalIntelExecutionSummary.realExpectancy) }}</span>
+            <span>Slippage medio</span>
+            <span>{{ formatEdge(signalIntelExecutionSummary.executionSlippagePct) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Fuente trades</span>
+            <span class="signal-intel-span-3">{{ signalIntelExecutionSummary.dataSource }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Context quality vs resultado</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelContextQualityBuckets.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelContextQualityBuckets.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let b of signalIntelContextQualityBuckets">
+            <span>{{ b.bucket }}</span>
+            <span>{{ b.total }}</span>
+            <span>{{ formatPctOrNA(b.win_rate) }}</span>
+            <span>{{ formatEdge(b.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Context Intelligence</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Filtro activo</span>
+            <span>{{ signalIntelContextSummary.enabled ? 'Sí' : 'No' }}</span>
+            <span>Modo</span>
+            <span>{{ signalIntelContextSummary.mode }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Mejor bucket</span>
+            <span>{{ signalIntelContextSummary.bestBucket }}</span>
+            <span>Win rate</span>
+            <span>{{ formatPctOrNA(signalIntelContextSummary.bestBucketWinRate) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Expectancy bucket</span>
+            <span class="signal-intel-span-3">{{ formatEdge(signalIntelContextSummary.bestBucketExpectancy) }}</span>
+          </div>
+        </div>
+        <div class="signal-intel-empty" *ngIf="!signalIntelContextRegimes.length">Sin régimen auditado.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelContextRegimes.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Régimen</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let item of signalIntelContextRegimes">
+            <span>{{ item.regime }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatPctOrNA(item.win_rate) }}</span>
+            <span>{{ formatEdge(item.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Suprimidas: top símbolos por edge</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelSuppressedTopSymbols.length">
+          Sin datos de suprimidas auditadas.
+        </div>
+        <div class="signal-intel-table" *ngIf="signalIntelSuppressedTopSymbols.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
+            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>MFE</span><span>MAE</span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let s of signalIntelSuppressedTopSymbols">
+            <span>{{ s.symbol }}</span>
+            <span>{{ s.total_signals }}</span>
+            <span>{{ formatPctOrNA(s.win_rate) }}</span>
+            <span>{{ formatEdge(s.expectancy) }}</span>
+            <span>{{ formatEdge(s.avg_MFE) }}</span>
+            <span>{{ formatEdge(s.avg_MAE) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Ejecución real: top símbolos por edge</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelExecutionTopSymbols.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelExecutionTopSymbols.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let s of signalIntelExecutionTopSymbols">
+            <span>{{ s.symbol }}</span>
+            <span>{{ s.total_signals }}</span>
+            <span>{{ formatPctOrNA(s.win_rate) }}</span>
+            <span>{{ formatEdge(s.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Suprimidas: context quality</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelSuppressedContextBuckets.length">
+          Sin buckets de context quality.
+        </div>
+        <div class="signal-intel-table" *ngIf="signalIntelSuppressedContextBuckets.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
+            <span>Bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>MFE</span><span></span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let b of signalIntelSuppressedContextBuckets">
+            <span>{{ b.bucket }}</span>
+            <span>{{ b.total }}</span>
+            <span>{{ formatPctOrNA(b.win_rate) }}</span>
+            <span>{{ formatEdge(b.expectancy) }}</span>
+            <span>{{ formatEdge(b.mfe) }}</span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="binance-config-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -284,12 +600,23 @@
         <input class="form-control form-control-sm" type="number" min="0" max="4" step="1" [(ngModel)]="binanceConfig.min_context_score" />
       </div>
       <div class="form-group">
+        <label>Min context quality</label>
+        <input class="form-control form-control-sm" type="number" min="0" max="100" step="1" [(ngModel)]="binanceConfig.min_context_quality" />
+      </div>
+      <div class="form-group">
         <label>Min R:R</label>
         <input class="form-control form-control-sm" type="number" min="0.5" max="10" step="0.1" [(ngModel)]="binanceConfig.min_risk_reward" />
       </div>
       <div class="form-group">
         <label>Min movimiento esperado %</label>
         <input class="form-control form-control-sm" type="number" min="0" max="10" step="0.1" [(ngModel)]="binanceConfig.min_expected_move_pct" />
+      </div>
+      <div class="form-group">
+        <label>Permitir todos los símbolos</label>
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="checkbox" id="allowUnlistedSymbols" [(ngModel)]="binanceConfig.allow_unlisted_symbols" />
+          <label class="form-check-label small" for="allowUnlistedSymbols">Activar</label>
+        </div>
       </div>
       <div class="form-group">
         <label>Sizing dinámico</label>
@@ -308,7 +635,7 @@
       </div>
       <div class="form-group">
         <label>Símbolos permitidos (coma)</label>
-        <input class="form-control form-control-sm" type="text" [(ngModel)]="binanceConfig.symbols_allowlist_text" placeholder="BTCUSDT, ETHUSDT, XRPUSDT" />
+        <input class="form-control form-control-sm" type="text" [(ngModel)]="binanceConfig.symbols_allowlist_text" placeholder="BTCUSDT, ETHUSDT, XRPUSDT" [disabled]="binanceConfig.allow_unlisted_symbols" />
       </div>
       <div class="form-group">
         <label>TP/SL automáticos</label>
