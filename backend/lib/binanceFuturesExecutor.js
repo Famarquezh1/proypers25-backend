@@ -16,6 +16,9 @@ const BINANCE_MIN_TIMING = Number(process.env.BINANCE_EXEC_MIN_TIMING || 0.8);
 const SOURCE_PROFILE_KEYS = new Set(['high_conviction', 'event_emitted', 'manual_prealert']);
 const EXCHANGE_INFO_TTL_MS = 10 * 60 * 1000;
 const exchangeInfoCache = new Map();
+const BINANCE_TIME_SYNC_TTL_MS = Math.max(30 * 1000, Number(process.env.BINANCE_TIME_SYNC_TTL_MS || 5 * 60 * 1000));
+let binanceTimeOffsetMs = 0;
+let binanceTimeOffsetFetchedAt = 0;
 const BINANCE_POSITION_MAX_HOLD_MINUTES = Math.max(
   1,
   Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES || 10)
@@ -196,8 +199,31 @@ function createSignature(queryString) {
   return crypto.createHmac('sha256', BINANCE_API_SECRET).update(queryString).digest('hex');
 }
 
-async function signedRequest(path, params, method = 'POST') {
-  const timestamp = Date.now();
+async function refreshBinanceServerTimeOffset(force = false) {
+  const now = Date.now();
+  if (!force && binanceTimeOffsetFetchedAt && now - binanceTimeOffsetFetchedAt < BINANCE_TIME_SYNC_TTL_MS) {
+    return binanceTimeOffsetMs;
+  }
+
+  const response = await fetch(`${BINANCE_FUTURES_BASE_URL}/fapi/v1/time`);
+  if (!response.ok) {
+    throw new Error(`Binance server time failed (${response.status})`);
+  }
+  const data = await response.json();
+  const serverTime = Number(data?.serverTime || 0);
+  if (!Number.isFinite(serverTime) || serverTime <= 0) {
+    throw new Error('invalid Binance server time');
+  }
+
+  binanceTimeOffsetMs = serverTime - now;
+  binanceTimeOffsetFetchedAt = now;
+  return binanceTimeOffsetMs;
+}
+
+async function signedRequest(path, params, method = 'POST', options = {}) {
+  const { retryOnTimestamp = true, forceTimeSync = false } = options;
+  const offsetMs = await refreshBinanceServerTimeOffset(forceTimeSync);
+  const timestamp = Date.now() + offsetMs;
   const payload = new URLSearchParams({ ...params, timestamp, recvWindow: 5000 });
   const signature = createSignature(payload.toString());
   payload.append('signature', signature);
@@ -216,6 +242,18 @@ async function signedRequest(path, params, method = 'POST') {
     body = bodyText;
   }
   if (!response.ok) {
+    if (
+      retryOnTimestamp &&
+      response.status === 400 &&
+      typeof bodyText === 'string' &&
+      bodyText.includes('"code":-1021')
+    ) {
+      await refreshBinanceServerTimeOffset(true);
+      return signedRequest(path, params, method, {
+        retryOnTimestamp: false,
+        forceTimeSync: true
+      });
+    }
     throw new Error(`Binance API ${path} failed (${response.status}): ${bodyText}`);
   }
   return body;
