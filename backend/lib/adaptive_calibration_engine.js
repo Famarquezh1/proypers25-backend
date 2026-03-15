@@ -373,6 +373,7 @@ module.exports = {
   deriveContextProfile,
   deriveCandidateProfile,
   deriveRankingProfile,
+  loadAdaptiveExecutionProfile: loadExistingProfile,
   getAdaptiveExecutionProfile,
   getAdaptiveSystemProfiles
 };

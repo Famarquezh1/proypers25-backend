@@ -2,7 +2,7 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
-import { Observable, forkJoin, of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
@@ -735,29 +735,23 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   cargarSignalIntelligence(refresh = false): void {
     this.signalIntelLoading = true;
     this.signalIntelError = '';
-    forkJoin({
-      intelligence: this.velasService.obtenerSignalIntelligenceAudit({
+    this.velasService
+      .obtenerSignalIntelligenceDashboard({
         refresh,
         days: 30,
-        maxDocs: 25000
-      }),
-      suppressed: this.velasService.obtenerSuppressedValidationAudit({
-        refresh,
-        days: 30,
-        maxDocs: 250,
-        concurrency: 6
-      }),
-      execution: this.velasService.obtenerExecutionVsModelAudit({
-        refresh,
-        days: 30,
-        maxDocs: 250,
+        maxDocs: 25000,
+        suppressedMaxDocs: 250,
+        executionMaxDocs: 250,
         concurrency: 6,
         matchWindowMinutes: 5
       })
-    })
       .pipe(finalize(() => (this.signalIntelLoading = false)))
       .subscribe({
-        next: ({ intelligence, suppressed, execution }) => {
+        next: (dashboard) => {
+          const snapshot = dashboard?.snapshot || {};
+          const intelligence = snapshot?.intelligence || {};
+          const suppressed = snapshot?.suppressed || {};
+          const execution = snapshot?.execution || {};
           const report = intelligence?.report || {};
           const totals = report?.totals || {};
           const winRates = report?.win_rates || {};
@@ -778,7 +772,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           const contextProfile = adaptiveProfiles?.context_profile || {};
 
           this.signalIntelUpdatedAt = this.formatFirestoreDate(
-            intelligence?.fetched_at ||
+            dashboard?.fetched_at ||
+              intelligence?.fetched_at ||
               execution?.fetched_at ||
               suppressed?.fetched_at ||
               executionReport?.generated_at ||
@@ -1064,11 +1059,22 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return signal?.binance_execution || signal?.linkedPrediction?.binance_execution || null;
   }
 
+  private highConvictionBinanceReason(signal: any): string {
+    const exec = this.highConvictionBinanceExecution(signal);
+    return String(exec?.reason || '').toLowerCase();
+  }
+
   highConvictionBinanceStatus(signal: any): string {
     const exec = this.highConvictionBinanceExecution(signal);
     if (!exec) return 'Sin intento';
     if (exec.executed) return 'Ejecutada';
     if (exec.dry_run) return 'Dry-run';
+    const reason = this.highConvictionBinanceReason(signal);
+    if (reason === 'already_processed') return 'Ya procesada';
+    if (reason === 'not_attempted' || reason === 'signal_not_emitted' || reason === 'neutral_direction') {
+      return 'Sin intento';
+    }
+    if (reason.startsWith('error:')) return 'Falló ejecución';
     if (exec.attempted) return 'Omitida';
     return 'Sin intento';
   }
@@ -1077,6 +1083,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     const status = this.highConvictionBinanceStatus(signal);
     if (status === 'Ejecutada') return 'hc-badge hc-win';
     if (status === 'Dry-run') return 'hc-badge hc-partial';
+    if (status === 'Falló ejecución') return 'hc-badge hc-loss';
+    if (status === 'Ya procesada') return 'hc-badge hc-partial';
     if (status === 'Omitida') return 'hc-badge hc-suppressed';
     return 'hc-badge hc-pending';
   }

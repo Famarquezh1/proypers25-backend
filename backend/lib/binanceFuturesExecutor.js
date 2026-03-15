@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getBinanceBotConfig } = require('./binanceBotConfig');
+const { loadAdaptiveExecutionProfile } = require('./adaptive_calibration_engine');
 
 const BINANCE_EXECUTION_ENABLED = process.env.BINANCE_EXECUTION_ENABLED === 'true';
 const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN || '').toLowerCase() === 'true';
@@ -15,6 +16,12 @@ const BINANCE_MIN_TIMING = Number(process.env.BINANCE_EXEC_MIN_TIMING || 0.8);
 const SOURCE_PROFILE_KEYS = new Set(['high_conviction', 'event_emitted', 'manual_prealert']);
 const EXCHANGE_INFO_TTL_MS = 10 * 60 * 1000;
 const exchangeInfoCache = new Map();
+const BINANCE_POSITION_MAX_HOLD_MINUTES = Math.max(
+  1,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES || 10)
+);
+const POSITION_HOLD_MIN_SECONDS = Math.max(60, Number(process.env.BINANCE_POSITION_MIN_HOLD_SECONDS || 180));
+const POSITION_HOLD_MULTIPLIER = Math.max(1, Number(process.env.BINANCE_POSITION_SIGNAL_HOLD_MULTIPLIER || 5));
 function parseDateLike(value) {
   if (!value) return null;
   if (value instanceof Date) {
@@ -103,6 +110,60 @@ function buildExecutionAudit(signalData, executedAt = null) {
     win_model: normalizeModelOutcome(signalData?.verification_outcome || signalData?.status),
     win_exchange: null
   };
+}
+
+function toNum(value, fallback = null) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function resolveExpectedDurationWindow(signalData = {}) {
+  const raw =
+    signalData?.expected_duration_seconds ??
+    signalData?.window_seconds ??
+    signalData?.trade_plan?.expected_duration_seconds ??
+    signalData?.event_driven_info?.impulseDurationSeconds ??
+    signalData?.max_duration_seconds ??
+    null;
+
+  if (raw && typeof raw === 'object') {
+    const min = toNum(raw.min, null);
+    const max = toNum(raw.max, null);
+    return {
+      min: Number.isFinite(min) ? min : null,
+      max: Number.isFinite(max) ? max : Number.isFinite(min) ? min : null
+    };
+  }
+
+  const single = toNum(raw, null);
+  return {
+    min: Number.isFinite(single) ? single : null,
+    max: Number.isFinite(single) ? single : null
+  };
+}
+
+function resolvePositionMaxHoldSeconds({ signalData = {}, adaptiveProfile = null }) {
+  const expectedWindow = resolveExpectedDurationWindow(signalData);
+  const expectedMax = Number(expectedWindow?.max || 0);
+  const adaptiveHorizon = Number(
+    adaptiveProfile?.adaptive_horizon_seconds ?? adaptiveProfile?.adaptive_horizon ?? 0
+  );
+  const globalMax = BINANCE_POSITION_MAX_HOLD_MINUTES * 60;
+
+  if (expectedMax > 0) {
+    return Math.round(
+      clamp(expectedMax * POSITION_HOLD_MULTIPLIER, POSITION_HOLD_MIN_SECONDS, globalMax)
+    );
+  }
+  if (adaptiveHorizon > 0) {
+    return Math.round(clamp(adaptiveHorizon, POSITION_HOLD_MIN_SECONDS, globalMax));
+  }
+  return globalMax;
 }
 
 function normalizePercent(value) {
@@ -221,18 +282,21 @@ function roundToTick(value, tick) {
 
 async function getFuturesSymbolRules(symbol) {
   if (!symbol) return null;
+  const requestedSymbol = String(symbol || '').toUpperCase();
   const now = Date.now();
-  const cached = exchangeInfoCache.get(symbol);
+  const cached = exchangeInfoCache.get(requestedSymbol);
   if (cached && now - cached.fetchedAt < EXCHANGE_INFO_TTL_MS) {
     return cached.rules;
   }
 
-  const response = await fetch(`${BINANCE_FUTURES_BASE_URL}/fapi/v1/exchangeInfo?symbol=${encodeURIComponent(symbol)}`);
+  const response = await fetch(`${BINANCE_FUTURES_BASE_URL}/fapi/v1/exchangeInfo?symbol=${encodeURIComponent(requestedSymbol)}`);
   if (!response.ok) {
     throw new Error(`Binance exchangeInfo failed (${response.status})`);
   }
   const data = await response.json();
-  const info = Array.isArray(data?.symbols) ? data.symbols[0] : null;
+  const info = Array.isArray(data?.symbols)
+    ? data.symbols.find(item => String(item?.symbol || '').toUpperCase() === requestedSymbol) || null
+    : null;
   if (!info) return null;
   const filters = Array.isArray(info.filters) ? info.filters : [];
   const lot = filters.find(f => f.filterType === 'LOT_SIZE') || {};
@@ -240,6 +304,7 @@ async function getFuturesSymbolRules(symbol) {
   const price = filters.find(f => f.filterType === 'PRICE_FILTER') || {};
 
   const rules = {
+    symbol: requestedSymbol,
     quantityPrecision: Number(info.quantityPrecision),
     pricePrecision: Number(info.pricePrecision),
     stepSize: Number(lot.stepSize || 0),
@@ -248,7 +313,7 @@ async function getFuturesSymbolRules(symbol) {
     marketMinQty: Number(marketLot.minQty || 0),
     tickSize: Number(price.tickSize || 0)
   };
-  exchangeInfoCache.set(symbol, { fetchedAt: now, rules });
+  exchangeInfoCache.set(requestedSymbol, { fetchedAt: now, rules });
   return rules;
 }
 
@@ -742,6 +807,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
   let leverageRes = null;
   let orderRes = null;
   let exitsRes = null;
+  let adaptiveExecutionProfile = null;
   const qtyPrecision = Number.isFinite(preciseIntent?._quantity_precision)
     ? Number(preciseIntent._quantity_precision)
     : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
@@ -770,9 +836,19 @@ async function executeSignalTrade(db, signalData, options = {}) {
     });
     throw err;
   }
+  try {
+    adaptiveExecutionProfile = await loadAdaptiveExecutionProfile();
+  } catch (_) {
+    adaptiveExecutionProfile = null;
+  }
   const tpOrderId = exitsRes?.tp?.orderId || exitsRes?.tp_limit?.orderId || null;
   const slOrderId = exitsRes?.sl?.orderId || null;
   const executionAudit = buildExecutionAudit(signalData, new Date());
+  const expectedDurationWindow = resolveExpectedDurationWindow(signalData);
+  const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
+    signalData,
+    adaptiveProfile: adaptiveExecutionProfile
+  });
 
   await db.collection('binance_execution_intents').add({
     ...baseLog,
@@ -805,6 +881,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
     mode: 'live',
     early_exit_enabled: Boolean(effectiveConfig.early_exit_enabled),
     early_exit_drawdown_pct: Number(effectiveConfig.early_exit_drawdown_pct || 0),
+    expected_duration_min_seconds: expectedDurationWindow.min,
+    expected_duration_max_seconds: expectedDurationWindow.max,
+    adaptive_horizon_seconds:
+      Number(adaptiveExecutionProfile?.adaptive_horizon_seconds ?? adaptiveExecutionProfile?.adaptive_horizon) || null,
+    position_max_hold_seconds: positionMaxHoldSeconds,
     execution_audit: executionAudit,
     win_model: executionAudit.win_model,
     win_exchange: null,

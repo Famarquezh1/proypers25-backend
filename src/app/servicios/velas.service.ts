@@ -82,6 +82,32 @@ export class VelasService {
     return this.http.get<any>(`${this.apiUrl}/api/velas/audit-signal-intelligence`, { params: httpParams });
   }
 
+  obtenerSignalIntelligenceDashboard(params?: {
+    refresh?: boolean;
+    days?: number;
+    maxDocs?: number;
+    suppressedMaxDocs?: number;
+    executionMaxDocs?: number;
+    concurrency?: number;
+    matchWindowMinutes?: number;
+  }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    if (params?.suppressedMaxDocs) {
+      httpParams = httpParams.set('suppressedMaxDocs', String(params.suppressedMaxDocs));
+    }
+    if (params?.executionMaxDocs) {
+      httpParams = httpParams.set('executionMaxDocs', String(params.executionMaxDocs));
+    }
+    if (params?.concurrency) httpParams = httpParams.set('concurrency', String(params.concurrency));
+    if (params?.matchWindowMinutes) {
+      httpParams = httpParams.set('matchWindowMinutes', String(params.matchWindowMinutes));
+    }
+    return this.http.get<any>(`${this.apiUrl}/api/velas/signal-intelligence-dashboard`, { params: httpParams });
+  }
+
   obtenerSuppressedValidationAudit(params?: {
     refresh?: boolean;
     days?: number;

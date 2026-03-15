@@ -16,6 +16,9 @@ const {
   ADAPTIVE_CALIBRATION_ENABLED,
   getAdaptiveSystemProfiles
 } = require('../lib/adaptive_calibration_engine');
+const {
+  getSignalIntelligenceDashboardSnapshot
+} = require('../lib/signalIntelligenceDashboard');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
 const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
 const db = require('../firebase-admin-config');
@@ -290,6 +293,39 @@ router.get('/audit-signal-intelligence', async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || 'signal_intelligence_audit_failed'
+    });
+  }
+});
+
+router.get('/signal-intelligence-dashboard', async (req, res) => {
+  try {
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    const days = Math.max(1, Math.min(365, Number(req.query.days || process.env.SIGNAL_INTEL_AUDIT_DAYS || 30)));
+    const maxDocs = Math.max(1000, Math.min(300000, Number(req.query.maxDocs || process.env.SIGNAL_INTEL_AUDIT_MAX_DOCS || 25000)));
+    const snapshot = await getSignalIntelligenceDashboardSnapshot({
+      refresh,
+      days,
+      maxDocs,
+      suppressedMaxDocs: Math.max(50, Math.min(300000, Number(req.query.suppressedMaxDocs || process.env.AUDIT_MAX_DOCS || 250))),
+      executionMaxDocs: Math.max(50, Math.min(300000, Number(req.query.executionMaxDocs || process.env.AUDIT_MAX_DOCS || 250))),
+      concurrency: Math.max(1, Math.min(20, Number(req.query.concurrency || process.env.AUDIT_CONCURRENCY || 6))),
+      matchWindowMinutes: Math.max(
+        1,
+        Math.min(30, Number(req.query.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
+      )
+    });
+
+    return res.json({
+      ok: true,
+      cached: snapshot.cached,
+      source: snapshot.source,
+      fetched_at: snapshot.payload?.generated_at || new Date().toISOString(),
+      snapshot: snapshot.payload
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'signal_intelligence_dashboard_failed'
     });
   }
 });

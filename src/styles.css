@@ -181,7 +181,48 @@ body.theme-dark .prediction-details {
   border-top-color: var(--border-color) !important;
 }
 
+body.theme-dark .high-conviction-panel .high-conviction-card,
+body.theme-dark .high-conviction-panel .high-conviction-compact,
+body.theme-dark .high-conviction-panel .high-conviction-details {
+  background: #111a2b !important;
+  color: #e6edf7 !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .high-conviction-panel .high-conviction-card *,
+body.theme-dark .high-conviction-panel .high-conviction-details *,
+body.theme-dark .high-conviction-panel .high-conviction-compact *,
+body.theme-dark .high-conviction-panel .high-conviction-card strong {
+  color: #e6edf7 !important;
+}
+
+body.theme-dark .high-conviction-panel .high-conviction-card .text-muted,
+body.theme-dark .high-conviction-panel .high-conviction-card .small,
+body.theme-dark .high-conviction-panel .high-conviction-details .text-muted,
+body.theme-dark .high-conviction-panel .high-conviction-details .small {
+  color: #9fb2cc !important;
+}
+
+body.theme-dark .high-conviction-panel .high-conviction-card hr,
+body.theme-dark .high-conviction-panel .high-conviction-details hr {
+  border-color: #334155 !important;
+  opacity: 1 !important;
+}
+
 body.theme-dark .signal-intel-panel .signal-intel-card,
+body.theme-dark .signal-intel-panel .signal-intel-table,
+body.theme-dark .signal-intel-panel .signal-intel-row,
+body.theme-dark .signal-intel-panel .signal-intel-row-rank,
+body.theme-dark .signal-intel-panel .signal-intel-row-wide,
+body.theme-dark .signal-intel-panel .signal-intel-grid {
+  background: #111a2b !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .signal-intel-panel .signal-intel-card {
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35) !important;
+}
+
 body.theme-dark .signal-intel-panel .signal-intel-card *,
 body.theme-dark .signal-intel-panel .signal-intel-table,
 body.theme-dark .signal-intel-panel .signal-intel-row,
@@ -199,6 +240,16 @@ body.theme-dark .signal-intel-panel .signal-intel-empty,
 body.theme-dark .signal-intel-panel .text-muted,
 body.theme-dark .signal-intel-panel .small {
   color: #9fb2cc !important;
+}
+
+body.theme-dark .signal-intel-panel .monitor-pill {
+  background: #162339 !important;
+  color: #d7e6ff !important;
+  border-color: #2b4a74 !important;
+}
+
+body.theme-dark .signal-intel-panel .monitor-pill strong {
+  color: #f8fbff !important;
 }
 
 body.theme-dark .signal-intel-panel .alert,

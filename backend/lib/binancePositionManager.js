@@ -10,6 +10,12 @@ const BINANCE_POSITION_MANAGER_ENABLED = process.env.BINANCE_POSITION_MANAGER_EN
 const BINANCE_POSITION_MANAGER_MAX_OPEN = Math.max(1, Number(process.env.BINANCE_POSITION_MANAGER_MAX_OPEN || 20));
 const BINANCE_POSITION_MAX_HOLD_MINUTES = Math.max(1, Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES || 10));
 const BINANCE_EARLY_EXIT_MIN_PROFIT_PCT = Number(process.env.BINANCE_EARLY_EXIT_MIN_PROFIT_PCT || 0.1);
+const BINANCE_POSITION_STALE_EXIT_ENABLED =
+  String(process.env.BINANCE_POSITION_STALE_EXIT_ENABLED || 'true').toLowerCase() !== 'false';
+const BINANCE_POSITION_STALE_EXIT_RATIO = Math.max(
+  0.5,
+  Number(process.env.BINANCE_POSITION_STALE_EXIT_RATIO || 0.6)
+);
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,12 +33,38 @@ function getOpenMinutes(openedAt) {
   if (!Number.isFinite(openedMs) || openedMs <= 0) return 0;
   return (Date.now() - openedMs) / 60000;
 }
+
+function getOpenSeconds(openedAt) {
+  const openedMs = new Date(openedAt || 0).getTime();
+  if (!Number.isFinite(openedMs) || openedMs <= 0) return 0;
+  return Math.max(0, (Date.now() - openedMs) / 1000);
+}
+
 function resolveExchangeOutcome(pnlPct) {
   const pnl = Number(pnlPct || 0);
   if (!Number.isFinite(pnl)) return 'UNKNOWN';
   if (pnl > 0) return 'WIN';
   if (pnl < 0) return 'LOSS';
   return 'BREAKEVEN';
+}
+
+function resolvePositionMaxHoldSeconds(position) {
+  const positionSpecific = Number(position?.position_max_hold_seconds || 0);
+  if (Number.isFinite(positionSpecific) && positionSpecific > 0) {
+    return positionSpecific;
+  }
+
+  const expectedMax = Number(position?.expected_duration_max_seconds || 0);
+  if (Number.isFinite(expectedMax) && expectedMax > 0) {
+    return Math.max(expectedMax, 60);
+  }
+
+  const adaptive = Number(position?.adaptive_horizon_seconds || 0);
+  if (Number.isFinite(adaptive) && adaptive > 0) {
+    return adaptive;
+  }
+
+  return BINANCE_POSITION_MAX_HOLD_MINUTES * 60;
 }
 
 async function updateExecutionIntentOutcome(db, position, payload) {
@@ -69,22 +101,67 @@ function shouldEarlyExit(position, config, markPrice) {
   const entry = Number(position?.entry_price || 0);
   const pnlPct = pnlPctFor(side, entry, markPrice);
   const openedMinutes = getOpenMinutes(position?.opened_at);
+  const openedSeconds = getOpenSeconds(position?.opened_at);
   const drawdown = Number(position?.early_exit_drawdown_pct ?? config?.early_exit_drawdown_pct ?? 0.25);
+  const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds(position);
+  const staleExitThresholdSeconds = Math.max(
+    60,
+    Math.round(positionMaxHoldSeconds * BINANCE_POSITION_STALE_EXIT_RATIO)
+  );
 
   if (position?.early_exit_enabled || config?.early_exit_enabled) {
     if (pnlPct <= -Math.abs(drawdown)) {
-      return { close: true, reason: 'early_exit_drawdown', pnl_pct: pnlPct, opened_minutes: openedMinutes };
+      return {
+        close: true,
+        reason: 'early_exit_drawdown',
+        pnl_pct: pnlPct,
+        opened_minutes: openedMinutes,
+        opened_seconds: openedSeconds,
+        max_hold_seconds: positionMaxHoldSeconds
+      };
     }
     if (openedMinutes >= 2 && pnlPct >= BINANCE_EARLY_EXIT_MIN_PROFIT_PCT) {
-      return { close: true, reason: 'early_exit_lock_profit', pnl_pct: pnlPct, opened_minutes: openedMinutes };
+      return {
+        close: true,
+        reason: 'early_exit_lock_profit',
+        pnl_pct: pnlPct,
+        opened_minutes: openedMinutes,
+        opened_seconds: openedSeconds,
+        max_hold_seconds: positionMaxHoldSeconds
+      };
     }
   }
 
-  if (openedMinutes >= BINANCE_POSITION_MAX_HOLD_MINUTES) {
-    return { close: true, reason: 'max_hold_reached', pnl_pct: pnlPct, opened_minutes: openedMinutes };
+  if (BINANCE_POSITION_STALE_EXIT_ENABLED && openedSeconds >= staleExitThresholdSeconds && pnlPct <= 0) {
+    return {
+      close: true,
+      reason: 'stale_no_followthrough',
+      pnl_pct: pnlPct,
+      opened_minutes: openedMinutes,
+      opened_seconds: openedSeconds,
+      max_hold_seconds: positionMaxHoldSeconds
+    };
   }
 
-  return { close: false, reason: 'hold', pnl_pct: pnlPct, opened_minutes: openedMinutes };
+  if (openedSeconds >= positionMaxHoldSeconds) {
+    return {
+      close: true,
+      reason: 'max_hold_reached',
+      pnl_pct: pnlPct,
+      opened_minutes: openedMinutes,
+      opened_seconds: openedSeconds,
+      max_hold_seconds: positionMaxHoldSeconds
+    };
+  }
+
+  return {
+    close: false,
+    reason: 'hold',
+    pnl_pct: pnlPct,
+    opened_minutes: openedMinutes,
+    opened_seconds: openedSeconds,
+    max_hold_seconds: positionMaxHoldSeconds
+  };
 }
 
 async function runBinancePositionManagerCycle(db) {
@@ -127,6 +204,8 @@ async function runBinancePositionManagerCycle(db) {
           mark_price: markPrice,
           unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
           opened_minutes: Number(decision.opened_minutes.toFixed(2)),
+          opened_seconds: Number(decision.opened_seconds.toFixed(1)),
+          position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
           manager_last_check_at: nowIso(),
           updated_at: FieldValue.serverTimestamp()
         });
@@ -139,6 +218,8 @@ async function runBinancePositionManagerCycle(db) {
           mark_price: markPrice,
           unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
           opened_minutes: Number(decision.opened_minutes.toFixed(2)),
+          opened_seconds: Number(decision.opened_seconds.toFixed(1)),
+          position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
           manager_last_check_at: nowIso(),
           manager_decision: { close: true, reason: decision.reason, dry_run: true },
           updated_at: FieldValue.serverTimestamp()
@@ -168,6 +249,8 @@ async function runBinancePositionManagerCycle(db) {
         mark_price: markPrice,
         unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
         opened_minutes: Number(decision.opened_minutes.toFixed(2)),
+        opened_seconds: Number(decision.opened_seconds.toFixed(1)),
+        position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
         close_order: closeOrder || { skipped: 'already_closed' },
         updated_at: FieldValue.serverTimestamp()
       });
@@ -198,7 +281,9 @@ async function runBinancePositionManagerCycle(db) {
     skipped,
     failed,
     max_hold_minutes: BINANCE_POSITION_MAX_HOLD_MINUTES,
-    early_exit_min_profit_pct: BINANCE_EARLY_EXIT_MIN_PROFIT_PCT
+    early_exit_min_profit_pct: BINANCE_EARLY_EXIT_MIN_PROFIT_PCT,
+    stale_exit_enabled: BINANCE_POSITION_STALE_EXIT_ENABLED,
+    stale_exit_ratio: BINANCE_POSITION_STALE_EXIT_RATIO
   };
 
   await db.collection('binance_position_manager_logs').add({

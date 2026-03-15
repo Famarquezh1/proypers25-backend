@@ -6,6 +6,7 @@ const prediccionVelas = require('../scripts/prediccionVelas');
 const verificarPrediccionVelas = require('../scripts/verificacionVelas');
 const { run: runLearning } = require('../scripts/learning/learnFromCandleOutcomes');
 const { run: runAudit } = require('../scripts/audit-predictive-certainty');
+const { refreshSignalIntelligenceDashboardSnapshot } = require('../lib/signalIntelligenceDashboard');
 const { predictFromCandles } = require('../lib/velasPredictor');
 const { runBinancePositionManagerCycle } = require('../lib/binancePositionManager');
 const {
@@ -712,6 +713,16 @@ async function runAuditCycle() {
         });
       } catch (err) {
         console.warn('[CRON] daily quality report failed', err.message);
+      }
+
+      try {
+        const dashboardSnapshot = await refreshSignalIntelligenceDashboardSnapshot();
+        console.log('[CRON][SIGNAL_INTEL] dashboard snapshot updated', {
+          generated_at: dashboardSnapshot?.generated_at || null,
+          total_signals: dashboardSnapshot?.intelligence?.report?.totals?.total_signals ?? null
+        });
+      } catch (err) {
+        console.warn('[CRON] signal intelligence dashboard snapshot failed', err.message);
       }
     }
   } catch (err) {
