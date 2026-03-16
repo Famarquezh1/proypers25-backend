@@ -23,8 +23,16 @@ const BINANCE_POSITION_MAX_HOLD_MINUTES = Math.max(
   1,
   Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES || 10)
 );
+const BINANCE_POSITION_MAX_HOLD_MINUTES_HIGH_CONVICTION = Math.max(
+  BINANCE_POSITION_MAX_HOLD_MINUTES,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES_HIGH_CONVICTION || 20)
+);
 const POSITION_HOLD_MIN_SECONDS = Math.max(60, Number(process.env.BINANCE_POSITION_MIN_HOLD_SECONDS || 180));
 const POSITION_HOLD_MULTIPLIER = Math.max(1, Number(process.env.BINANCE_POSITION_SIGNAL_HOLD_MULTIPLIER || 5));
+const POSITION_HOLD_MULTIPLIER_HIGH_CONVICTION = Math.max(
+  POSITION_HOLD_MULTIPLIER,
+  Number(process.env.BINANCE_POSITION_SIGNAL_HOLD_MULTIPLIER_HIGH_CONVICTION || 8)
+);
 function parseDateLike(value) {
   if (!value) return null;
   if (value instanceof Date) {
@@ -122,6 +130,7 @@ function toNum(value, fallback = null) {
 
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) return min;
+  if (max < min) return min;
   return Math.max(min, Math.min(max, value));
 }
 
@@ -151,17 +160,34 @@ function resolveExpectedDurationWindow(signalData = {}) {
 }
 
 function resolvePositionMaxHoldSeconds({ signalData = {}, adaptiveProfile = null }) {
+  const sourceProfile = String(signalData?.source_profile || signalData?.source || 'event_emitted').toLowerCase();
   const expectedWindow = resolveExpectedDurationWindow(signalData);
   const expectedMax = Number(expectedWindow?.max || 0);
   const adaptiveHorizon = Number(
     adaptiveProfile?.adaptive_horizon_seconds ?? adaptiveProfile?.adaptive_horizon ?? 0
   );
-  const globalMax = BINANCE_POSITION_MAX_HOLD_MINUTES * 60;
+  const globalMaxMinutes =
+    sourceProfile === 'high_conviction'
+      ? BINANCE_POSITION_MAX_HOLD_MINUTES_HIGH_CONVICTION
+      : BINANCE_POSITION_MAX_HOLD_MINUTES;
+  const globalMax = globalMaxMinutes * 60;
+  const holdMultiplier =
+    sourceProfile === 'high_conviction'
+      ? POSITION_HOLD_MULTIPLIER_HIGH_CONVICTION
+      : POSITION_HOLD_MULTIPLIER;
 
   if (expectedMax > 0) {
-    return Math.round(
-      clamp(expectedMax * POSITION_HOLD_MULTIPLIER, POSITION_HOLD_MIN_SECONDS, globalMax)
-    );
+    const expectedWindowBased = expectedMax * holdMultiplier;
+    if (sourceProfile === 'high_conviction' && adaptiveHorizon > 0) {
+      return Math.round(
+        clamp(
+          Math.max(expectedWindowBased, adaptiveHorizon * 0.5),
+          POSITION_HOLD_MIN_SECONDS,
+          globalMax
+        )
+      );
+    }
+    return Math.round(clamp(expectedWindowBased, POSITION_HOLD_MIN_SECONDS, globalMax));
   }
   if (adaptiveHorizon > 0) {
     return Math.round(clamp(adaptiveHorizon, POSITION_HOLD_MIN_SECONDS, globalMax));

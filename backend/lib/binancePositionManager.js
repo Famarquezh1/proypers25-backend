@@ -16,6 +16,16 @@ const BINANCE_POSITION_STALE_EXIT_RATIO = Math.max(
   0.5,
   Number(process.env.BINANCE_POSITION_STALE_EXIT_RATIO || 0.6)
 );
+const BINANCE_POSITION_HC_STALE_EXIT_ENABLED =
+  String(process.env.BINANCE_POSITION_HC_STALE_EXIT_ENABLED || 'false').toLowerCase() === 'true';
+const BINANCE_POSITION_HC_STALE_EXIT_RATIO = Math.max(
+  BINANCE_POSITION_STALE_EXIT_RATIO,
+  Number(process.env.BINANCE_POSITION_HC_STALE_EXIT_RATIO || 0.85)
+);
+
+function resolveSourceProfile(position) {
+  return String(position?.source_profile || position?.source || 'event_emitted').toLowerCase();
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -97,6 +107,7 @@ async function updateExecutionIntentOutcome(db, position, payload) {
 }
 
 function shouldEarlyExit(position, config, markPrice) {
+  const sourceProfile = resolveSourceProfile(position);
   const side = position?.side;
   const entry = Number(position?.entry_price || 0);
   const pnlPct = pnlPctFor(side, entry, markPrice);
@@ -104,9 +115,17 @@ function shouldEarlyExit(position, config, markPrice) {
   const openedSeconds = getOpenSeconds(position?.opened_at);
   const drawdown = Number(position?.early_exit_drawdown_pct ?? config?.early_exit_drawdown_pct ?? 0.25);
   const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds(position);
+  const staleExitEnabled =
+    sourceProfile === 'high_conviction'
+      ? BINANCE_POSITION_HC_STALE_EXIT_ENABLED
+      : BINANCE_POSITION_STALE_EXIT_ENABLED;
+  const staleExitRatio =
+    sourceProfile === 'high_conviction'
+      ? BINANCE_POSITION_HC_STALE_EXIT_RATIO
+      : BINANCE_POSITION_STALE_EXIT_RATIO;
   const staleExitThresholdSeconds = Math.max(
     60,
-    Math.round(positionMaxHoldSeconds * BINANCE_POSITION_STALE_EXIT_RATIO)
+    Math.round(positionMaxHoldSeconds * staleExitRatio)
   );
 
   if (position?.early_exit_enabled || config?.early_exit_enabled) {
@@ -132,14 +151,15 @@ function shouldEarlyExit(position, config, markPrice) {
     }
   }
 
-  if (BINANCE_POSITION_STALE_EXIT_ENABLED && openedSeconds >= staleExitThresholdSeconds && pnlPct <= 0) {
+  if (staleExitEnabled && openedSeconds >= staleExitThresholdSeconds && pnlPct <= 0) {
     return {
       close: true,
       reason: 'stale_no_followthrough',
       pnl_pct: pnlPct,
       opened_minutes: openedMinutes,
       opened_seconds: openedSeconds,
-      max_hold_seconds: positionMaxHoldSeconds
+      max_hold_seconds: positionMaxHoldSeconds,
+      source_profile: sourceProfile
     };
   }
 
@@ -150,7 +170,8 @@ function shouldEarlyExit(position, config, markPrice) {
       pnl_pct: pnlPct,
       opened_minutes: openedMinutes,
       opened_seconds: openedSeconds,
-      max_hold_seconds: positionMaxHoldSeconds
+      max_hold_seconds: positionMaxHoldSeconds,
+      source_profile: sourceProfile
     };
   }
 
@@ -160,7 +181,8 @@ function shouldEarlyExit(position, config, markPrice) {
     pnl_pct: pnlPct,
     opened_minutes: openedMinutes,
     opened_seconds: openedSeconds,
-    max_hold_seconds: positionMaxHoldSeconds
+    max_hold_seconds: positionMaxHoldSeconds,
+    source_profile: sourceProfile
   };
 }
 
@@ -283,7 +305,9 @@ async function runBinancePositionManagerCycle(db) {
     max_hold_minutes: BINANCE_POSITION_MAX_HOLD_MINUTES,
     early_exit_min_profit_pct: BINANCE_EARLY_EXIT_MIN_PROFIT_PCT,
     stale_exit_enabled: BINANCE_POSITION_STALE_EXIT_ENABLED,
-    stale_exit_ratio: BINANCE_POSITION_STALE_EXIT_RATIO
+    stale_exit_ratio: BINANCE_POSITION_STALE_EXIT_RATIO,
+    high_conviction_stale_exit_enabled: BINANCE_POSITION_HC_STALE_EXIT_ENABLED,
+    high_conviction_stale_exit_ratio: BINANCE_POSITION_HC_STALE_EXIT_RATIO
   };
 
   await db.collection('binance_position_manager_logs').add({
