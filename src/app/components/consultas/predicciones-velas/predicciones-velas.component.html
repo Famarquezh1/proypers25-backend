@@ -302,6 +302,17 @@
       <span class="monitor-pill">Ranking recomendado: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.minRankingRecommended) }}</strong></span>
     </div>
 
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Expectancy Stability Score: <strong>{{ formatScoreOrNA(signalIntelLearningSummary.expectancyStabilityScore) }}/100</strong></span>
+      <span class="monitor-pill">Counterfactual expectancy: <strong>{{ formatEdge(signalIntelLearningSummary.counterfactualExpectancy) }}</strong></span>
+      <span class="monitor-pill">Counterfactual win rate: <strong>{{ formatPctOrNA(signalIntelLearningSummary.counterfactualWinRate) }}</strong></span>
+      <span class="monitor-pill">Missed alpha: <strong>{{ formatEdge(signalIntelLearningSummary.missedAlpha) }}</strong></span>
+      <span class="monitor-pill">False negative rate: <strong>{{ formatPctOrNA(signalIntelLearningSummary.falseNegativeRate) }}</strong></span>
+      <span class="monitor-pill">Alpha decay rate: <strong>{{ formatEdge(signalIntelLearningSummary.alphaDecayRate) }}</strong></span>
+      <span class="monitor-pill">Expectancy trend: <strong>{{ signalIntelLearningSummary.expectancyTrend }}</strong></span>
+      <span class="monitor-pill">Walk-forward expectancy: <strong>{{ formatEdge(signalIntelLearningSummary.walkforwardExpectancy) }}</strong></span>
+    </div>
+
     <div class="signal-intel-grid" *ngIf="!signalIntelError">
       <div class="signal-intel-card">
         <h4>Adaptive calibration</h4>
@@ -528,6 +539,136 @@
             <span>{{ formatEdge(b.expectancy) }}</span>
             <span>{{ formatEdge(b.mfe) }}</span>
             <span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Counterfactual Learning</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Counterfactual expectancy</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.counterfactualExpectancy) }}</span>
+            <span>Counterfactual win rate</span>
+            <span>{{ formatPctOrNA(signalIntelLearningSummary.counterfactualWinRate) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Missed alpha</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.missedAlpha) }}</span>
+            <span>False negative rate</span>
+            <span>{{ formatPctOrNA(signalIntelLearningSummary.falseNegativeRate) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Expectancy Stability</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Stability score</span>
+            <span>{{ formatScoreOrNA(signalIntelLearningSummary.expectancyStabilityScore) }}/100</span>
+            <span>Variance</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.expectancyVariance) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Walk-forward expectancy</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.walkforwardExpectancy) }}</span>
+            <span>Walk-forward edge decay</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.walkforwardEdgeDecay) }}</span>
+          </div>
+        </div>
+        <div class="signal-intel-empty" *ngIf="!signalIntelWeeklyExpectancy.length">Sin ventanas semanales.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelWeeklyExpectancy.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Semana</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let item of signalIntelWeeklyExpectancy">
+            <span>{{ item.iso_week }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatPctOrNA(item.win_rate) }}</span>
+            <span>{{ formatEdge(item.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Regime Learning</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelLearningRegimes.length">Sin datos.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelLearningRegimes.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
+            <span>Régimen</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>Densidad</span><span></span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelLearningRegimes">
+            <span>{{ item.regime }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatPctOrNA(item.win_rate) }}</span>
+            <span>{{ formatEdge(item.expectancy) }}</span>
+            <span>{{ formatPctOrNA(item.signal_density) }}</span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Confidence Calibration</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelConfidenceCalibration.length">Sin buckets.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelConfidenceCalibration.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Bucket</span><span>Total</span><span>Win rate real</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let item of signalIntelConfidenceCalibration">
+            <span>{{ item.bucket }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatPctOrNA(item.win_rate) }}</span>
+            <span>{{ formatEdge(item.expectancy) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Alpha Decay & Survivorship</h4>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Alpha decay rate</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.alphaDecayRate) }}</span>
+            <span>Rolling delta</span>
+            <span>{{ formatEdge(signalIntelLearningSummary.rollingExpectancyDelta) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Trend</span>
+            <span class="signal-intel-span-3">{{ signalIntelLearningSummary.expectancyTrend }}</span>
+          </div>
+        </div>
+        <div class="signal-intel-empty" *ngIf="!signalIntelSymbolSurvivorship.length">Sin símbolos evaluados.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelSymbolSurvivorship.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
+            <span>Símbolo</span><span>Total</span><span>Expectancy reciente</span><span>Trend</span><span>Edge decay</span><span>Degradado</span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelSymbolSurvivorship">
+            <span>{{ item.symbol }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatEdge(item.recent_expectancy) }}</span>
+            <span>{{ formatEdge(item.trend) }}</span>
+            <span>{{ formatEdge(item.edge_decay) }}</span>
+            <span>{{ item.degraded ? 'Sí' : 'No' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Expectancy Stability Matrix</h4>
+        <div class="signal-intel-empty" *ngIf="!signalIntelMatrixCells.length">Sin celdas suficientes.</div>
+        <div class="signal-intel-table" *ngIf="signalIntelMatrixCells.length">
+          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
+            <span>Símbolo</span><span>Régimen</span><span>Rank bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
+          </div>
+          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelMatrixCells">
+            <span>{{ item.symbol }}</span>
+            <span>{{ item.regime }}</span>
+            <span>{{ item.rank_bucket }}</span>
+            <span>{{ item.total }}</span>
+            <span>{{ formatPctOrNA(item.win_rate) }}</span>
+            <span>{{ formatEdge(item.expectancy) }}</span>
           </div>
         </div>
       </div>

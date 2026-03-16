@@ -159,4 +159,44 @@ export class VelasService {
     if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
     return this.http.get<any>(`${this.apiUrl}/api/velas/context-intelligence-summary`, { params: httpParams });
   }
+
+  obtenerCounterfactualLearning(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/counterfactual-learning`, { params: httpParams });
+  }
+
+  obtenerExpectancyStability(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/expectancy-stability`, { params: httpParams });
+  }
+
+  obtenerRegimeLearning(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/regime-learning`, { params: httpParams });
+  }
+
+  obtenerAlphaDecay(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/alpha-decay`, { params: httpParams });
+  }
+
+  obtenerConfidenceCalibration(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.days) httpParams = httpParams.set('days', String(params.days));
+    if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/confidence-calibration`, { params: httpParams });
+  }
 }

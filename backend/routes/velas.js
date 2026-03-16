@@ -19,6 +19,10 @@ const {
 const {
   getSignalIntelligenceDashboardSnapshot
 } = require('../lib/signalIntelligenceDashboard');
+const {
+  STATISTICAL_LEARNING_ENABLED,
+  getStatisticalLearningSnapshot
+} = require('../lib/statisticalLearningEngine');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
 const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
 const db = require('../firebase-admin-config');
@@ -329,6 +333,45 @@ router.get('/signal-intelligence-dashboard', async (req, res) => {
     });
   }
 });
+
+async function respondLearningSection(req, res, sectionName) {
+  try {
+    if (!STATISTICAL_LEARNING_ENABLED) {
+      return res.json({
+        ok: true,
+        disabled: true,
+        report: { enabled: false, reason: 'STATISTICAL_LEARNING_ENABLED=false' }
+      });
+    }
+
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    const days = Math.max(1, Math.min(365, Number(req.query.days || process.env.SIGNAL_INTEL_AUDIT_DAYS || 30)));
+    const maxDocs = Math.max(
+      1000,
+      Math.min(300000, Number(req.query.maxDocs || process.env.STATISTICAL_LEARNING_MAX_DOCS || 25000))
+    );
+    const snapshot = await getStatisticalLearningSnapshot({ refresh, days, maxDocs });
+
+    return res.json({
+      ok: true,
+      cached: snapshot.cached,
+      source: snapshot.source,
+      fetched_at: snapshot.payload?.generated_at || new Date().toISOString(),
+      report: sectionName ? snapshot.payload?.[sectionName] || {} : snapshot.payload
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'statistical_learning_failed'
+    });
+  }
+}
+
+router.get('/counterfactual-learning', async (req, res) => respondLearningSection(req, res, 'counterfactual_learning'));
+router.get('/expectancy-stability', async (req, res) => respondLearningSection(req, res, 'expectancy_stability'));
+router.get('/regime-learning', async (req, res) => respondLearningSection(req, res, 'regime_learning'));
+router.get('/alpha-decay', async (req, res) => respondLearningSection(req, res, 'alpha_decay'));
+router.get('/confidence-calibration', async (req, res) => respondLearningSection(req, res, 'confidence_calibration'));
 
 router.get('/audit-suppressed-validation', async (req, res) => {
   try {

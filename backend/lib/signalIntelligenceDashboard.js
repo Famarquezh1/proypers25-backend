@@ -10,6 +10,10 @@ const {
 const {
   getAdaptiveSystemProfiles
 } = require('./adaptive_calibration_engine');
+const {
+  refreshStatisticalLearningSnapshot,
+  getStatisticalLearningSnapshot
+} = require('./statisticalLearningEngine');
 
 const SNAPSHOT_COLLECTION = 'analytics_snapshots';
 const SNAPSHOT_DOC_ID = 'signal_intelligence_dashboard_v1';
@@ -263,6 +267,17 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     }
   };
 
+  const learningSnapshot = await refreshStatisticalLearningSnapshot({
+    ...options,
+    dashboardPayload: payload,
+    days: intelligenceDays,
+    maxDocs: intelligenceMaxDocs
+  });
+  payload.learning = {
+    fetched_at: fetchedAt,
+    report: learningSnapshot
+  };
+
   await persistSnapshot(payload);
   snapshotCache = {
     fetchedAt: Date.now(),
@@ -278,6 +293,13 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
   const memFresh = snapshotCache.payload && now - snapshotCache.fetchedAt < SNAPSHOT_MEM_TTL_MS;
 
   if (!refresh && memFresh) {
+    if (!snapshotCache.payload.learning) {
+      const learningSnapshot = await getStatisticalLearningSnapshot(options);
+      snapshotCache.payload.learning = {
+        fetched_at: learningSnapshot.payload?.generated_at || new Date().toISOString(),
+        report: learningSnapshot.payload
+      };
+    }
     return {
       payload: snapshotCache.payload,
       cached: true,
@@ -288,6 +310,13 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
   if (!refresh) {
     const persisted = await loadPersistedSnapshot();
     if (persisted) {
+      if (!persisted.learning) {
+        const learningSnapshot = await getStatisticalLearningSnapshot(options);
+        persisted.learning = {
+          fetched_at: learningSnapshot.payload?.generated_at || new Date().toISOString(),
+          report: learningSnapshot.payload
+        };
+      }
       return {
         payload: persisted,
         cached: true,

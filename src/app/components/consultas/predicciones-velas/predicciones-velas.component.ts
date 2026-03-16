@@ -247,6 +247,55 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     bestBucketWinRate: null as number | null,
     bestBucketExpectancy: null as number | null
   };
+  signalIntelLearningSummary = {
+    expectancyStabilityScore: null as number | null,
+    expectancyVariance: null as number | null,
+    counterfactualExpectancy: null as number | null,
+    counterfactualWinRate: null as number | null,
+    missedAlpha: null as number | null,
+    falseNegativeRate: null as number | null,
+    alphaDecayRate: null as number | null,
+    rollingExpectancyDelta: null as number | null,
+    expectancyTrend: 'N/A',
+    walkforwardExpectancy: null as number | null,
+    walkforwardWinRate: null as number | null,
+    walkforwardEdgeDecay: null as number | null
+  };
+  signalIntelLearningRegimes: Array<{
+    regime: string;
+    total: number;
+    win_rate: number | null;
+    expectancy: number | null;
+    signal_density: number | null;
+  }> = [];
+  signalIntelConfidenceCalibration: Array<{
+    bucket: string;
+    total: number;
+    win_rate: number | null;
+    expectancy: number | null;
+  }> = [];
+  signalIntelMatrixCells: Array<{
+    symbol: string;
+    regime: string;
+    rank_bucket: string;
+    total: number;
+    expectancy: number | null;
+    win_rate: number | null;
+  }> = [];
+  signalIntelSymbolSurvivorship: Array<{
+    symbol: string;
+    total: number;
+    recent_expectancy: number | null;
+    trend: number | null;
+    edge_decay: number | null;
+    degraded: boolean;
+  }> = [];
+  signalIntelWeeklyExpectancy: Array<{
+    iso_week: string;
+    total: number;
+    expectancy: number | null;
+    win_rate: number | null;
+  }> = [];
   lastEmissionAt = '—';
   lastEmissionCount = 0;
   nowTs = Date.now();
@@ -770,6 +819,15 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           const contextIntelligenceSummary = report?.context_intelligence_summary || {};
           const rankingProfile = adaptiveProfiles?.ranking_profile || {};
           const contextProfile = adaptiveProfiles?.context_profile || {};
+          const learning = snapshot?.learning?.report || {};
+          const expectancyStability = learning?.expectancy_stability || {};
+          const counterfactualLearning = learning?.counterfactual_learning || {};
+          const alphaDecay = learning?.alpha_decay || {};
+          const walkforward = learning?.walkforward_validation || {};
+          const regimeLearning = learning?.regime_learning || {};
+          const confidenceCalibration = learning?.confidence_calibration || {};
+          const matrix = learning?.expectancy_stability_matrix || {};
+          const survivorship = learning?.symbol_survivorship || {};
 
           this.signalIntelUpdatedAt = this.formatFirestoreDate(
             dashboard?.fetched_at ||
@@ -942,6 +1000,65 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
                 win_rate: this.toRate(item?.win_rate),
                 expectancy: this.toNullableNum(item?.expectancy),
                 mfe: this.toNullableNum(item?.MFE)
+              }))
+            : [];
+          this.signalIntelLearningSummary = {
+            expectancyStabilityScore: this.toNullableNum(expectancyStability?.expectancy_stability_score),
+            expectancyVariance: this.toNullableNum(expectancyStability?.expectancy_variance),
+            counterfactualExpectancy: this.toNullableNum(counterfactualLearning?.counterfactual_expectancy),
+            counterfactualWinRate: this.toRate(counterfactualLearning?.counterfactual_win_rate),
+            missedAlpha: this.toNullableNum(counterfactualLearning?.missed_alpha),
+            falseNegativeRate: this.toRate(counterfactualLearning?.false_negative_rate),
+            alphaDecayRate: this.toNullableNum(alphaDecay?.alpha_decay_rate),
+            rollingExpectancyDelta: this.toNullableNum(alphaDecay?.rolling_expectancy_delta),
+            expectancyTrend: String(alphaDecay?.expectancy_trend || 'N/A'),
+            walkforwardExpectancy: this.toNullableNum(walkforward?.walkforward_expectancy),
+            walkforwardWinRate: this.toRate(walkforward?.walkforward_win_rate),
+            walkforwardEdgeDecay: this.toNullableNum(walkforward?.walkforward_edge_decay)
+          };
+          this.signalIntelLearningRegimes = Array.isArray(regimeLearning?.regimes)
+            ? regimeLearning.regimes.map((item: any) => ({
+                regime: String(item?.regime || 'unknown'),
+                total: Number(item?.total || 0),
+                win_rate: this.toRate(item?.win_rate),
+                expectancy: this.toNullableNum(item?.expectancy),
+                signal_density: this.toRate(item?.signal_density)
+              }))
+            : [];
+          this.signalIntelConfidenceCalibration = Array.isArray(confidenceCalibration?.confidence_bucket_accuracy)
+            ? confidenceCalibration.confidence_bucket_accuracy.map((item: any) => ({
+                bucket: String(item?.bucket || 'unknown'),
+                total: Number(item?.total || 0),
+                win_rate: this.toRate(item?.real_winrate_per_confidence_bucket),
+                expectancy: this.toNullableNum(item?.expectancy)
+              }))
+            : [];
+          this.signalIntelMatrixCells = Array.isArray(matrix?.cells)
+            ? matrix.cells.slice(0, 10).map((item: any) => ({
+                symbol: String(item?.symbol || 'UNKNOWN'),
+                regime: String(item?.regime || 'unknown'),
+                rank_bucket: String(item?.rank_bucket || 'unknown'),
+                total: Number(item?.total || 0),
+                expectancy: this.toNullableNum(item?.expectancy),
+                win_rate: this.toRate(item?.win_rate)
+              }))
+            : [];
+          this.signalIntelSymbolSurvivorship = Array.isArray(survivorship?.symbols)
+            ? survivorship.symbols.slice(0, 8).map((item: any) => ({
+                symbol: String(item?.symbol || 'UNKNOWN'),
+                total: Number(item?.total || 0),
+                recent_expectancy: this.toNullableNum(item?.recent_expectancy),
+                trend: this.toNullableNum(item?.symbol_expectancy_trend),
+                edge_decay: this.toNullableNum(item?.symbol_edge_decay),
+                degraded: Boolean(item?.symbol_degraded)
+              }))
+            : [];
+          this.signalIntelWeeklyExpectancy = Array.isArray(expectancyStability?.weekly_windows)
+            ? expectancyStability.weekly_windows.slice(-8).reverse().map((item: any) => ({
+                iso_week: String(item?.iso_week || 'unknown'),
+                total: Number(item?.total || 0),
+                expectancy: this.toNullableNum(item?.expectancy),
+                win_rate: this.toRate(item?.win_rate)
               }))
             : [];
         },
