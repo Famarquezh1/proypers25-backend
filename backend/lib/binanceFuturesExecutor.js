@@ -910,7 +910,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const executionAudit = buildExecutionAudit(signalData, new Date());
   const expectedDurationWindow = resolveExpectedDurationWindow(signalData);
   const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
-    signalData,
+    signalData: {
+      ...signalData,
+      source_profile: sourceProfile,
+      source: options.source || sourceProfile
+    },
     adaptiveProfile: adaptiveExecutionProfile
   });
 

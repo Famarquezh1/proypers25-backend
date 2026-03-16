@@ -22,6 +22,13 @@ const BINANCE_POSITION_HC_STALE_EXIT_RATIO = Math.max(
   BINANCE_POSITION_STALE_EXIT_RATIO,
   Number(process.env.BINANCE_POSITION_HC_STALE_EXIT_RATIO || 0.85)
 );
+const BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT = Number(
+  process.env.BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT || 0.05
+);
+const BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO = Math.max(
+  1,
+  Number(process.env.BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO || 1.35)
+);
 
 function resolveSourceProfile(position) {
   return String(position?.source_profile || position?.source || 'event_emitted').toLowerCase();
@@ -75,6 +82,31 @@ function resolvePositionMaxHoldSeconds(position) {
   }
 
   return BINANCE_POSITION_MAX_HOLD_MINUTES * 60;
+}
+
+function maybeExtendHighConvictionHold(position, pnlPct, positionMaxHoldSeconds) {
+  const sourceProfile = resolveSourceProfile(position);
+  if (sourceProfile !== 'high_conviction') return null;
+
+  const extensionCount = Number(position?.hold_extension_count || 0);
+  if (extensionCount >= 1) return null;
+
+  if (!Number.isFinite(pnlPct) || pnlPct < BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT) {
+    return null;
+  }
+
+  const adaptiveHorizon = Number(position?.adaptive_horizon_seconds || 0);
+  const extendedBase = Math.round(positionMaxHoldSeconds * BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO);
+  const extendedMax = adaptiveHorizon > 0
+    ? Math.max(extendedBase, Math.round(adaptiveHorizon * 0.75))
+    : extendedBase;
+
+  if (extendedMax <= positionMaxHoldSeconds) return null;
+
+  return {
+    extended_hold_seconds: extendedMax,
+    extension_count: extensionCount + 1
+  };
 }
 
 async function updateExecutionIntentOutcome(db, position, payload) {
@@ -164,6 +196,20 @@ function shouldEarlyExit(position, config, markPrice) {
   }
 
   if (openedSeconds >= positionMaxHoldSeconds) {
+    const holdExtension = maybeExtendHighConvictionHold(position, pnlPct, positionMaxHoldSeconds);
+    if (holdExtension) {
+      return {
+        close: false,
+        reason: 'extend_high_conviction_hold',
+        pnl_pct: pnlPct,
+        opened_minutes: openedMinutes,
+        opened_seconds: openedSeconds,
+        max_hold_seconds: holdExtension.extended_hold_seconds,
+        source_profile: sourceProfile,
+        hold_extension_count: holdExtension.extension_count
+      };
+    }
+
     return {
       close: true,
       reason: 'max_hold_reached',
@@ -222,7 +268,7 @@ async function runBinancePositionManagerCycle(db) {
       const decision = shouldEarlyExit(position, config, markPrice);
 
       if (!decision.close) {
-        await doc.ref.update({
+        const updatePayload = {
           mark_price: markPrice,
           unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
           opened_minutes: Number(decision.opened_minutes.toFixed(2)),
@@ -230,7 +276,16 @@ async function runBinancePositionManagerCycle(db) {
           position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
           manager_last_check_at: nowIso(),
           updated_at: FieldValue.serverTimestamp()
-        });
+        };
+        if (Number.isFinite(Number(decision.hold_extension_count))) {
+          updatePayload.hold_extension_count = Number(decision.hold_extension_count);
+          updatePayload.manager_decision = {
+            close: false,
+            reason: decision.reason,
+            extended_hold_seconds: Number(decision.max_hold_seconds || 0)
+          };
+        }
+        await doc.ref.update(updatePayload);
         skipped += 1;
         continue;
       }
