@@ -5,12 +5,15 @@ const EXECUTION_DISCIPLINE_ENABLED =
   String(process.env.EXECUTION_DISCIPLINE_ENABLED || 'true').toLowerCase() !== 'false';
 const EXECUTION_DISCIPLINE_MODE = String(process.env.EXECUTION_DISCIPLINE_MODE || 'enforce').toLowerCase();
 const ENTRY_WINDOW_SECONDS = Math.max(5, Number(process.env.ENTRY_WINDOW_SECONDS || 20));
+const SOFT_LATE_ENTRY_GRACE_MS = Math.max(1000, Number(process.env.SOFT_LATE_ENTRY_GRACE_MS || 5000));
+const ALLOW_SOFT_LATE_ENTRY = String(process.env.ALLOW_SOFT_LATE_ENTRY || 'false').toLowerCase() === 'true';
 const EARLY_EXIT_TP_RATIO = Math.max(0.1, Math.min(1, Number(process.env.EARLY_EXIT_TP_RATIO || 0.6)));
 const PROFIT_CAPTURE_TARGET = Math.max(0.1, Math.min(1, Number(process.env.PROFIT_CAPTURE_TARGET || 0.4)));
 const SLIPPAGE_THRESHOLD_PCT = Math.max(0.01, Number(process.env.EXECUTION_SLIPPAGE_THRESHOLD_PCT || 0.35));
 const EXECUTION_SCORE_MIN = Math.max(0, Math.min(100, Number(process.env.EXECUTION_SCORE_MIN || 70)));
 const SUMMARY_LOOKBACK_HOURS = Math.max(6, Math.min(24 * 30, Number(process.env.EXECUTION_DISCIPLINE_LOOKBACK_HOURS || 72)));
 const LOG_LIMIT = Math.max(50, Math.min(2000, Number(process.env.EXECUTION_DISCIPLINE_LOG_LIMIT || 500)));
+const SIGNAL_SCAN_LIMIT = Math.max(250, Math.min(30000, Number(process.env.EXECUTION_DISCIPLINE_SIGNAL_SCAN_LIMIT || 5000)));
 
 function nowIso() {
   return new Date().toISOString();
@@ -38,6 +41,44 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, n));
 }
 
+function normalizeConfidenceToPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n <= 1 ? n * 100 : n;
+}
+
+function normalizeValue(value) {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'boolean' || typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeValue(item));
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, entryValue]) => {
+      const normalized = normalizeValue(entryValue);
+      if (normalized !== undefined) {
+        acc[key] = normalized;
+      }
+      return acc;
+    }, {});
+  }
+  return value;
+}
+
+function sameJson(a, b) {
+  return JSON.stringify(normalizeValue(a)) === JSON.stringify(normalizeValue(b));
+}
+
+function resolvePredictionId(signalData = {}) {
+  return signalData?.prediction_id || signalData?.id || null;
+}
+
 function resolveSignalTime(signalData = {}) {
   return (
     parseDateLike(signalData.signal_at) ||
@@ -46,6 +87,239 @@ function resolveSignalTime(signalData = {}) {
     parseDateLike(signalData.ahora) ||
     parseDateLike(signalData.entry_time)
   );
+}
+
+async function findSignalDocRef(db, signalData = {}) {
+  if (!db) return null;
+  const predictionId = resolvePredictionId(signalData);
+  if (!predictionId) return null;
+
+  const directRef = db.collection('velas_predicciones').doc(predictionId);
+  try {
+    const directDoc = await directRef.get();
+    if (directDoc.exists) return directRef;
+  } catch (_) {
+    // fall through to query lookup
+  }
+
+  try {
+    const snap = await db.collection('velas_predicciones').where('prediction_id', '==', predictionId).limit(1).get();
+    if (!snap.empty) {
+      return snap.docs[0].ref;
+    }
+  } catch (_) {
+    return null;
+  }
+
+  return null;
+}
+
+async function mergeSignalExecutionMeta(db, signalData = {}, partialMeta = {}) {
+  const ref = await findSignalDocRef(db, signalData);
+  if (!ref) return false;
+
+  const doc = await ref.get();
+  if (!doc.exists) return false;
+  const current = normalizeValue(doc.data()?.execution_meta || {});
+  const next = normalizeValue({
+    ...current,
+    ...partialMeta
+  });
+
+  if (sameJson(current, next)) {
+    return false;
+  }
+
+  await ref.set(
+    {
+      execution_meta: {
+        ...next,
+        updated_at: FieldValue.serverTimestamp()
+      }
+    },
+    { merge: true }
+  );
+
+  return true;
+}
+
+function classifyLateEntryType(delayMs) {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return 'none';
+  return delayMs <= SOFT_LATE_ENTRY_GRACE_MS ? 'soft' : 'hard';
+}
+
+function resolveOutcomeLabel(signal = {}) {
+  const raw = String(
+    signal?.verification_outcome ||
+      signal?.verification?.verification_outcome ||
+      signal?.verification?.outcome_label ||
+      signal?.status ||
+      ''
+  ).toUpperCase();
+
+  if (raw.includes('WIN') || raw === 'VALIDADO') return 'WIN';
+  if (raw.includes('LOSS') || raw === 'FALLIDO') return 'LOSS';
+  if (raw.includes('PARTIAL') || raw.includes('PARCIAL')) return 'PARTIAL';
+  return raw || 'PENDIENTE';
+}
+
+function classifyBinanceExecution(signal = {}) {
+  const exec = signal?.binance_execution || {};
+  const reason = String(exec?.reason || '').toLowerCase();
+
+  if (!exec || Object.keys(exec).length === 0) return 'no_attempt';
+  if (exec.executed) return 'executed';
+  if (exec.dry_run) return 'dry_run';
+  if (reason.startsWith('error:')) return 'failed_execution';
+  if (reason === 'not_attempted' || reason === 'signal_not_emitted' || reason === 'neutral_direction' || reason === 'already_processed') {
+    return 'no_attempt';
+  }
+  return 'omitted';
+}
+
+function resolveMissedOpportunityType(signal = {}) {
+  const reason = String(signal?.binance_execution?.reason || '').toLowerCase();
+  if (reason === 'late_entry_blocked') return 'late_entry';
+  if (reason === 'execution_protection_mode') return 'execution_protection';
+  return null;
+}
+
+async function summarizeSignalExecutionMeta(db) {
+  const snapshot = await db
+    .collection('velas_predicciones')
+    .orderBy('timestamp', 'desc')
+    .limit(SIGNAL_SCAN_LIMIT)
+    .get();
+
+  let batch = db.batch();
+  let batchOps = 0;
+  let updates = 0;
+  let analyzedSignals = 0;
+  let omittedSignals = 0;
+  let lateEntryBlocked = 0;
+  let softLate = 0;
+  let hardLate = 0;
+  let missedWins = 0;
+  let missedLosses = 0;
+  const delaySamples = [];
+
+  const flushBatch = async () => {
+    if (batchOps === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    batchOps = 0;
+  };
+
+  for (const doc of snapshot.docs) {
+    const signal = { id: doc.id, ...doc.data() };
+    const executionState = classifyBinanceExecution(signal);
+    const currentMeta = normalizeValue(signal.execution_meta || {});
+    const reason = String(signal?.binance_execution?.reason || '').toLowerCase();
+    const rawDelayMs = toNum(
+      currentMeta?.execution_delay_ms ??
+        signal?.binance_execution?.execution_meta?.execution_delay_ms ??
+        signal?.binance_execution?.execution_discipline?.execution_delay_ms ??
+        signal?.binance_execution?.execution_discipline?.late_by_ms,
+      null
+    );
+    const lateType = currentMeta?.late_entry_type && currentMeta?.late_entry_type !== 'none'
+      ? currentMeta.late_entry_type
+      : reason === 'late_entry_blocked'
+        ? classifyLateEntryType(rawDelayMs)
+        : 'none';
+    const outcome = resolveOutcomeLabel(signal);
+    const omitted = executionState === 'omitted';
+    const missedType = omitted ? resolveMissedOpportunityType(signal) : null;
+    const nextMeta = normalizeValue({
+      late_entry_type: lateType,
+      execution_delay_ms: rawDelayMs,
+      missed_opportunity: omitted && outcome === 'WIN',
+      missed_opportunity_type: missedType,
+      would_have_been_win: omitted && outcome === 'WIN',
+      would_have_been_loss: omitted && outcome === 'LOSS'
+    });
+
+    if (!sameJson(currentMeta, nextMeta)) {
+      batch.set(
+        doc.ref,
+        {
+          execution_meta: {
+            ...nextMeta,
+            updated_at: FieldValue.serverTimestamp()
+          }
+        },
+        { merge: true }
+      );
+      batchOps += 1;
+      updates += 1;
+
+      if (omitted && (outcome === 'WIN' || outcome === 'LOSS')) {
+        const eventPayload = {
+          enabled: EXECUTION_DISCIPLINE_ENABLED,
+          mode: EXECUTION_DISCIPLINE_MODE,
+          type: 'missed_opportunity',
+          event: outcome === 'WIN' ? 'missed_opportunity_win' : 'missed_opportunity_loss',
+          blocked: false,
+          prediction_id: signal.id,
+          symbol: signal.simbolo || signal.symbol || null,
+          execution_delay_ms: rawDelayMs,
+          details: {
+            missed_opportunity: outcome === 'WIN',
+            missed_opportunity_type: missedType,
+            late_entry_type: lateType,
+            verification_outcome: outcome
+          },
+          created_at: FieldValue.serverTimestamp()
+        };
+        batch.set(db.collection('execution_events').doc(), eventPayload);
+        batch.set(db.collection('execution_discipline_logs').doc(), eventPayload);
+        batchOps += 2;
+      }
+
+      if (batchOps >= 400) {
+        await flushBatch();
+      }
+    }
+
+    if (signal?.binance_execution) {
+      analyzedSignals += 1;
+    }
+    if (omitted) {
+      omittedSignals += 1;
+      if (outcome === 'WIN') missedWins += 1;
+      if (outcome === 'LOSS') missedLosses += 1;
+    }
+    if (reason === 'late_entry_blocked') {
+      lateEntryBlocked += 1;
+      if (lateType === 'soft') softLate += 1;
+      if (lateType === 'hard') hardLate += 1;
+    }
+    if (Number.isFinite(rawDelayMs)) {
+      delaySamples.push(rawDelayMs);
+    }
+  }
+
+  await flushBatch();
+
+  const executionDelayAvgMs = delaySamples.length
+    ? delaySamples.reduce((sum, value) => sum + value, 0) / delaySamples.length
+    : null;
+
+  return {
+    signal_scan_limit: SIGNAL_SCAN_LIMIT,
+    analyzed_signals: analyzedSignals,
+    omitted_signals: omittedSignals,
+    missed_wins: missedWins,
+    missed_losses: missedLosses,
+    missed_win_rate: omittedSignals > 0 ? missedWins / omittedSignals : null,
+    missed_loss_rate: omittedSignals > 0 ? missedLosses / omittedSignals : null,
+    late_entry_blocked: lateEntryBlocked,
+    late_entry_block_rate: analyzedSignals > 0 ? lateEntryBlocked / analyzedSignals : null,
+    soft_late_ratio: lateEntryBlocked > 0 ? softLate / lateEntryBlocked : null,
+    hard_late_ratio: lateEntryBlocked > 0 ? hardLate / lateEntryBlocked : null,
+    execution_delay_avg_ms: executionDelayAvgMs,
+    updated_signals: updates
+  };
 }
 
 function resolveExpectedTpPct(entity = {}) {
@@ -125,32 +399,62 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
 
   const signalTime = resolveSignalTime(signalData);
   const now = new Date();
-  const lateBySeconds =
+  const signalAgeMs =
     signalTime && Number.isFinite(signalTime.getTime())
-      ? (now.getTime() - signalTime.getTime()) / 1000
+      ? now.getTime() - signalTime.getTime()
       : null;
-  if (lateBySeconds != null && lateBySeconds > ENTRY_WINDOW_SECONDS) {
+  const entryWindowMs = ENTRY_WINDOW_SECONDS * 1000;
+  const lateBeyondWindowMs =
+    Number.isFinite(signalAgeMs) && signalAgeMs > entryWindowMs ? signalAgeMs - entryWindowMs : 0;
+  const lateEntryType = classifyLateEntryType(lateBeyondWindowMs);
+  const confidencePct = normalizeConfidenceToPct(signalData?.confianza ?? signalData?.confidence ?? intent?.confidence);
+  const allowSoftLateEntry =
+    lateEntryType === 'soft' &&
+    ALLOW_SOFT_LATE_ENTRY &&
+    Number.isFinite(confidencePct) &&
+    confidencePct >= 97;
+
+  if (lateEntryType !== 'none') {
     const details = {
       signal_time: signalTime.toISOString(),
       checked_at: now.toISOString(),
-      late_by_seconds: Math.round(lateBySeconds * 1000) / 1000,
-      entry_window_seconds: ENTRY_WINDOW_SECONDS
+      signal_age_ms: signalAgeMs,
+      execution_delay_ms: lateBeyondWindowMs,
+      late_by_seconds: Math.round((lateBeyondWindowMs / 1000) * 1000) / 1000,
+      entry_window_seconds: ENTRY_WINDOW_SECONDS,
+      late_entry_type: lateEntryType,
+      confidence_pct: confidencePct,
+      grace_allowed: allowSoftLateEntry
     };
+    await mergeSignalExecutionMeta(db, signalData, {
+      late_entry_type: lateEntryType,
+      execution_delay_ms: lateBeyondWindowMs,
+      missed_opportunity: false,
+      missed_opportunity_type: allowSoftLateEntry ? null : 'late_entry',
+      would_have_been_win: false,
+      would_have_been_loss: false
+    });
     await logExecutionDiscipline(db, {
       type: 'entry_control',
-      event: 'late_entry_blocked',
-      blocked: isEnforceMode(),
+      event: allowSoftLateEntry ? 'late_entry_soft_allowed' : 'late_entry_blocked',
+      blocked: isEnforceMode() && !allowSoftLateEntry,
       source_profile: sourceProfile,
       symbol: intent.symbol || signalData.symbol || signalData.simbolo || null,
-      prediction_id: signalData.prediction_id || signalData.id || null,
+      prediction_id: resolvePredictionId(signalData),
+      execution_delay_ms: lateBeyondWindowMs,
       details
     });
     return {
-      blocked: isEnforceMode(),
-      reason: 'late_entry_blocked',
+      blocked: isEnforceMode() && !allowSoftLateEntry,
+      reason: allowSoftLateEntry ? null : 'late_entry_blocked',
       details
     };
   }
+
+  await mergeSignalExecutionMeta(db, signalData, {
+    late_entry_type: 'none',
+    execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null
+  });
 
   const executionScore = await readCurrentExecutionScore(db);
   if (executionScore != null && executionScore < EXECUTION_SCORE_MIN) {
@@ -158,13 +462,22 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       execution_score: executionScore,
       minimum_required: EXECUTION_SCORE_MIN
     };
+    await mergeSignalExecutionMeta(db, signalData, {
+      late_entry_type: 'none',
+      execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
+      missed_opportunity: false,
+      missed_opportunity_type: 'execution_protection',
+      would_have_been_win: false,
+      would_have_been_loss: false
+    });
     await logExecutionDiscipline(db, {
       type: 'entry_control',
       event: 'execution_protection_mode',
       blocked: isEnforceMode(),
       source_profile: sourceProfile,
       symbol: intent.symbol || signalData.symbol || signalData.simbolo || null,
-      prediction_id: signalData.prediction_id || signalData.id || null,
+      prediction_id: resolvePredictionId(signalData),
+      execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
       details
     });
     return {
@@ -179,7 +492,10 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
     reason: null,
     details: {
       execution_score: executionScore,
-      entry_window_seconds: ENTRY_WINDOW_SECONDS
+      entry_window_seconds: ENTRY_WINDOW_SECONDS,
+      execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
+      late_entry_type: 'none',
+      allow_soft_late_entry: ALLOW_SOFT_LATE_ENTRY
     }
   };
 }
@@ -215,7 +531,7 @@ async function evaluateFilledOrderDiscipline({
       blocked: isEnforceMode(),
       source_profile: sourceProfile,
       symbol: intent.symbol || signalData.symbol || signalData.simbolo || null,
-      prediction_id: signalData.prediction_id || signalData.id || null,
+      prediction_id: resolvePredictionId(signalData),
       details
     });
     return {
@@ -363,6 +679,7 @@ async function getExecutionDisciplineSummary(db) {
   });
 
   const currentScore = await readCurrentExecutionScore(db);
+  const signalMetrics = await summarizeSignalExecutionMeta(db);
   const blockedRows = rows.filter((row) => row.blocked);
   const byEvent = rows.reduce((acc, row) => {
     acc[row.event] = (acc[row.event] || 0) + 1;
@@ -385,6 +702,8 @@ async function getExecutionDisciplineSummary(db) {
     enabled: EXECUTION_DISCIPLINE_ENABLED,
     mode: EXECUTION_DISCIPLINE_MODE,
     entry_window_seconds: ENTRY_WINDOW_SECONDS,
+    allow_soft_late_entry: ALLOW_SOFT_LATE_ENTRY,
+    soft_late_entry_grace_ms: SOFT_LATE_ENTRY_GRACE_MS,
     profit_capture_target: PROFIT_CAPTURE_TARGET,
     early_exit_tp_ratio: EARLY_EXIT_TP_RATIO,
     slippage_threshold_pct: SLIPPAGE_THRESHOLD_PCT,
@@ -394,7 +713,8 @@ async function getExecutionDisciplineSummary(db) {
     total_events: rows.length,
     blocked_events: blockedRows.length,
     event_breakdown: byEvent,
-    metrics
+    metrics,
+    signal_metrics: signalMetrics
   };
 }
 
@@ -402,6 +722,7 @@ module.exports = {
   EXECUTION_DISCIPLINE_ENABLED,
   EXECUTION_DISCIPLINE_MODE,
   ENTRY_WINDOW_SECONDS,
+  ALLOW_SOFT_LATE_ENTRY,
   EARLY_EXIT_TP_RATIO,
   PROFIT_CAPTURE_TARGET,
   SLIPPAGE_THRESHOLD_PCT,

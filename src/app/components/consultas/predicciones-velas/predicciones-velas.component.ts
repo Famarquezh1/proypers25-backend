@@ -69,6 +69,11 @@ interface SymbolChipItem {
   total: number;
 }
 
+interface ExecutionBadgeItem {
+  label: string;
+  className: string;
+}
+
 @Component({
   selector: 'app-predicciones-velas',
   standalone: true,
@@ -148,6 +153,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     historial: false
   };
   historyExpandedDates: Record<string, boolean> = {};
+  selectedHistorySymbol = '';
+  private latestPredictionsCache: any[] = [];
   highConvictionStats = {
     total: 0,
     wins: 0,
@@ -216,6 +223,16 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     realExpectancy: null as number | null,
     modelWinRate: null as number | null,
     dataSource: 'N/A'
+  };
+  signalIntelExecutionMetaSummary = {
+    missedWins: 0,
+    missedLosses: 0,
+    lateEntryRate: null as number | null,
+    executionDelayAvgMs: null as number | null,
+    softLateRatio: null as number | null,
+    hardLateRatio: null as number | null,
+    missedWinRate: null as number | null,
+    missedLossRate: null as number | null
   };
   signalIntelExecutionTopSymbols: SuppressedSymbolEdgeItem[] = [];
   signalIntelTopSymbols: Array<{
@@ -443,6 +460,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return String(item?.symbol || item?.simbolo || _index);
   }
 
+  trackByBadge(_index: number, item: ExecutionBadgeItem): string {
+    return `${item.className}-${item.label}`;
+  }
+
   private restoreUiState(): void {
     if (typeof localStorage === 'undefined') return;
     const compact = localStorage.getItem(this.compactStorageKey);
@@ -466,6 +487,20 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     localStorage.setItem(this.panelStorageKey, JSON.stringify(this.openSections));
   }
 
+  private applyHistorySymbolFilter(list: any[]): any[] {
+    if (!this.selectedHistorySymbol) return list || [];
+    return (list || []).filter(
+      (item) => String(item?.simbolo || item?.symbol || '').toUpperCase() === this.selectedHistorySymbol
+    );
+  }
+
+  toggleHistorySymbolFilter(symbol: string): void {
+    this.selectedHistorySymbol = this.selectedHistorySymbol === symbol ? '' : symbol;
+    this.historialGroups$ = of(
+      this.groupPredictionsByDate(this.applyHistorySymbolFilter(this.latestPredictionsCache))
+    );
+  }
+
   cargarPredicciones(): void {
     const source$ = this.velasService.obtenerPrediccionesVelas().pipe(
       map((list) =>
@@ -475,11 +510,15 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           return fechaB - fechaA;
         })
       ),
+      map((list) => {
+        this.latestPredictionsCache = list;
+        return list;
+      }),
       shareReplay(1)
     );
     this.predicciones$ = source$;
     this.historialGroups$ = source$.pipe(
-      map((list) => this.groupPredictionsByDate(list))
+      map((list) => this.groupPredictionsByDate(this.applyHistorySymbolFilter(list)))
     );
     this.symbolStatusChips$ = source$.pipe(
       map((list) => this.buildSymbolStatusChips(list))
@@ -1023,7 +1062,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
             deltaVsEmitted: this.toNullableNum(suppressedComparative?.delta_expectancy),
             leadTimeAvg: this.toNullableNum(suppressedLeadTime?.lead_time_avg)
           };
-            this.signalIntelExecutionSummary = {
+          this.signalIntelExecutionSummary = {
               signalAdherence: this.toRate(
                 executionDisciplineSnapshot?.metrics?.signal_adherence ??
                   executionDiscipline?.signal_adherence ??
@@ -1064,6 +1103,16 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
             realExpectancy: this.toNullableNum(executionQuality?.real_expectancy),
             modelWinRate: this.toRate(modelEdge?.matched_model_win_rate ?? modelEdge?.model_win_rate),
             dataSource: String(executionReport?.config?.trades_source || 'N/A')
+          };
+          this.signalIntelExecutionMetaSummary = {
+            missedWins: Number(executionDisciplineSnapshot?.signal_metrics?.missed_wins || 0),
+            missedLosses: Number(executionDisciplineSnapshot?.signal_metrics?.missed_losses || 0),
+            lateEntryRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.late_entry_block_rate),
+            executionDelayAvgMs: this.toNullableNum(executionDisciplineSnapshot?.signal_metrics?.execution_delay_avg_ms),
+            softLateRatio: this.toRate(executionDisciplineSnapshot?.signal_metrics?.soft_late_ratio),
+            hardLateRatio: this.toRate(executionDisciplineSnapshot?.signal_metrics?.hard_late_ratio),
+            missedWinRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.missed_win_rate),
+            missedLossRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.missed_loss_rate)
           };
           this.signalIntelAdaptiveProfile = {
             adaptiveTp: this.toNullableNum(adaptiveProfile?.adaptive_tp),
@@ -1363,6 +1412,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return signal?.binance_execution || signal?.linkedPrediction?.binance_execution || null;
   }
 
+  highConvictionExecutionMeta(signal: any): any {
+    return signal?.execution_meta || signal?.linkedPrediction?.execution_meta || null;
+  }
+
   private highConvictionBinanceReason(signal: any): string {
     const exec = this.highConvictionBinanceExecution(signal);
     return String(exec?.reason || '').toLowerCase();
@@ -1391,6 +1444,26 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (status === 'Ya procesada') return 'hc-badge hc-partial';
     if (status === 'Omitida') return 'hc-badge hc-suppressed';
     return 'hc-badge hc-pending';
+  }
+
+  executionBadges(signal: any): ExecutionBadgeItem[] {
+    const meta = signal?.execution_meta || signal?.linkedPrediction?.execution_meta || null;
+    if (!meta) return [];
+
+    const badges: ExecutionBadgeItem[] = [];
+    if (meta.late_entry_type === 'soft') {
+      badges.push({ label: 'Late (soft)', className: 'exec-badge exec-badge-soft' });
+    } else if (meta.late_entry_type === 'hard') {
+      badges.push({ label: 'Late (hard)', className: 'exec-badge exec-badge-hard' });
+    }
+
+    if (meta.would_have_been_win) {
+      badges.push({ label: 'Missed WIN', className: 'exec-badge exec-badge-win' });
+    } else if (meta.would_have_been_loss) {
+      badges.push({ label: 'Missed LOSS', className: 'exec-badge exec-badge-loss' });
+    }
+
+    return badges;
   }
 
   cargarBinanceConfig(): void {

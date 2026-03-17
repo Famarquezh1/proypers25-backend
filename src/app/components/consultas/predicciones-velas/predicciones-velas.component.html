@@ -47,7 +47,8 @@
         *ngFor="let chip of symbolChips; trackBy: trackBySymbol"
         [class.symbol-chip-active]="chip.status === 'activa'"
         [class.symbol-chip-suppressed]="chip.status === 'suprimida'"
-        (click)="candidatoSymbol = chip.symbol"
+        [class.symbol-chip-selected]="selectedHistorySymbol === chip.symbol"
+        (click)="toggleHistorySymbolFilter(chip.symbol)"
       >
         <strong>{{ chip.symbol }}</strong>
         <span>{{ chip.status }}</span>
@@ -327,6 +328,17 @@
     </div>
 
     <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Missed Wins: <strong>{{ signalIntelExecutionMetaSummary.missedWins }}</strong></span>
+      <span class="monitor-pill">Missed Losses: <strong>{{ signalIntelExecutionMetaSummary.missedLosses }}</strong></span>
+      <span class="monitor-pill">Late Entry Rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</strong></span>
+      <span class="monitor-pill">Execution Delay Avg: <strong>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</strong></span>
+      <span class="monitor-pill">Soft late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.softLateRatio) }}</strong></span>
+      <span class="monitor-pill">Hard late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.hardLateRatio) }}</strong></span>
+      <span class="monitor-pill">Missed WIN rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedWinRate) }}</strong></span>
+      <span class="monitor-pill">Missed LOSS rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedLossRate) }}</strong></span>
+    </div>
+
+    <div class="monitoring-stats" *ngIf="!signalIntelError">
       <span class="monitor-pill">Adaptive TP: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveTp) }}</strong></span>
       <span class="monitor-pill">Adaptive SL: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveSl) }}</strong></span>
       <span class="monitor-pill">Adaptive horizon: <strong>{{ formatSecondsOrNA(signalIntelAdaptiveProfile.adaptiveHorizon) }}</strong></span>
@@ -477,6 +489,18 @@
           <div class="signal-intel-row">
             <span>Fuente trades</span>
             <span class="signal-intel-span-3">{{ signalIntelExecutionSummary.dataSource }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Missed wins</span>
+            <span>{{ signalIntelExecutionMetaSummary.missedWins }}</span>
+            <span>Missed losses</span>
+            <span>{{ signalIntelExecutionMetaSummary.missedLosses }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Late entry rate</span>
+            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</span>
+            <span>Delay promedio</span>
+            <span>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</span>
           </div>
         </div>
       </div>
@@ -954,6 +978,11 @@
               <strong>Binance:</strong>
               <span [class]="highConvictionBinanceStatusClass(signal)">{{ highConvictionBinanceStatus(signal) }}</span>
             </div>
+            <div class="exec-badge-row" *ngIf="executionBadges(signal).length">
+              <span *ngFor="let badge of executionBadges(signal); trackBy: trackByBadge" [class]="badge.className">
+                {{ badge.label }}
+              </span>
+            </div>
           </div>
 
           <div *ngIf="isHighConvictionExpanded(signal.id)" class="high-conviction-details">
@@ -991,6 +1020,14 @@
             <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.reason">
               motivo: {{ highConvictionBinanceExecution(signal)?.reason }}
             </div>
+            <div class="small text-muted" *ngIf="highConvictionExecutionMeta(signal)?.execution_delay_ms != null">
+              delay ejecución: {{ highConvictionExecutionMeta(signal)?.execution_delay_ms | number:'1.0-0' }} ms
+            </div>
+            <div class="exec-badge-row" *ngIf="executionBadges(signal).length">
+              <span *ngFor="let badge of executionBadges(signal); trackBy: trackByBadge" [class]="badge.className">
+                {{ badge.label }}
+              </span>
+            </div>
             <div>
               <strong>verification_outcome:</strong>
               {{
@@ -1018,6 +1055,12 @@
     </button>
     <div class="mobile-section-body" *ngIf="isSectionOpen('historial')">
   <ng-container *ngIf="historialGroups$ | async as historyGroups">
+    <div class="history-filter-row" *ngIf="selectedHistorySymbol">
+      <span class="small text-muted">Filtrando historial por {{ selectedHistorySymbol }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="toggleHistorySymbolFilter(selectedHistorySymbol)">
+        Limpiar filtro
+      </button>
+    </div>
     <div class="history-group" *ngFor="let group of historyGroups; trackBy: trackByDateKey">
       <div class="history-group-header">
         <div>
@@ -1134,6 +1177,14 @@
             <span *ngIf="!pred.signal_emitted && pred.suppression_reason">
               Motivo: {{ pred.suppression_reason }}.
             </span>
+          </p>
+          <div class="exec-badge-row" *ngIf="executionBadges(pred).length">
+            <span *ngFor="let badge of executionBadges(pred); trackBy: trackByBadge" [class]="badge.className">
+              {{ badge.label }}
+            </span>
+          </div>
+          <p *ngIf="pred.execution_meta?.execution_delay_ms != null" class="mb-1 text-muted small">
+            Delay ejecución: {{ pred.execution_meta.execution_delay_ms | number:'1.0-0' }} ms
           </p>
           <p *ngIf="pred.exit_window_seconds" class="mb-1 text-muted small">
             Ventana de salida: {{ pred.exit_window_seconds.min }}-{{ pred.exit_window_seconds.max }} seg

@@ -1,10 +1,15 @@
 // scripts/autoaprendizaje.js
 const admin = require('firebase-admin');
-const serviceAccount = require('../serviceAccountKey.json');
+const fs = require('fs');
+const path = require('path');
 
 if (!admin.apps.length) {
+  const serviceAccountPath = path.join(__dirname, '..', 'serviceAccountKey.json');
+  const credential = fs.existsSync(serviceAccountPath)
+    ? admin.credential.cert(require(serviceAccountPath))
+    : admin.credential.applicationDefault();
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential
   });
 }
 

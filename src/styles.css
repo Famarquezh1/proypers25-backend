@@ -318,6 +318,11 @@ body.theme-dark .signal-intel-panel .btn-outline-primary:focus {
   background: #f8fafc;
 }
 
+.symbol-chip-selected {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+  border-color: #60a5fa;
+}
+
 .mobile-section {
   margin-bottom: 1rem;
 }
@@ -358,6 +363,54 @@ body.theme-dark .signal-intel-panel .btn-outline-primary:focus {
   flex-wrap: wrap;
 }
 
+.history-filter-row,
+.exec-badge-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.history-filter-row {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.exec-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  border: 1px solid transparent;
+}
+
+.exec-badge-soft {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.exec-badge-hard {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.exec-badge-win {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fdba74;
+}
+
+.exec-badge-loss {
+  background: #eef2ff;
+  color: #3730a3;
+  border-color: #a5b4fc;
+}
+
 .compact-mode .signal-intel-help,
 .compact-mode .telegram-history-header .text-muted,
 .compact-mode .telegram-history-empty,
@@ -394,6 +447,35 @@ body.theme-dark .symbol-chip-active {
 
 body.theme-dark .symbol-chip-suppressed {
   background: #162033 !important;
+}
+
+body.theme-dark .symbol-chip-selected {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25) !important;
+  border-color: #60a5fa !important;
+}
+
+body.theme-dark .exec-badge-soft {
+  background: #4a3412 !important;
+  color: #fde68a !important;
+  border-color: #92400e !important;
+}
+
+body.theme-dark .exec-badge-hard {
+  background: #3b1212 !important;
+  color: #fecaca !important;
+  border-color: #b91c1c !important;
+}
+
+body.theme-dark .exec-badge-win {
+  background: #3a2412 !important;
+  color: #fdba74 !important;
+  border-color: #c2410c !important;
+}
+
+body.theme-dark .exec-badge-loss {
+  background: #1e1b4b !important;
+  color: #c7d2fe !important;
+  border-color: #6366f1 !important;
 }
 
 @media (max-width: 991px) {

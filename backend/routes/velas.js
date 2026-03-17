@@ -305,7 +305,7 @@ router.get('/audit-signal-intelligence', async (req, res) => {
   }
 });
 
-router.get('/signal-intelligence-dashboard', async (req, res) => {
+async function respondSignalIntelligenceDashboard(req, res) {
   try {
     const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
     const days = Math.max(1, Math.min(365, Number(req.query.days || process.env.SIGNAL_INTEL_AUDIT_DAYS || 30)));
@@ -336,7 +336,10 @@ router.get('/signal-intelligence-dashboard', async (req, res) => {
       error: err?.message || 'signal_intelligence_dashboard_failed'
     });
   }
-});
+}
+
+router.get('/signal-intelligence-dashboard', respondSignalIntelligenceDashboard);
+router.get('/signal-intelligence', respondSignalIntelligenceDashboard);
 
 async function respondLearningSection(req, res, sectionName) {
   try {
@@ -386,7 +389,18 @@ router.get('/execution-discipline-summary', async (_req, res) => {
         report: { enabled: false, reason: 'EXECUTION_DISCIPLINE_ENABLED=false' }
       });
     }
-    const report = await getExecutionDisciplineSummary(db);
+    const refresh = String(_req.query.refresh || '').toLowerCase() === 'true';
+    let report = null;
+
+    if (!refresh) {
+      const snapshot = await getSignalIntelligenceDashboardSnapshot({ refresh: false });
+      report = snapshot?.payload?.execution_discipline?.report || null;
+    }
+
+    if (!report) {
+      report = await getExecutionDisciplineSummary(db);
+    }
+
     return res.json({
       ok: true,
       report
