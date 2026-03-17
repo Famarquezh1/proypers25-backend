@@ -16,11 +16,17 @@ const BINANCE_POSITION_STALE_EXIT_RATIO = Math.max(
   0.5,
   Number(process.env.BINANCE_POSITION_STALE_EXIT_RATIO || 0.6)
 );
+const BINANCE_POSITION_STALE_EXIT_MAX_PNL_PCT = Number(
+  process.env.BINANCE_POSITION_STALE_EXIT_MAX_PNL_PCT || -0.08
+);
 const BINANCE_POSITION_HC_STALE_EXIT_ENABLED =
   String(process.env.BINANCE_POSITION_HC_STALE_EXIT_ENABLED || 'false').toLowerCase() === 'true';
 const BINANCE_POSITION_HC_STALE_EXIT_RATIO = Math.max(
   BINANCE_POSITION_STALE_EXIT_RATIO,
   Number(process.env.BINANCE_POSITION_HC_STALE_EXIT_RATIO || 0.85)
+);
+const BINANCE_POSITION_HC_STALE_EXIT_MAX_PNL_PCT = Number(
+  process.env.BINANCE_POSITION_HC_STALE_EXIT_MAX_PNL_PCT || -0.03
 );
 const BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT = Number(
   process.env.BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT || 0.05
@@ -130,7 +136,9 @@ async function updateExecutionIntentOutcome(db, position, payload) {
         win_exchange: payload?.win_exchange || 'UNKNOWN',
         closed_at: payload?.closed_at || nowIso(),
         close_reason: payload?.close_reason || null,
-        close_pnl_pct: Number(payload?.close_pnl_pct || 0)
+        close_pnl_pct: Number(payload?.close_pnl_pct || 0),
+        close_price: Number(payload?.close_price || 0) || null,
+        mark_price_at_close: Number(payload?.mark_price || 0) || null
       },
       updated_at: FieldValue.serverTimestamp()
     },
@@ -155,6 +163,10 @@ function shouldEarlyExit(position, config, markPrice) {
     sourceProfile === 'high_conviction'
       ? BINANCE_POSITION_HC_STALE_EXIT_RATIO
       : BINANCE_POSITION_STALE_EXIT_RATIO;
+  const staleExitMaxPnlPct =
+    sourceProfile === 'high_conviction'
+      ? BINANCE_POSITION_HC_STALE_EXIT_MAX_PNL_PCT
+      : BINANCE_POSITION_STALE_EXIT_MAX_PNL_PCT;
   const staleExitThresholdSeconds = Math.max(
     60,
     Math.round(positionMaxHoldSeconds * staleExitRatio)
@@ -183,7 +195,11 @@ function shouldEarlyExit(position, config, markPrice) {
     }
   }
 
-  if (staleExitEnabled && openedSeconds >= staleExitThresholdSeconds && pnlPct <= 0) {
+  if (
+    staleExitEnabled &&
+    openedSeconds >= staleExitThresholdSeconds &&
+    pnlPct <= staleExitMaxPnlPct
+  ) {
     return {
       close: true,
       reason: 'stale_no_followthrough',
@@ -317,14 +333,22 @@ async function runBinancePositionManagerCycle(db) {
         });
       }
 
+      const closePrice =
+        Number(closeOrder?.avgPrice || 0) > 0
+          ? Number(closeOrder.avgPrice)
+          : Number(markPrice || 0) || null;
+      const realizedPnlPct = Number(decision.pnl_pct.toFixed(4));
+
       await doc.ref.update({
         status: 'closed',
         closed_at: nowIso(),
         close_reason: decision.reason,
-        win_exchange: resolveExchangeOutcome(decision.pnl_pct),
+        win_exchange: resolveExchangeOutcome(realizedPnlPct),
         manager_last_check_at: nowIso(),
         mark_price: markPrice,
-        unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
+        close_price: closePrice,
+        close_pnl_pct: realizedPnlPct,
+        unrealized_pnl_pct: realizedPnlPct,
         opened_minutes: Number(decision.opened_minutes.toFixed(2)),
         opened_seconds: Number(decision.opened_seconds.toFixed(1)),
         position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
@@ -333,10 +357,12 @@ async function runBinancePositionManagerCycle(db) {
       });
 
       await updateExecutionIntentOutcome(db, position, {
-        win_exchange: resolveExchangeOutcome(decision.pnl_pct),
+        win_exchange: resolveExchangeOutcome(realizedPnlPct),
         closed_at: nowIso(),
         close_reason: decision.reason,
-        close_pnl_pct: Number(decision.pnl_pct.toFixed(4))
+        close_pnl_pct: realizedPnlPct,
+        close_price: closePrice,
+        mark_price: markPrice
       });
 
       closed += 1;
@@ -361,8 +387,10 @@ async function runBinancePositionManagerCycle(db) {
     early_exit_min_profit_pct: BINANCE_EARLY_EXIT_MIN_PROFIT_PCT,
     stale_exit_enabled: BINANCE_POSITION_STALE_EXIT_ENABLED,
     stale_exit_ratio: BINANCE_POSITION_STALE_EXIT_RATIO,
+    stale_exit_max_pnl_pct: BINANCE_POSITION_STALE_EXIT_MAX_PNL_PCT,
     high_conviction_stale_exit_enabled: BINANCE_POSITION_HC_STALE_EXIT_ENABLED,
-    high_conviction_stale_exit_ratio: BINANCE_POSITION_HC_STALE_EXIT_RATIO
+    high_conviction_stale_exit_ratio: BINANCE_POSITION_HC_STALE_EXIT_RATIO,
+    high_conviction_stale_exit_max_pnl_pct: BINANCE_POSITION_HC_STALE_EXIT_MAX_PNL_PCT
   };
 
   await db.collection('binance_position_manager_logs').add({

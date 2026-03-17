@@ -8,6 +8,14 @@ const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN |
 const BINANCE_FUTURES_BASE_URL = process.env.BINANCE_FUTURES_BASE_URL || 'https://fapi.binance.com';
 const BINANCE_API_KEY = process.env.BINANCE_API_KEY || '';
 const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET || '';
+const BINANCE_SIGNED_TIMESTAMP_SAFETY_MS = Math.max(
+  0,
+  Number(process.env.BINANCE_SIGNED_TIMESTAMP_SAFETY_MS || 350)
+);
+const BINANCE_SIGNED_RECV_WINDOW_MS = Math.max(
+  5000,
+  Number(process.env.BINANCE_SIGNED_RECV_WINDOW_MS || 10000)
+);
 const BINANCE_DEFAULT_LEVERAGE = Math.max(1, Number(process.env.BINANCE_DEFAULT_LEVERAGE || 5));
 const BINANCE_TRADE_NOTIONAL_USDT = Math.max(5, Number(process.env.BINANCE_TRADE_NOTIONAL_USDT || 35));
 const BINANCE_MIN_CONFIDENCE = Number(process.env.BINANCE_EXEC_MIN_CONFIDENCE || 0.9);
@@ -249,8 +257,12 @@ async function refreshBinanceServerTimeOffset(force = false) {
 async function signedRequest(path, params, method = 'POST', options = {}) {
   const { retryOnTimestamp = true, forceTimeSync = false } = options;
   const offsetMs = await refreshBinanceServerTimeOffset(forceTimeSync);
-  const timestamp = Date.now() + offsetMs;
-  const payload = new URLSearchParams({ ...params, timestamp, recvWindow: 5000 });
+  const timestamp = Date.now() + offsetMs - BINANCE_SIGNED_TIMESTAMP_SAFETY_MS;
+  const payload = new URLSearchParams({
+    ...params,
+    timestamp,
+    recvWindow: BINANCE_SIGNED_RECV_WINDOW_MS
+  });
   const signature = createSignature(payload.toString());
   payload.append('signature', signature);
   const url = `${BINANCE_FUTURES_BASE_URL}${path}?${payload.toString()}`;
@@ -435,7 +447,8 @@ async function closePositionMarket(intent) {
     side: oppositeSide,
     type: 'MARKET',
     quantity: intent.quantity,
-    reduceOnly: true
+    reduceOnly: true,
+    newOrderRespType: 'RESULT'
   });
 }
 
