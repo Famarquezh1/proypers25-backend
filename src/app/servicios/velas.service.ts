@@ -199,4 +199,8 @@ export class VelasService {
     if (params?.maxDocs) httpParams = httpParams.set('maxDocs', String(params.maxDocs));
     return this.http.get<any>(`${this.apiUrl}/api/velas/confidence-calibration`, { params: httpParams });
   }
+
+  obtenerExecutionDisciplineSummary(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/api/velas/execution-discipline-summary`);
+  }
 }

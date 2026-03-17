@@ -5,6 +5,10 @@ const {
   getPositionRisk,
   closePositionMarket
 } = require('./binanceFuturesExecutor');
+const {
+  evaluatePositionDiscipline,
+  logExecutionDiscipline
+} = require('./execution_discipline_engine');
 
 const BINANCE_POSITION_MANAGER_ENABLED = process.env.BINANCE_POSITION_MANAGER_ENABLED === 'true';
 const BINANCE_POSITION_MANAGER_MAX_OPEN = Math.max(1, Number(process.env.BINANCE_POSITION_MANAGER_MAX_OPEN || 20));
@@ -281,7 +285,28 @@ async function runBinancePositionManagerCycle(db) {
       }
 
       const markPrice = await getMarkPrice(symbol);
-      const decision = shouldEarlyExit(position, config, markPrice);
+      let decision = shouldEarlyExit(position, config, markPrice);
+      const disciplineDecision = evaluatePositionDiscipline(position, markPrice, {
+        pnl_pct: decision.pnl_pct,
+        requested_reason: decision.reason
+      });
+
+      if (disciplineDecision.forceClose) {
+        decision = {
+          ...decision,
+          close: true,
+          reason: disciplineDecision.forceReason,
+          pnl_pct: Number.isFinite(Number(disciplineDecision.details?.pnl_pct))
+            ? Number(disciplineDecision.details.pnl_pct)
+            : decision.pnl_pct
+        };
+      } else if (disciplineDecision.blockExit) {
+        decision = {
+          ...decision,
+          close: false,
+          reason: disciplineDecision.blockReason
+        };
+      }
 
       if (!decision.close) {
         const updatePayload = {
@@ -293,6 +318,14 @@ async function runBinancePositionManagerCycle(db) {
           manager_last_check_at: nowIso(),
           updated_at: FieldValue.serverTimestamp()
         };
+        if (disciplineDecision.armProfitCapture) {
+          updatePayload.profit_capture_armed = true;
+          updatePayload.profit_capture_trigger_pct = Number(disciplineDecision.details?.capture_trigger_pct || 0) || null;
+          updatePayload.profit_capture_lock_pct = Number(disciplineDecision.details?.lock_floor_pct || 0) || null;
+        }
+        if (Number.isFinite(Number(disciplineDecision.details?.max_seen_pct))) {
+          updatePayload.profit_capture_max_seen_pct = Number(disciplineDecision.details.max_seen_pct);
+        }
         if (Number.isFinite(Number(decision.hold_extension_count))) {
           updatePayload.hold_extension_count = Number(decision.hold_extension_count);
           updatePayload.manager_decision = {
@@ -300,8 +333,25 @@ async function runBinancePositionManagerCycle(db) {
             reason: decision.reason,
             extended_hold_seconds: Number(decision.max_hold_seconds || 0)
           };
+        } else if (disciplineDecision.blockExit || disciplineDecision.armProfitCapture) {
+          updatePayload.manager_decision = {
+            close: false,
+            reason: decision.reason,
+            discipline: disciplineDecision.details
+          };
         }
         await doc.ref.update(updatePayload);
+        if (disciplineDecision.blockExit || disciplineDecision.armProfitCapture) {
+          await logExecutionDiscipline(db, {
+            type: 'exit_control',
+            event: decision.reason,
+            blocked: disciplineDecision.blockExit,
+            source_profile: resolveSourceProfile(position),
+            symbol,
+            prediction_id: position.prediction_id || null,
+            details: disciplineDecision.details
+          });
+        }
         skipped += 1;
         continue;
       }
@@ -354,6 +404,21 @@ async function runBinancePositionManagerCycle(db) {
         position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
         close_order: closeOrder || { skipped: 'already_closed' },
         updated_at: FieldValue.serverTimestamp()
+      });
+
+      await logExecutionDiscipline(db, {
+        type: 'exit_control',
+        event: decision.reason,
+        blocked: false,
+        source_profile: resolveSourceProfile(position),
+        symbol,
+        prediction_id: position.prediction_id || null,
+        details: {
+          pnl_pct: realizedPnlPct,
+          mark_price: markPrice,
+          close_price: closePrice,
+          max_hold_seconds: Number(decision.max_hold_seconds || 0)
+        }
       });
 
       await updateExecutionIntentOutcome(db, position, {

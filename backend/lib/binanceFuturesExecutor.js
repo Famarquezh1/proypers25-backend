@@ -2,6 +2,11 @@ const crypto = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getBinanceBotConfig } = require('./binanceBotConfig');
 const { loadAdaptiveExecutionProfile } = require('./adaptive_calibration_engine');
+const {
+  evaluateEntryDiscipline,
+  evaluateFilledOrderDiscipline,
+  logExecutionDiscipline
+} = require('./execution_discipline_engine');
 
 const BINANCE_EXECUTION_ENABLED = process.env.BINANCE_EXECUTION_ENABLED === 'true';
 const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN || '').toLowerCase() === 'true';
@@ -864,6 +869,22 @@ async function executeSignalTrade(db, signalData, options = {}) {
     execution_audit: preExecutionAudit
   };
 
+  const entryDiscipline = await evaluateEntryDiscipline({
+    db,
+    signalData,
+    intent: preciseIntent,
+    sourceProfile
+  });
+  if (entryDiscipline.blocked) {
+    await db.collection('binance_execution_intents').add({
+      ...baseLog,
+      status: 'skipped',
+      reason: entryDiscipline.reason,
+      execution_discipline: entryDiscipline.details
+    });
+    return { executed: false, reason: entryDiscipline.reason, dry_run: modeDryRun };
+  }
+
   if (!validation.ok) {
     await db.collection('binance_execution_intents').add({
       ...baseLog,
@@ -895,8 +916,44 @@ async function executeSignalTrade(db, signalData, options = {}) {
       symbol: preciseIntent.symbol,
       side: preciseIntent.side,
       type: preciseIntent.order_type,
-      quantity: toPlainFixed(preciseIntent.quantity, qtyPrecision)
+      quantity: toPlainFixed(preciseIntent.quantity, qtyPrecision),
+      newOrderRespType: 'RESULT'
     });
+
+    const slippageDiscipline = await evaluateFilledOrderDiscipline({
+      db,
+      signalData,
+      intent: preciseIntent,
+      orderResponse: orderRes,
+      sourceProfile
+    });
+    if (slippageDiscipline.blocked) {
+      const emergencyClose = await closePositionMarket({
+        symbol: preciseIntent.symbol,
+        side: preciseIntent.side,
+        quantity: preciseIntent.quantity
+      }).catch((err) => ({ error: String(err?.message || err) }));
+
+      await db.collection('binance_execution_intents').add({
+        ...baseLog,
+        status: 'blocked',
+        reason: slippageDiscipline.reason,
+        execution_discipline: slippageDiscipline.details,
+        exchange_response: {
+          margin: marginRes,
+          leverage: leverageRes,
+          order: orderRes,
+          emergency_close: emergencyClose
+        }
+      });
+      return {
+        executed: false,
+        reason: slippageDiscipline.reason,
+        dry_run: false,
+        blocked: true
+      };
+    }
+
     exitsRes = await placeExitOrders(preciseIntent, rules);
   } catch (err) {
     await db.collection('binance_execution_intents').add({
@@ -972,6 +1029,20 @@ async function executeSignalTrade(db, signalData, options = {}) {
     win_exchange: null,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp()
+  });
+
+  await logExecutionDiscipline(db, {
+    type: 'entry_control',
+    event: 'entry_accepted',
+    blocked: false,
+    source_profile: sourceProfile,
+    symbol: preciseIntent.symbol,
+    prediction_id: predictionId,
+    details: {
+      execution_delay_seconds: executionAudit?.delay_seconds ?? null,
+      is_late_entry: executionAudit?.is_late_entry ?? null,
+      quantity: preciseIntent.quantity
+    }
   });
 
   return {

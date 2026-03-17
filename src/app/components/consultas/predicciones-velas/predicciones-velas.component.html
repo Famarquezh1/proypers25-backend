@@ -1,5 +1,11 @@
 ﻿<div class="velas-panel">
-  <h2>Predicciones de Velas</h2>
+  <div class="panel-toolbar">
+    <h2>Predicciones de Velas</h2>
+    <button class="btn btn-sm btn-outline-secondary" (click)="toggleCompactMode()">
+      {{ compactMode ? 'Modo completo' : 'Modo compacto' }}
+    </button>
+  </div>
+  <div [class.compact-mode]="compactMode" [class.mobile-optimized]="uiMobileOptimized">
   <div class="control-row mb-3">
     <div class="form-group">
       <label for="symbolSelect">Símbolo</label>
@@ -33,6 +39,28 @@
 
   <div *ngIf="mensaje" class="alert alert-info">{{ mensaje }}</div>
 
+  <ng-container *ngIf="symbolStatusChips$ | async as symbolChips">
+    <div class="symbol-chip-row" *ngIf="symbolChips.length">
+      <button
+        type="button"
+        class="symbol-chip"
+        *ngFor="let chip of symbolChips; trackBy: trackBySymbol"
+        [class.symbol-chip-active]="chip.status === 'activa'"
+        [class.symbol-chip-suppressed]="chip.status === 'suprimida'"
+        (click)="candidatoSymbol = chip.symbol"
+      >
+        <strong>{{ chip.symbol }}</strong>
+        <span>{{ chip.status }}</span>
+      </button>
+    </div>
+  </ng-container>
+
+  <section class="mobile-section" [class.is-open]="isSectionOpen('opportunities')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('opportunities')">
+      <span>Oportunidades próximas</span>
+      <span>{{ isSectionOpen('opportunities') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('opportunities')">
   <div class="opportunities-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -185,8 +213,16 @@
       </div>
     </ng-container>
   </div>
+    </div>
+  </section>
 
-  <div class="monitoring-panel mb-4" *ngIf="monitoringSnapshots$ | async as monitoringSnapshots">
+  <section class="mobile-section" [class.is-open]="isSectionOpen('monitoring')" *ngIf="monitoringSnapshots$ | async as monitoringSnapshots">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('monitoring')">
+      <span>Monitoreo del sistema</span>
+      <span>{{ isSectionOpen('monitoring') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('monitoring')">
+  <div class="monitoring-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
         <h3 class="mb-0">Monitoreo del sistema</h3>
@@ -221,10 +257,18 @@
       </span>
     </div>
   </div>
+    </div>
+  </section>
   <ng-template #noMonitoringData>
     <p class="text-muted mb-0">A&uacute;n no hay snapshots de monitoreo.</p>
   </ng-template>
 
+  <section class="mobile-section" [class.is-open]="isSectionOpen('signalIntel')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('signalIntel')">
+      <span>Signal Intelligence</span>
+      <span>{{ isSectionOpen('signalIntel') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('signalIntel')">
   <div class="signal-intel-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -674,7 +718,15 @@
       </div>
     </div>
   </div>
+    </div>
+  </section>
 
+  <section class="mobile-section" [class.is-open]="isSectionOpen('binanceConfig')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('binanceConfig')">
+      <span>Binance Bot Config</span>
+      <span>{{ isSectionOpen('binanceConfig') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('binanceConfig')">
   <div class="binance-config-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -803,7 +855,15 @@
       </div>
     </div>
   </div>
+    </div>
+  </section>
 
+  <section class="mobile-section" [class.is-open]="isSectionOpen('highConviction')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('highConviction')">
+      <span>High Conviction</span>
+      <span>{{ isSectionOpen('highConviction') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('highConviction')">
   <div class="high-conviction-panel mb-4">
     <h3>High Conviction</h3>
     <div class="hc-filters">
@@ -948,9 +1008,33 @@
       </div>
     </ng-container>
   </div>
+    </div>
+  </section>
 
-  <div class="cards-grid" *ngIf="predicciones$ | async as predicciones">
-    <div class="card mb-3" *ngFor="let pred of predicciones">
+  <section class="mobile-section" [class.is-open]="isSectionOpen('historial')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('historial')">
+      <span>Historial</span>
+      <span>{{ isSectionOpen('historial') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="isSectionOpen('historial')">
+  <ng-container *ngIf="historialGroups$ | async as historyGroups">
+    <div class="history-group" *ngFor="let group of historyGroups; trackBy: trackByDateKey">
+      <div class="history-group-header">
+        <div>
+          <strong>{{ group.label }}</strong>
+          <span class="text-muted small">· {{ group.total }} registros</span>
+        </div>
+        <button
+          *ngIf="group.total > 5"
+          type="button"
+          class="btn btn-sm btn-outline-secondary"
+          (click)="toggleHistoryDate(group.dateKey)"
+        >
+          {{ isHistoryDateExpanded(group.dateKey) ? 'Ver menos' : 'Ver más' }}
+        </button>
+      </div>
+      <div class="cards-grid">
+    <div class="card mb-3" *ngFor="let pred of visibleHistoryItems(group); trackBy: trackById">
       <div class="card-body">
         <div class="prediction-header" (click)="togglePredictionDetails(pred.id)">
           <div class="d-flex justify-content-between align-items-center">
@@ -1074,5 +1158,10 @@
         </div>
       </div>
     </div>
+      </div>
+    </div>
+  </ng-container>
+    </div>
+  </section>
   </div>
 </div>

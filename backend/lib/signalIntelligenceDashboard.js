@@ -14,6 +14,10 @@ const {
   refreshStatisticalLearningSnapshot,
   getStatisticalLearningSnapshot
 } = require('./statisticalLearningEngine');
+const {
+  EXECUTION_DISCIPLINE_ENABLED,
+  getExecutionDisciplineSummary
+} = require('./execution_discipline_engine');
 
 const SNAPSHOT_COLLECTION = 'analytics_snapshots';
 const SNAPSHOT_DOC_ID = 'signal_intelligence_dashboard_v1';
@@ -220,7 +224,7 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     Math.min(30, Number(options.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
   );
 
-  const [intelligenceBase, suppressedReport, executionReport] = await Promise.all([
+  const [intelligenceBase, suppressedReport, executionReport, executionDisciplineSummary] = await Promise.all([
     runSignalIntelligenceAudit({
       days: intelligenceDays,
       maxDocs: intelligenceMaxDocs,
@@ -238,7 +242,8 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
       concurrency,
       matchWindowMinutes,
       writeFiles: false
-    })
+    }),
+    EXECUTION_DISCIPLINE_ENABLED ? getExecutionDisciplineSummary(db) : Promise.resolve(null)
   ]);
 
   const intelligenceReport = await buildSignalIntelligenceComposite(intelligenceBase);
@@ -264,6 +269,10 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     execution: {
       fetched_at: fetchedAt,
       report: executionReport
+    },
+    execution_discipline: {
+      fetched_at: fetchedAt,
+      report: executionDisciplineSummary
     }
   };
 

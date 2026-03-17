@@ -271,3 +271,153 @@ body.theme-dark .signal-intel-panel .btn-outline-primary:focus {
   color: #f8fbff !important;
   border-color: #7fb1ff !important;
 }
+
+.panel-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.symbol-chip-row {
+  display: flex;
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding: 0.2rem 0 0.9rem;
+  scroll-snap-type: x proximity;
+}
+
+.symbol-chip {
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  min-width: max-content;
+  padding: 0.45rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  scroll-snap-align: start;
+}
+
+.symbol-chip span {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.symbol-chip-active {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.symbol-chip-suppressed {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+
+.mobile-section {
+  margin-bottom: 1rem;
+}
+
+.mobile-section-toggle {
+  width: 100%;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 0.9rem;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 700;
+  padding: 0.8rem 1rem;
+}
+
+.mobile-section-body {
+  animation: sectionFadeIn 0.18s ease;
+}
+
+@keyframes sectionFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.history-group {
+  margin-bottom: 1rem;
+}
+
+.history-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.compact-mode .signal-intel-help,
+.compact-mode .telegram-history-header .text-muted,
+.compact-mode .telegram-history-empty,
+.compact-mode .hc-filter-group-title,
+.compact-mode .hc-filter-item label,
+.compact-mode .prediction-details .text-muted.small,
+.compact-mode .prediction-details .mb-0.text-muted,
+.compact-mode .prediction-details .disclaimer {
+  display: none !important;
+}
+
+.compact-mode .signal-intel-card,
+.compact-mode .high-conviction-card,
+.compact-mode .opportunity-card,
+.compact-mode .cards-grid .card .card-body,
+.compact-mode .binance-config-panel,
+.compact-mode .signal-intel-panel,
+.compact-mode .opportunities-panel,
+.compact-mode .monitoring-panel,
+.compact-mode .high-conviction-panel {
+  padding: 0.7rem !important;
+}
+
+body.theme-dark .mobile-section-toggle,
+body.theme-dark .symbol-chip {
+  background: #111a2b !important;
+  color: #e6edf7 !important;
+  border-color: #334155 !important;
+}
+
+body.theme-dark .symbol-chip-active {
+  background: #102317 !important;
+}
+
+body.theme-dark .symbol-chip-suppressed {
+  background: #162033 !important;
+}
+
+@media (max-width: 991px) {
+  .mobile-section-toggle {
+    display: flex;
+  }
+
+  .signal-intel-grid {
+    display: flex !important;
+    overflow-x: auto;
+    gap: 0.75rem;
+    padding-bottom: 0.4rem;
+    scroll-snap-type: x mandatory;
+  }
+
+  .signal-intel-card {
+    min-width: 85%;
+    margin-right: 12px;
+    scroll-snap-align: start;
+  }
+
+  .cards-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}

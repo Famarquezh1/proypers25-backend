@@ -8,5 +8,6 @@ export const environment = {
     messagingSenderId: "518292923158",
     appId: "1:518292923158:web:d43c4d2da0ec6a99a72637"
   },
-  apiUrl:  'https://proypers25-backend-518292923158.southamerica-west1.run.app'
+  apiUrl:  'https://proypers25-backend-518292923158.southamerica-west1.run.app',
+  uiMobileOptimized: true
 };

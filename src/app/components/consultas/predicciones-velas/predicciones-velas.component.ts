@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
+import { environment } from '../../../../environments/environment';
 
 interface WeeklyStability {
   isoWeek: string;
@@ -55,6 +56,19 @@ interface RankedSignalItem {
   ranking_position_global: number | null;
 }
 
+interface HistoryGroupItem {
+  dateKey: string;
+  label: string;
+  total: number;
+  items: any[];
+}
+
+interface SymbolChipItem {
+  symbol: string;
+  status: 'activa' | 'suprimida';
+  total: number;
+}
+
 @Component({
   selector: 'app-predicciones-velas',
   standalone: true,
@@ -92,6 +106,8 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   ];
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   predicciones$: Observable<any[]> | undefined;
+  historialGroups$: Observable<HistoryGroupItem[]> | undefined;
+  symbolStatusChips$: Observable<SymbolChipItem[]> | undefined;
   oportunidades$: Observable<any[]> | undefined;
   highConvictionSignals$: Observable<any[]> | undefined;
   telegramNotifications$: Observable<any[]> | undefined;
@@ -119,6 +135,19 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   highConvictionFrom = '';
   highConvictionTo = '';
   expandedHighConvictionId: string | null = null;
+  compactMode = false;
+  readonly uiMobileOptimized = environment.uiMobileOptimized !== false;
+  private readonly panelStorageKey = 'predicciones_velas_panel_state_v1';
+  private readonly compactStorageKey = 'predicciones_velas_compact_mode_v1';
+  openSections: Record<string, boolean> = {
+    opportunities: true,
+    monitoring: false,
+    signalIntel: false,
+    binanceConfig: false,
+    highConviction: false,
+    historial: false
+  };
+  historyExpandedDates: Record<string, boolean> = {};
   highConvictionStats = {
     total: 0,
     wins: 0,
@@ -332,6 +361,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.restoreUiState();
     this.refreshTimer = setInterval(() => {
       this.nowTs = Date.now();
     }, 1000);
@@ -359,6 +389,83 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     }
   }
 
+  toggleSection(section: keyof PrediccionesVelasComponent['openSections']): void {
+    const isMobile = this.uiMobileOptimized && typeof window !== 'undefined' && window.innerWidth <= 991;
+    if (isMobile) {
+      const nextState = !this.openSections[section];
+      this.openSections = {
+        opportunities: false,
+        monitoring: false,
+        signalIntel: false,
+        binanceConfig: false,
+        highConviction: false,
+        historial: false
+      };
+      this.openSections[section] = nextState;
+    } else {
+      this.openSections[section] = !this.openSections[section];
+    }
+    this.persistUiState();
+  }
+
+  isSectionOpen(section: keyof PrediccionesVelasComponent['openSections']): boolean {
+    return Boolean(this.openSections[section]);
+  }
+
+  toggleCompactMode(): void {
+    this.compactMode = !this.compactMode;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(this.compactStorageKey, this.compactMode ? 'compact' : 'full');
+    }
+  }
+
+  toggleHistoryDate(dateKey: string): void {
+    this.historyExpandedDates[dateKey] = !this.historyExpandedDates[dateKey];
+  }
+
+  isHistoryDateExpanded(dateKey: string): boolean {
+    return Boolean(this.historyExpandedDates[dateKey]);
+  }
+
+  visibleHistoryItems(group: HistoryGroupItem): any[] {
+    return this.isHistoryDateExpanded(group.dateKey) ? group.items : group.items.slice(0, 5);
+  }
+
+  trackById(_index: number, item: any): string {
+    return String(item?.id || item?.prediction_id || item?.symbol || item?.simbolo || _index);
+  }
+
+  trackByDateKey(_index: number, item: HistoryGroupItem): string {
+    return item.dateKey;
+  }
+
+  trackBySymbol(_index: number, item: SymbolChipItem | any): string {
+    return String(item?.symbol || item?.simbolo || _index);
+  }
+
+  private restoreUiState(): void {
+    if (typeof localStorage === 'undefined') return;
+    const compact = localStorage.getItem(this.compactStorageKey);
+    this.compactMode = compact === 'compact';
+
+    const raw = localStorage.getItem(this.panelStorageKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      this.openSections = {
+        ...this.openSections,
+        ...parsed
+      };
+    } catch {
+      // ignore invalid persisted panel state
+    }
+  }
+
+  private persistUiState(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(this.panelStorageKey, JSON.stringify(this.openSections));
+  }
+
   cargarPredicciones(): void {
     const source$ = this.velasService.obtenerPrediccionesVelas().pipe(
       map((list) =>
@@ -371,6 +478,12 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       shareReplay(1)
     );
     this.predicciones$ = source$;
+    this.historialGroups$ = source$.pipe(
+      map((list) => this.groupPredictionsByDate(list))
+    );
+    this.symbolStatusChips$ = source$.pipe(
+      map((list) => this.buildSymbolStatusChips(list))
+    );
     this.oportunidades$ = source$.pipe(
       map((list) => this.computeManualOpportunities(list))
     );
@@ -627,6 +740,56 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       .slice(0, 6);
   }
 
+  private groupPredictionsByDate(list: any[]): HistoryGroupItem[] {
+    const groups = new Map<string, HistoryGroupItem>();
+
+    for (const item of list || []) {
+      const rawDate = item?.created_at || item?.timestamp;
+      const date = rawDate ? new Date(rawDate) : null;
+      if (!date || Number.isNaN(date.getTime())) continue;
+      const dateKey = date.toISOString().slice(0, 10);
+      if (!groups.has(dateKey)) {
+        groups.set(dateKey, {
+          dateKey,
+          label: date.toLocaleDateString(),
+          total: 0,
+          items: []
+        });
+      }
+      const group = groups.get(dateKey)!;
+      group.items.push(item);
+      group.total += 1;
+    }
+
+    return Array.from(groups.values())
+      .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+      .map((group) => ({
+        ...group,
+        items: group.items.sort((a, b) => {
+          const aTime = new Date(a.created_at || a.timestamp || 0).getTime();
+          const bTime = new Date(b.created_at || b.timestamp || 0).getTime();
+          return bTime - aTime;
+        })
+      }));
+  }
+
+  private buildSymbolStatusChips(list: any[]): SymbolChipItem[] {
+    const latestBySymbol = new Map<string, any>();
+    for (const item of list || []) {
+      const symbol = String(item?.simbolo || item?.symbol || '').trim();
+      if (!symbol || latestBySymbol.has(symbol)) continue;
+      latestBySymbol.set(symbol, item);
+    }
+
+    return Array.from(latestBySymbol.entries())
+      .map(([symbol, item]) => ({
+        symbol,
+        status: (item?.signal_emitted ? 'activa' : 'suprimida') as 'activa' | 'suprimida',
+        total: 1
+      }))
+      .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }
+
   private parseWindowWithDate(value?: string, reference?: Date | null, expectAfter = false): Date | null {
     if (!value) {
       return null;
@@ -801,6 +964,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           const intelligence = snapshot?.intelligence || {};
           const suppressed = snapshot?.suppressed || {};
           const execution = snapshot?.execution || {};
+          const executionDisciplineSnapshot = snapshot?.execution_discipline?.report || {};
           const report = intelligence?.report || {};
           const totals = report?.totals || {};
           const winRates = report?.win_rates || {};
@@ -859,18 +1023,41 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
             deltaVsEmitted: this.toNullableNum(suppressedComparative?.delta_expectancy),
             leadTimeAvg: this.toNullableNum(suppressedLeadTime?.lead_time_avg)
           };
-          this.signalIntelExecutionSummary = {
-            signalAdherence: this.toRate(executionDiscipline?.signal_adherence ?? executionQuality?.signal_adherence),
-            manualTradeRate: this.toRate(executionDiscipline?.manual_trade_rate ?? executionQuality?.manual_trade_rate),
-            executionDisciplineScore: this.toNullableNum(executionDiscipline?.execution_discipline_score),
-            lateExitRate: this.toRate(executionDiscipline?.late_exit_rate ?? executionQuality?.late_exit_rate),
-            earlyExitRate: this.toRate(executionDiscipline?.early_exit_rate ?? executionQuality?.early_exit_rate),
-            slViolationRate: this.toRate(
-              executionDiscipline?.sl_violation_rate ?? executionQuality?.sl_violation_rate
-            ),
-            profitCaptureRatio: this.toNullableNum(
-              executionDiscipline?.profit_capture_ratio ?? executionQuality?.profit_capture_ratio
-            ),
+            this.signalIntelExecutionSummary = {
+              signalAdherence: this.toRate(
+                executionDisciplineSnapshot?.metrics?.signal_adherence ??
+                  executionDiscipline?.signal_adherence ??
+                  executionQuality?.signal_adherence
+              ),
+              manualTradeRate: this.toRate(
+                executionDisciplineSnapshot?.metrics?.manual_trade_rate ??
+                  executionDiscipline?.manual_trade_rate ??
+                  executionQuality?.manual_trade_rate
+              ),
+              executionDisciplineScore: this.toNullableNum(
+                executionDisciplineSnapshot?.current_execution_score ??
+                  executionDiscipline?.execution_discipline_score
+              ),
+              lateExitRate: this.toRate(
+                executionDisciplineSnapshot?.metrics?.late_exit_rate ??
+                  executionDiscipline?.late_exit_rate ??
+                  executionQuality?.late_exit_rate
+              ),
+              earlyExitRate: this.toRate(
+                executionDisciplineSnapshot?.metrics?.early_exit_rate ??
+                  executionDiscipline?.early_exit_rate ??
+                  executionQuality?.early_exit_rate
+              ),
+              slViolationRate: this.toRate(
+                executionDisciplineSnapshot?.metrics?.sl_violation_rate ??
+                  executionDiscipline?.sl_violation_rate ??
+                  executionQuality?.sl_violation_rate
+              ),
+              profitCaptureRatio: this.toNullableNum(
+                executionDisciplineSnapshot?.metrics?.profit_capture_ratio ??
+                  executionDiscipline?.profit_capture_ratio ??
+                  executionQuality?.profit_capture_ratio
+              ),
             edgeDecay: this.toNullableNum(executionDiscipline?.edge_decay ?? executionQuality?.edge_decay),
             executionSlippagePct: this.toNullableNum(executionQuality?.execution_slippage_pct),
             realWinRate: this.toRate(executionQuality?.real_win_rate),

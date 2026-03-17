@@ -23,6 +23,10 @@ const {
   STATISTICAL_LEARNING_ENABLED,
   getStatisticalLearningSnapshot
 } = require('../lib/statisticalLearningEngine');
+const {
+  EXECUTION_DISCIPLINE_ENABLED,
+  getExecutionDisciplineSummary
+} = require('../lib/execution_discipline_engine');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
 const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
 const db = require('../firebase-admin-config');
@@ -372,6 +376,28 @@ router.get('/expectancy-stability', async (req, res) => respondLearningSection(r
 router.get('/regime-learning', async (req, res) => respondLearningSection(req, res, 'regime_learning'));
 router.get('/alpha-decay', async (req, res) => respondLearningSection(req, res, 'alpha_decay'));
 router.get('/confidence-calibration', async (req, res) => respondLearningSection(req, res, 'confidence_calibration'));
+
+router.get('/execution-discipline-summary', async (_req, res) => {
+  try {
+    if (!EXECUTION_DISCIPLINE_ENABLED) {
+      return res.json({
+        ok: true,
+        disabled: true,
+        report: { enabled: false, reason: 'EXECUTION_DISCIPLINE_ENABLED=false' }
+      });
+    }
+    const report = await getExecutionDisciplineSummary(db);
+    return res.json({
+      ok: true,
+      report
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'execution_discipline_summary_failed'
+    });
+  }
+});
 
 router.get('/audit-suppressed-validation', async (req, res) => {
   try {
