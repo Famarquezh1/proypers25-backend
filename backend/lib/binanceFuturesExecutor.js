@@ -34,6 +34,7 @@ const BINANCE_MIN_TIMING = Number(process.env.BINANCE_EXEC_MIN_TIMING || 0.8);
 const SOURCE_PROFILE_KEYS = new Set(['high_conviction', 'event_emitted', 'manual_prealert']);
 const EXCHANGE_INFO_TTL_MS = 10 * 60 * 1000;
 const exchangeInfoCache = new Map();
+const leverageBracketCache = new Map();
 const BINANCE_TIME_SYNC_TTL_MS = Math.max(30 * 1000, Number(process.env.BINANCE_TIME_SYNC_TTL_MS || 5 * 60 * 1000));
 let binanceTimeOffsetMs = 0;
 let binanceTimeOffsetFetchedAt = 0;
@@ -339,6 +340,89 @@ async function setLeverage(symbol, leverage) {
   });
 }
 
+async function getFuturesLeverageBracket(symbol) {
+  if (!symbol) return null;
+  const requestedSymbol = String(symbol || '').toUpperCase();
+  const now = Date.now();
+  const cached = leverageBracketCache.get(requestedSymbol);
+  if (cached && now - cached.fetchedAt < EXCHANGE_INFO_TTL_MS) {
+    return cached.data;
+  }
+
+  const data = await signedRequest('/fapi/v1/leverageBracket', { symbol: requestedSymbol }, 'GET');
+  const normalized = Array.isArray(data) ? data[0] : data;
+  leverageBracketCache.set(requestedSymbol, { fetchedAt: now, data: normalized || null });
+  return normalized || null;
+}
+
+function resolveMaxAllowedLeverage(bracketData) {
+  const brackets = Array.isArray(bracketData?.brackets) ? bracketData.brackets : [];
+  const maxFromBrackets = brackets.reduce((max, item) => {
+    const current = Number(item?.initialLeverage || 0);
+    return Number.isFinite(current) && current > max ? current : max;
+  }, 0);
+  if (maxFromBrackets > 0) return Math.floor(maxFromBrackets);
+  const direct = Number(bracketData?.initialLeverage || 0);
+  return Number.isFinite(direct) && direct > 0 ? Math.floor(direct) : null;
+}
+
+async function resolveValidLeverage(symbol, requestedLeverage) {
+  const requested = Math.max(1, Math.floor(Number(requestedLeverage || BINANCE_DEFAULT_LEVERAGE)));
+  try {
+    const bracketData = await getFuturesLeverageBracket(symbol);
+    const maxAllowed = resolveMaxAllowedLeverage(bracketData);
+    if (Number.isFinite(maxAllowed) && maxAllowed > 0) {
+      return {
+        requested,
+        applied: Math.max(1, Math.min(requested, maxAllowed)),
+        max_allowed: maxAllowed
+      };
+    }
+  } catch (_) {
+    // fall through
+  }
+  return {
+    requested,
+    applied: requested,
+    max_allowed: null
+  };
+}
+
+async function setLeverageSafely(symbol, leverage) {
+  const leveragePlan = await resolveValidLeverage(symbol, leverage);
+  try {
+    const response = await setLeverage(symbol, leveragePlan.applied);
+    return {
+      ...response,
+      requested_leverage: leveragePlan.requested,
+      applied_leverage: leveragePlan.applied,
+      leverage_fallback_applied: leveragePlan.applied !== leveragePlan.requested,
+      leverage_max_allowed: leveragePlan.max_allowed
+    };
+  } catch (err) {
+    const message = String(err?.message || '');
+    if (!message.includes('"code":-4028')) {
+      throw err;
+    }
+    for (const candidate of [20, 10, 5, 3, 2, 1]) {
+      if (candidate >= leveragePlan.applied) continue;
+      try {
+        const response = await setLeverage(symbol, candidate);
+        return {
+          ...response,
+          requested_leverage: leveragePlan.requested,
+          applied_leverage: candidate,
+          leverage_fallback_applied: true,
+          leverage_max_allowed: leveragePlan.max_allowed
+        };
+      } catch (_) {
+        continue;
+      }
+    }
+    throw err;
+  }
+}
+
 async function getMarkPrice(symbol) {
   const response = await fetch(`${BINANCE_FUTURES_BASE_URL}/fapi/v1/premiumIndex?symbol=${encodeURIComponent(symbol)}`);
   if (!response.ok) {
@@ -605,6 +689,16 @@ function buildExecutionIntent(signalData, config) {
   };
 }
 
+function createExecutionIntent(signalData, config, sourceProfile) {
+  return buildExecutionIntent(
+    {
+      ...signalData,
+      source_profile: resolveSourceProfileKey(sourceProfile || signalData?.source_profile || signalData?.source)
+    },
+    config
+  );
+}
+
 async function hasEnoughRecentValidRecords(db, intent, config) {
   const minRequired = Math.max(0, Math.floor(Number(config?.min_recent_valid_records || 0)));
   if (!minRequired) return true;
@@ -844,7 +938,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
   };
   const config = await getBinanceBotConfig(db);
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
-  const intent = buildExecutionIntent(signalDataForExecution, effectiveConfig);
+  const intent = createExecutionIntent(signalDataForExecution, effectiveConfig, sourceProfile);
   const predictionId = signalDataForExecution?.prediction_id || signalDataForExecution?.id || null;
   let executionTrace = buildInitialExecutionTrace({
     ...signalDataForExecution,
@@ -868,24 +962,19 @@ async function executeSignalTrade(db, signalData, options = {}) {
     created_at: existingIntent.exists ? existingIntent.get('created_at') || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
   });
 
-  const rules = await getFuturesSymbolRules(intent.symbol);
-  const preciseIntent = applyIntentPrecision(intent, rules);
-  const validation = await validateExecutionIntent(db, preciseIntent, effectiveConfig, { source_profile: sourceProfile });
   const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
   const preExecutionAudit = buildExecutionAudit(signalDataForExecution);
-  executionTrace = advanceExecutionTrace(executionTrace, {
-    intent_processed_at: Date.now()
-  });
   const entryDiscipline = await evaluateEntryDiscipline({
     db,
     signalData: signalDataForExecution,
-    intent: preciseIntent,
+    intent,
     sourceProfile
   });
 
   const baseLog = {
     source: options.source || sourceProfile,
     source_profile: sourceProfile,
+    signal_origin_stage: sourceProfile,
     prediction_id: predictionId,
     dry_run: modeDryRun,
     enabled: BINANCE_EXECUTION_ENABLED,
@@ -918,18 +1007,21 @@ async function executeSignalTrade(db, signalData, options = {}) {
       tp_buffer_pct: effectiveConfig.tp_buffer_pct,
       sl_buffer_pct: effectiveConfig.sl_buffer_pct
     },
-    validation,
+    validation: null,
     execution_discipline: entryDiscipline.details,
     trace_id: executionTrace.trace_id,
     execution_trace: executionTrace,
-    intent: preciseIntent,
+    intent,
     execution_audit: preExecutionAudit
   };
   await writeIntentDoc(intentRef, baseLog);
   if (entryDiscipline.blocked) {
+    executionTrace = advanceExecutionTrace(executionTrace, {
+      intent_processed_at: Date.now()
+    });
     const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
       trace: executionTrace,
-      symbol: preciseIntent.symbol,
+      symbol: intent.symbol,
       signal_type: sourceProfile,
       state: 'skipped',
       late_entry_blocked: entryDiscipline.reason === 'late_entry_blocked'
@@ -946,6 +1038,20 @@ async function executeSignalTrade(db, signalData, options = {}) {
     });
     return { executed: false, reason: entryDiscipline.reason, dry_run: modeDryRun };
   }
+
+  const [rules, validation] = await Promise.all([
+    getFuturesSymbolRules(intent.symbol),
+    validateExecutionIntent(db, intent, effectiveConfig, { source_profile: sourceProfile })
+  ]);
+  const preciseIntent = applyIntentPrecision(intent, rules);
+  executionTrace = advanceExecutionTrace(executionTrace, {
+    intent_processed_at: Date.now()
+  });
+  await writeIntentDoc(intentRef, {
+    validation,
+    execution_trace: executionTrace,
+    intent: preciseIntent
+  });
 
   if (!validation.ok) {
     const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
@@ -1000,8 +1106,10 @@ async function executeSignalTrade(db, signalData, options = {}) {
     executionTrace = advanceExecutionTrace(executionTrace, {
       execution_attempt_at: Date.now()
     });
-    marginRes = await setMarginType(preciseIntent.symbol, preciseIntent.margin_type);
-    leverageRes = await setLeverage(preciseIntent.symbol, preciseIntent.leverage);
+    [marginRes, leverageRes] = await Promise.all([
+      setMarginType(preciseIntent.symbol, preciseIntent.margin_type),
+      setLeverageSafely(preciseIntent.symbol, preciseIntent.leverage)
+    ]);
     executionTrace = advanceExecutionTrace(executionTrace, {
       order_sent_at: Date.now()
     });
@@ -1136,6 +1244,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const openPositionRef = await db.collection('binance_open_positions').add({
     source: options.source || sourceProfile,
     source_profile: sourceProfile,
+    signal_origin_stage: sourceProfile,
     prediction_id: predictionId,
     symbol: preciseIntent.symbol,
     side: preciseIntent.side,
@@ -1219,6 +1328,7 @@ async function executeHighConvictionTrade(db, signalData) {
 module.exports = {
   executeSignalTrade,
   executeHighConvictionTrade,
+  createExecutionIntent,
   toBinanceSymbol,
   getMarkPrice,
   getPositionRisk,

@@ -226,19 +226,23 @@ async function persistExecutionLatencyObservation(db, signalData = {}, context =
   const dominantStage = dominantDelayStage(metrics);
   const totalLatency = Number(metrics?.total_latency_ms || 0);
   const predictionId = resolvePredictionId(signalData);
+  const signalType = context.signal_type || signalData?.source_profile || signalData?.source || 'unknown';
+  const queueDelay = Number(metrics?.intent_to_process_ms || 0);
 
   await persistExecutionTraceToSignal(db, signalData, trace);
   await writeExecutionLatencyLog(db, {
     trace_id: trace.trace_id || null,
     prediction_id: predictionId,
     symbol: context.symbol || signalData?.symbol || signalData?.simbolo || null,
-    signal_type: context.signal_type || signalData?.source_profile || signalData?.source || 'unknown',
+    signal_type: signalType,
+    signal_origin_stage: signalType,
     state: context.state || 'observed',
     total_latency_ms: Number.isFinite(totalLatency) ? totalLatency : null,
     dominant_delay_stage: dominantStage,
     late_entry_blocked: Boolean(context.late_entry_blocked),
     critical_delay: totalLatency > 60000,
     exceeds_entry_window: totalLatency > ENTRY_WINDOW_SECONDS * 1000,
+    execution_queue_delay_ms: Number.isFinite(queueDelay) ? queueDelay : null,
     execution_trace: trace,
     execution_trace_metrics: metrics
   });
@@ -279,11 +283,13 @@ async function getExecutionLatencySummary(db) {
       trace_id: data.trace_id || null,
       symbol: data.symbol || null,
       signal_type: data.signal_type || 'unknown',
+      signal_origin_stage: data.signal_origin_stage || data.signal_type || 'unknown',
       state: data.state || 'observed',
       total_latency_ms: toNum(data.total_latency_ms, null),
       dominant_delay_stage: data.dominant_delay_stage || null,
       critical_delay: Boolean(data.critical_delay),
       late_entry_blocked: Boolean(data.late_entry_blocked),
+      execution_queue_delay_ms: toNum(data.execution_queue_delay_ms, null),
       execution_trace_metrics: normalizeValue(data.execution_trace_metrics || {})
     };
   });
@@ -310,6 +316,42 @@ async function getExecutionLatencySummary(db) {
   const topBottleneckStage = Object.entries(bottleneckCounts)
     .sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0] || null;
 
+  const bySignalType = rows.reduce((acc, row) => {
+    const key = row.signal_origin_stage || row.signal_type || 'unknown';
+    const bucket = acc[key] || {
+      total: 0,
+      avg_total_latency_ms: null,
+      avg_intent_to_process_ms: null,
+      avg_execution_queue_delay_ms: null,
+      late_entry_blocked: 0
+    };
+    bucket.total += 1;
+    const latencyValues = acc[key]?._latencies || [];
+    const processValues = acc[key]?._process || [];
+    const queueValues = acc[key]?._queue || [];
+    if (Number.isFinite(row.total_latency_ms)) latencyValues.push(row.total_latency_ms);
+    const processDelay = toNum(row.execution_trace_metrics?.intent_to_process_ms, null);
+    if (Number.isFinite(processDelay)) processValues.push(processDelay);
+    if (Number.isFinite(row.execution_queue_delay_ms)) queueValues.push(row.execution_queue_delay_ms);
+    bucket.late_entry_blocked += row.late_entry_blocked ? 1 : 0;
+    bucket._latencies = latencyValues;
+    bucket._process = processValues;
+    bucket._queue = queueValues;
+    acc[key] = bucket;
+    return acc;
+  }, {});
+
+  for (const key of Object.keys(bySignalType)) {
+    const bucket = bySignalType[key];
+    const avg = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    bucket.avg_total_latency_ms = avg(bucket._latencies || []);
+    bucket.avg_intent_to_process_ms = avg(bucket._process || []);
+    bucket.avg_execution_queue_delay_ms = avg(bucket._queue || []);
+    delete bucket._latencies;
+    delete bucket._process;
+    delete bucket._queue;
+  }
+
   return {
     lookback_hours: LATENCY_LOOKBACK_HOURS,
     log_limit: LATENCY_LOG_LIMIT,
@@ -326,6 +368,7 @@ async function getExecutionLatencySummary(db) {
     top_bottleneck_stage: topBottleneckStage,
     bottleneck_stage_counts: bottleneckCounts,
     breakdown,
+    by_signal_type: bySignalType,
     recent: rows.slice(0, 25)
   };
 }
