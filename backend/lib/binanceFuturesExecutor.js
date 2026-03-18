@@ -146,6 +146,31 @@ function toNum(value, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function sanitizeIntentDocIdPart(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 120);
+}
+
+function buildIntentDocRef(db, predictionId, sourceProfile) {
+  if (predictionId) {
+    const docId = `${sanitizeIntentDocIdPart(predictionId)}__${sanitizeIntentDocIdPart(sourceProfile || 'default')}`;
+    return db.collection('binance_execution_intents').doc(docId);
+  }
+  return db.collection('binance_execution_intents').doc();
+}
+
+async function writeIntentDoc(ref, payload = {}) {
+  if (!ref) return;
+  await ref.set(
+    {
+      ...payload,
+      updated_at: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) return min;
   if (max < min) return min;
@@ -810,38 +835,50 @@ async function placeExitOrders(intent, rules = null) {
 
 async function executeSignalTrade(db, signalData, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile || options.source || 'high_conviction');
+  const receivedAtIso = new Date().toISOString();
+  const signalDataForExecution = {
+    ...signalData,
+    signal_emitted_at:
+      signalData?.signal_emitted_at || signalData?.emitted_at || signalData?.timestamp || receivedAtIso,
+    timestamp: signalData?.timestamp || receivedAtIso
+  };
   const config = await getBinanceBotConfig(db);
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
-  const intent = buildExecutionIntent(signalData, effectiveConfig);
-  const predictionId = signalData?.prediction_id || signalData?.id || null;
+  const intent = buildExecutionIntent(signalDataForExecution, effectiveConfig);
+  const predictionId = signalDataForExecution?.prediction_id || signalDataForExecution?.id || null;
   let executionTrace = buildInitialExecutionTrace({
-    ...signalData,
+    ...signalDataForExecution,
     source_profile: sourceProfile
   });
-
-  if (predictionId) {
-    const existing = await db
-      .collection('binance_execution_intents')
-      .where('prediction_id', '==', predictionId)
-      .where('source_profile', '==', sourceProfile)
-      .limit(1)
-      .get();
-    if (!existing.empty) {
+  const intentRef = buildIntentDocRef(db, predictionId, sourceProfile);
+  const existingIntent = await intentRef.get();
+  if (existingIntent.exists) {
+    const existingData = existingIntent.data() || {};
+    if (existingData.status && existingData.status !== 'processing') {
       return { executed: false, reason: 'already_processed', dry_run: false, skipped: true };
     }
   }
+  await writeIntentDoc(intentRef, {
+    prediction_id: predictionId,
+    source_profile: sourceProfile,
+    source: options.source || sourceProfile,
+    status: 'processing',
+    trace_id: executionTrace.trace_id,
+    execution_trace: executionTrace,
+    created_at: existingIntent.exists ? existingIntent.get('created_at') || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
+  });
 
   const rules = await getFuturesSymbolRules(intent.symbol);
   const preciseIntent = applyIntentPrecision(intent, rules);
   const validation = await validateExecutionIntent(db, preciseIntent, effectiveConfig, { source_profile: sourceProfile });
   const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
-  const preExecutionAudit = buildExecutionAudit(signalData);
+  const preExecutionAudit = buildExecutionAudit(signalDataForExecution);
   executionTrace = advanceExecutionTrace(executionTrace, {
     intent_processed_at: Date.now()
   });
   const entryDiscipline = await evaluateEntryDiscipline({
     db,
-    signalData,
+    signalData: signalDataForExecution,
     intent: preciseIntent,
     sourceProfile
   });
@@ -850,7 +887,6 @@ async function executeSignalTrade(db, signalData, options = {}) {
     source: options.source || sourceProfile,
     source_profile: sourceProfile,
     prediction_id: predictionId,
-    created_at: FieldValue.serverTimestamp(),
     dry_run: modeDryRun,
     enabled: BINANCE_EXECUTION_ENABLED,
     config_mode: effectiveConfig.mode,
@@ -889,15 +925,16 @@ async function executeSignalTrade(db, signalData, options = {}) {
     intent: preciseIntent,
     execution_audit: preExecutionAudit
   };
+  await writeIntentDoc(intentRef, baseLog);
   if (entryDiscipline.blocked) {
-    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
       trace: executionTrace,
       symbol: preciseIntent.symbol,
       signal_type: sourceProfile,
       state: 'skipped',
       late_entry_blocked: entryDiscipline.reason === 'late_entry_blocked'
     });
-    await db.collection('binance_execution_intents').add({
+    await writeIntentDoc(intentRef, {
       ...baseLog,
       status: 'skipped',
       reason: entryDiscipline.reason,
@@ -911,16 +948,17 @@ async function executeSignalTrade(db, signalData, options = {}) {
   }
 
   if (!validation.ok) {
-    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
       trace: executionTrace,
       symbol: preciseIntent.symbol,
       signal_type: sourceProfile,
       state: 'skipped',
       late_entry_blocked: false
     });
-    await db.collection('binance_execution_intents').add({
+    await writeIntentDoc(intentRef, {
       ...baseLog,
       status: 'skipped',
+      reason: validation.reason,
       trace_id: tracePayload.trace_id,
       execution_trace: tracePayload.execution_trace,
       execution_trace_metrics: tracePayload.execution_trace_metrics,
@@ -931,14 +969,14 @@ async function executeSignalTrade(db, signalData, options = {}) {
   }
 
   if (modeDryRun) {
-    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
       trace: executionTrace,
       symbol: preciseIntent.symbol,
       signal_type: sourceProfile,
       state: 'dry_run',
       late_entry_blocked: false
     });
-    await db.collection('binance_execution_intents').add({
+    await writeIntentDoc(intentRef, {
       ...baseLog,
       status: 'dry_run',
       trace_id: tracePayload.trace_id,
@@ -991,7 +1029,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
         side: preciseIntent.side,
         quantity: preciseIntent.quantity
       }).catch((err) => ({ error: String(err?.message || err) }));
-      const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+      const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
         trace: executionTrace,
         symbol: preciseIntent.symbol,
         signal_type: sourceProfile,
@@ -999,7 +1037,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
         late_entry_blocked: false
       });
 
-      await db.collection('binance_execution_intents').add({
+      await writeIntentDoc(intentRef, {
         ...baseLog,
         status: 'blocked',
         reason: slippageDiscipline.reason,
@@ -1026,14 +1064,14 @@ async function executeSignalTrade(db, signalData, options = {}) {
 
     exitsRes = await placeExitOrders(preciseIntent, rules);
   } catch (err) {
-    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
       trace: executionTrace,
       symbol: preciseIntent.symbol,
       signal_type: sourceProfile,
       state: 'failed',
       late_entry_blocked: false
     });
-    await db.collection('binance_execution_intents').add({
+    await writeIntentDoc(intentRef, {
       ...baseLog,
       status: 'failed',
       failure_stage: 'live_order',
@@ -1059,8 +1097,8 @@ async function executeSignalTrade(db, signalData, options = {}) {
   }
   const tpOrderId = exitsRes?.tp?.orderId || exitsRes?.tp_limit?.orderId || null;
   const slOrderId = exitsRes?.sl?.orderId || null;
-  const executionAudit = buildExecutionAudit(signalData, new Date());
-  const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+  const executionAudit = buildExecutionAudit(signalDataForExecution, new Date());
+  const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
     trace: executionTrace,
     symbol: preciseIntent.symbol,
     signal_type: sourceProfile,
@@ -1077,7 +1115,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
     adaptiveProfile: adaptiveExecutionProfile
   });
 
-  await db.collection('binance_execution_intents').add({
+  await writeIntentDoc(intentRef, {
     ...baseLog,
     status: 'executed',
     trace_id: tracePayload.trace_id,

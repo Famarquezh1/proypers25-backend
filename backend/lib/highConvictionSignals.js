@@ -29,6 +29,7 @@ const MANUAL_PREALERT_MIN_TIMING = Number(process.env.MANUAL_PREALERT_MIN_TIMING
 const MANUAL_PREALERT_MIN_STABILITY = Number(process.env.MANUAL_PREALERT_MIN_STABILITY || 0.8);
 const MANUAL_PREALERT_MIN_TIMEFRAME_MINUTES = Number(process.env.MANUAL_PREALERT_MIN_TIMEFRAME_MINUTES || 5);
 const MANUAL_PREALERT_SYMBOL_COOLDOWN_MINUTES = Number(process.env.MANUAL_PREALERT_SYMBOL_COOLDOWN_MINUTES || 120);
+const TELEGRAM_SEND_TIMEOUT_MS = Math.max(1000, Number(process.env.TELEGRAM_SEND_TIMEOUT_MS || 4000));
 
 function startOfDayInTimezone(date = new Date(), timezone = ALERT_TIMEZONE) {
   const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
@@ -239,21 +240,39 @@ function buildManualPreAlertMessage(alertData) {
 }
 
 async function sendTelegramMessage(text) {
-  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TELEGRAM_SEND_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text
+      })
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Telegram send failed (${response.status}): ${body}`);
   }
+}
+
+function launchDetached(task, label) {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        console.warn(label, err?.message || err);
+      });
+  });
 }
 
 async function shouldSendManualPreAlert(db, prediction) {
@@ -326,19 +345,30 @@ async function sendManualPreAlertNotification(db, prediction) {
     return { sent: false, channel: 'console' };
   }
 
-  await sendTelegramMessage(buildManualPreAlertMessage(alertData));
-
   const logPayload = {
     ...alertData,
     type: 'manual_prealert',
     channel: 'telegram',
-    sent: true,
+    sent: false,
+    queued: true,
     created_at: FieldValue.serverTimestamp()
   };
-  await db.collection('telegram_notifications').add(logPayload);
+  const logRef = await db.collection('telegram_notifications').add(logPayload);
 
-  console.log('[MANUAL_PREALERT] telegram_sent', alertData);
-  return { sent: true, channel: 'telegram', type: 'manual_prealert' };
+  launchDetached(async () => {
+    await sendTelegramMessage(buildManualPreAlertMessage(alertData));
+    await logRef.set(
+      {
+        sent: true,
+        queued: false,
+        sent_at: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+    console.log('[MANUAL_PREALERT] telegram_sent', alertData);
+  }, '[MANUAL_PREALERT] telegram_async_failed');
+
+  return { sent: false, channel: 'telegram', queued: true, type: 'manual_prealert' };
 }
 
 async function shouldEmitHighConvictionSignal(db, prediction, options = {}) {
@@ -362,26 +392,28 @@ async function shouldEmitHighConvictionSignal(db, prediction, options = {}) {
   }
 
   const todayStart = startOfDayInTimezone(new Date(), ALERT_TIMEZONE);
-  const dailySnapshot = await db
+  const dailyPromise = db
     .collection('high_conviction_signals')
     .where('created_at', '>=', todayStart)
+    .limit(config.maxDailySignals)
     .get();
+
+  const symbolPromise = symbol
+    ? db
+        .collection('high_conviction_signals')
+        .where('symbol', '==', symbol)
+        .where('created_at', '>=', new Date(Date.now() - config.symbolCooldownHours * 60 * 60 * 1000))
+        .limit(1)
+        .get()
+    : Promise.resolve(null);
+
+  const [dailySnapshot, recent] = await Promise.all([dailyPromise, symbolPromise]);
   if (dailySnapshot.size >= config.maxDailySignals) {
     return { ok: false, reason: 'daily_limit' };
   }
 
-  if (symbol) {
-    const cooldownMs = config.symbolCooldownHours * 60 * 60 * 1000;
-    const since = new Date(Date.now() - cooldownMs);
-    const recent = await db
-      .collection('high_conviction_signals')
-      .where('symbol', '==', symbol)
-      .where('created_at', '>=', since)
-      .limit(1)
-      .get();
-    if (!recent.empty) {
-      return { ok: false, reason: 'symbol_cooldown' };
-    }
+  if (recent && !recent.empty) {
+    return { ok: false, reason: 'symbol_cooldown' };
   }
 
   return { ok: true };
@@ -393,6 +425,36 @@ async function registerHighConvictionSignal(db, prediction) {
   const quantumScore = Number(prediction.quantum_score ?? prediction.quantumScore ?? 0);
   const timingScore = Number(prediction.timing_score ?? prediction.timingScore ?? 0);
   const predictionId = prediction.id || prediction.prediction_id || null;
+
+  const directRef = predictionId ? db.collection('high_conviction_signals').doc(predictionId) : null;
+  if (directRef) {
+    const docSnap = await directRef.get();
+    if (docSnap.exists) {
+      const existing = docSnap.data() || {};
+      if (existing.stability != null) {
+        return { id: docSnap.id, ...existing };
+      }
+
+      const metrics = computeSignalStabilityMetrics(
+        existing.confidence ?? confidence,
+        existing.quantum_score ?? quantumScore,
+        existing.timing_score ?? timingScore
+      );
+
+      await directRef.set(
+        {
+          stability: metrics.stability,
+          stability_version: STABILITY_VERSION,
+          stability_calculated_at: FieldValue.serverTimestamp(),
+          stability_components: metrics.components
+        },
+        { merge: true }
+      );
+
+      const refreshed = await directRef.get();
+      return { id: refreshed.id, ...(refreshed.data() || {}) };
+    }
+  }
 
   const existingSignal = predictionId
     ? await db
@@ -448,7 +510,8 @@ async function registerHighConvictionSignal(db, prediction) {
     created_at: FieldValue.serverTimestamp()
   };
 
-  const ref = await db.collection('high_conviction_signals').add(payload);
+  const ref = directRef || db.collection('high_conviction_signals').doc();
+  await ref.set(payload, { merge: true });
   return { id: ref.id, ...payload };
 }
 
@@ -492,10 +555,12 @@ async function sendHighConvictionNotification(signalData) {
     }
   }
 
-  await sendTelegramMessage(buildTelegramMessage(signalData));
+  launchDetached(async () => {
+    await sendTelegramMessage(buildTelegramMessage(signalData));
+    console.log('[HIGH_CONVICTION] telegram_sent', payload);
+  }, '[HIGH_CONVICTION] telegram_async_failed');
 
-  console.log('[HIGH_CONVICTION] telegram_sent', payload);
-  return { sent: true, channel: 'telegram' };
+  return { sent: false, channel: 'telegram', queued: true };
 }
 
 module.exports = {
