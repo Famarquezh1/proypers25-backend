@@ -411,6 +411,12 @@ body.theme-dark .signal-intel-panel .btn-outline-primary:focus {
   border-color: #a5b4fc;
 }
 
+.exec-badge-override {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
 .compact-mode .signal-intel-help,
 .compact-mode .telegram-history-header .text-muted,
 .compact-mode .telegram-history-empty,
@@ -476,6 +482,12 @@ body.theme-dark .exec-badge-loss {
   background: #1e1b4b !important;
   color: #c7d2fe !important;
   border-color: #6366f1 !important;
+}
+
+body.theme-dark .exec-badge-override {
+  background: #123524 !important;
+  color: #bbf7d0 !important;
+  border-color: #22c55e !important;
 }
 
 @media (max-width: 991px) {

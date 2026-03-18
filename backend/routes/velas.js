@@ -27,6 +27,9 @@ const {
   EXECUTION_DISCIPLINE_ENABLED,
   getExecutionDisciplineSummary
 } = require('../lib/execution_discipline_engine');
+const {
+  getExecutionLatencySummary
+} = require('../lib/execution_latency_engine');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
 const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
 const db = require('../firebase-admin-config');
@@ -409,6 +412,32 @@ router.get('/execution-discipline-summary', async (_req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || 'execution_discipline_summary_failed'
+    });
+  }
+});
+
+router.get('/execution-latency', async (_req, res) => {
+  try {
+    const refresh = String(_req.query.refresh || '').toLowerCase() === 'true';
+    let report = null;
+
+    if (!refresh) {
+      const snapshot = await getSignalIntelligenceDashboardSnapshot({ refresh: false });
+      report = snapshot?.payload?.execution_latency?.report || null;
+    }
+
+    if (!report) {
+      report = await getExecutionLatencySummary(db);
+    }
+
+    return res.json({
+      ok: true,
+      report
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'execution_latency_summary_failed'
     });
   }
 });

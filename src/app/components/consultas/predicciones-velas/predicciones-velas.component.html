@@ -61,7 +61,7 @@
       <span>Oportunidades próximas</span>
       <span>{{ isSectionOpen('opportunities') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('opportunities')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('opportunities')">
   <div class="opportunities-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -222,7 +222,7 @@
       <span>Monitoreo del sistema</span>
       <span>{{ isSectionOpen('monitoring') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('monitoring')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('monitoring')">
   <div class="monitoring-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -269,7 +269,7 @@
       <span>Signal Intelligence</span>
       <span>{{ isSectionOpen('signalIntel') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('signalIntel')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('signalIntel')">
   <div class="signal-intel-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -328,10 +328,13 @@
     </div>
 
     <div class="monitoring-stats" *ngIf="!signalIntelError">
+      <span class="monitor-pill">Execution rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.executionRate) }}</strong></span>
       <span class="monitor-pill">Missed Wins: <strong>{{ signalIntelExecutionMetaSummary.missedWins }}</strong></span>
       <span class="monitor-pill">Missed Losses: <strong>{{ signalIntelExecutionMetaSummary.missedLosses }}</strong></span>
       <span class="monitor-pill">Late Entry Rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</strong></span>
       <span class="monitor-pill">Execution Delay Avg: <strong>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</strong></span>
+      <span class="monitor-pill">Soft late executed: <strong>{{ signalIntelExecutionMetaSummary.lateEntrySoftExecuted }}</strong></span>
+      <span class="monitor-pill">Soft late blocked: <strong>{{ signalIntelExecutionMetaSummary.lateEntrySoftBlocked }}</strong></span>
       <span class="monitor-pill">Soft late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.softLateRatio) }}</strong></span>
       <span class="monitor-pill">Hard late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.hardLateRatio) }}</strong></span>
       <span class="monitor-pill">Missed WIN rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedWinRate) }}</strong></span>
@@ -491,6 +494,12 @@
             <span class="signal-intel-span-3">{{ signalIntelExecutionSummary.dataSource }}</span>
           </div>
           <div class="signal-intel-row">
+            <span>Execution rate</span>
+            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.executionRate) }}</span>
+            <span>Soft executed</span>
+            <span>{{ signalIntelExecutionMetaSummary.lateEntrySoftExecuted }}</span>
+          </div>
+          <div class="signal-intel-row">
             <span>Missed wins</span>
             <span>{{ signalIntelExecutionMetaSummary.missedWins }}</span>
             <span>Missed losses</span>
@@ -501,6 +510,54 @@
             <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</span>
             <span>Delay promedio</span>
             <span>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Soft blocked</span>
+            <span>{{ signalIntelExecutionMetaSummary.lateEntrySoftBlocked }}</span>
+            <span>Missed WIN rate</span>
+            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedWinRate) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signal-intel-card">
+        <h4>Execution Latency Intelligence</h4>
+        <div class="alert alert-warning py-2 mb-2" *ngIf="latencyWarningActive()">
+          Warning: la latencia p95 supera la ventana de entrada de {{ signalIntelLatencySummary.entryWindowSeconds }}s.
+        </div>
+        <div class="signal-intel-table">
+          <div class="signal-intel-row">
+            <span>Latencia promedio</span>
+            <span>{{ formatMsOrNA(signalIntelLatencySummary.avgTotalLatency) }}</span>
+            <span>Latencia p95</span>
+            <span>{{ formatMsOrNA(signalIntelLatencySummary.p95Latency) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Latencia p50</span>
+            <span>{{ formatMsOrNA(signalIntelLatencySummary.p50Latency) }}</span>
+            <span>Máxima</span>
+            <span>{{ formatMsOrNA(signalIntelLatencySummary.maxLatency) }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Etapa más lenta</span>
+            <span>{{ latencyStageLabel(signalIntelLatencySummary.topBottleneckStage) }}</span>
+            <span>Critical delays</span>
+            <span>{{ signalIntelLatencySummary.criticalDelayCount }}</span>
+          </div>
+          <div class="signal-intel-row">
+            <span>Late blocked</span>
+            <span>{{ signalIntelLatencySummary.lateEntryBlockedCount }}</span>
+            <span>Ventana entrada</span>
+            <span>{{ signalIntelLatencySummary.entryWindowSeconds }}s</span>
+          </div>
+        </div>
+        <div class="signal-intel-table" *ngIf="signalIntelLatencyBreakdown.length">
+          <div class="signal-intel-row signal-intel-head">
+            <span>Etapa</span><span class="signal-intel-span-3">Media</span>
+          </div>
+          <div class="signal-intel-row" *ngFor="let item of signalIntelLatencyBreakdown">
+            <span>{{ item.label }}</span>
+            <span class="signal-intel-span-3">{{ formatMsOrNA(item.value) }}</span>
           </div>
         </div>
       </div>
@@ -750,7 +807,7 @@
       <span>Binance Bot Config</span>
       <span>{{ isSectionOpen('binanceConfig') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('binanceConfig')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('binanceConfig')">
   <div class="binance-config-panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div>
@@ -887,7 +944,7 @@
       <span>High Conviction</span>
       <span>{{ isSectionOpen('highConviction') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('highConviction')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('highConviction')">
   <div class="high-conviction-panel mb-4">
     <h3>High Conviction</h3>
     <div class="hc-filters">
@@ -1053,7 +1110,7 @@
       <span>Historial</span>
       <span>{{ isSectionOpen('historial') ? '−' : '+' }}</span>
     </button>
-    <div class="mobile-section-body" *ngIf="isSectionOpen('historial')">
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('historial')">
   <ng-container *ngIf="historialGroups$ | async as historyGroups">
     <div class="history-filter-row" *ngIf="selectedHistorySymbol">
       <span class="small text-muted">Filtrando historial por {{ selectedHistorySymbol }}</span>

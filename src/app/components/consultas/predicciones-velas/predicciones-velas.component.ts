@@ -74,6 +74,12 @@ interface ExecutionBadgeItem {
   className: string;
 }
 
+interface LatencyBreakdownItem {
+  key: string;
+  label: string;
+  value: number | null;
+}
+
 @Component({
   selector: 'app-predicciones-velas',
   standalone: true,
@@ -227,13 +233,27 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   signalIntelExecutionMetaSummary = {
     missedWins: 0,
     missedLosses: 0,
+    executionRate: null as number | null,
     lateEntryRate: null as number | null,
     executionDelayAvgMs: null as number | null,
+    lateEntrySoftExecuted: 0,
+    lateEntrySoftBlocked: 0,
     softLateRatio: null as number | null,
     hardLateRatio: null as number | null,
     missedWinRate: null as number | null,
     missedLossRate: null as number | null
   };
+  signalIntelLatencySummary = {
+    avgTotalLatency: null as number | null,
+    p50Latency: null as number | null,
+    p95Latency: null as number | null,
+    maxLatency: null as number | null,
+    topBottleneckStage: 'N/A',
+    entryWindowSeconds: 30,
+    criticalDelayCount: 0,
+    lateEntryBlockedCount: 0
+  };
+  signalIntelLatencyBreakdown: LatencyBreakdownItem[] = [];
   signalIntelExecutionTopSymbols: SuppressedSymbolEdgeItem[] = [];
   signalIntelTopSymbols: Array<{
     symbol: string;
@@ -427,6 +447,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
   isSectionOpen(section: keyof PrediccionesVelasComponent['openSections']): boolean {
     return Boolean(this.openSections[section]);
+  }
+
+  shouldRenderSection(section: keyof PrediccionesVelasComponent['openSections']): boolean {
+    const isMobile = this.uiMobileOptimized && typeof window !== 'undefined' && window.innerWidth <= 991;
+    return isMobile ? this.isSectionOpen(section) : true;
   }
 
   toggleCompactMode(): void {
@@ -1015,6 +1040,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           const executionReport = execution?.report || {};
           const executionQuality = executionReport?.execution_quality || {};
           const executionDiscipline = executionReport?.execution_discipline || {};
+          const executionLatency = snapshot?.execution_latency?.report || {};
           const modelEdge = executionReport?.model_edge || {};
           const adaptiveProfile = report?.adaptive_calibration || {};
           const adaptiveProfiles = report?.adaptive_profiles || {};
@@ -1107,13 +1133,53 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           this.signalIntelExecutionMetaSummary = {
             missedWins: Number(executionDisciplineSnapshot?.signal_metrics?.missed_wins || 0),
             missedLosses: Number(executionDisciplineSnapshot?.signal_metrics?.missed_losses || 0),
+            executionRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.execution_rate),
             lateEntryRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.late_entry_block_rate),
             executionDelayAvgMs: this.toNullableNum(executionDisciplineSnapshot?.signal_metrics?.execution_delay_avg_ms),
+            lateEntrySoftExecuted: Number(executionDisciplineSnapshot?.signal_metrics?.late_entry_soft_executed || 0),
+            lateEntrySoftBlocked: Number(executionDisciplineSnapshot?.signal_metrics?.late_entry_soft_blocked || 0),
             softLateRatio: this.toRate(executionDisciplineSnapshot?.signal_metrics?.soft_late_ratio),
             hardLateRatio: this.toRate(executionDisciplineSnapshot?.signal_metrics?.hard_late_ratio),
             missedWinRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.missed_win_rate),
             missedLossRate: this.toRate(executionDisciplineSnapshot?.signal_metrics?.missed_loss_rate)
           };
+          this.signalIntelLatencySummary = {
+            avgTotalLatency: this.toNullableNum(executionLatency?.avg_total_latency),
+            p50Latency: this.toNullableNum(executionLatency?.p50_latency),
+            p95Latency: this.toNullableNum(executionLatency?.p95_latency),
+            maxLatency: this.toNullableNum(executionLatency?.max_latency),
+            topBottleneckStage: String(executionLatency?.top_bottleneck_stage || 'N/A'),
+            entryWindowSeconds: Number(executionLatency?.entry_window_seconds || 30),
+            criticalDelayCount: Number(executionLatency?.critical_delay_count || 0),
+            lateEntryBlockedCount: Number(executionLatency?.late_entry_blocked_count || 0)
+          };
+          this.signalIntelLatencyBreakdown = [
+            {
+              key: 'signal_to_emit_ms',
+              label: this.latencyStageLabel('signal_to_emit_ms'),
+              value: this.toNullableNum(executionLatency?.breakdown?.signal_to_emit_ms)
+            },
+            {
+              key: 'emit_to_intent_ms',
+              label: this.latencyStageLabel('emit_to_intent_ms'),
+              value: this.toNullableNum(executionLatency?.breakdown?.emit_to_intent_ms)
+            },
+            {
+              key: 'intent_to_process_ms',
+              label: this.latencyStageLabel('intent_to_process_ms'),
+              value: this.toNullableNum(executionLatency?.breakdown?.intent_to_process_ms)
+            },
+            {
+              key: 'process_to_attempt_ms',
+              label: this.latencyStageLabel('process_to_attempt_ms'),
+              value: this.toNullableNum(executionLatency?.breakdown?.process_to_attempt_ms)
+            },
+            {
+              key: 'attempt_to_order_ms',
+              label: this.latencyStageLabel('attempt_to_order_ms'),
+              value: this.toNullableNum(executionLatency?.breakdown?.attempt_to_order_ms)
+            }
+          ];
           this.signalIntelAdaptiveProfile = {
             adaptiveTp: this.toNullableNum(adaptiveProfile?.adaptive_tp),
             adaptiveSl: this.toNullableNum(adaptiveProfile?.adaptive_sl),
@@ -1451,6 +1517,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (!meta) return [];
 
     const badges: ExecutionBadgeItem[] = [];
+    const exec = this.highConvictionBinanceExecution(signal);
+    if (meta.override_applied && exec?.executed) {
+      badges.push({ label: 'Executed (soft override)', className: 'exec-badge exec-badge-override' });
+    }
     if (meta.late_entry_type === 'soft') {
       badges.push({ label: 'Late (soft)', className: 'exec-badge exec-badge-soft' });
     } else if (meta.late_entry_type === 'hard') {
@@ -1927,6 +1997,34 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   formatSecondsOrNA(value: number | null | undefined): string {
     if (value == null || !isFinite(value)) return 'N/A';
     return `${Math.round(value)}s`;
+  }
+
+  formatMsOrNA(value: number | null | undefined): string {
+    if (value == null || !isFinite(value)) return 'N/A';
+    return `${Math.round(value)} ms`;
+  }
+
+  latencyStageLabel(stage: string | null | undefined): string {
+    switch (stage) {
+      case 'signal_to_emit_ms':
+        return 'Signal → Emit';
+      case 'emit_to_intent_ms':
+        return 'Emit → Intent';
+      case 'intent_to_process_ms':
+        return 'Intent → Process';
+      case 'process_to_attempt_ms':
+        return 'Process → Attempt';
+      case 'attempt_to_order_ms':
+        return 'Attempt → Order';
+      default:
+        return 'N/A';
+    }
+  }
+
+  latencyWarningActive(): boolean {
+    const threshold = Number(this.signalIntelLatencySummary.entryWindowSeconds || 0) * 1000;
+    const p95 = Number(this.signalIntelLatencySummary.p95Latency || 0);
+    return threshold > 0 && p95 > threshold;
   }
 
   private toRate(value: any): number | null {

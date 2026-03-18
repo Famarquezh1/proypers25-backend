@@ -18,6 +18,9 @@ const {
   EXECUTION_DISCIPLINE_ENABLED,
   getExecutionDisciplineSummary
 } = require('./execution_discipline_engine');
+const {
+  getExecutionLatencySummary
+} = require('./execution_latency_engine');
 
 const SNAPSHOT_COLLECTION = 'analytics_snapshots';
 const SNAPSHOT_DOC_ID = 'signal_intelligence_dashboard_v1';
@@ -224,7 +227,7 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     Math.min(30, Number(options.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
   );
 
-  const [intelligenceBase, suppressedReport, executionReport, executionDisciplineSummary] = await Promise.all([
+  const [intelligenceBase, suppressedReport, executionReport, executionDisciplineSummary, executionLatencySummary] = await Promise.all([
     runSignalIntelligenceAudit({
       days: intelligenceDays,
       maxDocs: intelligenceMaxDocs,
@@ -243,7 +246,8 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
       matchWindowMinutes,
       writeFiles: false
     }),
-    EXECUTION_DISCIPLINE_ENABLED ? getExecutionDisciplineSummary(db) : Promise.resolve(null)
+    EXECUTION_DISCIPLINE_ENABLED ? getExecutionDisciplineSummary(db) : Promise.resolve(null),
+    getExecutionLatencySummary(db)
   ]);
 
   const intelligenceReport = await buildSignalIntelligenceComposite(intelligenceBase);
@@ -273,6 +277,10 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     execution_discipline: {
       fetched_at: fetchedAt,
       report: executionDisciplineSummary
+    },
+    execution_latency: {
+      fetched_at: fetchedAt,
+      report: executionLatencySummary
     }
   };
 
@@ -309,6 +317,12 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
         report: learningSnapshot.payload
       };
     }
+    if (!snapshotCache.payload.execution_latency) {
+      snapshotCache.payload.execution_latency = {
+        fetched_at: new Date().toISOString(),
+        report: await getExecutionLatencySummary(db)
+      };
+    }
     return {
       payload: snapshotCache.payload,
       cached: true,
@@ -324,6 +338,12 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
         persisted.learning = {
           fetched_at: learningSnapshot.payload?.generated_at || new Date().toISOString(),
           report: learningSnapshot.payload
+        };
+      }
+      if (!persisted.execution_latency) {
+        persisted.execution_latency = {
+          fetched_at: new Date().toISOString(),
+          report: await getExecutionLatencySummary(db)
         };
       }
       return {

@@ -7,6 +7,11 @@ const {
   evaluateFilledOrderDiscipline,
   logExecutionDiscipline
 } = require('./execution_discipline_engine');
+const {
+  buildInitialExecutionTrace,
+  advanceExecutionTrace,
+  persistExecutionLatencyObservation
+} = require('./execution_latency_engine');
 
 const BINANCE_EXECUTION_ENABLED = process.env.BINANCE_EXECUTION_ENABLED === 'true';
 const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN || '').toLowerCase() === 'true';
@@ -809,6 +814,10 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
   const intent = buildExecutionIntent(signalData, effectiveConfig);
   const predictionId = signalData?.prediction_id || signalData?.id || null;
+  let executionTrace = buildInitialExecutionTrace({
+    ...signalData,
+    source_profile: sourceProfile
+  });
 
   if (predictionId) {
     const existing = await db
@@ -827,6 +836,15 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const validation = await validateExecutionIntent(db, preciseIntent, effectiveConfig, { source_profile: sourceProfile });
   const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
   const preExecutionAudit = buildExecutionAudit(signalData);
+  executionTrace = advanceExecutionTrace(executionTrace, {
+    intent_processed_at: Date.now()
+  });
+  const entryDiscipline = await evaluateEntryDiscipline({
+    db,
+    signalData,
+    intent: preciseIntent,
+    sourceProfile
+  });
 
   const baseLog = {
     source: options.source || sourceProfile,
@@ -865,38 +883,69 @@ async function executeSignalTrade(db, signalData, options = {}) {
       sl_buffer_pct: effectiveConfig.sl_buffer_pct
     },
     validation,
+    execution_discipline: entryDiscipline.details,
+    trace_id: executionTrace.trace_id,
+    execution_trace: executionTrace,
     intent: preciseIntent,
     execution_audit: preExecutionAudit
   };
-
-  const entryDiscipline = await evaluateEntryDiscipline({
-    db,
-    signalData,
-    intent: preciseIntent,
-    sourceProfile
-  });
   if (entryDiscipline.blocked) {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+      trace: executionTrace,
+      symbol: preciseIntent.symbol,
+      signal_type: sourceProfile,
+      state: 'skipped',
+      late_entry_blocked: entryDiscipline.reason === 'late_entry_blocked'
+    });
     await db.collection('binance_execution_intents').add({
       ...baseLog,
       status: 'skipped',
       reason: entryDiscipline.reason,
-      execution_discipline: entryDiscipline.details
+      trace_id: tracePayload.trace_id,
+      execution_trace: tracePayload.execution_trace,
+      execution_trace_metrics: tracePayload.execution_trace_metrics,
+      dominant_delay_stage: tracePayload.dominant_delay_stage,
+      critical_delay: tracePayload.critical_delay
     });
     return { executed: false, reason: entryDiscipline.reason, dry_run: modeDryRun };
   }
 
   if (!validation.ok) {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+      trace: executionTrace,
+      symbol: preciseIntent.symbol,
+      signal_type: sourceProfile,
+      state: 'skipped',
+      late_entry_blocked: false
+    });
     await db.collection('binance_execution_intents').add({
       ...baseLog,
-      status: 'skipped'
+      status: 'skipped',
+      trace_id: tracePayload.trace_id,
+      execution_trace: tracePayload.execution_trace,
+      execution_trace_metrics: tracePayload.execution_trace_metrics,
+      dominant_delay_stage: tracePayload.dominant_delay_stage,
+      critical_delay: tracePayload.critical_delay
     });
     return { executed: false, reason: validation.reason, dry_run: modeDryRun };
   }
 
   if (modeDryRun) {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+      trace: executionTrace,
+      symbol: preciseIntent.symbol,
+      signal_type: sourceProfile,
+      state: 'dry_run',
+      late_entry_blocked: false
+    });
     await db.collection('binance_execution_intents').add({
       ...baseLog,
-      status: 'dry_run'
+      status: 'dry_run',
+      trace_id: tracePayload.trace_id,
+      execution_trace: tracePayload.execution_trace,
+      execution_trace_metrics: tracePayload.execution_trace_metrics,
+      dominant_delay_stage: tracePayload.dominant_delay_stage,
+      critical_delay: tracePayload.critical_delay
     });
     return { executed: false, reason: 'dry_run', dry_run: true };
   }
@@ -910,14 +959,23 @@ async function executeSignalTrade(db, signalData, options = {}) {
     ? Number(preciseIntent._quantity_precision)
     : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
   try {
+    executionTrace = advanceExecutionTrace(executionTrace, {
+      execution_attempt_at: Date.now()
+    });
     marginRes = await setMarginType(preciseIntent.symbol, preciseIntent.margin_type);
     leverageRes = await setLeverage(preciseIntent.symbol, preciseIntent.leverage);
+    executionTrace = advanceExecutionTrace(executionTrace, {
+      order_sent_at: Date.now()
+    });
     orderRes = await signedRequest('/fapi/v1/order', {
       symbol: preciseIntent.symbol,
       side: preciseIntent.side,
       type: preciseIntent.order_type,
       quantity: toPlainFixed(preciseIntent.quantity, qtyPrecision),
       newOrderRespType: 'RESULT'
+    });
+    executionTrace = advanceExecutionTrace(executionTrace, {
+      order_ack_at: Date.now()
     });
 
     const slippageDiscipline = await evaluateFilledOrderDiscipline({
@@ -933,12 +991,24 @@ async function executeSignalTrade(db, signalData, options = {}) {
         side: preciseIntent.side,
         quantity: preciseIntent.quantity
       }).catch((err) => ({ error: String(err?.message || err) }));
+      const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+        trace: executionTrace,
+        symbol: preciseIntent.symbol,
+        signal_type: sourceProfile,
+        state: 'blocked',
+        late_entry_blocked: false
+      });
 
       await db.collection('binance_execution_intents').add({
         ...baseLog,
         status: 'blocked',
         reason: slippageDiscipline.reason,
         execution_discipline: slippageDiscipline.details,
+        trace_id: tracePayload.trace_id,
+        execution_trace: tracePayload.execution_trace,
+        execution_trace_metrics: tracePayload.execution_trace_metrics,
+        dominant_delay_stage: tracePayload.dominant_delay_stage,
+        critical_delay: tracePayload.critical_delay,
         exchange_response: {
           margin: marginRes,
           leverage: leverageRes,
@@ -956,11 +1026,23 @@ async function executeSignalTrade(db, signalData, options = {}) {
 
     exitsRes = await placeExitOrders(preciseIntent, rules);
   } catch (err) {
+    const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+      trace: executionTrace,
+      symbol: preciseIntent.symbol,
+      signal_type: sourceProfile,
+      state: 'failed',
+      late_entry_blocked: false
+    });
     await db.collection('binance_execution_intents').add({
       ...baseLog,
       status: 'failed',
       failure_stage: 'live_order',
       error_message: String(err?.message || err),
+      trace_id: tracePayload.trace_id,
+      execution_trace: tracePayload.execution_trace,
+      execution_trace_metrics: tracePayload.execution_trace_metrics,
+      dominant_delay_stage: tracePayload.dominant_delay_stage,
+      critical_delay: tracePayload.critical_delay,
       exchange_response: {
         margin: marginRes,
         leverage: leverageRes,
@@ -978,6 +1060,13 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const tpOrderId = exitsRes?.tp?.orderId || exitsRes?.tp_limit?.orderId || null;
   const slOrderId = exitsRes?.sl?.orderId || null;
   const executionAudit = buildExecutionAudit(signalData, new Date());
+  const tracePayload = await persistExecutionLatencyObservation(db, signalData, {
+    trace: executionTrace,
+    symbol: preciseIntent.symbol,
+    signal_type: sourceProfile,
+    state: 'executed',
+    late_entry_blocked: false
+  });
   const expectedDurationWindow = resolveExpectedDurationWindow(signalData);
   const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
     signalData: {
@@ -991,6 +1080,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
   await db.collection('binance_execution_intents').add({
     ...baseLog,
     status: 'executed',
+    trace_id: tracePayload.trace_id,
+    execution_trace: tracePayload.execution_trace,
+    execution_trace_metrics: tracePayload.execution_trace_metrics,
+    dominant_delay_stage: tracePayload.dominant_delay_stage,
+    critical_delay: tracePayload.critical_delay,
     execution_audit: executionAudit,
     exchange_response: {
       margin: marginRes,
@@ -1027,6 +1121,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
     execution_audit: executionAudit,
     win_model: executionAudit.win_model,
     win_exchange: null,
+    trace_id: tracePayload.trace_id,
+    execution_trace: tracePayload.execution_trace,
+    execution_trace_metrics: tracePayload.execution_trace_metrics,
+    dominant_delay_stage: tracePayload.dominant_delay_stage,
+    critical_delay: tracePayload.critical_delay,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp()
   });
@@ -1034,16 +1133,20 @@ async function executeSignalTrade(db, signalData, options = {}) {
   await logExecutionDiscipline(db, {
     type: 'entry_control',
     event: 'entry_accepted',
-    blocked: false,
-    source_profile: sourceProfile,
-    symbol: preciseIntent.symbol,
-    prediction_id: predictionId,
-    details: {
-      execution_delay_seconds: executionAudit?.delay_seconds ?? null,
-      is_late_entry: executionAudit?.is_late_entry ?? null,
-      quantity: preciseIntent.quantity
-    }
-  });
+      blocked: false,
+      source_profile: sourceProfile,
+      symbol: preciseIntent.symbol,
+      prediction_id: predictionId,
+      details: {
+        execution_delay_seconds: executionAudit?.delay_seconds ?? null,
+        execution_delay_ms: entryDiscipline?.details?.execution_delay_ms ?? null,
+        is_late_entry: executionAudit?.is_late_entry ?? null,
+        quantity: preciseIntent.quantity,
+        late_entry_type: entryDiscipline?.details?.late_entry_type || 'none',
+        override_applied: Boolean(entryDiscipline?.details?.override_applied),
+        override_reason: entryDiscipline?.details?.override_reason || 'normal_execution'
+      }
+    });
 
   return {
     executed: true,
