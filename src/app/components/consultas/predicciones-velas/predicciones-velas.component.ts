@@ -2,7 +2,7 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
+import { combineLatest, Observable, of } from 'rxjs';
 import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
@@ -121,6 +121,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   symbolStatusChips$: Observable<SymbolChipItem[]> | undefined;
   oportunidades$: Observable<any[]> | undefined;
   highConvictionSignals$: Observable<any[]> | undefined;
+  latestBinanceExecutions$: Observable<any[]> | undefined;
   telegramNotifications$: Observable<any[]> | undefined;
   telegramWinNotifications$: Observable<any[]> | undefined;
   telegramPendingNotifications$: Observable<any[]> | undefined;
@@ -146,6 +147,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   highConvictionFrom = '';
   highConvictionTo = '';
   expandedHighConvictionId: string | null = null;
+  expandedBinanceExecutionId: string | null = null;
   compactMode = false;
   readonly uiMobileOptimized = environment.uiMobileOptimized !== false;
   private readonly panelStorageKey = 'predicciones_velas_panel_state_v1';
@@ -413,6 +415,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       this.cargarPredicciones();
     });
     this.cargarHighConvictionSignals();
+    this.cargarLatestBinanceExecutions();
     this.cargarTelegramNotifications();
     this.cargarMonitoringSnapshots();
     this.cargarBinanceConfig();
@@ -969,6 +972,13 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     );
   }
 
+  cargarLatestBinanceExecutions(): void {
+    this.latestBinanceExecutions$ = this.firestoreService.getBinanceExecutionIntents<any>(20).pipe(
+      switchMap((items) => this.enrichBinanceExecutionIntents(items)),
+      shareReplay(1)
+    );
+  }
+
   cargarTelegramNotifications(): void {
     const source$ = this.firestoreService.getTelegramNotifications(20).pipe(
       map((items) =>
@@ -1400,6 +1410,14 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return this.expandedHighConvictionId === signalId;
   }
 
+  toggleBinanceExecutionDetails(executionId: string): void {
+    this.expandedBinanceExecutionId = this.expandedBinanceExecutionId === executionId ? null : executionId;
+  }
+
+  isBinanceExecutionExpanded(executionId: string): boolean {
+    return this.expandedBinanceExecutionId === executionId;
+  }
+
   highConvictionOutcome(signal: any): string {
     const raw = (
       signal?.verification_outcome ||
@@ -1510,6 +1528,92 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (status === 'Ya procesada') return 'hc-badge hc-partial';
     if (status === 'Omitida') return 'hc-badge hc-suppressed';
     return 'hc-badge hc-pending';
+  }
+
+  binanceExecutionSourceLabel(item: any): string {
+    const source = String(item?.source_profile || item?.source || 'unknown').toLowerCase();
+    if (source === 'high_conviction') return 'HC';
+    if (source === 'event_emitted') return 'Event';
+    if (source === 'manual_prealert') return 'Prealert';
+    return source || 'N/A';
+  }
+
+  binanceExecutionSourceClass(item: any): string {
+    const source = String(item?.source_profile || item?.source || 'unknown').toLowerCase();
+    if (source === 'high_conviction') return 'hc-badge hc-win';
+    if (source === 'event_emitted') return 'hc-badge hc-partial';
+    if (source === 'manual_prealert') return 'hc-badge hc-suppressed';
+    return 'hc-badge hc-pending';
+  }
+
+  binanceExecutionStatusLabel(item: any): string {
+    const status = String(item?.status || '').toLowerCase();
+    if (status === 'executed') return 'Ejecutada';
+    if (status === 'skipped') return 'Omitida';
+    if (status === 'failed') return 'Falló';
+    if (status === 'dry_run') return 'Dry-run';
+    if (status === 'blocked') return 'Bloqueada';
+    return item?.reason ? 'Procesada' : 'Pendiente';
+  }
+
+  binanceExecutionStatusClass(item: any): string {
+    const status = String(item?.status || '').toLowerCase();
+    if (status === 'executed') return 'hc-badge hc-win';
+    if (status === 'failed' || status === 'blocked') return 'hc-badge hc-loss';
+    if (status === 'skipped') return 'hc-badge hc-suppressed';
+    if (status === 'dry_run') return 'hc-badge hc-partial';
+    return 'hc-badge hc-pending';
+  }
+
+  binanceExecutionOutcomeLabel(item: any): string {
+    const outcome = String(
+      item?.linkedPosition?.win_exchange ||
+      item?.linkedPrediction?.verification?.verification_outcome ||
+      item?.linkedPrediction?.verification_outcome ||
+      ''
+    ).toUpperCase();
+    if (outcome.includes('WIN') || outcome === 'VALIDADO') return 'WIN';
+    if (outcome.includes('LOSS') || outcome === 'FALLIDO') return 'LOSS';
+    if (outcome.includes('BREAKEVEN')) return 'BREAKEVEN';
+    if (String(item?.status || '').toLowerCase() === 'executed') return 'ABIERTA';
+    return '—';
+  }
+
+  binanceExecutionOutcomeClass(item: any): string {
+    const outcome = this.binanceExecutionOutcomeLabel(item);
+    if (outcome === 'WIN') return 'hc-badge hc-win';
+    if (outcome === 'LOSS') return 'hc-badge hc-loss';
+    if (outcome === 'BREAKEVEN') return 'hc-badge hc-partial';
+    return 'hc-badge hc-pending';
+  }
+
+  binanceExecutionReason(item: any): string {
+    return String(item?.reason || item?.error_message || item?.linkedPosition?.close_reason || '—');
+  }
+
+  binanceExecutionDelayMs(item: any): number | null {
+    const value =
+      item?.execution_discipline?.execution_delay_ms ??
+      item?.execution_trace_metrics?.total_latency_ms ??
+      item?.linkedPrediction?.execution_meta?.execution_delay_ms ??
+      null;
+    return this.toNullableNum(value);
+  }
+
+  private resolveBinanceExecutionDate(item: any): Date {
+    const raw =
+      item?.created_at ||
+      item?.opened_at ||
+      item?.closed_at ||
+      item?.updated_at ||
+      item?.timestamp ||
+      null;
+    if (!raw) return new Date(0);
+    if (typeof raw?.toDate === 'function') {
+      return raw.toDate();
+    }
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
   }
 
   executionBadges(signal: any): ExecutionBadgeItem[] {
@@ -1719,6 +1823,55 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
           return {
             ...signal,
             linkedPrediction
+          };
+        });
+      })
+    );
+  }
+
+  private enrichBinanceExecutionIntents(items: any[]): Observable<any[]> {
+    const predictionIds = Array.from(
+      new Set(
+        (items || [])
+          .map((item) => item?.prediction_id)
+          .filter((id) => !!id)
+      )
+    ) as string[];
+
+    if (!predictionIds.length) {
+      return of(items || []);
+    }
+
+    return combineLatest([
+      this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds),
+      this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds)
+    ]).pipe(
+      map(([predictions, positions]) => {
+        const predictionMap = new Map<string, any>();
+        predictions.forEach((item: any) => predictionMap.set(item.id, item));
+
+        const positionMap = new Map<string, any>();
+        (positions || []).forEach((position: any) => {
+          const key = `${position?.prediction_id || 'none'}__${position?.source_profile || position?.source || 'unknown'}`;
+          const current = positionMap.get(key);
+          const currentTs = this.resolveBinanceExecutionDate(current).getTime();
+          const nextTs = this.resolveBinanceExecutionDate(position).getTime();
+          if (!current || nextTs >= currentTs) {
+            positionMap.set(key, position);
+          }
+        });
+
+        return (items || []).map((item) => {
+          const predictionId = item?.prediction_id || null;
+          const sourceProfile = item?.source_profile || item?.source || 'unknown';
+          const linkedPrediction = predictionId ? predictionMap.get(predictionId) : null;
+          const linkedPosition = predictionId
+            ? positionMap.get(`${predictionId}__${sourceProfile}`) || null
+            : null;
+          return {
+            ...item,
+            linkedPrediction,
+            linkedPosition
           };
         });
       })

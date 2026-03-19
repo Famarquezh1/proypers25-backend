@@ -38,6 +38,12 @@ export class FirestoreService {
     return collectionData(q, { idField: 'id' }) as Observable<T[]>;
   }
 
+  getBinanceExecutionIntents<T extends DocumentData>(max = 20): Observable<T[]> {
+    const ref = collection(this.firestore, 'binance_execution_intents');
+    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
+    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
+  }
+
   getTelegramNotifications<T extends DocumentData>(max = 10): Observable<T[]> {
     const ref = collection(this.firestore, 'telegram_notifications');
     const q = query(ref, orderBy('created_at', 'desc'), limit(max));
@@ -101,6 +107,27 @@ export class FirestoreService {
 
     const streams = chunks.map((chunk) => {
       const q = query(ref, where(documentId(), 'in', chunk));
+      return collectionData(q, { idField: 'id' }) as Observable<T[]>;
+    });
+
+    return combineLatest(streams).pipe(map((results) => results.flat()));
+  }
+
+  getCollectionByFieldIn<T extends DocumentData>(path: string, field: string, values: string[]): Observable<T[]> {
+    const cleanValues = Array.from(new Set((values || []).filter(Boolean)));
+    if (!cleanValues.length) {
+      return of([] as T[]);
+    }
+
+    const ref = collection(this.firestore, path);
+    const chunkSize = 10;
+    const chunks: string[][] = [];
+    for (let i = 0; i < cleanValues.length; i += chunkSize) {
+      chunks.push(cleanValues.slice(i, i + chunkSize));
+    }
+
+    const streams = chunks.map((chunk) => {
+      const q = query(ref, where(field as any, 'in', chunk));
       return collectionData(q, { idField: 'id' }) as Observable<T[]>;
     });
 

@@ -209,6 +209,26 @@ body.theme-dark .high-conviction-panel .high-conviction-details hr {
   opacity: 1 !important;
 }
 
+body.theme-dark .high-conviction-panel .panel-context-note code {
+  background: #111a2b !important;
+  color: #dbeafe !important;
+  border: 1px solid #334155 !important;
+  padding: 0.08rem 0.3rem;
+  border-radius: 0.35rem;
+}
+
+.panel-context-note {
+  margin: -0.2rem 0 0.9rem;
+}
+
+.panel-context-note code {
+  font-size: 0.8rem;
+}
+
+.binance-execution-card {
+  min-height: 168px;
+}
+
 body.theme-dark .signal-intel-panel .signal-intel-card,
 body.theme-dark .signal-intel-panel .signal-intel-table,
 body.theme-dark .signal-intel-panel .signal-intel-row,

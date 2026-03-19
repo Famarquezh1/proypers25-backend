@@ -946,7 +946,10 @@
     </button>
     <div class="mobile-section-body" *ngIf="shouldRenderSection('highConviction')">
   <div class="high-conviction-panel mb-4">
-    <h3>High Conviction</h3>
+    <h3>Señales High Conviction</h3>
+    <p class="small text-muted panel-context-note">
+      Este bloque muestra registros de <code>high_conviction_signals</code>. No incluye todas las ejecuciones Binance.
+    </p>
     <div class="hc-filters">
       <div class="hc-filter-group">
         <div class="hc-filter-group-title">Rango temporal</div>
@@ -1097,6 +1100,71 @@
               }}
             </div>
             <div><strong>remarks:</strong> {{ highConvictionRemarks(signal) }}</div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="high-conviction-panel mb-4 binance-execution-panel">
+    <h3>Últimas ejecuciones Binance</h3>
+    <p class="small text-muted panel-context-note">
+      Incluye ejecuciones y omisiones de <code>high_conviction</code>, <code>event_emitted</code> y <code>manual_prealert</code>.
+    </p>
+
+    <ng-container *ngIf="latestBinanceExecutions$ | async as latestExecutions">
+      <p *ngIf="!latestExecutions.length" class="text-muted">
+        No hay ejecuciones Binance recientes.
+      </p>
+
+      <div *ngIf="latestExecutions.length" class="high-conviction-carousel">
+        <div
+          class="high-conviction-card binance-execution-card"
+          *ngFor="let item of latestExecutions; trackBy: trackById"
+          (click)="toggleBinanceExecutionDetails(item.id)"
+        >
+          <div class="high-conviction-compact">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <strong>{{ item.intent?.symbol || item.linkedPrediction?.simbolo || 'N/A' }}</strong>
+              <span [class]="binanceExecutionStatusClass(item)">{{ binanceExecutionStatusLabel(item) }}</span>
+            </div>
+            <div class="small text-muted">{{ formatFirestoreDate(item.created_at || item.opened_at || item.timestamp) }}</div>
+            <div class="exec-badge-row mt-2">
+              <span [class]="binanceExecutionSourceClass(item)">{{ binanceExecutionSourceLabel(item) }}</span>
+              <span [class]="binanceExecutionOutcomeClass(item)">{{ binanceExecutionOutcomeLabel(item) }}</span>
+            </div>
+            <div class="mt-2 small">
+              <strong>Delay:</strong>
+              {{ binanceExecutionDelayMs(item) != null ? (binanceExecutionDelayMs(item) | number:'1.0-0') + ' ms' : '—' }}
+            </div>
+          </div>
+
+          <div *ngIf="isBinanceExecutionExpanded(item.id)" class="high-conviction-details">
+            <div><strong>Origen:</strong> {{ binanceExecutionSourceLabel(item) }}</div>
+            <div><strong>Estado:</strong> {{ binanceExecutionStatusLabel(item) }}</div>
+            <div><strong>Resultado:</strong> {{ binanceExecutionOutcomeLabel(item) }}</div>
+            <div><strong>Prediction ID:</strong> {{ item.prediction_id || '—' }}</div>
+            <div><strong>Símbolo sistema:</strong> {{ item.linkedPrediction?.simbolo || '—' }}</div>
+            <div><strong>order_id:</strong> {{ item.exchange_response?.order?.orderId || item.order_id || '—' }}</div>
+            <div><strong>Razón / cierre:</strong> {{ binanceExecutionReason(item) }}</div>
+            <div>
+              <strong>Latency total:</strong>
+              {{ item.execution_trace_metrics?.total_latency_ms != null ? (item.execution_trace_metrics?.total_latency_ms | number:'1.0-0') + ' ms' : '—' }}
+            </div>
+            <div>
+              <strong>emit → intent:</strong>
+              {{ item.execution_trace_metrics?.emit_to_intent_ms != null ? (item.execution_trace_metrics?.emit_to_intent_ms | number:'1.0-0') + ' ms' : '—' }}
+            </div>
+            <div>
+              <strong>intent → process:</strong>
+              {{ item.execution_trace_metrics?.intent_to_process_ms != null ? (item.execution_trace_metrics?.intent_to_process_ms | number:'1.0-0') + ' ms' : '—' }}
+            </div>
+            <div *ngIf="item.linkedPosition?.close_pnl_pct != null">
+              <strong>PnL cierre:</strong> {{ item.linkedPosition?.close_pnl_pct | number:'1.3-3' }}%
+            </div>
+            <div *ngIf="item.linkedPosition?.close_reason">
+              <strong>Close reason:</strong> {{ item.linkedPosition?.close_reason }}
+            </div>
           </div>
         </div>
       </div>

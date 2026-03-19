@@ -52,6 +52,10 @@ const POSITION_HOLD_MULTIPLIER_HIGH_CONVICTION = Math.max(
   POSITION_HOLD_MULTIPLIER,
   Number(process.env.BINANCE_POSITION_SIGNAL_HOLD_MULTIPLIER_HIGH_CONVICTION || 8)
 );
+const MANUAL_PREALERT_TIMESTAMP_DRIFT_MS = Math.max(
+  5000,
+  Number(process.env.MANUAL_PREALERT_TIMESTAMP_DRIFT_MS || 15000)
+);
 function parseDateLike(value) {
   if (!value) return null;
   if (value instanceof Date) {
@@ -103,6 +107,63 @@ function resolveWindowEndAt(signalData, signalAt) {
     signalData?.window_utc?.end;
   if (!hms || !signalAt) return null;
   return combineUtcDateAndHms(signalAt, hms);
+}
+
+function addSeconds(dateLike, seconds) {
+  const base = parseDateLike(dateLike);
+  if (!base || !Number.isFinite(seconds)) return null;
+  return new Date(base.getTime() + seconds * 1000);
+}
+
+function normalizeSignalDataForExecution(signalData = {}, sourceProfile, receivedAtIso) {
+  const fallbackIso = receivedAtIso || new Date().toISOString();
+  if (sourceProfile !== 'manual_prealert') {
+    return {
+      ...signalData,
+      pipeline_type: sourceProfile,
+      signal_emitted_at:
+        signalData?.signal_emitted_at || signalData?.emitted_at || signalData?.timestamp || fallbackIso,
+      timestamp: signalData?.timestamp || fallbackIso
+    };
+  }
+
+  const receivedAt = parseDateLike(fallbackIso) || new Date();
+  const prealertAnchor =
+    parseDateLike(signalData?.manual_prealert_generated_at) ||
+    parseDateLike(signalData?.prealert_generated_at) ||
+    parseDateLike(signalData?.generated_at) ||
+    parseDateLike(signalData?.signal_emitted_at) ||
+    parseDateLike(signalData?.emitted_at) ||
+    parseDateLike(signalData?.ahora) ||
+    receivedAt;
+
+  const rawSignalAt = resolveSignalAt(signalData);
+  const normalizedSignalAt =
+    !rawSignalAt || Math.abs(prealertAnchor.getTime() - rawSignalAt.getTime()) > MANUAL_PREALERT_TIMESTAMP_DRIFT_MS
+      ? prealertAnchor
+      : rawSignalAt;
+
+  const normalizedWindowStart =
+    parseDateLike(signalData?.entry_window_start_at) ||
+    parseDateLike(signalData?.entry_window?.start) ||
+    normalizedSignalAt;
+  let normalizedWindowEnd = resolveWindowEndAt(signalData, normalizedSignalAt);
+  if (!normalizedWindowEnd || normalizedWindowEnd.getTime() < normalizedSignalAt.getTime()) {
+    normalizedWindowEnd = addSeconds(normalizedSignalAt, Number(process.env.ENTRY_WINDOW_SECONDS || 30));
+  }
+
+  return {
+    ...signalData,
+    pipeline_type: 'manual_prealert',
+    signal_created_at: toIsoOrNull(normalizedSignalAt),
+    signal_emitted_at: toIsoOrNull(prealertAnchor),
+    emitted_at: toIsoOrNull(prealertAnchor),
+    timestamp: toIsoOrNull(normalizedSignalAt),
+    created_at: signalData?.created_at || toIsoOrNull(normalizedSignalAt),
+    ahora: signalData?.ahora || toIsoOrNull(prealertAnchor),
+    entry_window_start_at: toIsoOrNull(normalizedWindowStart),
+    entry_window_end_at: toIsoOrNull(normalizedWindowEnd)
+  };
 }
 
 function normalizeModelOutcome(raw) {
@@ -930,12 +991,7 @@ async function placeExitOrders(intent, rules = null) {
 async function executeSignalTrade(db, signalData, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile || options.source || 'high_conviction');
   const receivedAtIso = new Date().toISOString();
-  const signalDataForExecution = {
-    ...signalData,
-    signal_emitted_at:
-      signalData?.signal_emitted_at || signalData?.emitted_at || signalData?.timestamp || receivedAtIso,
-    timestamp: signalData?.timestamp || receivedAtIso
-  };
+  const signalDataForExecution = normalizeSignalDataForExecution(signalData, sourceProfile, receivedAtIso);
   const config = await getBinanceBotConfig(db);
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
   const intent = createExecutionIntent(signalDataForExecution, effectiveConfig, sourceProfile);
@@ -975,6 +1031,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
     source: options.source || sourceProfile,
     source_profile: sourceProfile,
     signal_origin_stage: sourceProfile,
+    pipeline_type: signalDataForExecution?.pipeline_type || sourceProfile,
     prediction_id: predictionId,
     dry_run: modeDryRun,
     enabled: BINANCE_EXECUTION_ENABLED,
@@ -1245,6 +1302,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
     source: options.source || sourceProfile,
     source_profile: sourceProfile,
     signal_origin_stage: sourceProfile,
+    pipeline_type: signalDataForExecution?.pipeline_type || sourceProfile,
     prediction_id: predictionId,
     symbol: preciseIntent.symbol,
     side: preciseIntent.side,
