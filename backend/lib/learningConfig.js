@@ -2,6 +2,7 @@ const db = require('../firebase-admin-config');
 
 const CACHE_TTL_MS = 3 * 60 * 1000;
 const cache = new Map();
+const inFlightLoads = new Map();
 
 const fallbackScopes = [
   (symbol, mode, timeframe) => [symbol, mode, timeframe],
@@ -13,6 +14,38 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const normalizeKey = (symbol, mode, timeframe) => `${symbol}|${mode}|${timeframe}`;
 
+async function queryScopeConfig(symbol, mode, timeframe, scopeTuple) {
+  const [s, m, t] = scopeTuple;
+  try {
+    const snapshot = await db
+      .collection('velas_learning_config')
+      .where('scope.symbol', '==', s)
+      .where('scope.mode', '==', m)
+      .where('scope.timeframe', '==', t)
+      .orderBy('version', 'desc')
+      .limit(1)
+      .get();
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        version: doc.data().version,
+        scope: doc.data().scope,
+        metrics: doc.data().metrics
+      };
+    }
+  } catch (err) {
+    console.warn('learningConfig load failed', {
+      symbol,
+      mode,
+      timeframe,
+      scope: scopeTuple,
+      message: err.message
+    });
+  }
+  return null;
+}
+
 const loadConfig = async (symbol, mode, timeframe) => {
   const key = normalizeKey(symbol, mode, timeframe);
   const cached = cache.get(key);
@@ -20,43 +53,24 @@ const loadConfig = async (symbol, mode, timeframe) => {
     return cached.config;
   }
 
-  let config = null;
-  for (const fallback of fallbackScopes) {
-    const [s, m, t] = fallback(symbol, mode, timeframe);
-    let snapshot = null;
-    try {
-      snapshot = await db
-        .collection('velas_learning_config')
-        .where('scope.symbol', '==', s)
-        .where('scope.mode', '==', m)
-        .where('scope.timeframe', '==', t)
-        .orderBy('version', 'desc')
-        .limit(1)
-        .get();
-    } catch (err) {
-      console.warn('learningConfig load failed', {
-        symbol,
-        mode,
-        timeframe,
-        scope: [s, m, t],
-        message: err.message
-      });
-      continue;
-    }
-    if (snapshot && !snapshot.empty) {
-      const doc = snapshot.docs[0];
-      config = {
-        id: doc.id,
-        version: doc.data().version,
-        scope: doc.data().scope,
-        metrics: doc.data().metrics
-      };
-      break;
-    }
+  if (inFlightLoads.has(key)) {
+    return inFlightLoads.get(key);
   }
 
-  cache.set(key, { fetchedAt: Date.now(), config });
-  return config;
+  const loadPromise = (async () => {
+    const scopes = fallbackScopes.map((fallback) => fallback(symbol, mode, timeframe));
+    const matches = await Promise.all(
+      scopes.map((scopeTuple) => queryScopeConfig(symbol, mode, timeframe, scopeTuple))
+    );
+    const config = matches.find(Boolean) || null;
+    cache.set(key, { fetchedAt: Date.now(), config });
+    return config;
+  })().finally(() => {
+    inFlightLoads.delete(key);
+  });
+
+  inFlightLoads.set(key, loadPromise);
+  return loadPromise;
 };
 
 const deriveAdjustments = (metrics) => {
@@ -78,8 +92,12 @@ const buildAdjData = (adj) => ({
   timing_modifier: adj.timingAdj
 });
 
-const applyLearningAdjustments = async (symbol, mode, timeframe, scores) => {
-  const config = await loadConfig(symbol, mode, timeframe);
+const preloadLearningConfig = (symbol, mode, timeframe) => loadConfig(symbol, mode, timeframe);
+
+const applyLearningAdjustments = async (symbol, mode, timeframe, scores, options = {}) => {
+  const config = options.preloadedConfig !== undefined
+    ? options.preloadedConfig
+    : await loadConfig(symbol, mode, timeframe);
   if (!config || !config.metrics) {
     return {
       ...scores,
@@ -109,5 +127,6 @@ const applyLearningAdjustments = async (symbol, mode, timeframe, scores) => {
 };
 
 module.exports = {
-  applyLearningAdjustments
+  applyLearningAdjustments,
+  preloadLearningConfig
 };

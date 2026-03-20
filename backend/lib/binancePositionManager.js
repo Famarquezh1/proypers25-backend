@@ -39,6 +39,93 @@ const BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO = Math.max(
   1,
   Number(process.env.BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO || 1.35)
 );
+const BINANCE_POSITION_STALE_GRACE_RATIO = Math.max(
+  0.2,
+  Math.min(0.8, Number(process.env.BINANCE_POSITION_STALE_GRACE_RATIO || 0.35))
+);
+const BINANCE_POSITION_STALE_CONFIRM_CYCLES = Math.max(
+  1,
+  Number(process.env.BINANCE_POSITION_STALE_CONFIRM_CYCLES || 2)
+);
+const BINANCE_POSITION_MICRO_DRAWDOWN_TOLERANCE_PCT = Math.max(
+  0.01,
+  Number(process.env.BINANCE_POSITION_MICRO_DRAWDOWN_TOLERANCE_PCT || 0.05)
+);
+const BINANCE_POSITION_NEGATIVE_CONFIRM_PCT = Math.max(
+  0.03,
+  Number(process.env.BINANCE_POSITION_NEGATIVE_CONFIRM_PCT || 0.12)
+);
+const BINANCE_POSITION_MAX_HOLD_MOMENTUM_PCT = Math.max(
+  0.04,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_MOMENTUM_PCT || 0.15)
+);
+const BINANCE_POSITION_MAX_HOLD_POSITIVE_FLOOR_PCT = Math.max(
+  0.01,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_POSITIVE_FLOOR_PCT || 0.04)
+);
+const BINANCE_POSITION_PARTIAL_EXIT_RATIO = Math.min(
+  0.8,
+  Math.max(0.2, Number(process.env.BINANCE_POSITION_PARTIAL_EXIT_RATIO || 0.5))
+);
+const BINANCE_POSITION_PARTIAL_EXIT_MAX_COUNT = Math.max(
+  1,
+  Number(process.env.BINANCE_POSITION_PARTIAL_EXIT_MAX_COUNT || 1)
+);
+const BINANCE_POSITION_TRAILING_TRIGGER_PCT = Math.max(
+  0.03,
+  Number(process.env.BINANCE_POSITION_TRAILING_TRIGGER_PCT || 0.12)
+);
+const BINANCE_POSITION_TRAILING_RETRACE_RATIO = Math.min(
+  0.9,
+  Math.max(0.2, Number(process.env.BINANCE_POSITION_TRAILING_RETRACE_RATIO || 0.55))
+);
+const BINANCE_POSITION_TRAILING_MIN_LOCK_PCT = Math.max(
+  0.01,
+  Number(process.env.BINANCE_POSITION_TRAILING_MIN_LOCK_PCT || 0.04)
+);
+const BINANCE_POSITION_PRE_MAX_HOLD_CAPTURE_RATIO = Math.min(
+  0.98,
+  Math.max(0.6, Number(process.env.BINANCE_POSITION_PRE_MAX_HOLD_CAPTURE_RATIO || 0.8))
+);
+const BINANCE_POSITION_PRE_MAX_HOLD_MIN_PROFIT_PCT = Math.max(
+  0.01,
+  Number(process.env.BINANCE_POSITION_PRE_MAX_HOLD_MIN_PROFIT_PCT || 0.02)
+);
+const BINANCE_POSITION_PRE_MAX_HOLD_MIN_MFE_PCT = Math.max(
+  0.02,
+  Number(process.env.BINANCE_POSITION_PRE_MAX_HOLD_MIN_MFE_PCT || 0.05)
+);
+const BINANCE_POSITION_PROFIT_LOCK_MIN_MFE_PCT = Math.max(
+  0.02,
+  Number(process.env.BINANCE_POSITION_PROFIT_LOCK_MIN_MFE_PCT || 0.05)
+);
+const BINANCE_POSITION_PROFIT_LOCK_MIN_SECONDS = Math.max(
+  60,
+  Number(process.env.BINANCE_POSITION_PROFIT_LOCK_MIN_SECONDS || 90)
+);
+const BINANCE_POSITION_PROFIT_LOCK_RETRACE_RATIO = Math.min(
+  0.9,
+  Math.max(0.2, Number(process.env.BINANCE_POSITION_PROFIT_LOCK_RETRACE_RATIO || 0.35))
+);
+const BINANCE_POSITION_PROFIT_LOCK_MIN_FLOOR_PCT = Math.max(
+  0.01,
+  Number(process.env.BINANCE_POSITION_PROFIT_LOCK_MIN_FLOOR_PCT || 0.025)
+);
+const BINANCE_POSITION_MAX_HOLD_EXTENSION_MIN_MFE_PCT = Math.max(
+  0.03,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_EXTENSION_MIN_MFE_PCT || 0.06)
+);
+const BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_COUNT = Math.max(
+  1,
+  Number(process.env.BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_COUNT || 2)
+);
+const BINANCE_POSITION_MAX_HOLD_EXTENSION_NEGATIVE_FLOOR_PCT = Number(
+  process.env.BINANCE_POSITION_MAX_HOLD_EXTENSION_NEGATIVE_FLOOR_PCT || -0.02
+);
+const BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_RETRACE_RATIO = Math.min(
+  0.95,
+  Math.max(0.2, Number(process.env.BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_RETRACE_RATIO || 0.75))
+);
 
 function resolveSourceProfile(position) {
   return String(position?.source_profile || position?.source || 'event_emitted').toLowerCase();
@@ -94,19 +181,57 @@ function resolvePositionMaxHoldSeconds(position) {
   return BINANCE_POSITION_MAX_HOLD_MINUTES * 60;
 }
 
-function maybeExtendHighConvictionHold(position, pnlPct, positionMaxHoldSeconds) {
+function resolveMaxSeenPct(position, pnlPct = null) {
+  const stored = Number(position?.profit_capture_max_seen_pct ?? position?.max_seen_pnl_pct ?? 0);
+  const current = Number(pnlPct ?? 0);
+  if (!Number.isFinite(stored) && !Number.isFinite(current)) return 0;
+  return Math.max(Number.isFinite(stored) ? stored : 0, Number.isFinite(current) ? current : 0);
+}
+
+function resolveMinSeenPct(position, pnlPct = null) {
+  const stored = Number(position?.min_seen_pct ?? 0);
+  const current = Number(pnlPct ?? 0);
+  if (!Number.isFinite(stored) && !Number.isFinite(current)) return 0;
+  if (!Number.isFinite(stored)) return current;
+  if (!Number.isFinite(current)) return stored;
+  return Math.min(stored, current);
+}
+
+function resolveStaleConfig(sourceProfile) {
+  const isHighConviction = sourceProfile === 'high_conviction';
+  return {
+    negativeConfirmPct: isHighConviction
+      ? Math.max(0.03, BINANCE_POSITION_NEGATIVE_CONFIRM_PCT * 0.5)
+      : BINANCE_POSITION_NEGATIVE_CONFIRM_PCT,
+    microDrawdownTolerancePct: isHighConviction
+      ? Math.max(0.01, BINANCE_POSITION_MICRO_DRAWDOWN_TOLERANCE_PCT * 0.8)
+      : BINANCE_POSITION_MICRO_DRAWDOWN_TOLERANCE_PCT
+  };
+}
+
+function maybeExtendHoldWithMomentum(position, pnlPct, positionMaxHoldSeconds, maxSeenPct) {
   const sourceProfile = resolveSourceProfile(position);
-  if (sourceProfile !== 'high_conviction') return null;
-
   const extensionCount = Number(position?.hold_extension_count || 0);
-  if (extensionCount >= 1) return null;
+  if (extensionCount >= BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_COUNT) return null;
 
-  if (!Number.isFinite(pnlPct) || pnlPct < BINANCE_POSITION_HC_MAX_HOLD_GRACE_PCT) {
+  const retracePct = Math.max(0, maxSeenPct - pnlPct);
+  const maxAllowedRetrace = Math.max(0.03, maxSeenPct * BINANCE_POSITION_MAX_HOLD_EXTENSION_MAX_RETRACE_RATIO);
+
+  if (
+    !Number.isFinite(pnlPct) ||
+    pnlPct < BINANCE_POSITION_MAX_HOLD_EXTENSION_NEGATIVE_FLOOR_PCT ||
+    maxSeenPct < Math.max(BINANCE_POSITION_MAX_HOLD_EXTENSION_MIN_MFE_PCT, BINANCE_POSITION_MAX_HOLD_POSITIVE_FLOOR_PCT) ||
+    retracePct > maxAllowedRetrace
+  ) {
     return null;
   }
 
   const adaptiveHorizon = Number(position?.adaptive_horizon_seconds || 0);
-  const extendedBase = Math.round(positionMaxHoldSeconds * BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO);
+  const extensionRatio =
+    sourceProfile === 'high_conviction'
+      ? BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO
+      : Math.max(1.1, BINANCE_POSITION_HC_MAX_HOLD_EXTENSION_RATIO - 0.15);
+  const extendedBase = Math.round(positionMaxHoldSeconds * extensionRatio);
   const extendedMax = adaptiveHorizon > 0
     ? Math.max(extendedBase, Math.round(adaptiveHorizon * 0.75))
     : extendedBase;
@@ -116,6 +241,61 @@ function maybeExtendHighConvictionHold(position, pnlPct, positionMaxHoldSeconds)
   return {
     extended_hold_seconds: extendedMax,
     extension_count: extensionCount + 1
+  };
+}
+
+function maybeProtectAccumulatedProfit(position, pnlPct, openedSeconds, positionMaxHoldSeconds, maxSeenPct, openedMinutes, sourceProfile) {
+  if (!Number.isFinite(pnlPct) || !Number.isFinite(maxSeenPct)) return null;
+
+  const activationSeconds = Math.max(
+    BINANCE_POSITION_PROFIT_LOCK_MIN_SECONDS,
+    Math.round(positionMaxHoldSeconds * 0.45)
+  );
+  if (openedSeconds < activationSeconds) return null;
+  if (maxSeenPct < BINANCE_POSITION_PROFIT_LOCK_MIN_MFE_PCT) return null;
+
+  const dynamicFloorPct = Math.max(
+    BINANCE_POSITION_PROFIT_LOCK_MIN_FLOOR_PCT,
+    maxSeenPct * BINANCE_POSITION_PROFIT_LOCK_RETRACE_RATIO
+  );
+
+  if (pnlPct > dynamicFloorPct) return null;
+
+  return {
+    close: true,
+    reason: 'profit_capture_enforced',
+    pnl_pct: pnlPct,
+    opened_minutes: openedMinutes,
+    opened_seconds: openedSeconds,
+    max_hold_seconds: positionMaxHoldSeconds,
+    source_profile: sourceProfile,
+    profit_lock_floor_pct: dynamicFloorPct,
+    max_seen_pct: maxSeenPct
+  };
+}
+
+function maybePlanProgressiveCapture(position, pnlPct, openedSeconds, positionMaxHoldSeconds, maxSeenPct, partialExitCount, openedMinutes, sourceProfile) {
+  const captureWindowSeconds = Math.max(
+    60,
+    Math.round(positionMaxHoldSeconds * BINANCE_POSITION_PRE_MAX_HOLD_CAPTURE_RATIO)
+  );
+
+  if (openedSeconds < captureWindowSeconds) return null;
+  if (partialExitCount >= BINANCE_POSITION_PARTIAL_EXIT_MAX_COUNT) return null;
+  if (!Number.isFinite(pnlPct) || pnlPct < BINANCE_POSITION_PRE_MAX_HOLD_MIN_PROFIT_PCT) return null;
+  if (!Number.isFinite(maxSeenPct) || maxSeenPct < BINANCE_POSITION_PRE_MAX_HOLD_MIN_MFE_PCT) return null;
+
+  return {
+    close: false,
+    partial_close: true,
+    reason: 'pre_max_hold_partial_take_profit',
+    pnl_pct: pnlPct,
+    opened_minutes: openedMinutes,
+    opened_seconds: openedSeconds,
+    max_hold_seconds: positionMaxHoldSeconds,
+    source_profile: sourceProfile,
+    partial_close_ratio: BINANCE_POSITION_PARTIAL_EXIT_RATIO,
+    partial_exit_count: partialExitCount + 1
   };
 }
 
@@ -155,6 +335,8 @@ function shouldEarlyExit(position, config, markPrice) {
   const side = position?.side;
   const entry = Number(position?.entry_price || 0);
   const pnlPct = pnlPctFor(side, entry, markPrice);
+  const maxSeenPct = resolveMaxSeenPct(position, pnlPct);
+  const minSeenPct = resolveMinSeenPct(position, pnlPct);
   const openedMinutes = getOpenMinutes(position?.opened_at);
   const openedSeconds = getOpenSeconds(position?.opened_at);
   const drawdown = Number(position?.early_exit_drawdown_pct ?? config?.early_exit_drawdown_pct ?? 0.25);
@@ -175,6 +357,18 @@ function shouldEarlyExit(position, config, markPrice) {
     60,
     Math.round(positionMaxHoldSeconds * staleExitRatio)
   );
+  const staleGraceSeconds = Math.max(
+    60,
+    Math.min(staleExitThresholdSeconds, Math.round(positionMaxHoldSeconds * BINANCE_POSITION_STALE_GRACE_RATIO))
+  );
+  const staleWarningCount = Number(position?.stale_warning_count || 0);
+  const partialExitCount = Number(position?.partial_exit_count || 0);
+  const staleConfig = resolveStaleConfig(sourceProfile);
+  const hasPositiveProgress = maxSeenPct >= BINANCE_POSITION_TRAILING_TRIGGER_PCT;
+  const mfeDrawdownPct = Math.max(0, maxSeenPct - pnlPct);
+  const negativeConfirmation =
+    pnlPct <= -staleConfig.negativeConfirmPct ||
+    (pnlPct <= -staleConfig.microDrawdownTolerancePct && !hasPositiveProgress);
 
   if (position?.early_exit_enabled || config?.early_exit_enabled) {
     if (pnlPct <= -Math.abs(drawdown)) {
@@ -201,9 +395,23 @@ function shouldEarlyExit(position, config, markPrice) {
 
   if (
     staleExitEnabled &&
+    openedSeconds >= staleGraceSeconds &&
     openedSeconds >= staleExitThresholdSeconds &&
-    pnlPct <= staleExitMaxPnlPct
+    pnlPct <= staleExitMaxPnlPct &&
+    negativeConfirmation
   ) {
+    if (staleWarningCount + 1 < BINANCE_POSITION_STALE_CONFIRM_CYCLES) {
+      return {
+        close: false,
+        reason: 'stale_watch',
+        pnl_pct: pnlPct,
+        opened_minutes: openedMinutes,
+        opened_seconds: openedSeconds,
+        max_hold_seconds: positionMaxHoldSeconds,
+        source_profile: sourceProfile,
+        stale_warning_count: staleWarningCount + 1
+      };
+    }
     return {
       close: true,
       reason: 'stale_no_followthrough',
@@ -211,22 +419,81 @@ function shouldEarlyExit(position, config, markPrice) {
       opened_minutes: openedMinutes,
       opened_seconds: openedSeconds,
       max_hold_seconds: positionMaxHoldSeconds,
-      source_profile: sourceProfile
+      source_profile: sourceProfile,
+      stale_warning_count: staleWarningCount + 1
+    };
+  }
+
+  const profitProtectionDecision = maybeProtectAccumulatedProfit(
+    position,
+    pnlPct,
+    openedSeconds,
+    positionMaxHoldSeconds,
+    maxSeenPct,
+    openedMinutes,
+    sourceProfile
+  );
+  if (profitProtectionDecision) {
+    return {
+      ...profitProtectionDecision,
+      min_seen_pct: minSeenPct,
+      mfe_drawdown_pct: mfeDrawdownPct
+    };
+  }
+
+  const progressiveCaptureDecision = maybePlanProgressiveCapture(
+    position,
+    pnlPct,
+    openedSeconds,
+    positionMaxHoldSeconds,
+    maxSeenPct,
+    partialExitCount,
+    openedMinutes,
+    sourceProfile
+  );
+  if (progressiveCaptureDecision) {
+    return {
+      ...progressiveCaptureDecision,
+      min_seen_pct: minSeenPct,
+      mfe_drawdown_pct: mfeDrawdownPct
     };
   }
 
   if (openedSeconds >= positionMaxHoldSeconds) {
-    const holdExtension = maybeExtendHighConvictionHold(position, pnlPct, positionMaxHoldSeconds);
+    const canPartialExit =
+      partialExitCount < BINANCE_POSITION_PARTIAL_EXIT_MAX_COUNT &&
+      pnlPct >= BINANCE_POSITION_MAX_HOLD_POSITIVE_FLOOR_PCT &&
+      maxSeenPct >= BINANCE_POSITION_MAX_HOLD_MOMENTUM_PCT;
+    if (canPartialExit) {
+      return {
+        close: false,
+        partial_close: true,
+        reason: 'max_hold_partial_take_profit',
+        pnl_pct: pnlPct,
+        opened_minutes: openedMinutes,
+        opened_seconds: openedSeconds,
+        max_hold_seconds: positionMaxHoldSeconds,
+        source_profile: sourceProfile,
+        partial_close_ratio: BINANCE_POSITION_PARTIAL_EXIT_RATIO,
+        partial_exit_count: partialExitCount + 1,
+        min_seen_pct: minSeenPct,
+        mfe_drawdown_pct: mfeDrawdownPct
+      };
+    }
+
+    const holdExtension = maybeExtendHoldWithMomentum(position, pnlPct, positionMaxHoldSeconds, maxSeenPct);
     if (holdExtension) {
       return {
         close: false,
-        reason: 'extend_high_conviction_hold',
+        reason: 'extend_momentum_hold',
         pnl_pct: pnlPct,
         opened_minutes: openedMinutes,
         opened_seconds: openedSeconds,
         max_hold_seconds: holdExtension.extended_hold_seconds,
         source_profile: sourceProfile,
-        hold_extension_count: holdExtension.extension_count
+        hold_extension_count: holdExtension.extension_count,
+        min_seen_pct: minSeenPct,
+        mfe_drawdown_pct: mfeDrawdownPct
       };
     }
 
@@ -237,7 +504,9 @@ function shouldEarlyExit(position, config, markPrice) {
       opened_minutes: openedMinutes,
       opened_seconds: openedSeconds,
       max_hold_seconds: positionMaxHoldSeconds,
-      source_profile: sourceProfile
+      source_profile: sourceProfile,
+      min_seen_pct: minSeenPct,
+      mfe_drawdown_pct: mfeDrawdownPct
     };
   }
 
@@ -248,7 +517,10 @@ function shouldEarlyExit(position, config, markPrice) {
     opened_minutes: openedMinutes,
     opened_seconds: openedSeconds,
     max_hold_seconds: positionMaxHoldSeconds,
-    source_profile: sourceProfile
+    source_profile: sourceProfile,
+    stale_warning_count: 0,
+    min_seen_pct: minSeenPct,
+    mfe_drawdown_pct: mfeDrawdownPct
   };
 }
 
@@ -309,15 +581,24 @@ async function runBinancePositionManagerCycle(db) {
       }
 
       if (!decision.close) {
+        const latestMaxSeenPct = resolveMaxSeenPct(position, decision.pnl_pct);
+        const latestMinSeenPct = resolveMinSeenPct(position, decision.pnl_pct);
         const updatePayload = {
           mark_price: markPrice,
           unrealized_pnl_pct: Number(decision.pnl_pct.toFixed(4)),
           opened_minutes: Number(decision.opened_minutes.toFixed(2)),
           opened_seconds: Number(decision.opened_seconds.toFixed(1)),
           position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
+          profit_capture_max_seen_pct: Number(latestMaxSeenPct.toFixed(4)),
+          min_seen_pct: Number(latestMinSeenPct.toFixed(4)),
           manager_last_check_at: nowIso(),
           updated_at: FieldValue.serverTimestamp()
         };
+        if (Number.isFinite(Number(decision.stale_warning_count))) {
+          updatePayload.stale_warning_count = Number(decision.stale_warning_count);
+        } else if (decision.reason === 'hold') {
+          updatePayload.stale_warning_count = 0;
+        }
         if (disciplineDecision.armProfitCapture) {
           updatePayload.profit_capture_armed = true;
           updatePayload.profit_capture_trigger_pct = Number(disciplineDecision.details?.capture_trigger_pct || 0) || null;
@@ -325,6 +606,9 @@ async function runBinancePositionManagerCycle(db) {
         }
         if (Number.isFinite(Number(disciplineDecision.details?.max_seen_pct))) {
           updatePayload.profit_capture_max_seen_pct = Number(disciplineDecision.details.max_seen_pct);
+        }
+        if (Number.isFinite(Number(decision.profit_lock_floor_pct))) {
+          updatePayload.profit_capture_lock_pct = Number(decision.profit_lock_floor_pct);
         }
         if (Number.isFinite(Number(decision.hold_extension_count))) {
           updatePayload.hold_extension_count = Number(decision.hold_extension_count);
@@ -339,6 +623,75 @@ async function runBinancePositionManagerCycle(db) {
             reason: decision.reason,
             discipline: disciplineDecision.details
           };
+        } else if (decision.reason === 'pre_max_hold_partial_take_profit') {
+          updatePayload.manager_decision = {
+            close: false,
+            partial_close: true,
+            reason: decision.reason,
+            profit_lock_floor_pct: Number(decision.profit_lock_floor_pct || 0) || null
+          };
+        }
+        if (decision.partial_close) {
+          const partialQtyRaw = qty * Number(decision.partial_close_ratio || BINANCE_POSITION_PARTIAL_EXIT_RATIO);
+          const partialQty = Number(partialQtyRaw.toFixed(6));
+          if (partialQty > 0 && partialQty < qty) {
+            let partialCloseOrder = null;
+            let executedPartialQty = partialQty;
+            if (config.mode !== 'dry-run') {
+              partialCloseOrder = await closePositionMarket({
+                symbol,
+                side: position.side,
+                quantity: partialQty
+              });
+              executedPartialQty = Number(partialCloseOrder?.executedQty || partialQty);
+            }
+            const remainingQty = Math.max(0, Number((qty - executedPartialQty).toFixed(6)));
+            updatePayload.quantity = config.mode === 'dry-run'
+              ? qty
+              : (remainingQty > 0 ? remainingQty : qty);
+            updatePayload.partial_exit_count = Number(decision.partial_exit_count || 1);
+            updatePayload.partial_exit_last_at = nowIso();
+            updatePayload.partial_exit_last_reason = decision.reason;
+            updatePayload.partial_exit_last_qty = config.mode === 'dry-run' ? 0 : executedPartialQty;
+            updatePayload.partial_exit_last_pnl_pct = Number(decision.pnl_pct.toFixed(4));
+            updatePayload.profit_capture_armed = true;
+            updatePayload.profit_capture_trigger_pct =
+              Number(disciplineDecision.details?.capture_trigger_pct || 0) ||
+              Number(position?.profit_capture_trigger_pct || 0) ||
+              null;
+            updatePayload.profit_capture_lock_pct =
+              Number(disciplineDecision.details?.lock_floor_pct || 0) ||
+              Number(position?.profit_capture_lock_pct || 0) ||
+              null;
+            updatePayload.manager_decision = {
+              close: false,
+              partial_close: true,
+              reason: decision.reason,
+              dry_run: config.mode === 'dry-run',
+              partial_close_ratio: Number(decision.partial_close_ratio || BINANCE_POSITION_PARTIAL_EXIT_RATIO),
+              remaining_quantity: updatePayload.quantity
+            };
+            await doc.ref.update(updatePayload);
+            await logExecutionDiscipline(db, {
+              type: 'exit_control',
+              event: decision.reason,
+              blocked: false,
+              source_profile: resolveSourceProfile(position),
+              symbol,
+              prediction_id: position.prediction_id || null,
+              details: {
+                pnl_pct: Number(decision.pnl_pct.toFixed(4)),
+                partial_close_qty: executedPartialQty,
+                partial_close_ratio: Number(decision.partial_close_ratio || BINANCE_POSITION_PARTIAL_EXIT_RATIO),
+                remaining_quantity: updatePayload.quantity,
+                max_hold_seconds: Number(decision.max_hold_seconds || 0),
+                max_seen_pct: updatePayload.profit_capture_max_seen_pct,
+                min_seen_pct: updatePayload.min_seen_pct
+              }
+            });
+            skipped += 1;
+            continue;
+          }
         }
         await doc.ref.update(updatePayload);
         if (disciplineDecision.blockExit || disciplineDecision.armProfitCapture) {
@@ -402,6 +755,8 @@ async function runBinancePositionManagerCycle(db) {
         opened_minutes: Number(decision.opened_minutes.toFixed(2)),
         opened_seconds: Number(decision.opened_seconds.toFixed(1)),
         position_max_hold_seconds: Number(decision.max_hold_seconds || 0),
+        profit_capture_max_seen_pct: Number(resolveMaxSeenPct(position, decision.pnl_pct).toFixed(4)),
+        min_seen_pct: Number(resolveMinSeenPct(position, decision.pnl_pct).toFixed(4)),
         close_order: closeOrder || { skipped: 'already_closed' },
         updated_at: FieldValue.serverTimestamp()
       });
@@ -417,7 +772,11 @@ async function runBinancePositionManagerCycle(db) {
           pnl_pct: realizedPnlPct,
           mark_price: markPrice,
           close_price: closePrice,
-          max_hold_seconds: Number(decision.max_hold_seconds || 0)
+          max_hold_seconds: Number(decision.max_hold_seconds || 0),
+          max_seen_pct: Number(resolveMaxSeenPct(position, decision.pnl_pct).toFixed(4)),
+          min_seen_pct: Number(resolveMinSeenPct(position, decision.pnl_pct).toFixed(4)),
+          mfe_drawdown_pct: Number(Number(decision.mfe_drawdown_pct || 0).toFixed(4)),
+          profit_lock_floor_pct: Number(decision.profit_lock_floor_pct || 0) || null
         }
       });
 

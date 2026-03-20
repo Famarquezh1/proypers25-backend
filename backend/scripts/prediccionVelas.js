@@ -2,7 +2,7 @@ const yahooFinance = require('yahoo-finance2').default;
 const db = require('../firebase-admin-config');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
 const { fetchCandles } = require('../services/dataSources/fetchCandles');
-const { applyLearningAdjustments } = require('../lib/learningConfig');
+const { applyLearningAdjustments, preloadLearningConfig } = require('../lib/learningConfig');
 const { evaluateEventContextFilter } = require('../lib/event_context_filter');
 const { adjustExecutionTargets } = require('../lib/context_execution_adjuster');
 const { executeSignalTrade } = require('../lib/binanceFuturesExecutor');
@@ -38,6 +38,14 @@ const CONTEXT_EXECUTION_ADJUSTMENT_ENABLED =
   process.env.CONTEXT_EXECUTION_ADJUSTMENT_ENABLED === 'true';
 const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
 const PREDICCION_VERBOSE_LOGS = process.env.PREDICCION_VERBOSE_LOGS === 'true';
+const ENTRY_WINDOW_SECONDS = Math.max(5, Math.min(35, Number(process.env.ENTRY_WINDOW_SECONDS || 30)));
+const PREDICTION_RUNTIME_CACHE_TTL_MS = Math.max(
+  2000,
+  Number(process.env.PREDICTION_RUNTIME_CACHE_TTL_MS || 15000)
+);
+const spotPriceCache = new Map();
+const inflightSpotRequests = new Map();
+const trainingStatsCache = new Map();
 
 function pricePrecision(value) {
   const n = Number(value);
@@ -224,6 +232,27 @@ async function obtenerSpotPrice(symbol, timeframe = '5m') {
   throw new Error(`No se pudo obtener spot price real para ${symbol}`);
 }
 
+async function getCachedSpotPrice(symbol, timeframe = '5m') {
+  const cacheKey = `${String(symbol || '').toUpperCase()}|${String(timeframe || '5m')}`;
+  const cached = spotPriceCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < PREDICTION_RUNTIME_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  if (inflightSpotRequests.has(cacheKey)) {
+    return inflightSpotRequests.get(cacheKey);
+  }
+  const request = obtenerSpotPrice(symbol, timeframe)
+    .then((value) => {
+      spotPriceCache.set(cacheKey, { value, fetchedAt: Date.now() });
+      return value;
+    })
+    .finally(() => {
+      inflightSpotRequests.delete(cacheKey);
+    });
+  inflightSpotRequests.set(cacheKey, request);
+  return request;
+}
+
 function computeExitWindow(timeframe, entryTime) {
   if (timeframe !== '1m') {
     return {
@@ -266,12 +295,16 @@ async function loadTrainingStats(symbolNormalized) {
   if (!symbolNormalized) {
     return null;
   }
+  const cacheKey = String(symbolNormalized || '').toUpperCase();
+  const cached = trainingStatsCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < PREDICTION_RUNTIME_CACHE_TTL_MS) {
+    return cached.value;
+  }
   const docRef = db.collection('velas_training_stats').doc(symbolNormalized);
   const snapshot = await docRef.get();
-  if (!snapshot.exists) {
-    return null;
-  }
-  return snapshot.data() || null;
+  const value = snapshot.exists ? (snapshot.data() || null) : null;
+  trainingStatsCache.set(cacheKey, { value, fetchedAt: Date.now() });
+  return value;
 }
 
 function applyTrainingFeedback(confidence, quantumScore, stats) {
@@ -460,7 +493,9 @@ async function generarPrediccion({
   origin
 } = {}) {
   const frameMinutes = timeframes[timeframe] || 5;
-  const now = new Date();
+  const analysisStartAt = new Date();
+  const analysisStartIso = analysisStartAt.toISOString();
+  const now = analysisStartAt;
   const entryTime = new Date(now.getTime() + frameMinutes * 60000);
   const exitWindow = computeExitWindow(timeframe, entryTime);
 
@@ -468,11 +503,13 @@ async function generarPrediccion({
   const symbolNormalized = normalizeSymbol(symbolInput);
   const executionMode = execution_mode === 'event_driven' ? 'event_driven' : 'timeframe';
   const isEventDriven = executionMode === 'event_driven';
+  const trainingStatsPromise = loadTrainingStats(symbolNormalized);
+  const learningConfigPromise = preloadLearningConfig(symbolNormalized || symbolInput, executionMode, timeframe);
 
   let spotPrice = null;
   let spotPriceSource = 'unresolved';
   try {
-    const fetchedSpot = await obtenerSpotPrice(symbolNormalized || symbolInput, timeframe);
+    const fetchedSpot = await getCachedSpotPrice(symbolNormalized || symbolInput, timeframe);
     if (Number.isFinite(fetchedSpot?.price)) {
       spotPrice = roundPrice(fetchedSpot.price);
       spotPriceSource = fetchedSpot.source || 'unknown';
@@ -504,10 +541,14 @@ async function generarPrediccion({
     direction = Math.random() >= 0.5 ? 'up' : 'down';
   }
   const directionSign = direction === 'down' ? -1 : direction === 'up' ? 1 : 0;
+  const contextCandlesPromise =
+    EVENT_CONTEXT_FILTER_ENABLED && (direction === 'up' || direction === 'down')
+      ? fetchCandles(symbolNormalized || symbolInput, timeframe)
+      : Promise.resolve(null);
 
   if (EVENT_CONTEXT_FILTER_ENABLED && (direction === 'up' || direction === 'down')) {
     try {
-      const contextCandles = await fetchCandles(symbolNormalized || symbolInput, timeframe);
+      const contextCandles = await contextCandlesPromise;
       contextFilter = evaluateEventContextFilter({
         candles: contextCandles,
         direction,
@@ -530,7 +571,7 @@ async function generarPrediccion({
   let confidence = baseConfidence;
   let quantumScore = clamp(baseQuantum * (0.7 + timingScore * 0.3), 0.1, 0.99);
 
-  const trainingStats = await loadTrainingStats(symbolNormalized);
+  const trainingStats = await trainingStatsPromise;
   const trainingFeedback = applyTrainingFeedback(confidence, quantumScore, trainingStats);
   confidence = trainingFeedback.confidence;
   quantumScore = trainingFeedback.quantumScore;
@@ -556,7 +597,10 @@ async function generarPrediccion({
     symbolNormalized || symbolInput,
     executionMode,
     timeframe,
-    preLearningScores
+    preLearningScores,
+    {
+      preloadedConfig: await learningConfigPromise
+    }
   );
   const postLearningScores = {
     confidence: learningResult.confidence,
@@ -825,7 +869,11 @@ async function generarPrediccion({
     trade_plan: signalEmitted ? finalTradePlan : null,
     execution_adjustment: executionAdjustment,
     ganancia_estim: signalEmitted ? gananciaEstim : 0,
-    ahora: now.toISOString(),
+    ahora: analysisStartIso,
+    analysis_start_at: analysisStartIso,
+    signal_ready_at: null,
+    signal_created_at: analysisStartIso,
+    signal_emitted_at: null,
     entry_time: entryTimeIso,
     exit_time: exitTimeIso,
     exit_window_seconds: exitWindowSeconds,
@@ -1000,9 +1048,22 @@ async function generarPrediccion({
     reason: 'not_attempted'
   };
   let binanceSourceProfile = 'none';
+  let signalReadyIso = null;
+  let analysisToSignalReadyMs = null;
+  let operationalEntryWindowStartIso = null;
+  let operationalEntryWindowEndIso = null;
 
   try {
     if (signalEmitted && (direction === 'up' || direction === 'down')) {
+      const signalReadyAt = new Date();
+      signalReadyIso = signalReadyAt.toISOString();
+      analysisToSignalReadyMs = signalReadyAt.getTime() - analysisStartAt.getTime();
+      operationalEntryWindowStartIso = signalReadyIso;
+      operationalEntryWindowEndIso = new Date(signalReadyAt.getTime() + ENTRY_WINDOW_SECONDS * 1000).toISOString();
+      const operationalEntryWindow = {
+        start: formatTimeUTC(signalReadyAt),
+        end: formatTimeUTC(new Date(signalReadyAt.getTime() + ENTRY_WINDOW_SECONDS * 1000))
+      };
       binanceSourceProfile = highConvictionSignalData
         ? 'high_conviction'
         : (preAlertDecision.ok ? 'manual_prealert' : 'event_emitted');
@@ -1011,6 +1072,10 @@ async function generarPrediccion({
         ...recomendacion,
         id: docRef.id,
         prediction_id: docRef.id,
+        analysis_start_at: analysisStartIso,
+        signal_created_at: analysisStartIso,
+        signal_ready_at: signalReadyIso,
+        signal_emitted_at: signalReadyIso,
         symbol: symbolInput,
         confidence: Number(reweighted.confidence_after.toFixed(4)),
         quantum_score: Number(quantumScore.toFixed(4)),
@@ -1024,8 +1089,15 @@ async function generarPrediccion({
         expected_move_percent: Number(expectedMovePercent.toFixed(4)),
         trade_plan: finalTradePlan,
         spot_price: Number.isFinite(spotPrice) ? spotPrice : Number(recomendacion.spot_price),
-        estimated_window: recomendacion.entry_window_utc || recomendacion.entry_window,
-        timestamp: now.toISOString()
+        analysis_entry_window: recomendacion.entry_window_utc || recomendacion.entry_window,
+        estimated_window: operationalEntryWindow,
+        entry_window: operationalEntryWindow,
+        entry_window_utc: operationalEntryWindow,
+        entry_window_start_at: operationalEntryWindowStartIso,
+        entry_window_end_at: operationalEntryWindowEndIso,
+        ahora: signalReadyIso,
+        created_at: signalReadyIso,
+        timestamp: signalReadyIso
       });
 
       if (!Number.isFinite(executionPayload.spot_price)) {
@@ -1097,7 +1169,12 @@ async function generarPrediccion({
         manual_prealert_notification: preAlertNotification,
         binance_route_source: binanceSourceProfile,
         binance_execution: binanceExecution,
-        updated_at: now.toISOString()
+        signal_ready_at: signalReadyIso,
+        signal_emitted_at: signalReadyIso,
+        analysis_to_signal_ready_ms: analysisToSignalReadyMs,
+        operational_entry_window_start_at: operationalEntryWindowStartIso,
+        operational_entry_window_end_at: operationalEntryWindowEndIso,
+        updated_at: new Date().toISOString()
       })
     );
   } catch (err) {

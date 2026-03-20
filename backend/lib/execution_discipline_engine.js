@@ -15,9 +15,21 @@ const EXECUTION_SCORE_MIN = Math.max(0, Math.min(100, Number(process.env.EXECUTI
 const SUMMARY_LOOKBACK_HOURS = Math.max(6, Math.min(24 * 30, Number(process.env.EXECUTION_DISCIPLINE_LOOKBACK_HOURS || 72)));
 const LOG_LIMIT = Math.max(50, Math.min(2000, Number(process.env.EXECUTION_DISCIPLINE_LOG_LIMIT || 500)));
 const SIGNAL_SCAN_LIMIT = Math.max(250, Math.min(30000, Number(process.env.EXECUTION_DISCIPLINE_SIGNAL_SCAN_LIMIT || 5000)));
+const EXECUTION_SCORE_CACHE_TTL_MS = Math.max(1000, Number(process.env.EXECUTION_SCORE_CACHE_TTL_MS || 5000));
+let executionScoreCache = { value: null, fetchedAt: 0 };
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function launchDetached(task, label) {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        console.warn(label, err?.message || err);
+      });
+  });
 }
 
 function parseDateLike(value) {
@@ -431,18 +443,38 @@ async function logExecutionDiscipline(db, payload = {}) {
 }
 
 async function readCurrentExecutionScore(db) {
+  const now = Date.now();
+  if (executionScoreCache.fetchedAt && now - executionScoreCache.fetchedAt < EXECUTION_SCORE_CACHE_TTL_MS) {
+    return executionScoreCache.value;
+  }
   try {
     const doc = await db.collection('analytics_snapshots').doc('signal_intelligence_dashboard_v1').get();
-    if (!doc.exists) return null;
+    if (!doc.exists) {
+      executionScoreCache = { value: null, fetchedAt: now };
+      return null;
+    }
     const data = doc.data() || {};
-    return toNum(
+    const value = toNum(
       data?.execution?.report?.execution_discipline?.execution_discipline_score ??
         data?.intelligence?.report?.execution_discipline?.execution_discipline_score,
       null
     );
+    executionScoreCache = { value, fetchedAt: now };
+    return value;
   } catch (_) {
+    executionScoreCache = { value: null, fetchedAt: now };
     return null;
   }
+}
+
+function persistEntryObservationAsync(db, signalData, partialMeta, logPayload, label) {
+  if (!db) return;
+  launchDetached(async () => {
+    await Promise.all([
+      partialMeta ? mergeSignalExecutionMeta(db, signalData, partialMeta) : Promise.resolve(false),
+      logPayload ? logExecutionDiscipline(db, logPayload) : Promise.resolve()
+    ]);
+  }, label);
 }
 
 async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourceProfile = 'event_emitted' }) {
@@ -493,7 +525,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       override_applied: overrideApplied,
       override_reason: overrideReason
     };
-    await mergeSignalExecutionMeta(db, signalData, {
+    persistEntryObservationAsync(db, signalData, {
       late_entry_type: lateEntryType,
       execution_delay_ms: lateBeyondWindowMs,
       missed_opportunity: false,
@@ -502,8 +534,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       would_have_been_loss: false,
       override_applied: overrideApplied,
       override_reason: overrideReason
-    });
-    await logExecutionDiscipline(db, {
+    }, {
       type: 'entry_control',
       event: allowSoftLateEntry ? 'late_entry_soft_allowed' : 'late_entry_blocked',
       blocked: isEnforceMode() && !allowSoftLateEntry,
@@ -512,7 +543,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       prediction_id: resolvePredictionId(signalData),
       execution_delay_ms: lateBeyondWindowMs,
       details
-    });
+    }, '[EXECUTION_DISCIPLINE] persist late entry observation failed');
     return {
       blocked: isEnforceMode() && !allowSoftLateEntry,
       reason: allowSoftLateEntry ? null : 'late_entry_blocked',
@@ -520,12 +551,12 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
     };
   }
 
-  await mergeSignalExecutionMeta(db, signalData, {
+  persistEntryObservationAsync(db, signalData, {
     late_entry_type: 'none',
     execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
     override_applied: false,
     override_reason: 'normal_execution'
-  });
+  }, null, '[EXECUTION_DISCIPLINE] persist normal entry observation failed');
 
   const executionScore = await readCurrentExecutionScore(db);
   if (executionScore != null && executionScore < EXECUTION_SCORE_MIN) {
@@ -533,7 +564,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       execution_score: executionScore,
       minimum_required: EXECUTION_SCORE_MIN
     };
-    await mergeSignalExecutionMeta(db, signalData, {
+    persistEntryObservationAsync(db, signalData, {
       late_entry_type: 'none',
       execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
       missed_opportunity: false,
@@ -542,8 +573,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       would_have_been_loss: false,
       override_applied: false,
       override_reason: 'normal_execution'
-    });
-    await logExecutionDiscipline(db, {
+    }, {
       type: 'entry_control',
       event: 'execution_protection_mode',
       blocked: isEnforceMode(),
@@ -552,7 +582,7 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
       prediction_id: resolvePredictionId(signalData),
       execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
       details
-    });
+    }, '[EXECUTION_DISCIPLINE] persist execution protection observation failed');
     return {
       blocked: isEnforceMode(),
       reason: 'execution_protection_mode',
@@ -642,9 +672,22 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
   const earlyExitBlockPct = Number.isFinite(expectedTpPct) ? expectedTpPct * EARLY_EXIT_TP_RATIO : null;
   const currentMaxSeen = Math.max(toNum(position?.profit_capture_max_seen_pct, 0) || 0, toNum(pnlPct, 0) || 0);
   const profitCaptureArmed = Boolean(position?.profit_capture_armed);
+  const basicTrailingTriggerPct = Math.max(0.03, Number(process.env.BINANCE_POSITION_TRAILING_TRIGGER_PCT || 0.12));
+  const basicTrailingRetraceRatio = Math.min(
+    0.9,
+    Math.max(0.2, Number(process.env.BINANCE_POSITION_TRAILING_RETRACE_RATIO || 0.55))
+  );
+  const basicTrailingMinLockPct = Math.max(
+    0.01,
+    Number(process.env.BINANCE_POSITION_TRAILING_MIN_LOCK_PCT || 0.04)
+  );
   const lockFloorPct = Number.isFinite(captureTriggerPct)
     ? Math.max(captureTriggerPct * 0.25, currentMaxSeen * 0.55)
     : null;
+  const trailingLockFloorPct =
+    currentMaxSeen >= basicTrailingTriggerPct
+      ? Math.max(basicTrailingMinLockPct, currentMaxSeen * basicTrailingRetraceRatio)
+      : null;
 
   if (
     Number.isFinite(stopLoss) &&
@@ -693,6 +736,27 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
         pnl_pct: pnlPct,
         capture_trigger_pct: captureTriggerPct,
         lock_floor_pct: lockFloorPct
+      }
+    };
+  }
+
+  if (
+    Number.isFinite(pnlPct) &&
+    Number.isFinite(trailingLockFloorPct) &&
+    currentMaxSeen >= basicTrailingTriggerPct &&
+    pnlPct > 0 &&
+    pnlPct <= trailingLockFloorPct
+  ) {
+    return {
+      forceClose: true,
+      forceReason: 'profit_capture_enforced',
+      blockExit: false,
+      armProfitCapture: false,
+      details: {
+        pnl_pct: pnlPct,
+        trailing_trigger_pct: basicTrailingTriggerPct,
+        trailing_lock_floor_pct: trailingLockFloorPct,
+        max_seen_pct: currentMaxSeen
       }
     };
   }

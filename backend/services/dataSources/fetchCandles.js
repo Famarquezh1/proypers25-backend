@@ -4,6 +4,9 @@ const { fetchBinanceCandles } = require('./binance');
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || null;
 const ENABLE_BINANCE = process.env.ENABLE_BINANCE === 'true';
 const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
+const CANDLE_CACHE_TTL_MS = Math.max(2000, Number(process.env.CANDLE_CACHE_TTL_MS || 15000));
+const candleCache = new Map();
+const inflightCandleFetches = new Map();
 
 function withExternalTimeout(promiseFactory, label) {
   let timeoutId;
@@ -114,48 +117,67 @@ async function fetchYahooCandles(symbol, timeframe) {
 }
 
 async function fetchCandles(symbol, interval) {
-  if (ENABLE_BINANCE) {
+  const cacheKey = `${String(symbol || '').toUpperCase()}|${String(interval || '5m')}`;
+  const cached = candleCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < CANDLE_CACHE_TTL_MS) {
+    return cached.rows;
+  }
+  if (inflightCandleFetches.has(cacheKey)) {
+    return inflightCandleFetches.get(cacheKey);
+  }
+
+  const fetchPromise = (async () => {
+    if (ENABLE_BINANCE) {
+      try {
+        const rows = await fetchBinanceCandles(symbol, interval);
+        if (rows.length) {
+          console.log(`[BINANCE] candle fetch ok (${rows.length} velas)`);
+          candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
+          return rows;
+        }
+        console.warn('[BINANCE] no data, fallback triggered');
+      } catch (err) {
+        if (err?.status === 429) {
+          console.warn('[BINANCE] fetch failed -> reason: rate_limited');
+        } else {
+          console.warn(`[BINANCE] fetch failed -> reason: ${err.message}`);
+        }
+      }
+    } else {
+      console.log('[BINANCE] disabled by ENABLE_BINANCE=false');
+    }
+
     try {
-      const rows = await fetchBinanceCandles(symbol, interval);
+      const rows = await fetchAlphaCandles(symbol, interval);
       if (rows.length) {
-        console.log(`[BINANCE] candle fetch ok (${rows.length} velas)`);
+        console.log(`[ALPHA] candle fetch ok (${rows.length} velas)`);
+        candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
         return rows;
       }
-      console.warn('[BINANCE] no data, fallback triggered');
+      console.warn('[ALPHA] no data, fallback triggered');
     } catch (err) {
-      if (err?.status === 429) {
-        console.warn('[BINANCE] fetch failed -> reason: rate_limited');
-      } else {
-        console.warn(`[BINANCE] fetch failed -> reason: ${err.message}`);
+      console.warn(`[ALPHA] fetch failed -> reason: ${err.message}`);
+    }
+
+    try {
+      const rows = await fetchYahooCandles(symbol, interval);
+      if (rows.length) {
+        console.log(`[YAHOO] candle fetch ok (${rows.length} velas)`);
+        candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
+        return rows;
       }
+      console.warn('[YAHOO] no data, fallback triggered');
+    } catch (err) {
+      console.warn(`[YAHOO] fetch failed -> reason: ${err.message}`);
     }
-  } else {
-    console.log('[BINANCE] disabled by ENABLE_BINANCE=false');
-  }
 
-  try {
-    const rows = await fetchAlphaCandles(symbol, interval);
-    if (rows.length) {
-      console.log(`[ALPHA] candle fetch ok (${rows.length} velas)`);
-      return rows;
-    }
-    console.warn('[ALPHA] no data, fallback triggered');
-  } catch (err) {
-    console.warn(`[ALPHA] fetch failed -> reason: ${err.message}`);
-  }
+    return [];
+  })().finally(() => {
+    inflightCandleFetches.delete(cacheKey);
+  });
 
-  try {
-    const rows = await fetchYahooCandles(symbol, interval);
-    if (rows.length) {
-      console.log(`[YAHOO] candle fetch ok (${rows.length} velas)`);
-      return rows;
-    }
-    console.warn('[YAHOO] no data, fallback triggered');
-  } catch (err) {
-    console.warn(`[YAHOO] fetch failed -> reason: ${err.message}`);
-  }
-
-  return [];
+  inflightCandleFetches.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 module.exports = {

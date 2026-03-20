@@ -46,6 +46,9 @@ const BINANCE_POSITION_MAX_HOLD_MINUTES_HIGH_CONVICTION = Math.max(
   BINANCE_POSITION_MAX_HOLD_MINUTES,
   Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES_HIGH_CONVICTION || 20)
 );
+const BINANCE_BOT_CONFIG_CACHE_TTL_MS = Math.max(1000, Number(process.env.BINANCE_BOT_CONFIG_CACHE_TTL_MS || 5000));
+const EXECUTION_VALIDATION_CACHE_TTL_MS = Math.max(1000, Number(process.env.EXECUTION_VALIDATION_CACHE_TTL_MS || 5000));
+const RECENT_RECORDS_CACHE_TTL_MS = Math.max(1000, Number(process.env.RECENT_RECORDS_CACHE_TTL_MS || 30000));
 const POSITION_HOLD_MIN_SECONDS = Math.max(60, Number(process.env.BINANCE_POSITION_MIN_HOLD_SECONDS || 180));
 const POSITION_HOLD_MULTIPLIER = Math.max(1, Number(process.env.BINANCE_POSITION_SIGNAL_HOLD_MULTIPLIER || 5));
 const POSITION_HOLD_MULTIPLIER_HIGH_CONVICTION = Math.max(
@@ -56,6 +59,8 @@ const MANUAL_PREALERT_TIMESTAMP_DRIFT_MS = Math.max(
   5000,
   Number(process.env.MANUAL_PREALERT_TIMESTAMP_DRIFT_MS || 15000)
 );
+let botConfigCache = { value: null, fetchedAt: 0 };
+const validationQueryCache = new Map();
 function parseDateLike(value) {
   if (!value) return null;
   if (value instanceof Date) {
@@ -67,6 +72,24 @@ function parseDateLike(value) {
   }
   const d = new Date(value);
   return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function getCacheValue(cacheKey, ttlMs) {
+  const hit = validationQueryCache.get(cacheKey);
+  if (!hit) return null;
+  if (Date.now() - hit.fetchedAt > ttlMs) {
+    validationQueryCache.delete(cacheKey);
+    return null;
+  }
+  return hit.value;
+}
+
+function setCacheValue(cacheKey, value) {
+  validationQueryCache.set(cacheKey, {
+    value,
+    fetchedAt: Date.now()
+  });
+  return value;
 }
 
 function toIsoOrNull(dateLike) {
@@ -173,6 +196,19 @@ function normalizeModelOutcome(raw) {
   if (value.includes('LOSS') || value.includes('FAIL')) return 'LOSS';
   if (value.includes('SUPRIMIDA')) return 'SUPPRESSED';
   if (value.includes('PEND')) return 'PENDING';
+  return value;
+}
+
+async function getCachedBinanceBotConfig(db) {
+  const now = Date.now();
+  if (botConfigCache.fetchedAt && now - botConfigCache.fetchedAt < BINANCE_BOT_CONFIG_CACHE_TTL_MS && botConfigCache.value) {
+    return botConfigCache.value;
+  }
+  const value = await getBinanceBotConfig(db);
+  botConfigCache = {
+    value,
+    fetchedAt: now
+  };
   return value;
 }
 
@@ -767,6 +803,9 @@ async function hasEnoughRecentValidRecords(db, intent, config) {
   const windowMinutes = Math.max(30, Math.floor(Number(config?.recent_records_window_minutes || 180)));
   const fromTs = Date.now() - windowMinutes * 60 * 1000;
   const systemSymbol = toSystemUsdSymbol(intent.symbol);
+  const cacheKey = `recent:${systemSymbol}:${minRequired}:${windowMinutes}`;
+  const cached = getCacheValue(cacheKey, RECENT_RECORDS_CACHE_TTL_MS);
+  if (cached != null) return cached;
 
   try {
     const snap = await db
@@ -780,7 +819,7 @@ async function hasEnoughRecentValidRecords(db, intent, config) {
       const spot = Number(data.spot_price || data.precio_actual || 0);
       return createdAt && createdAt.getTime() >= fromTs && Number.isFinite(spot) && spot > 0;
     });
-    return recent.length >= minRequired;
+    return setCacheValue(cacheKey, recent.length >= minRequired);
   } catch (_) {
     return false;
   }
@@ -812,34 +851,53 @@ async function validateExecutionIntent(db, intent, config, options = {}) {
   if (intent.notional_usdt > Number(config.max_notional_usdt || Number.MAX_SAFE_INTEGER)) {
     return { ok: false, reason: 'notional_cap_exceeded' };
   }
-  const hasRecentRecords = await hasEnoughRecentValidRecords(db, intent, config);
-  if (!hasRecentRecords) return { ok: false, reason: 'insufficient_recent_records' };
-
   const todayStart = startOfUtcDay();
-  const daily = await db
-    .collection('binance_execution_intents')
-    .where('status', '==', 'executed')
-    .where('source_profile', '==', sourceProfile)
-    .where('created_at', '>=', todayStart)
-    .limit(Number(config.max_daily_trades || 1))
-    .get();
-  if (daily.size >= Number(config.max_daily_trades || 1)) return { ok: false, reason: 'daily_trade_limit' };
   const symbolCooldownMinutes = Math.max(0, Math.floor(Number(config.symbol_cooldown_minutes || 0)));
-  if (symbolCooldownMinutes > 0) {
-    const cooldownStart = new Date(Date.now() - symbolCooldownMinutes * 60 * 1000);
-    const recentExecuted = await db
-      .collection('binance_execution_intents')
-      .where('status', '==', 'executed')
-      .where('source_profile', '==', sourceProfile)
-      .where('created_at', '>=', cooldownStart)
-      .limit(50)
-      .get();
-    const hasRecentSameSymbol = recentExecuted.docs.some((doc) => {
-      const data = doc.data() || {};
-      const symbol = data?.intent?.symbol || null;
-      return symbol === intent.symbol;
-    });
-    if (hasRecentSameSymbol) return { ok: false, reason: 'symbol_cooldown_active' };
+  const dayKey = todayStart.toISOString().slice(0, 10);
+  const dailyCacheKey = `daily:${sourceProfile}:${dayKey}:${Number(config.max_daily_trades || 1)}`;
+  const cooldownCacheKey = `cooldown:${sourceProfile}:${symbolCooldownMinutes}`;
+
+  const tasks = [
+    hasEnoughRecentValidRecords(db, intent, config),
+    (async () => {
+      const cachedDaily = getCacheValue(dailyCacheKey, EXECUTION_VALIDATION_CACHE_TTL_MS);
+      if (cachedDaily != null) return cachedDaily;
+      const daily = await db
+        .collection('binance_execution_intents')
+        .where('status', '==', 'executed')
+        .where('source_profile', '==', sourceProfile)
+        .where('created_at', '>=', todayStart)
+        .limit(Number(config.max_daily_trades || 1))
+        .get();
+      return setCacheValue(dailyCacheKey, daily.size);
+    })(),
+    symbolCooldownMinutes > 0
+      ? (async () => {
+          const cachedSymbols = getCacheValue(cooldownCacheKey, EXECUTION_VALIDATION_CACHE_TTL_MS);
+          if (cachedSymbols) return cachedSymbols;
+          const cooldownStart = new Date(Date.now() - symbolCooldownMinutes * 60 * 1000);
+          const recentExecuted = await db
+            .collection('binance_execution_intents')
+            .where('status', '==', 'executed')
+            .where('source_profile', '==', sourceProfile)
+            .where('created_at', '>=', cooldownStart)
+            .limit(50)
+            .get();
+          const symbolSet = new Set(
+            recentExecuted.docs
+              .map((doc) => doc.data()?.intent?.symbol || null)
+              .filter(Boolean)
+          );
+          return setCacheValue(cooldownCacheKey, symbolSet);
+        })()
+      : Promise.resolve(null)
+  ];
+
+  const [hasRecentRecords, dailySize, recentSymbols] = await Promise.all(tasks);
+  if (!hasRecentRecords) return { ok: false, reason: 'insufficient_recent_records' };
+  if (Number(dailySize || 0) >= Number(config.max_daily_trades || 1)) return { ok: false, reason: 'daily_trade_limit' };
+  if (symbolCooldownMinutes > 0 && recentSymbols instanceof Set && recentSymbols.has(intent.symbol)) {
+    return { ok: false, reason: 'symbol_cooldown_active' };
   }
 
   if (!BINANCE_API_KEY || !BINANCE_API_SECRET) return { ok: false, reason: 'missing_api_credentials' };
@@ -992,7 +1050,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile || options.source || 'high_conviction');
   const receivedAtIso = new Date().toISOString();
   const signalDataForExecution = normalizeSignalDataForExecution(signalData, sourceProfile, receivedAtIso);
-  const config = await getBinanceBotConfig(db);
+  const config = await getCachedBinanceBotConfig(db);
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
   const intent = createExecutionIntent(signalDataForExecution, effectiveConfig, sourceProfile);
   const predictionId = signalDataForExecution?.prediction_id || signalDataForExecution?.id || null;
@@ -1001,22 +1059,28 @@ async function executeSignalTrade(db, signalData, options = {}) {
     source_profile: sourceProfile
   });
   const intentRef = buildIntentDocRef(db, predictionId, sourceProfile);
-  const existingIntent = await intentRef.get();
-  if (existingIntent.exists) {
-    const existingData = existingIntent.data() || {};
-    if (existingData.status && existingData.status !== 'processing') {
+  let existingIntentData = null;
+  try {
+    await intentRef.create({
+      prediction_id: predictionId,
+      source_profile: sourceProfile,
+      source: options.source || sourceProfile,
+      status: 'processing',
+      trace_id: executionTrace.trace_id,
+      execution_trace: executionTrace,
+      created_at: FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    const code = String(err?.code || '');
+    if (code !== '6' && !String(err?.message || '').toLowerCase().includes('already exists')) {
+      throw err;
+    }
+    const existingIntent = await intentRef.get();
+    existingIntentData = existingIntent.exists ? (existingIntent.data() || {}) : null;
+    if (existingIntentData?.status && existingIntentData.status !== 'processing') {
       return { executed: false, reason: 'already_processed', dry_run: false, skipped: true };
     }
   }
-  await writeIntentDoc(intentRef, {
-    prediction_id: predictionId,
-    source_profile: sourceProfile,
-    source: options.source || sourceProfile,
-    status: 'processing',
-    trace_id: executionTrace.trace_id,
-    execution_trace: executionTrace,
-    created_at: existingIntent.exists ? existingIntent.get('created_at') || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
-  });
 
   const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
   const preExecutionAudit = buildExecutionAudit(signalDataForExecution);
@@ -1071,7 +1135,6 @@ async function executeSignalTrade(db, signalData, options = {}) {
     intent,
     execution_audit: preExecutionAudit
   };
-  await writeIntentDoc(intentRef, baseLog);
   if (entryDiscipline.blocked) {
     executionTrace = advanceExecutionTrace(executionTrace, {
       intent_processed_at: Date.now()
@@ -1105,6 +1168,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
     intent_processed_at: Date.now()
   });
   await writeIntentDoc(intentRef, {
+    ...baseLog,
     validation,
     execution_trace: executionTrace,
     intent: preciseIntent
