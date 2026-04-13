@@ -15,3 +15,29 @@ proypers2025-5b45437299b5.json
 # build outputs
 /dist/
 .angular/
+
+# 🔥 TEMPORALES (CLAVE PARA TU CASO)
+_tmp_*
+*_logs.*
+*_full.*
+*_recent.*
+*_window.*
+*_trace.*
+*_status.*
+
+# 🔥 REPORTES Y AUDITORÍA (MUY IMPORTANTE)
+backend/scripts/*.csv
+backend/scripts/*.json
+
+# 🔥 ARCHIVOS SUELTOS / ERRORES
+tatus
+*.ps1
+
+# 🔥 ENTORNOS
+.env
+.env.*
+_env_restore.yaml
+
+# sistema
+.DS_Store
+Thumbs.db
