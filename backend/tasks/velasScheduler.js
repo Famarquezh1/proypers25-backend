@@ -1,6 +1,10 @@
 const db = require('../firebase-admin-config');
 const { FieldValue } = require('firebase-admin/firestore');
 const { fetchCandles } = require('../services/dataSources/fetchCandles');
+const {
+  BINANCE_CONCURRENCY_LIMIT,
+  getBinanceConcurrencySnapshot
+} = require('../services/dataSources/binance');
 const { getTopBinanceFuturesSymbols } = require('../services/market/binanceSymbols');
 const prediccionVelas = require('../scripts/prediccionVelas');
 const verificarPrediccionVelas = require('../scripts/verificacionVelas');
@@ -9,6 +13,12 @@ const { run: runAudit } = require('../scripts/audit-predictive-certainty');
 const { refreshSignalIntelligenceDashboardSnapshot } = require('../lib/signalIntelligenceDashboard');
 const { predictFromCandles } = require('../lib/velasPredictor');
 const { runBinancePositionManagerCycle } = require('../lib/binancePositionManager');
+const { warmExchangeInfoCache } = require('../lib/binanceFuturesExecutor');
+const { syncOperationalMarketObservation, getMarketSnapshot } = require('../services/market/marketStreamWorker');
+const { reapStaleProcessingIntents } = require('../services/execution/intentWatchdog');
+const { reapStalePendingPredictions } = require('../services/execution/pendingPredictionWatchdog');
+const { runExploitationEngine } = require('../engines/exploitation_engine');
+const { computeAdaptiveProfile, persistAdaptiveProfile } = require('../engines/adaptive_memory');
 const {
   FETCH_BUFFER,
   selectPredictionConfigs,
@@ -66,23 +76,389 @@ const FEATURE_VELAS_MODEL_ENABLED = process.env.FEATURE_VELAS_MODEL_ENABLED === 
 const SCAN_CONCURRENCY = Math.max(1, Number(process.env.SCAN_CONCURRENCY || 10));
 const SCAN_SYMBOL_TIMEOUT_MS = Math.max(5000, Number(process.env.SCAN_SYMBOL_TIMEOUT_MS || 45000));
 const PREALERT_MAX_SYMBOLS = Math.max(1, Number(process.env.PREALERT_MAX_SYMBOLS || 20));
-const PREALERT_SCAN_CONCURRENCY = Math.max(1, Number(process.env.PREALERT_SCAN_CONCURRENCY || 6));
+const PREALERT_SCAN_CONCURRENCY = Math.max(1, Number(process.env.PREALERT_SCAN_CONCURRENCY || 5));
+const PREALERT_SYMBOL_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(12000, Number(process.env.PREALERT_SYMBOL_TIMEOUT_MS || 10000))
+);
+const PREALERT_CYCLE_TIMEOUT_MS = Math.max(30000, Number(process.env.PREALERT_CYCLE_TIMEOUT_MS || 90000));
+const PREALERT_WATCHDOG_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(30000, Number(process.env.PREALERT_WATCHDOG_TIMEOUT_MS || 10000))
+);
+const PREALERT_EXCHANGE_WARM_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(30000, Number(process.env.PREALERT_EXCHANGE_WARM_TIMEOUT_MS || 10000))
+);
+const PREALERT_MARKET_SYNC_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(30000, Number(process.env.PREALERT_MARKET_SYNC_TIMEOUT_MS || 15000))
+);
 const QUALITY_REPORT_DAYS = Math.max(1, Number(process.env.QUALITY_REPORT_DAYS || 30));
 const COHERENCE_WINDOW_DAYS = Math.max(1, Number(process.env.COHERENCE_WINDOW_DAYS || 7));
 const COHERENCE_MAX_POSITIONS = Math.max(20, Number(process.env.COHERENCE_MAX_POSITIONS || 250));
+const EXPLOITATION_ENGINE_ENABLED =
+  String(process.env.EXPLOITATION_ENGINE_ENABLED || 'false').toLowerCase() === 'true';
+const ADAPTIVE_MEMORY_ENABLED =
+  String(process.env.ADAPTIVE_MEMORY_ENABLED || 'false').toLowerCase() === 'true';
+const EXIT_INTELLIGENCE_ENABLED =
+  String(process.env.EXIT_INTELLIGENCE_ENABLED || 'false').toLowerCase() === 'true';
+const QUALITY_GATE_AUDIT_ENABLED =
+  String(process.env.QUALITY_GATE_AUDIT_ENABLED || 'false').toLowerCase() === 'true';
+const PREALERTS_PROFILING_ENABLED =
+  String(process.env.PREALERTS_PROFILING_ENABLED || 'false').toLowerCase() === 'true';
+const PROFILING_FETCH_ENABLED =
+  String(process.env.PROFILING_FETCH_ENABLED || 'false').toLowerCase() === 'true';
+const SCHEDULER_AUDIT_ENABLED =
+  String(process.env.SCHEDULER_AUDIT_ENABLED || 'false').toLowerCase() === 'true';
+
+function resolvePrealertProducerConcurrency(requestedConcurrency) {
+  const requested = Math.max(1, Number(requestedConcurrency) || PREALERT_SCAN_CONCURRENCY);
+  const safeByPool = Math.max(1, Math.ceil(BINANCE_CONCURRENCY_LIMIT / 2));
+  return Math.min(requested, safeByPool);
+}
+
+function logPrealertProducerConsumer(payload = {}) {
+  if (!PREALERTS_PROFILING_ENABLED) {
+    return;
+  }
+  console.log('[PREALERT_PRODUCER_CONSUMER]', {
+    ...payload,
+    ...getBinanceConcurrencySnapshot()
+  });
+}
 
 const nowIso = () => new Date().toISOString();
-let lastPredictionCycleMetrics = null;
 
-async function withTimeout(promise, timeoutMs, label) {
+function classifyLatencyBucket(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return null;
+  if (durationMs < 500) return 'normal';
+  if (durationMs < 2000) return 'medio';
+  if (durationMs < 5000) return 'lento';
+  return 'critico';
+}
+
+const pendingRecordSymbolOutcomeTasks = new Set();
+
+async function recordSymbolOutcomeWithTiming(db, symbol, outcome = {}) {
+  const startedAtMs = Date.now();
+  try {
+    await recordSymbolOutcome(db, symbol, outcome);
+    const durationMs = Math.max(0, Date.now() - startedAtMs);
+    const bucket = classifyLatencyBucket(durationMs);
+    if (PROFILING_FETCH_ENABLED) {
+      console.log('[RECORD_SYMBOL_OUTCOME_TIMING]', {
+        symbol,
+        duration_ms: durationMs,
+        success: true,
+        bucket
+      });
+    }
+    return {
+      duration_ms: durationMs,
+      bucket,
+      success: true
+    };
+  } catch (err) {
+    const durationMs = Math.max(0, Date.now() - startedAtMs);
+    const bucket = classifyLatencyBucket(durationMs);
+    console.error('[RECORD_SYMBOL_OUTCOME_TIMING]', {
+      symbol,
+      duration_ms: durationMs,
+      success: false,
+      bucket,
+      error: err?.message || String(err)
+    });
+    throw err;
+  }
+}
+
+function scheduleRecordSymbolOutcome(db, symbol, outcome = {}) {
+  const task = recordSymbolOutcomeWithTiming(db, symbol, outcome)
+    .catch(() => null)
+    .finally(() => {
+      pendingRecordSymbolOutcomeTasks.delete(task);
+    });
+  pendingRecordSymbolOutcomeTasks.add(task);
+  return {
+    deferred: true,
+    pending: true,
+    pending_tasks: pendingRecordSymbolOutcomeTasks.size,
+    mode: 'async_background'
+  };
+}
+
+let lastPredictionCycleMetrics = null;
+let preAlertRunCounter = 0;
+const PREALERT_HISTORY_LIMIT = Math.max(10, Number(process.env.PREALERT_HISTORY_LIMIT || 48));
+const preAlertRuntime = {
+  running: false,
+  active_run_id: null,
+  last_started_at: null,
+  last_finished_at: null,
+  last_duration_ms: null,
+  last_error: null,
+  history: []
+};
+
+function recordPreAlertHistory(entry = {}) {
+  preAlertRuntime.history.unshift(entry);
+  if (preAlertRuntime.history.length > PREALERT_HISTORY_LIMIT) {
+    preAlertRuntime.history = preAlertRuntime.history.slice(0, PREALERT_HISTORY_LIMIT);
+  }
+}
+
+function summarizeLatencySeries(values = []) {
+  const finite = values.map((value) => Number(value)).filter(Number.isFinite);
+  if (!finite.length) {
+    return {
+      total_runs: 0,
+      avg_ms: null,
+      p95_ms: null,
+      max_ms: null
+    };
+  }
+  const sorted = [...finite].sort((a, b) => a - b);
+  const avgMs = finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  const p95Index = Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1));
+  return {
+    total_runs: finite.length,
+    avg_ms: Number(avgMs.toFixed(2)),
+    p95_ms: Number(sorted[p95Index].toFixed(2)),
+    max_ms: Number(sorted[sorted.length - 1].toFixed(2))
+  };
+}
+
+function finiteOrNull(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function createSymbolTaskContext(symbol, timeframe, cycleType) {
+  return {
+    id: `${cycleType}:${symbol}:${timeframe}:${Date.now()}`,
+    symbol,
+    timeframe,
+    cycle_type: cycleType,
+    cancelled_tasks_count: 0,
+    cancelled_tasks: [],
+    stage: 'running',
+    timed_out: false,
+    cancellation_reason: null
+  };
+}
+
+function logSymbolCancelled(taskContext) {
+  if (!taskContext?.timed_out) {
+    return;
+  }
+  console.warn('[SYMBOL_CANCELLED]', {
+    symbol: taskContext.symbol,
+    reason: taskContext.cancellation_reason || 'timeout',
+    stage: taskContext.stage === 'queued' ? 'queued' : 'running',
+    cancelled_tasks_count: Number(taskContext.cancelled_tasks_count || 0)
+  });
+}
+
+function getPreAlertRuntimeMetrics() {
+  const durations = preAlertRuntime.history
+    .map((item) => Number(item?.duration_ms))
+    .filter(Number.isFinite);
+  return {
+    running: preAlertRuntime.running,
+    active_run_id: preAlertRuntime.active_run_id,
+    last_started_at: preAlertRuntime.last_started_at,
+    last_finished_at: preAlertRuntime.last_finished_at,
+    last_duration_ms: preAlertRuntime.last_duration_ms,
+    last_error: preAlertRuntime.last_error,
+    pending_symbol_outcomes: pendingRecordSymbolOutcomeTasks.size,
+    latency: summarizeLatencySeries(durations),
+    recent_runs: preAlertRuntime.history.slice(0, 10)
+  };
+}
+
+function logPrealertStageTiming(runId, stage, startedAtMs, extra = {}) {
+  const durationMs = Math.max(0, Date.now() - Number(startedAtMs || Date.now()));
+  const payload = {
+    run_id: runId,
+    stage,
+    duration_ms: durationMs,
+    ...extra
+  };
+  console.log('[PREALERT_STAGE_TIMING]', payload);
+  return durationMs;
+}
+
+function buildQualityGateAudit(signalResult = {}, config = {}) {
+  const decision =
+    signalResult?.decision_post_learning ||
+    signalResult?.decision_pre_learning ||
+    signalResult?.event_context_filter?.decision ||
+    signalResult ||
+    {};
+  const confidence = Number(signalResult?.confidence ?? signalResult?.confianza ?? decision?.confidence ?? null);
+  const quantumScore = Number(signalResult?.quantum_score ?? signalResult?.quantumScore ?? decision?.quantum_score ?? null);
+  const timingScore = Number(signalResult?.timing_score ?? signalResult?.timingScore ?? decision?.timing_score ?? null);
+  const stability = Number(signalResult?.stability ?? decision?.stability ?? null);
+  const contextQuality = decision?.context_quality ?? decision?.contextQuality ?? null;
+  const contextScore = decision?.context_score ?? decision?.contextScore ?? null;
+
+  const required = {
+    confidence: Number(signalResult?.min_confidence ?? decision?.min_confidence ?? null),
+    quantum: Number(signalResult?.min_quantum ?? decision?.min_quantum ?? null),
+    timing: Number(signalResult?.min_timing ?? decision?.min_timing ?? null),
+    stability: Number(signalResult?.min_stability ?? decision?.min_stability ?? null),
+    context: Number(signalResult?.min_context_score ?? decision?.min_context_score ?? null)
+  };
+
+  const checks = {
+    confidence_ok: {
+      value: Number.isFinite(confidence) ? confidence : null,
+      required: Number.isFinite(required.confidence) ? required.confidence : null,
+      passed: required.confidence == null ? null : confidence >= required.confidence
+    },
+    quantum_ok: {
+      value: Number.isFinite(quantumScore) ? quantumScore : null,
+      required: Number.isFinite(required.quantum) ? required.quantum : null,
+      passed: required.quantum == null ? null : quantumScore >= required.quantum
+    },
+    timing_ok: {
+      value: Number.isFinite(timingScore) ? timingScore : null,
+      required: Number.isFinite(required.timing) ? required.timing : null,
+      passed: required.timing == null ? null : timingScore >= required.timing
+    },
+    stability_ok: {
+      value: Number.isFinite(stability) ? stability : null,
+      required: Number.isFinite(required.stability) ? required.stability : null,
+      passed: required.stability == null ? null : stability >= required.stability
+    },
+    context_ok: {
+      value: Number.isFinite(contextScore) ? contextScore : null,
+      required: Number.isFinite(required.context) ? required.context : null,
+      passed: required.context == null ? null : Number(contextScore) >= required.context
+    }
+  };
+
+  const failed = Object.entries(checks)
+    .filter(([, value]) => value.passed === false)
+    .map(([key]) => key.replace('_ok', ''));
+
+  return {
+    symbol: signalResult?.symbol || config?.symbol || null,
+    timestamp: new Date().toISOString(),
+    passed: Boolean(decision?.quality_gate_passed ?? signalResult?.quality_gate_passed ?? signalResult?.signal_emitted),
+    confidence,
+    quantum_score: quantumScore,
+    timing_score: timingScore,
+    stability,
+    execution_mode: signalResult?.execution_mode || config?.execution_mode || null,
+    checks,
+    failed_checks: failed,
+    suppression_reason: decision?.suppression_reason || signalResult?.suppression_reason || null,
+    gate_reason: decision?.gate_reason || decision?.reason || null,
+    context_quality: contextQuality
+  };
+}
+
+function buildQualityGateInputTrace(signalResult = {}, config = {}) {
+  const decision =
+    signalResult?.decision_post_learning ||
+    signalResult?.decision_pre_learning ||
+    signalResult?.event_context_filter?.decision ||
+    signalResult ||
+    {};
+
+  const rawInput = {
+    symbol: signalResult?.symbol || config?.symbol || null,
+    confidence: signalResult?.confidence ?? decision?.confidence ?? null,
+    confidence_score: signalResult?.confidence_score ?? decision?.confidence_score ?? null,
+    quantum: signalResult?.quantum ?? decision?.quantum ?? null,
+    quantum_score: signalResult?.quantum_score ?? signalResult?.quantumScore ?? decision?.quantum_score ?? null,
+    timing: signalResult?.timing ?? decision?.timing ?? null,
+    timing_score: signalResult?.timing_score ?? signalResult?.timingScore ?? decision?.timing_score ?? null,
+    stability: signalResult?.stability ?? decision?.stability ?? null,
+    direction: signalResult?.direction ?? decision?.direction ?? null,
+    impulse: signalResult?.impulse ?? decision?.impulse ?? null,
+    context_quality: decision?.context_quality ?? decision?.contextQuality ?? null,
+    context_score: decision?.context_score ?? decision?.contextScore ?? null,
+    min_confidence: signalResult?.min_confidence ?? decision?.min_confidence ?? null,
+    min_quantum: signalResult?.min_quantum ?? decision?.min_quantum ?? null,
+    min_timing: signalResult?.min_timing ?? decision?.min_timing ?? null,
+    min_stability: signalResult?.min_stability ?? decision?.min_stability ?? null,
+    min_context_score: signalResult?.min_context_score ?? decision?.min_context_score ?? null
+  };
+
+  const evaluatedFields = {
+    confidence: rawInput.confidence ?? rawInput.confidence_score ?? null,
+    quantum: rawInput.quantum ?? rawInput.quantum_score ?? null,
+    timing: rawInput.timing ?? rawInput.timing_score ?? null,
+    stability: rawInput.stability ?? null,
+    direction: rawInput.direction ?? null,
+    impulse: rawInput.impulse ?? null,
+    context_quality: rawInput.context_quality ?? null,
+    context_score: rawInput.context_score ?? null,
+    min_confidence: rawInput.min_confidence ?? null,
+    min_quantum: rawInput.min_quantum ?? null,
+    min_timing: rawInput.min_timing ?? null,
+    min_stability: rawInput.min_stability ?? null,
+    min_context_score: rawInput.min_context_score ?? null
+  };
+
+  const gateReason = decision?.gate_reason || decision?.reason || signalResult?.gate_reason || null;
+  const missingFieldsDetected = (() => {
+    if (!gateReason || typeof gateReason !== 'string' || !gateReason.startsWith('missing:')) return [];
+    return gateReason
+      .replace('missing:', '')
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean);
+  })();
+
+  const presentFields = Object.fromEntries(
+    Object.entries(evaluatedFields).map(([key, value]) => [key, value !== null && value !== undefined])
+  );
+
+  return {
+    symbol: rawInput.symbol,
+    timestamp: new Date().toISOString(),
+    gate_reason: gateReason,
+    raw_input: rawInput,
+    evaluated_fields: evaluatedFields,
+    present_fields: presentFields,
+    missing_fields_detected: missingFieldsDetected,
+    decision_keys: Object.keys(decision || {})
+  };
+}
+
+function createTimeoutError(timeoutMs, label) {
+  const error = new Error(`timeout after ${timeoutMs}ms (${label})`);
+  error.code = 'OPERATION_TIMEOUT';
+  error.timeout_ms = timeoutMs;
+  error.label = label;
+  return error;
+}
+
+async function withTimeout(promiseOrFactory, timeoutMs, label, options = {}) {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`timeout after ${timeoutMs}ms (${label})`));
+      const timeoutError = createTimeoutError(timeoutMs, label);
+      if (typeof options?.onTimeout === 'function') {
+        try {
+          options.onTimeout(timeoutError);
+        } catch (callbackError) {
+          console.warn('[TIMEOUT_HANDLER_FAILED]', callbackError?.message || callbackError);
+        }
+      }
+      reject(timeoutError);
     }, timeoutMs);
   });
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    const taskPromise =
+      typeof promiseOrFactory === 'function'
+        ? Promise.resolve().then(() => promiseOrFactory())
+        : Promise.resolve(promiseOrFactory);
+    return await Promise.race([taskPromise, timeoutPromise]);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -185,14 +561,27 @@ async function runFeatureBasedVelasPredictions(database, predictionConfig) {
 async function runPredictionCycle(options = {}) {
   const cycleType = options.cycleType || 'prediction_cycle';
   const maxSymbols = Number(options.maxSymbols || 0) || undefined;
-  const cycleConcurrency = Math.max(1, Number(options.concurrency || SCAN_CONCURRENCY));
+  const requestedCycleConcurrency = Math.max(1, Number(options.concurrency || SCAN_CONCURRENCY));
+  const cycleConcurrency =
+    cycleType === 'prealert_cycle'
+      ? resolvePrealertProducerConcurrency(requestedCycleConcurrency)
+      : requestedCycleConcurrency;
+  const progressState =
+    options?.progressState && typeof options.progressState === 'object' ? options.progressState : null;
+  const symbolTimeoutMs =
+    Number(options.symbolTimeoutMs || 0) ||
+    (cycleType === 'prealert_cycle' ? PREALERT_SYMBOL_TIMEOUT_MS : SCAN_SYMBOL_TIMEOUT_MS);
   const includeFeatureModel =
     options.includeFeatureModel == null ? FEATURE_VELAS_MODEL_ENABLED : Boolean(options.includeFeatureModel);
+  const includeCoherence =
+    options.includeCoherence == null ? cycleType !== 'prealert_cycle' : Boolean(options.includeCoherence);
 
   const startedAt = nowIso();
   const cycleStartedMs = Date.now();
   console.log('[CRON] runPredictionCycle started', { startedAt, cycleType });
+  const loadSymbolsStartedAtMs = Date.now();
   const predictionSelection = await resolvePredictionConfig({ maxSymbols });
+  const loadSymbolsMs = Math.max(0, Date.now() - loadSymbolsStartedAtMs);
   const predictionConfig = Array.isArray(predictionSelection?.configs)
     ? predictionSelection.configs
     : Array.isArray(predictionSelection)
@@ -217,16 +606,56 @@ async function runPredictionCycle(options = {}) {
   const suppressionReasons = {};
   const failureReasons = {};
 
+  let totalPredictionMs = 0;
+  let maxPredictionMs = 0;
+  let minPredictionMs = Number.POSITIVE_INFINITY;
+  let slowestSymbol = null;
+  let fastestSymbol = null;
+  let qualityGateSuppressed = 0;
+  let lowConfidenceSuppressed = 0;
+
+  if (cycleType === 'prealert_cycle') {
+    logPrealertProducerConsumer({
+      phase: 'cycle_start',
+      symbols_produced: predictionConfig.length,
+      scan_concurrency: requestedCycleConcurrency,
+      effective_scan_concurrency: cycleConcurrency,
+      binance_concurrency_limit: BINANCE_CONCURRENCY_LIMIT
+    });
+  }
+
   await mapWithConcurrency(predictionConfig, cycleConcurrency, async (config) => {
     const symbol = config?.symbol || 'n/a';
     const timeframe = config?.timeframe || 'n/a';
+    const symbolStartedAtMs = Date.now();
+    const symbolAbortController = new AbortController();
+    const symbolTaskContext = createSymbolTaskContext(symbol, timeframe, cycleType);
+    let symbolSuccess = false;
+    let result = null;
+    let recordSymbolOutcomeTiming = null;
+    let symbolCancelledLogged = false;
     try {
-      const result = await withTimeout(
-        prediccionVelas({ ...config, monto: 1000 }),
-        SCAN_SYMBOL_TIMEOUT_MS,
-        `${symbol} ${timeframe}`
+      result = await withTimeout(
+        () =>
+          prediccionVelas({
+            ...config,
+            monto: 1000,
+            signal: symbolAbortController.signal,
+            taskContext: symbolTaskContext
+          }),
+        symbolTimeoutMs,
+        `${symbol} ${timeframe}`,
+        {
+          onTimeout: (timeoutError) => {
+            symbolTaskContext.timed_out = true;
+            symbolTaskContext.cancellation_reason = 'timeout';
+            symbolAbortController.abort(timeoutError);
+          }
+        }
       );
+      const symbolDurationMs = Math.max(0, Date.now() - symbolStartedAtMs);
       processedOk += 1;
+      symbolSuccess = true;
       if (result?.signal_emitted) {
         signalsEmitted += 1;
       } else {
@@ -235,24 +664,95 @@ async function runPredictionCycle(options = {}) {
         if (reason) {
           suppressionReasons[reason] = (suppressionReasons[reason] || 0) + 1;
         }
+        if (reason === 'quality_gate') qualityGateSuppressed += 1;
+        if (reason === 'low_confidence') lowConfidenceSuppressed += 1;
+      }
+      if (QUALITY_GATE_AUDIT_ENABLED) {
+        const audit = buildQualityGateAudit(result, config);
+        console.log('[QUALITY_GATE_AUDIT]', JSON.stringify(audit));
+        const inputTrace = buildQualityGateInputTrace(result, config);
+        console.log('[QUALITY_GATE_INPUT_TRACE]', JSON.stringify(inputTrace));
       }
       const shadow = result?.event_context_filter?.shadow;
       if (shadow?.signal_emitted_observe) shadowObserveEmitted += 1;
       if (shadow?.signal_emitted_enforce) shadowEnforceEmitted += 1;
       if (shadow?.would_block_event) shadowWouldBlock += 1;
-      await recordSymbolOutcome(db, symbol, { ok: true, cycleType });
+      recordSymbolOutcomeTiming = scheduleRecordSymbolOutcome(db, symbol, { ok: true, cycleType });
       console.log('[CRON] prediction ok', { symbol, timeframe, status: result?.status || 'unknown' });
     } catch (err) {
       failed += 1;
       const reason = String(err?.message || 'unknown_error');
+      if (symbolTaskContext.timed_out) {
+        logSymbolCancelled(symbolTaskContext);
+        symbolCancelledLogged = true;
+      }
       failureReasons[symbol] = reason;
-      await recordSymbolOutcome(db, symbol, {
+      if (reason.includes('timeout after')) {
+        console.warn('[PREDICTION_TIMEOUT_SOFT]', {
+          symbol,
+          timeout_ms: symbolTimeoutMs,
+          skipped: true
+        });
+      }
+      recordSymbolOutcomeTiming = scheduleRecordSymbolOutcome(db, symbol, {
         ok: false,
         cycleType,
+        failureType: 'technical',
         error: reason,
         errorCode: err?.code || err?.status || null
       });
       console.error('[CRON] prediction failed', { symbol, timeframe, error: err.message });
+    } finally {
+      if (symbolTaskContext.timed_out && !symbolCancelledLogged) {
+        logSymbolCancelled(symbolTaskContext);
+      }
+      const symbolDurationMs = Math.max(0, Date.now() - symbolStartedAtMs);
+      if (progressState) {
+        progressState.symbols_processed = Number(progressState.symbols_processed || 0) + 1;
+        progressState.last_symbol = symbol;
+        progressState.last_symbol_duration_ms = symbolDurationMs;
+      }
+      totalPredictionMs += symbolDurationMs;
+      maxPredictionMs = Math.max(maxPredictionMs, symbolDurationMs);
+      if (symbolDurationMs < minPredictionMs) {
+        minPredictionMs = symbolDurationMs;
+        fastestSymbol = symbol;
+      }
+      if (symbolDurationMs >= maxPredictionMs) {
+        slowestSymbol = symbol;
+      }
+      if (PROFILING_FETCH_ENABLED && cycleType === 'prealert_cycle') {
+        const pipelineTotalMs = finiteOrNull(result?.profiling?.pipeline?.total_ms);
+        console.log('[PREALERT_SYMBOL_TIMING]', {
+          symbol,
+          total_ms: pipelineTotalMs ?? symbolDurationMs,
+          fetch_ms: finiteOrNull(result?.profiling?.pipeline?.fetch_ms),
+          prediction_ms: finiteOrNull(result?.profiling?.pipeline?.prediction_ms),
+          gate_ms: finiteOrNull(result?.profiling?.pipeline?.gate_ms),
+          post_process_ms: finiteOrNull(result?.profiling?.pipeline?.post_process_ms),
+          prealert_ms: finiteOrNull(result?.profiling?.pipeline?.prealert_ms),
+          spot_fetch_ms: finiteOrNull(result?.profiling?.pipeline?.spot_fetch_ms),
+          binance_latency_ms: finiteOrNull(result?.profiling?.pipeline?.binance_latency_ms),
+          fallback_ms: finiteOrNull(result?.profiling?.pipeline?.fallback_ms),
+          record_symbol_outcome_ms: finiteOrNull(recordSymbolOutcomeTiming?.duration_ms),
+          record_symbol_outcome_bucket: recordSymbolOutcomeTiming?.bucket || null,
+          record_symbol_outcome_success: recordSymbolOutcomeTiming?.success ?? null,
+          record_symbol_outcome_mode: recordSymbolOutcomeTiming?.mode || null,
+          record_symbol_outcome_pending: recordSymbolOutcomeTiming?.pending ?? false,
+          post_prediction_gap_ms:
+            pipelineTotalMs == null ? null : Math.max(0, symbolDurationMs - pipelineTotalMs),
+          success: symbolSuccess
+        });
+      }
+      console.log('[PREDICTION_SYMBOL_TIMING]', {
+        symbol,
+        duration_ms: symbolDurationMs,
+        record_symbol_outcome_ms: finiteOrNull(recordSymbolOutcomeTiming?.duration_ms),
+        record_symbol_outcome_bucket: recordSymbolOutcomeTiming?.bucket || null,
+        record_symbol_outcome_mode: recordSymbolOutcomeTiming?.mode || null,
+        record_symbol_outcome_pending: recordSymbolOutcomeTiming?.pending ?? false,
+        success: symbolSuccess
+      });
     }
   });
 
@@ -272,11 +772,48 @@ async function runPredictionCycle(options = {}) {
     .slice(0, 10)
     .map(([symbol, reason]) => ({ symbol, reason }));
   const cycleDurationMs = Date.now() - cycleStartedMs;
+  if (cycleType === 'prealert_cycle') {
+    logPrealertProducerConsumer({
+      phase: 'cycle_end',
+      symbols_produced: predictionConfig.length,
+      processed_ok: processedOk,
+      failed,
+      scan_concurrency: requestedCycleConcurrency,
+      effective_scan_concurrency: cycleConcurrency,
+      binance_concurrency_limit: BINANCE_CONCURRENCY_LIMIT
+    });
+  }
+  if (PREALERTS_PROFILING_ENABLED && cycleType === 'prealert_cycle') {
+    const avgPredictionMs = predictionConfig.length ? totalPredictionMs / predictionConfig.length : 0;
+    console.log('[PREALERTS_TIMING]', JSON.stringify({
+      cycle_id: `${cycleType}_${cycleStartedMs}`,
+      total_duration_ms: cycleDurationMs,
+      phases: {
+        load_symbols_ms: loadSymbolsMs,
+        fetch_market_data_ms: null,
+        compute_indicators_ms: null,
+        prediction_loop_ms: totalPredictionMs,
+        quality_gate_ms: null,
+        cooldown_filter_ms: null,
+        signal_emit_ms: cycleDurationMs
+      },
+      symbols_processed: predictionConfig.length,
+      signals_generated: signalsEmitted,
+      signals_suppressed: signalsSuppressed,
+      avg_symbol_ms: Number(avgPredictionMs.toFixed(2)),
+      max_symbol_ms: maxPredictionMs,
+      slowest_symbol: slowestSymbol,
+      fastest_symbol: fastestSymbol,
+      fastest_symbol_ms: Number.isFinite(minPredictionMs) ? Number(minPredictionMs.toFixed(2)) : null
+    }));
+  }
   let coherence = null;
-  try {
-    coherence = await buildBinanceCoherenceSnapshot();
-  } catch (err) {
-    console.warn('[CRON] coherence snapshot failed', err.message);
+  if (includeCoherence) {
+    try {
+      coherence = await buildBinanceCoherenceSnapshot();
+    } catch (err) {
+      console.warn('[CRON] coherence snapshot failed', err.message);
+    }
   }
   const cycleMetrics = {
     source: cycleType,
@@ -294,7 +831,12 @@ async function runPredictionCycle(options = {}) {
     shadow_enforce_emitted: shadowEnforceEmitted,
     shadow_would_block: shadowWouldBlock,
     cycle_duration_ms: cycleDurationMs,
+    coherence_enabled: includeCoherence,
     suppression_reasons_top: suppressionReasonsTop,
+    suppression_breakdown: {
+      quality_gate: qualityGateSuppressed,
+      low_confidence: lowConfidenceSuppressed
+    },
     prediction_runtime_selector: predictionSelectorSummary,
     failure_reasons_top: failureReasonsTop,
     coherence
@@ -309,6 +851,29 @@ async function runPredictionCycle(options = {}) {
     await db.collection('velas_monitoring_snapshots').add(cycleMetrics);
   } catch (err) {
     console.warn('[CRON] monitoring snapshot store failed', err.message);
+  }
+
+  if (EXPLOITATION_ENGINE_ENABLED) {
+    try {
+      const adaptiveProfile = ADAPTIVE_MEMORY_ENABLED
+        ? await computeAdaptiveProfile(db, { window: Number(process.env.ADAPTIVE_MEMORY_WINDOW || 80) })
+        : null;
+      if (adaptiveProfile && ADAPTIVE_MEMORY_ENABLED) {
+        await persistAdaptiveProfile(db, adaptiveProfile, { source: cycleType });
+      }
+      const exploitationSummary = await runExploitationEngine({
+        db,
+        adaptiveProfile: adaptiveProfile || {},
+        marketSnapshotProvider: (signal) => getMarketSnapshot(signal?.symbol || signal?.simbolo || ''),
+        exitIntelligenceEnabled: EXIT_INTELLIGENCE_ENABLED
+      });
+      console.log('[EXPLOITATION_ENGINE] updated', {
+        source: cycleType,
+        total: exploitationSummary?.total || 0
+      });
+    } catch (err) {
+      console.warn('[EXPLOITATION_ENGINE] failed', err?.message || err);
+    }
   }
 }
 
@@ -542,22 +1107,347 @@ async function buildDailyQualityReport() {
   return report;
 }
 
-async function runPreAlertCycle() {
-  await runPredictionCycle({
-    cycleType: 'prealert_cycle',
-    maxSymbols: PREALERT_MAX_SYMBOLS,
-    concurrency: PREALERT_SCAN_CONCURRENCY,
-    includeFeatureModel: false
-  });
+function buildPreAlertForceAbortPayload(runState, reason, extra = {}) {
+  return {
+    run_id: runState?.run_id || null,
+    reason: reason || 'unknown',
+    duration_ms: Math.max(0, Date.now() - Number(runState?.started_at_ms || Date.now())),
+    symbols_processed: Number(runState?.progress?.symbols_processed || 0),
+    active_stage: runState?.active_stage || null,
+    ...extra
+  };
+}
+
+function finalizePreAlertRun(runState, outcome = {}) {
+  if (!runState || runState.finalized) {
+    return {
+      duration_ms: Math.max(0, Date.now() - Number(runState?.started_at_ms || Date.now())),
+      finished_at: preAlertRuntime.last_finished_at || nowIso(),
+      already_finalized: true
+    };
+  }
+
+  runState.finalized = true;
+  const durationMs = Math.max(0, Date.now() - Number(runState.started_at_ms || Date.now()));
+  const finishedAt = nowIso();
+  const isOk = outcome.ok === true;
+  const errorMessage = isOk ? null : String(outcome.error || outcome.reason || 'unknown_error');
+
+  preAlertRuntime.last_duration_ms = durationMs;
+  preAlertRuntime.last_finished_at = finishedAt;
+  preAlertRuntime.last_error = errorMessage;
+
+  const historyEntry = {
+    run_id: runState.run_id,
+    ok: isOk,
+    started_at: runState.started_at,
+    finished_at: finishedAt,
+    duration_ms: durationMs,
+    stage_timings: runState.stage_timings
+  };
+
+  if (Object.prototype.hasOwnProperty.call(outcome, 'exchange_info_warm')) {
+    historyEntry.exchange_info_warm = outcome.exchange_info_warm || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(outcome, 'prediction_metrics')) {
+    historyEntry.prediction_metrics = outcome.prediction_metrics || null;
+  }
+  if (!isOk) {
+    historyEntry.error = errorMessage;
+  }
+  if (outcome.aborted) {
+    historyEntry.aborted = true;
+  }
+
+  recordPreAlertHistory(historyEntry);
+
+  if (outcome.aborted) {
+    console.error('[PREALERT_FORCE_ABORT]', {
+      ...buildPreAlertForceAbortPayload(runState, outcome.reason, {
+        error: errorMessage
+      })
+    });
+  }
+
+  return {
+    duration_ms: durationMs,
+    finished_at: finishedAt
+  };
+}
+
+async function runPreAlertCycle(options = {}) {
+  if (preAlertRuntime.running) {
+    if (SCHEDULER_AUDIT_ENABLED) {
+      console.log('[PREALERTS_SCHEDULER_AUDIT]', JSON.stringify({
+        cycle_id: `prealert_skip_${Date.now()}`,
+        scheduled_time: new Date().toISOString(),
+        actual_start_time: null,
+        delay_ms: null,
+        skipped: true,
+        reason: 'already_running'
+      }));
+    }
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'already_running',
+      active_run_id: preAlertRuntime.active_run_id
+    };
+  }
+
+  const runId = `prealert_${++preAlertRunCounter}_${Date.now()}`;
+  const cycleStartedAtMs = Date.now();
+  const cycleTimeoutMs = Math.max(
+    PREALERT_SYMBOL_TIMEOUT_MS,
+    Number(options.cycleTimeoutMs || 0) || PREALERT_CYCLE_TIMEOUT_MS
+  );
+  const stageTimings = {};
+  const progress = {
+    symbols_processed: 0,
+    last_symbol: null,
+    last_symbol_duration_ms: null
+  };
+  const runState = {
+    run_id: runId,
+    started_at_ms: cycleStartedAtMs,
+    started_at: new Date(cycleStartedAtMs).toISOString(),
+    stage_timings: stageTimings,
+    progress,
+    active_stage: 'boot',
+    finalized: false
+  };
+  preAlertRuntime.running = true;
+  preAlertRuntime.active_run_id = runId;
+  preAlertRuntime.last_started_at = runState.started_at;
+  preAlertRuntime.last_finished_at = null;
+  preAlertRuntime.last_duration_ms = null;
+  preAlertRuntime.last_error = null;
+  if (SCHEDULER_AUDIT_ENABLED) {
+    console.log('[PREALERTS_SCHEDULER_AUDIT]', JSON.stringify({
+      cycle_id: runId,
+      scheduled_time: preAlertRuntime.last_started_at,
+      actual_start_time: preAlertRuntime.last_started_at,
+      delay_ms: 0,
+      skipped: false,
+      reason: null
+    }));
+  }
+
   try {
-    const managerSummary = await runBinancePositionManagerCycle(db);
-    console.log('[CRON] binance position manager', managerSummary);
+    return await withTimeout(
+      async () => {
+        let exchangeWarmSummary = null;
+
+        runState.active_stage = 'watchdogs';
+        const watchdogStartedAtMs = Date.now();
+        const [processingWatchdog, pendingWatchdog] = await Promise.allSettled([
+          withTimeout(() => reapStaleProcessingIntents(db), PREALERT_WATCHDOG_TIMEOUT_MS, `${runId} processing_watchdog`),
+          withTimeout(() => reapStalePendingPredictions(db), PREALERT_WATCHDOG_TIMEOUT_MS, `${runId} pending_watchdog`)
+        ]);
+        stageTimings.watchdogs_ms = logPrealertStageTiming(runId, 'watchdogs', watchdogStartedAtMs, {
+          processing_watchdog_ok: processingWatchdog.status === 'fulfilled',
+          pending_watchdog_ok: pendingWatchdog.status === 'fulfilled',
+          processing_reaped:
+            processingWatchdog.status === 'fulfilled' ? Number(processingWatchdog.value?.reaped || 0) : 0,
+          pending_resolved:
+            pendingWatchdog.status === 'fulfilled' ? Number(pendingWatchdog.value?.resolved || 0) : 0
+        });
+        if (processingWatchdog.status === 'fulfilled' && processingWatchdog.value?.reaped > 0) {
+          console.warn('[CRON] stale processing intents reaped', processingWatchdog.value);
+        } else if (processingWatchdog.status === 'rejected') {
+          console.warn(
+            '[CRON] stale processing watchdog failed',
+            processingWatchdog.reason?.message || processingWatchdog.reason
+          );
+        }
+        if (pendingWatchdog.status === 'rejected') {
+          console.warn('[CRON] pending watchdog failed', pendingWatchdog.reason?.message || pendingWatchdog.reason);
+        }
+
+        runState.active_stage = 'exchange_info_warm';
+        const warmExchangeStartedAtMs = Date.now();
+        try {
+          exchangeWarmSummary = await withTimeout(
+            () => warmExchangeInfoCache(),
+            PREALERT_EXCHANGE_WARM_TIMEOUT_MS,
+            `${runId} exchange_info_warm`
+          );
+        } catch (err) {
+          console.warn('[CRON] exchange info warm cache failed', err.message);
+        }
+        stageTimings.exchange_info_warm_ms = logPrealertStageTiming(runId, 'exchange_info_warm', warmExchangeStartedAtMs, {
+          warmed: Boolean(exchangeWarmSummary?.warmed),
+          symbols_total: Number(exchangeWarmSummary?.symbols_total || 0)
+        });
+
+        const marketSyncPromise = (async () => {
+          runState.active_stage = 'market_stream_sync';
+          const marketSyncStartedAtMs = Date.now();
+          try {
+            const summary = await withTimeout(
+              () => syncOperationalMarketObservation(db),
+              PREALERT_MARKET_SYNC_TIMEOUT_MS,
+              `${runId} market_stream_sync`
+            );
+            stageTimings.market_stream_sync_ms = logPrealertStageTiming(runId, 'market_stream_sync', marketSyncStartedAtMs, {
+              observed_symbols: Array.isArray(summary?.observed_symbols) ? summary.observed_symbols.length : 0,
+              active_streams: Array.isArray(summary?.active_streams) ? summary.active_streams.length : 0
+            });
+            return summary;
+          } catch (err) {
+            stageTimings.market_stream_sync_ms = logPrealertStageTiming(runId, 'market_stream_sync', marketSyncStartedAtMs, {
+              ok: false,
+              error: err.message
+            });
+            console.warn('[CRON] market stream sync failed', err.message);
+            return null;
+          }
+        })();
+
+        runState.active_stage = 'signal_emit';
+        const signalEmitStartedAtMs = Date.now();
+        const remainingSignalBudgetMs = Math.max(
+          PREALERT_SYMBOL_TIMEOUT_MS,
+          cycleTimeoutMs - (Date.now() - cycleStartedAtMs) - 5000
+        );
+        await withTimeout(
+          () =>
+            runPredictionCycle({
+              cycleType: 'prealert_cycle',
+              maxSymbols: PREALERT_MAX_SYMBOLS,
+              concurrency: PREALERT_SCAN_CONCURRENCY,
+              symbolTimeoutMs: PREALERT_SYMBOL_TIMEOUT_MS,
+              includeFeatureModel: false,
+              includeCoherence: false,
+              progressState: progress
+            }),
+          remainingSignalBudgetMs,
+          `${runId} signal_emit`
+        );
+        if (runState.finalized) {
+          return {
+            ok: false,
+            aborted: true,
+            run_id: runId,
+            duration_ms: preAlertRuntime.last_duration_ms,
+            reason: 'already_finalized'
+          };
+        }
+        stageTimings.signal_emit_ms = logPrealertStageTiming(runId, 'signal_emit', signalEmitStartedAtMs, {
+          emitted: Number(lastPredictionCycleMetrics?.signals_emitted || 0),
+          suppressed: Number(lastPredictionCycleMetrics?.signals_suppressed || 0),
+          failed: Number(lastPredictionCycleMetrics?.failed || 0)
+        });
+
+        runState.active_stage = 'market_stream_sync_wait';
+        await marketSyncPromise;
+        if (runState.finalized) {
+          return {
+            ok: false,
+            aborted: true,
+            run_id: runId,
+            duration_ms: preAlertRuntime.last_duration_ms,
+            reason: 'already_finalized'
+          };
+        }
+
+        runState.active_stage = 'finalizing';
+        const finalized = finalizePreAlertRun(runState, {
+          ok: true,
+          exchange_info_warm: exchangeWarmSummary || null,
+          prediction_metrics: lastPredictionCycleMetrics || null
+        });
+        if (finalized.already_finalized) {
+          return {
+            ok: false,
+            aborted: true,
+            run_id: runId,
+            duration_ms: preAlertRuntime.last_duration_ms,
+            reason: 'already_finalized'
+          };
+        }
+        stageTimings.total_ms = finalized.duration_ms;
+
+        if (SCHEDULER_AUDIT_ENABLED) {
+          console.log('[CYCLE_AUDIT_SUMMARY]', JSON.stringify({
+            cycle_id: runId,
+            duration_ms: finalized.duration_ms,
+            symbols_total: Number(lastPredictionCycleMetrics?.symbols_total || 0),
+            signals_emitted: Number(lastPredictionCycleMetrics?.signals_emitted || 0),
+            signals_suppressed: Number(lastPredictionCycleMetrics?.signals_suppressed || 0),
+            suppression_breakdown: {
+              quality_gate: Number(lastPredictionCycleMetrics?.suppression_breakdown?.quality_gate || 0),
+              low_confidence: Number(lastPredictionCycleMetrics?.suppression_breakdown?.low_confidence || 0),
+              cooldown: Number(lastPredictionCycleMetrics?.prediction_runtime_selector?.cooldown_excluded || 0)
+            },
+            cooldown_excluded: Number(lastPredictionCycleMetrics?.prediction_runtime_selector?.cooldown_excluded || 0),
+            quality_gate_fail_rate: (() => {
+              const suppressed = Number(lastPredictionCycleMetrics?.signals_suppressed || 0);
+              if (!suppressed) return 0;
+              const qualityGate = Number(lastPredictionCycleMetrics?.suppression_breakdown?.quality_gate || 0);
+              return Number((qualityGate / suppressed).toFixed(4));
+            })(),
+            avg_signal_emit_ms: stageTimings.signal_emit_ms || null
+          }));
+        }
+
+        return {
+          ok: true,
+          run_id: runId,
+          duration_ms: finalized.duration_ms,
+          stage_timings: stageTimings,
+          prediction_metrics: lastPredictionCycleMetrics || null,
+          exchange_info_warm: exchangeWarmSummary || null
+        };
+      },
+      cycleTimeoutMs,
+      `${runId} total_cycle`
+    );
   } catch (err) {
-    console.warn('[CRON] binance position manager failed', err.message);
+    const isTimeout = err?.code === 'OPERATION_TIMEOUT';
+    const finalized = finalizePreAlertRun(runState, {
+      ok: false,
+      aborted: isTimeout,
+      reason: isTimeout ? 'cycle_timeout' : 'cycle_error',
+      error: err?.message || err,
+      prediction_metrics: lastPredictionCycleMetrics || null
+    });
+    stageTimings.total_ms = finalized.duration_ms;
+    if (isTimeout) {
+      return {
+        ok: false,
+        aborted: true,
+        run_id: runId,
+        duration_ms: finalized.duration_ms,
+        reason: 'cycle_timeout',
+        stage_timings: stageTimings,
+        symbols_processed: Number(progress.symbols_processed || 0),
+        prediction_metrics: lastPredictionCycleMetrics || null
+      };
+    }
+    throw err;
+  } finally {
+    if (preAlertRuntime.active_run_id === runId) {
+      preAlertRuntime.running = false;
+      preAlertRuntime.active_run_id = null;
+    }
   }
 }
 
 async function runBinanceManagerCycle() {
+  try {
+    const watchdog = await reapStaleProcessingIntents(db);
+    if (watchdog.reaped > 0) {
+      console.warn('[CRON] stale processing intents reaped', watchdog);
+    }
+  } catch (err) {
+    console.warn('[CRON] stale processing watchdog failed', err.message);
+  }
+  try {
+    await syncOperationalMarketObservation(db);
+  } catch (err) {
+    console.warn('[CRON] market stream sync failed', err.message);
+  }
   const summary = await runBinancePositionManagerCycle(db);
   console.log('[CRON] runBinanceManagerCycle finished', summary);
 }
@@ -569,6 +1459,14 @@ async function runVerificationCycle() {
   let skipped = 0;
   let failed = 0;
   let suppressedBackfilled = 0;
+  let pendingResolved = 0;
+
+  try {
+    const pendingWatchdog = await reapStalePendingPredictions(db);
+    pendingResolved = Number(pendingWatchdog?.resolved || 0);
+  } catch (err) {
+    console.warn('[CRON] pending watchdog failed', err.message);
+  }
 
   let pendingSnapshot;
   let suppressedSnapshot;
@@ -633,6 +1531,7 @@ async function runVerificationCycle() {
     total: docs.length,
     pending_total: pendingSnapshot.size,
     suppressed_total: suppressedSnapshot.size,
+    pending_resolved: pendingResolved,
     verified,
     suppressed_backfilled: suppressedBackfilled,
     skipped,
@@ -736,5 +1635,6 @@ module.exports = {
   runBinanceManagerCycle,
   runVerificationCycle,
   runLearningCycle,
-  runAuditCycle
+  runAuditCycle,
+  getPreAlertRuntimeMetrics
 };

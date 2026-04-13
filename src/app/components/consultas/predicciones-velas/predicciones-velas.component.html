@@ -264,6 +264,81 @@
     <p class="text-muted mb-0">A&uacute;n no hay snapshots de monitoreo.</p>
   </ng-template>
 
+
+
+  <section class="mobile-section" [class.is-open]="isSectionOpen('equityCurve')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('equityCurve')">
+      <span>Execution Equity Curve</span>
+      <span>{{ isSectionOpen('equityCurve') ? '?' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('equityCurve')">
+      <div class="equity-panel mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <div>
+            <h3 class="mb-0">Execution Equity Curve</h3>
+            <p class="text-muted small mb-0">Curva cerrada del bot + ajuste visible al balance real actual de Binance Futures M.</p>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" (click)="cargarEquityCurve(true)" [disabled]="equityCurveLoading">
+            {{ equityCurveLoading ? 'Actualizando...' : 'Actualizar' }}
+          </button>
+        </div>
+
+        <div *ngIf="equityCurveError" class="alert alert-warning py-2 mb-2">
+          {{ equityCurveError }}
+        </div>
+
+        <div class="monitoring-stats" *ngIf="!equityCurveError">
+          <span class="monitor-pill">Capital base inicial: <strong>{{ equityCurveSummary.initialCapital | number:'1.2-2' }} USDT</strong></span>
+          <span class="monitor-pill">Capital actual Binance: <strong>{{ equityCurveSummary.currentCapital | number:'1.2-4' }} USDT</strong></span>
+          <span class="monitor-pill">Ruta trazada: <strong>{{ equityCurveSummary.curveCapital | number:'1.2-4' }} USDT</strong></span>
+          <span class="monitor-pill">Crecimiento total: <strong>{{ equityCurveSummary.totalGrowthPct | number:'1.2-2' }}%</strong></span>
+          <span class="monitor-pill">Trades: <strong>{{ equityCurveSummary.totalTrades }}</strong></span>
+          <span class="monitor-pill">Wins: <strong>{{ equityCurveSummary.wins }}</strong></span>
+          <span class="monitor-pill">Losses: <strong>{{ equityCurveSummary.losses }}</strong></span>
+          <span class="monitor-pill">Breakeven: <strong>{{ equityCurveSummary.breakevens }}</strong></span>
+          <span class="monitor-pill">Max drawdown: <strong>{{ equityCurveSummary.maxDrawdownPct | number:'1.2-2' }}%</strong></span>
+        </div>
+        <div *ngIf="!equityCurveError" class="text-muted small mb-2 equity-curve-note">
+          La curva azul sigue una sola ruta de capital reconstruida con movimientos reales de Binance Futures y se sincroniza hasta el capital actual del wallet.
+        </div>
+
+        <div *ngIf="equityCurveLoading" class="text-muted small py-2">Cargando equity curve...</div>
+        <div *ngIf="!equityCurveLoading && !equityCurveError && !equityCurveCandles.length" class="text-muted small py-2">
+          A?n no hay trades cerrados suficientes para dibujar la curva de equity.
+        </div>
+
+        <div *ngIf="!equityCurveLoading && equityCurveCandles.length" class="equity-chart-shell">
+          <div #equityChartContainer class="equity-chart-container"></div>
+
+          <div class="equity-chart-legend">
+            <span class="equity-legend-item"><span class="equity-legend-line equity-legend-curve"></span> Ruta real del capital</span>
+            <span class="text-muted small">Una sola curva, desde el capital base hasta el balance actual de Binance.</span>
+          </div>
+
+          <div class="equity-hover-card" *ngIf="equityHoveredTrade as hoveredTrade">
+            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div>
+                <strong>{{ hoveredTrade.symbol }}</strong>
+                <span class="text-muted small"> ? {{ formatFirestoreDate(hoveredTrade.closed_at || hoveredTrade.time * 1000) }}</span>
+              </div>
+              <div class="exec-badge-row">
+                <span [class]="equityOutcomeClass(hoveredTrade)">{{ hoveredTrade.outcome }}</span>
+                <span [class]="binanceExecutionSourceClass({ source_profile: hoveredTrade.source_profile })">{{ equitySourceLabel(hoveredTrade) }}</span>
+              </div>
+            </div>
+            <div class="equity-hover-grid">
+              <div><strong>PnL:</strong> <span [class]="equityPnlClass(hoveredTrade)">{{ hoveredTrade.pnl_pct | number:'1.3-3' }}%</span></div>
+              <div><strong>Raz?n:</strong> {{ hoveredTrade.close_reason || '?' }}</div>
+              <div><strong>Open:</strong> {{ hoveredTrade.open | number:'1.2-2' }}</div>
+              <div><strong>High:</strong> {{ hoveredTrade.high | number:'1.2-2' }}</div>
+              <div><strong>Low:</strong> {{ hoveredTrade.low | number:'1.2-2' }}</div>
+              <div><strong>Close:</strong> {{ hoveredTrade.close | number:'1.2-2' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
   <section class="mobile-section" [class.is-open]="isSectionOpen('signalIntel')">
     <button type="button" class="mobile-section-toggle" (click)="toggleSection('signalIntel')">
       <span>Signal Intelligence</span>
@@ -819,6 +894,20 @@
       </button>
     </div>
 
+    <div class="binance-operating-note">
+      <div class="binance-operating-header">Modo operativo real</div>
+      <div class="binance-operating-profiles">
+        <div class="binance-operating-pill" *ngFor="let profile of executionOperatingProfiles">
+          <span class="binance-operating-label">{{ profile.label }}</span>
+          <span class="binance-operating-mode" [class.is-live]="profile.mode === 'LIVE'">{{ profile.mode }}</span>
+          <span class="binance-operating-detail">{{ profile.detail }}</span>
+        </div>
+      </div>
+      <div class="binance-operating-list">
+        <span class="binance-operating-item" *ngFor="let hint of hcExecutionSafetyHints">{{ hint }}</span>
+      </div>
+    </div>
+
     <div class="binance-config-grid">
       <div class="form-group">
         <label>Modo</label>
@@ -1004,6 +1093,7 @@
       <span class="hc-stat-pill">Total: <strong>{{ highConvictionStats.total }}</strong></span>
       <span class="hc-stat-pill">WIN: <strong>{{ highConvictionStats.wins }}</strong></span>
       <span class="hc-stat-pill">LOSS: <strong>{{ highConvictionStats.losses }}</strong></span>
+      <span class="hc-stat-pill">Abiertas: <strong>{{ highConvictionStats.open }}</strong></span>
       <span class="hc-stat-pill">Suprimidas: <strong>{{ highConvictionStats.suppressed }}</strong></span>
       <span class="hc-stat-pill">Pendientes: <strong>{{ highConvictionStats.pending }}</strong></span>
       <span class="hc-stat-pill">Win rate (emitidas): <strong>{{ highConvictionStats.winRateEmitted | percent:'1.0-1' }}</strong></span>
@@ -1123,12 +1213,12 @@
           *ngFor="let item of latestExecutions; trackBy: trackById"
           (click)="toggleBinanceExecutionDetails(item.id)"
         >
-          <div class="high-conviction-compact">
-            <div class="d-flex justify-content-between align-items-center gap-2">
-              <strong>{{ item.intent?.symbol || item.linkedPrediction?.simbolo || 'N/A' }}</strong>
+            <div class="high-conviction-compact">
+              <div class="d-flex justify-content-between align-items-center gap-2">
+              <strong>{{ item.symbol || item.linkedPosition?.symbol || item.linkedPrediction?.simbolo || 'N/A' }}</strong>
               <span [class]="binanceExecutionStatusClass(item)">{{ binanceExecutionStatusLabel(item) }}</span>
             </div>
-            <div class="small text-muted">{{ formatFirestoreDate(item.created_at || item.opened_at || item.timestamp) }}</div>
+            <div class="small text-muted">{{ formatFirestoreDate(item.linkedPosition?.closed_at || item.execution_audit?.closed_at || item.updated_at || item.created_at || item.opened_at || item.timestamp) }}</div>
             <div class="exec-badge-row mt-2">
               <span [class]="binanceExecutionSourceClass(item)">{{ binanceExecutionSourceLabel(item) }}</span>
               <span [class]="binanceExecutionOutcomeClass(item)">{{ binanceExecutionOutcomeLabel(item) }}</span>
@@ -1170,6 +1260,53 @@
       </div>
     </ng-container>
   </div>
+
+  <app-exploitation-panel></app-exploitation-panel>
+    </div>
+  </section>
+
+  <section class="mobile-section" [class.is-open]="isSectionOpen('neutralSignals')">
+    <button type="button" class="mobile-section-toggle" (click)="toggleSection('neutralSignals')">
+      <span>Señales en observación</span>
+      <span>{{ isSectionOpen('neutralSignals') ? '−' : '+' }}</span>
+    </button>
+    <div class="mobile-section-body" *ngIf="shouldRenderSection('neutralSignals')">
+      <div class="high-conviction-panel mb-4">
+        <h3>Señales en observación</h3>
+        <p class="small text-muted panel-context-note">
+          Se registran solo para análisis. No se envían a Binance.
+        </p>
+
+        <ng-container *ngIf="neutralSignalCandidates$ | async as neutralSignals">
+          <p *ngIf="!neutralSignals.length" class="text-muted">
+            Sin señales neutral en observación.
+          </p>
+
+          <div *ngIf="neutralSignals.length" class="high-conviction-carousel">
+            <div class="high-conviction-card" *ngFor="let signal of neutralSignals">
+              <div class="high-conviction-compact">
+                <div class="d-flex justify-content-between align-items-center">
+                  <strong>{{ signal.symbol || 'N/A' }}</strong>
+                  <span class="badge bg-warning text-dark">OBSERVE</span>
+                </div>
+                <div class="small text-muted">{{ formatFirestoreDate(signal.created_at || signal.timestamp) }}</div>
+                <div class="mt-2">
+                  <strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}
+                </div>
+                <div class="mt-1">
+                  <strong>Quantum:</strong> {{ normalizePercent(signal.quantum) | percent:'1.0-0' }}
+                </div>
+                <div class="mt-1">
+                  <strong>Timing:</strong> {{ normalizePercent(signal.timing) | percent:'1.0-0' }}
+                </div>
+                <div class="mt-1">
+                  <strong>Reason:</strong> {{ signal.reason || 'neutral_but_high_scores' }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
     </div>
   </section>
 

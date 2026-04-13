@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, OnDestroy } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
@@ -7,6 +7,8 @@ import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
 import { environment } from '../../../../environments/environment';
+import { ColorType, CrosshairMode, createChart, IChartApi, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts';
+import { ExploitationPanelComponent } from '../../exploitation-panel/exploitation-panel.component';
 
 interface WeeklyStability {
   isoWeek: string;
@@ -80,14 +82,37 @@ interface LatencyBreakdownItem {
   value: number | null;
 }
 
+interface EquityCurveCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+interface EquityCurveTradePoint {
+  id: string;
+  time: number;
+  symbol: string;
+  source_profile: string;
+  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN';
+  pnl_pct: number;
+  close_reason: string | null;
+  closed_at: string | null;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
 @Component({
   selector: 'app-predicciones-velas',
   standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule],
+  imports: [CommonModule, FormsModule, HttpClientModule, ExploitationPanelComponent],
   templateUrl: './predicciones-velas.component.html',
   styleUrls: ['./predicciones-velas.component.css']
 })
-export class PrediccionesVelasComponent implements OnInit, OnDestroy {
+export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly defaultSymbols = [
     'BTC-USD',
     'ETH-USD',
@@ -121,6 +146,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   symbolStatusChips$: Observable<SymbolChipItem[]> | undefined;
   oportunidades$: Observable<any[]> | undefined;
   highConvictionSignals$: Observable<any[]> | undefined;
+  neutralSignalCandidates$: Observable<any[]> | undefined;
   latestBinanceExecutions$: Observable<any[]> | undefined;
   telegramNotifications$: Observable<any[]> | undefined;
   telegramWinNotifications$: Observable<any[]> | undefined;
@@ -128,6 +154,39 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   latestTelegramAlert$: Observable<any | null> | undefined;
   monitoringSnapshots$: Observable<any[]> | undefined;
   binanceConfig$: Observable<any | null> | undefined;
+  @ViewChild('equityChartContainer')
+  set equityChartContainerRef(ref: ElementRef<HTMLDivElement> | undefined) {
+    this.equityChartContainer = ref?.nativeElement || null;
+    if (this.equityChartContainer) {
+      this.queueEquityChartRender();
+    }
+  }
+
+  private equityChartContainer: HTMLDivElement | null = null;
+  private equityChart: IChartApi | null = null;
+  private equityLineSeries: ISeriesApi<'Area'> | null = null;
+  private equityResizeObserver: ResizeObserver | null = null;
+  private equityViewReady = false;
+  private deferredEquityLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  private deferredSignalIntelLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  equityCurveLoading = false;
+  equityCurveError = '';
+  equityCurveCandles: EquityCurveCandle[] = [];
+  equityCurveTrades: EquityCurveTradePoint[] = [];
+  equityHoveredTrade: EquityCurveTradePoint | null = null;
+  equityCurveSummary = {
+    initialCapital: 0,
+    currentCapital: 0,
+    curveCapital: 0,
+    totalGrowthPct: 0,
+    totalTrades: 0,
+    wins: 0,
+    losses: 0,
+    breakevens: 0,
+    maxDrawdownPct: 0,
+    initialCapitalSource: '',
+    currentCapitalSource: ''
+  };
   symbols: string[] = [];
   timeframes: string[] = [];
   candidatoSymbol = '';
@@ -155,9 +214,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   openSections: Record<string, boolean> = {
     opportunities: true,
     monitoring: false,
+    equityCurve: false,
     signalIntel: false,
     binanceConfig: false,
     highConviction: false,
+    neutralSignals: false,
     historial: false
   };
   historyExpandedDates: Record<string, boolean> = {};
@@ -167,6 +228,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     total: 0,
     wins: 0,
     losses: 0,
+    open: 0,
     pending: 0,
     suppressed: 0,
     partial: 0,
@@ -190,12 +252,12 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     certaintyWinRate: 0,
     classification: 'n/a',
     topFailureSymbols: [] as string[],
-    updatedAt: '—'
+    updatedAt: '�'
   };
   monitoringTrend: MonitoringTrendItem[] = [];
   signalIntelLoading = false;
   signalIntelError = '';
-  signalIntelUpdatedAt = '—';
+  signalIntelUpdatedAt = '�';
   signalIntelSummary = {
     totalSignals: 0,
     emitted: 0,
@@ -301,7 +363,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     adaptiveSl: null as number | null,
     adaptiveHorizon: null as number | null,
     learningStatus: 'N/A',
-    lastCalibrationTime: '—',
+    lastCalibrationTime: '�',
     edgeQualityScore: null as number | null,
     recalibrated: false
   };
@@ -364,7 +426,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     expectancy: number | null;
     win_rate: number | null;
   }> = [];
-  lastEmissionAt = '—';
+  lastEmissionAt = '�';
   lastEmissionCount = 0;
   nowTs = Date.now();
   binanceConfig = {
@@ -394,6 +456,28 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     early_exit_drawdown_pct: 0.25
   };
   binanceConfigSaving = false;
+  readonly executionOperatingProfiles = [
+    {
+      label: 'High Conviction',
+      mode: 'LIVE',
+      detail: 'Es la única ruta que hoy puede abrir posiciones reales en Binance.'
+    },
+    {
+      label: 'Event Emitted',
+      mode: 'OBSERVE',
+      detail: 'Se observa y registra, pero no debería ejecutar capital real.'
+    },
+    {
+      label: 'Manual Prealert',
+      mode: 'OBSERVE',
+      detail: 'Se mantiene visible para diagnóstico, no para trading real.'
+    }
+  ];
+  readonly hcExecutionSafetyHints = [
+    'HC live usa un piso efectivo más alto de confidence, quantum, timing y R:R que el config global.',
+    'Si Binance exige más notional, el backend eleva HC al mínimo real del exchange para evitar fallos por -4164.',
+    'Si no queda SL real en Binance, la posición se cierra de inmediato y no se deja viva sin protección.'
+  ];
   constructor(
     private velasService: VelasService,
     private firestoreService: FirestoreService
@@ -415,11 +499,24 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       this.cargarPredicciones();
     });
     this.cargarHighConvictionSignals();
+    this.cargarNeutralSignalCandidates();
     this.cargarLatestBinanceExecutions();
     this.cargarTelegramNotifications();
     this.cargarMonitoringSnapshots();
     this.cargarBinanceConfig();
-    this.cargarSignalIntelligence();
+    this.deferredEquityLoadTimer = setTimeout(() => {
+      this.cargarEquityCurve();
+      this.deferredEquityLoadTimer = null;
+    }, 1200);
+    this.deferredSignalIntelLoadTimer = setTimeout(() => {
+      this.cargarSignalIntelligence();
+      this.deferredSignalIntelLoadTimer = null;
+    }, 3200);
+  }
+
+  ngAfterViewInit(): void {
+    this.equityViewReady = true;
+    this.queueEquityChartRender();
   }
 
   ngOnDestroy(): void {
@@ -427,6 +524,15 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
+    if (this.deferredEquityLoadTimer) {
+      clearTimeout(this.deferredEquityLoadTimer);
+      this.deferredEquityLoadTimer = null;
+    }
+    if (this.deferredSignalIntelLoadTimer) {
+      clearTimeout(this.deferredSignalIntelLoadTimer);
+      this.deferredSignalIntelLoadTimer = null;
+    }
+    this.destroyEquityChart();
   }
 
   toggleSection(section: keyof PrediccionesVelasComponent['openSections']): void {
@@ -436,9 +542,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       this.openSections = {
         opportunities: false,
         monitoring: false,
+        equityCurve: false,
         signalIntel: false,
         binanceConfig: false,
         highConviction: false,
+        neutralSignals: false,
         historial: false
       };
       this.openSections[section] = nextState;
@@ -446,6 +554,9 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       this.openSections[section] = !this.openSections[section];
     }
     this.persistUiState();
+    if (section === 'equityCurve' && this.openSections[section]) {
+      this.queueEquityChartRender();
+    }
   }
 
   isSectionOpen(section: keyof PrediccionesVelasComponent['openSections']): boolean {
@@ -558,21 +669,21 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
   generarPrediccion(): void {
     if (!this.candidatoSymbol) {
-      this.mensaje = 'Selecciona un símbolo válido.';
+      this.mensaje = 'Selecciona un s�mbolo v�lido.';
       return;
     }
     this.cargando = true;
-    this.mensaje = 'Generando predicción...';
+    this.mensaje = 'Generando predicci�n...';
     this.velasService
       .generarPrediccion(this.candidatoSymbol, this.selectedTimeframe, this.monto, this.executionMode)
       .pipe(finalize(() => (this.cargando = false)))
       .subscribe({
         next: (prediccion) => {
-          this.mensaje = `Predicción para ${prediccion.simbolo} registrada.`;
+          this.mensaje = `Predicci�n para ${prediccion.simbolo} registrada.`;
           this.cargarPredicciones();
         },
         error: () => {
-          this.mensaje = 'No se pudo generar la predicción.';
+          this.mensaje = 'No se pudo generar la predicci�n.';
         }
       });
   }
@@ -586,11 +697,11 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       finalize(() => (this.verificandoId = null))
     ).subscribe({
       next: (resultado) => {
-      this.mensaje = resultado.verification?.remarks || 'Verificación completada.';
+      this.mensaje = resultado.verification?.remarks || 'Verificaci�n completada.';
       this.cargarPredicciones();
     },
     error: () => {
-      this.mensaje = 'Falló la verificación.';
+      this.mensaje = 'Fall� la verificaci�n.';
     }
   });
   }
@@ -623,7 +734,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   formatLocalTime(value: string): string {
-    if (!value) return '—';
+    if (!value) return '�';
     const date = new Date(value);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
   }
@@ -639,17 +750,17 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (!windowStart) return '';
     const offset = this.offsetMinutesFromUTC(windowStart);
     if (!offset) {
-      return 'Tu reloj coincide con UTC para la ventana de ejecución.';
+      return 'Tu reloj coincide con UTC para la ventana de ejecuci�n.';
     }
     const sign = offset > 0 ? '+' : '';
-    return `Tu reloj está ${sign}${offset} min respecto a UTC para la ventana de entrada.`;
+    return `Tu reloj est� ${sign}${offset} min respecto a UTC para la ventana de entrada.`;
   }
 
   offsetLabel(value: string): string {
     const offset = this.offsetMinutesFromUTC(value);
     if (!offset) return 'coincide con UTC';
     const sign = offset > 0 ? '+' : '';
-    return `Tu reloj está ${sign}${offset} min respecto a UTC`;
+    return `Tu reloj est� ${sign}${offset} min respecto a UTC`;
   }
 
   private formatCountdown(ms: number): string {
@@ -668,10 +779,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       return `${prefix} (UTC)`;
     }
     if (exitEnd && exitEnd.getTime() < now.getTime()) {
-      return `${prefix} (UTC · Expirada)`;
+      return `${prefix} (UTC � Expirada)`;
     }
     const dayLabel = this.labelForDay(targetDate, now);
-    return `${prefix} (UTC · ${dayLabel})`;
+    return `${prefix} (UTC � ${dayLabel})`;
   }
 
   opportunityState(item: any): string {
@@ -722,7 +833,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (item.signal_emitted || item.stability >= 0.8) {
       return 'Media';
     }
-    return 'Observación';
+    return 'Observaci�n';
   }
 
   private getEventDrivenWindowDates(pred: any): {
@@ -901,7 +1012,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       date.getUTCMonth() === tomorrow.getUTCMonth() &&
       date.getUTCDate() === tomorrow.getUTCDate()
     ) {
-      return 'Mañana';
+      return 'Ma�ana';
     }
     return date.toISOString().slice(0, 10);
   }
@@ -973,10 +1084,17 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   cargarLatestBinanceExecutions(): void {
-    this.latestBinanceExecutions$ = this.firestoreService.getBinanceExecutionIntents<any>(20).pipe(
+    this.latestBinanceExecutions$ = this.firestoreService.getBinanceExecutionIntents<any>(60).pipe(
       switchMap((items) => this.enrichBinanceExecutionIntents(items)),
+      map((items) => (items || []).slice(0, 20)),
       shareReplay(1)
     );
+  }
+
+  cargarNeutralSignalCandidates(): void {
+    this.neutralSignalCandidates$ = this.firestoreService
+      .getNeutralSignalCandidates<any>(20)
+      .pipe(shareReplay(1));
   }
 
   cargarTelegramNotifications(): void {
@@ -1025,10 +1143,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       .obtenerSignalIntelligenceDashboard({
         refresh,
         days: 30,
-        maxDocs: 25000,
-        suppressedMaxDocs: 250,
-        executionMaxDocs: 250,
-        concurrency: 6,
+        maxDocs: 8000,
+        suppressedMaxDocs: 150,
+        executionMaxDocs: 150,
+        concurrency: 2,
         matchWindowMinutes: 5
       })
       .pipe(finalize(() => (this.signalIntelLoading = false)))
@@ -1380,6 +1498,243 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       });
   }
 
+  cargarEquityCurve(refresh = false): void {
+    this.equityCurveLoading = true;
+    this.equityCurveError = '';
+    this.velasService
+      .obtenerEquityCurve({ refresh, maxTrades: 1000 })
+      .pipe(finalize(() => (this.equityCurveLoading = false)))
+      .subscribe({
+        next: (response) => {
+          const report = response?.report || {};
+          const summary = report?.summary || {};
+          this.equityCurveCandles = Array.isArray(report?.candles)
+            ? report.candles.map((item: any) => ({
+                time: Number(item?.time || 0),
+                open: Number(item?.open || 0),
+                high: Number(item?.high || 0),
+                low: Number(item?.low || 0),
+                close: Number(item?.close || 0)
+              }))
+            : [];
+          this.equityCurveTrades = Array.isArray(report?.trades)
+            ? report.trades.map((item: any) => ({
+                id: String(item?.id || item?.time || item?.symbol || Math.random()),
+                time: Number(item?.time || 0),
+                symbol: String(item?.symbol || 'N/A'),
+                source_profile: String(item?.source_profile || 'unknown'),
+                outcome: this.normalizeEquityOutcome(item?.outcome),
+                pnl_pct: Number(item?.pnl_pct || 0),
+                close_reason: item?.close_reason || null,
+                closed_at: item?.closed_at || null,
+                open: Number(item?.open || 0),
+                high: Number(item?.high || 0),
+                low: Number(item?.low || 0),
+                close: Number(item?.close || 0)
+              }))
+            : [];
+          this.equityCurveSummary = {
+            initialCapital: Number(summary?.initial_capital || 0),
+            currentCapital: Number(summary?.current_capital || 0),
+            curveCapital: Number(summary?.curve_capital || summary?.current_capital || 0),
+            totalGrowthPct: Number(summary?.total_growth_pct || 0),
+            totalTrades: Number(summary?.total_trades || 0),
+            wins: Number(summary?.wins || 0),
+            losses: Number(summary?.losses || 0),
+            breakevens: Number(summary?.breakevens || 0),
+            maxDrawdownPct: Number(summary?.max_drawdown_pct || 0),
+            initialCapitalSource: String(summary?.initial_capital_source || ''),
+            currentCapitalSource: String(summary?.current_capital_source || '')
+          };
+          this.equityHoveredTrade = null;
+          this.queueEquityChartRender();
+        },
+        error: (err) => {
+          this.equityCurveError = err?.error?.error || err?.message || 'No se pudo cargar la curva de equity.';
+          this.equityCurveCandles = [];
+          this.equityCurveTrades = [];
+          this.equityHoveredTrade = null;
+          this.destroyEquityChart();
+        }
+      });
+  }
+
+  equityOutcomeClass(item: EquityCurveTradePoint | null | undefined): string {
+    const outcome = this.normalizeEquityOutcome(item?.outcome);
+    if (outcome === 'WIN') return 'hc-badge hc-win';
+    if (outcome === 'LOSS') return 'hc-badge hc-loss';
+    return 'hc-badge hc-partial';
+  }
+
+  equitySourceLabel(item: EquityCurveTradePoint | null | undefined): string {
+    return this.binanceExecutionSourceLabel({ source_profile: item?.source_profile });
+  }
+
+  equityPnlClass(item: EquityCurveTradePoint | null | undefined): string {
+    const pnl = Number(item?.pnl_pct || 0);
+    if (pnl > 0) return 'equity-pnl-positive';
+    if (pnl < 0) return 'equity-pnl-negative';
+    return 'equity-pnl-neutral';
+  }
+
+  private normalizeEquityOutcome(value: any): 'WIN' | 'LOSS' | 'BREAKEVEN' {
+    const raw = String(value || '').toUpperCase();
+    if (raw.includes('WIN')) return 'WIN';
+    if (raw.includes('LOSS')) return 'LOSS';
+    return 'BREAKEVEN';
+  }
+
+  private queueEquityChartRender(): void {
+    if (!this.equityViewReady) return;
+    setTimeout(() => this.renderEquityChart(), 0);
+  }
+
+  private renderEquityChart(): void {
+    if (!this.equityViewReady || !this.equityChartContainer || !this.equityCurveCandles.length) {
+      return;
+    }
+
+    const isDark = typeof document !== 'undefined' && document.body.classList.contains('theme-dark');
+    const containerWidth = this.equityChartContainer.clientWidth || 320;
+    const chartHeight = 320;
+    const lineData = this.buildEquityTimelineData();
+
+    if (!this.equityChart) {
+      this.equityChart = createChart(this.equityChartContainer, {
+        width: containerWidth,
+        height: chartHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: isDark ? '#0b1220' : '#fbfbfd' },
+          textColor: isDark ? '#dbe7f5' : '#334155'
+        },
+        rightPriceScale: {
+          borderColor: isDark ? '#334155' : '#cbd5e1'
+        },
+        timeScale: {
+          borderColor: isDark ? '#334155' : '#cbd5e1',
+          timeVisible: true,
+          secondsVisible: false,
+          rightOffset: 4
+        },
+        grid: {
+          vertLines: { color: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)' },
+          horzLines: { color: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)' }
+        },
+        crosshair: {
+          mode: CrosshairMode.Magnet
+        }
+      });
+
+      this.equityLineSeries = this.equityChart.addAreaSeries({
+        lineColor: isDark ? '#7dd3fc' : '#2563eb',
+        topColor: isDark ? 'rgba(56, 189, 248, 0.28)' : 'rgba(37, 99, 235, 0.22)',
+        bottomColor: isDark ? 'rgba(11, 18, 32, 0.02)' : 'rgba(37, 99, 235, 0.03)',
+        lineWidth: 3,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBorderColor: isDark ? '#dff7ff' : '#1d4ed8',
+        crosshairMarkerBackgroundColor: isDark ? '#0b1220' : '#ffffff',
+        lastValueVisible: false,
+        priceLineVisible: false
+      });
+
+      this.equityChart.subscribeCrosshairMove((param) => {
+        const hoveredTime = this.normalizeChartTime(param?.time);
+        this.equityHoveredTrade = hoveredTime == null ? null : this.findClosestEquityTrade(hoveredTime);
+      });
+
+      if (typeof ResizeObserver !== 'undefined') {
+        this.equityResizeObserver = new ResizeObserver((entries) => {
+          const entry = entries[0];
+          const width = Math.round(entry?.contentRect?.width || 0);
+          if (width > 0 && this.equityChart) {
+            this.equityChart.applyOptions({ width });
+          }
+        });
+        this.equityResizeObserver.observe(this.equityChartContainer);
+      }
+    } else {
+      this.equityChart.applyOptions({
+        width: containerWidth,
+        height: chartHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: isDark ? '#0b1220' : '#fbfbfd' },
+          textColor: isDark ? '#dbe7f5' : '#334155'
+        },
+        rightPriceScale: {
+          borderColor: isDark ? '#334155' : '#cbd5e1'
+        },
+        timeScale: {
+          borderColor: isDark ? '#334155' : '#cbd5e1',
+          rightOffset: 4
+        }
+      });
+      this.equityLineSeries?.applyOptions({
+        lineColor: isDark ? '#7dd3fc' : '#2563eb',
+        topColor: isDark ? 'rgba(56, 189, 248, 0.28)' : 'rgba(37, 99, 235, 0.22)',
+        bottomColor: isDark ? 'rgba(11, 18, 32, 0.02)' : 'rgba(37, 99, 235, 0.03)',
+        crosshairMarkerBorderColor: isDark ? '#dff7ff' : '#1d4ed8',
+        crosshairMarkerBackgroundColor: isDark ? '#0b1220' : '#ffffff'
+      });
+    }
+
+    this.equityLineSeries?.setData(lineData);
+    this.equityLineSeries?.setMarkers([]);
+    this.equityChart.timeScale().fitContent();
+  }
+
+  private buildEquityTimelineData(): Array<{ time: UTCTimestamp; value: number }> {
+    return this.equityCurveCandles.map((item) => ({
+      time: item.time as UTCTimestamp,
+      value: item.close
+    }));
+  }
+
+  private findClosestEquityTrade(hoveredTime: number | null): EquityCurveTradePoint | null {
+    if (!this.equityCurveTrades.length) {
+      return null;
+    }
+    if (hoveredTime == null) return null;
+
+    let closest = this.equityCurveTrades[0];
+    let smallestDelta = Math.abs(closest.time - hoveredTime);
+
+    for (let i = 1; i < this.equityCurveTrades.length; i += 1) {
+      const trade = this.equityCurveTrades[i];
+      const delta = Math.abs(trade.time - hoveredTime);
+      if (delta < smallestDelta) {
+        closest = trade;
+        smallestDelta = delta;
+      }
+    }
+
+    return closest;
+  }
+
+  private normalizeChartTime(time: Time | undefined): number | null {
+    if (time == null) return null;
+    if (typeof time === 'number') return Number(time);
+    if (typeof time === 'string') {
+      const parsed = Date.parse(time);
+      return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+    }
+    if (typeof time === 'object' && 'year' in time && 'month' in time && 'day' in time) {
+      return Math.floor(Date.UTC(time.year, time.month - 1, time.day) / 1000);
+    }
+    return null;
+  }
+
+  private destroyEquityChart(): void {
+    if (this.equityResizeObserver) {
+      this.equityResizeObserver.disconnect();
+      this.equityResizeObserver = null;
+    }
+    if (this.equityChart) {
+      this.equityChart.remove();
+      this.equityChart = null;
+      this.equityLineSeries = null;
+    }
+  }
   onHighConvictionFilterChange(): void {
     if (this.highConvictionFilter !== 'custom') {
       this.highConvictionFrom = '';
@@ -1419,8 +1774,29 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   highConvictionOutcome(signal: any): string {
+    const linkedOutcome = this.resolveTradeOutcome(
+      signal?.linkedPosition?.win_exchange_net ||
+      signal?.linkedPosition?.win_exchange ||
+      signal?.linkedIntent?.win_exchange_net ||
+      signal?.linkedIntent?.win_exchange ||
+      signal?.linkedIntent?.execution_audit?.win_exchange_net ||
+      signal?.linkedIntent?.execution_audit?.win_exchange,
+      signal?.linkedPosition?.net_close_pnl_pct ??
+        signal?.linkedPosition?.close_pnl_pct ??
+        signal?.linkedIntent?.net_close_pnl_pct ??
+        signal?.linkedIntent?.close_pnl_pct ??
+        signal?.linkedIntent?.execution_audit?.net_close_pnl_pct ??
+        signal?.linkedIntent?.execution_audit?.close_pnl_pct
+    );
+    if (linkedOutcome) return linkedOutcome;
+
+    const linkedPositionStatus = String(signal?.linkedPosition?.status || '').toLowerCase();
+    if (linkedPositionStatus === 'open') return 'ABIERTA';
+
     const raw = (
       signal?.verification_outcome ||
+      signal?.linkedPrediction?.verification?.verification_outcome ||
+      signal?.linkedPrediction?.verification_outcome ||
       signal?.verification?.verification_outcome ||
       signal?.verification?.outcome_label ||
       signal?.status ||
@@ -1429,8 +1805,28 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
     if (raw.includes('WIN') || raw === 'VALIDADO') return 'WIN';
     if (raw.includes('LOSS') || raw === 'FALLIDO') return 'LOSS';
+    if (raw.includes('BREAKEVEN')) return 'BREAKEVEN';
     if (raw.includes('SUPPRESSED') || raw === 'SUPRIMIDA') return 'SUPRIMIDA';
     if (raw.includes('PARTIAL') || raw.includes('PARCIAL')) return 'PARCIAL';
+    const exec = this.highConvictionBinanceExecution(signal);
+    const execStatus = String(exec?.status || exec?.intent_status || '').toLowerCase();
+    const execReason = this.highConvictionBinanceReason(signal);
+    if (execStatus === 'executed') return 'ABIERTA';
+    if (execStatus === 'failed' || execStatus === 'blocked') return 'LOSS';
+    const omittedByBinance =
+      execStatus === 'skipped' ||
+      (
+        Boolean(exec) &&
+        !exec?.executed &&
+        !exec?.dry_run &&
+        !execReason.startsWith('error:') &&
+        execReason !== 'already_processed' &&
+        execReason !== 'not_attempted' &&
+        execReason !== 'signal_not_emitted' &&
+        execReason !== 'neutral_direction'
+      );
+    if (omittedByBinance) return 'SUPRIMIDA';
+    if (execStatus === 'dry_run' || exec?.dry_run || execReason === 'already_processed') return 'PARCIAL';
     return 'PENDIENTE';
   }
 
@@ -1440,6 +1836,10 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
         return 'hc-badge hc-win';
       case 'LOSS':
         return 'hc-badge hc-loss';
+      case 'BREAKEVEN':
+        return 'hc-badge hc-partial';
+      case 'ABIERTA':
+        return 'hc-badge hc-partial';
       case 'SUPRIMIDA':
         return 'hc-badge hc-suppressed';
       case 'PARCIAL':
@@ -1489,11 +1889,45 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   highConvictionRemarks(signal: any): string {
-    return signal?.verification?.remarks || signal?.linkedPrediction?.verification?.remarks || signal?.remarks || 'Sin observaciones';
+    return (
+      signal?.linkedPosition?.close_reason ||
+      signal?.linkedIntent?.execution_audit?.close_reason ||
+      signal?.verification?.remarks ||
+      signal?.linkedPrediction?.verification?.remarks ||
+      signal?.remarks ||
+      'Sin observaciones'
+    );
   }
 
   highConvictionBinanceExecution(signal: any): any {
-    return signal?.binance_execution || signal?.linkedPrediction?.binance_execution || null;
+    const linkedIntent = signal?.linkedIntent || null;
+    const base = signal?.binance_execution || signal?.linkedPrediction?.binance_execution || null;
+    if (!linkedIntent) return base;
+    return {
+      ...base,
+      ...linkedIntent,
+      attempted: linkedIntent?.status ? linkedIntent.status !== 'unknown' : Boolean(base?.attempted),
+      executed: String(linkedIntent?.status || '').toLowerCase() === 'executed' || Boolean(base?.executed),
+      dry_run: String(linkedIntent?.status || '').toLowerCase() === 'dry_run' || Boolean(base?.dry_run),
+      reason: linkedIntent?.reason || base?.reason || null,
+      order_id:
+        linkedIntent?.exchange_response?.order?.orderId ||
+        linkedIntent?.order_id ||
+        base?.order_id ||
+        null,
+      exits: {
+        tp_order_id:
+          linkedIntent?.tp_order_id ||
+          linkedIntent?.exchange_response?.exits?.tp?.algoId ||
+          base?.exits?.tp_order_id ||
+          null,
+        sl_order_id:
+          linkedIntent?.sl_order_id ||
+          linkedIntent?.exchange_response?.exits?.sl?.algoId ||
+          base?.exits?.sl_order_id ||
+          null
+      }
+    };
   }
 
   highConvictionExecutionMeta(signal: any): any {
@@ -1502,29 +1936,43 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
   private highConvictionBinanceReason(signal: any): string {
     const exec = this.highConvictionBinanceExecution(signal);
-    return String(exec?.reason || '').toLowerCase();
+    return String(exec?.reason || exec?.error_message || exec?.failure_stage || '').toLowerCase();
   }
 
   highConvictionBinanceStatus(signal: any): string {
+    const linkedPositionStatus = String(signal?.linkedPosition?.status || '').toLowerCase();
+    if (linkedPositionStatus === 'closed') return 'Cerrada';
+    if (linkedPositionStatus === 'open') return 'Abierta';
     const exec = this.highConvictionBinanceExecution(signal);
     if (!exec) return 'Sin intento';
-    if (exec.executed) return 'Ejecutada';
+    const execStatus = String(exec?.status || exec?.intent_status || '').toLowerCase();
+    if (execStatus === 'executed' || exec.executed) return 'Ejecutada';
+    if (execStatus === 'failed') return 'Falló ejecución';
+    if (execStatus === 'blocked') return 'Bloqueada';
+    if (execStatus === 'skipped') return 'Omitida';
     if (exec.dry_run) return 'Dry-run';
     const reason = this.highConvictionBinanceReason(signal);
     if (reason === 'already_processed') return 'Ya procesada';
     if (reason === 'not_attempted' || reason === 'signal_not_emitted' || reason === 'neutral_direction') {
       return 'Sin intento';
     }
-    if (reason.startsWith('error:')) return 'Falló ejecución';
+    if (reason.startsWith('error:')) return 'Fall� ejecuci�n';
     if (exec.attempted) return 'Omitida';
     return 'Sin intento';
   }
 
   highConvictionBinanceStatusClass(signal: any): string {
     const status = this.highConvictionBinanceStatus(signal);
+    if (status === 'Cerrada') {
+      const outcome = this.highConvictionOutcome(signal);
+      if (outcome === 'WIN') return 'hc-badge hc-win';
+      if (outcome === 'LOSS') return 'hc-badge hc-loss';
+      return 'hc-badge hc-partial';
+    }
+    if (status === 'Abierta' || status === 'Ejecutada') return 'hc-badge hc-partial';
     if (status === 'Ejecutada') return 'hc-badge hc-win';
     if (status === 'Dry-run') return 'hc-badge hc-partial';
-    if (status === 'Falló ejecución') return 'hc-badge hc-loss';
+    if (status.startsWith('Fall')) return 'hc-badge hc-loss';
     if (status === 'Ya procesada') return 'hc-badge hc-partial';
     if (status === 'Omitida') return 'hc-badge hc-suppressed';
     return 'hc-badge hc-pending';
@@ -1547,25 +1995,52 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   binanceExecutionStatusLabel(item: any): string {
+    const linkedPositionStatus = String(item?.linkedPosition?.status || '').toLowerCase();
+    if (linkedPositionStatus === 'closed') return 'Cerrada';
+    if (linkedPositionStatus === 'open') return 'Abierta';
     const status = String(item?.status || '').toLowerCase();
     if (status === 'executed') return 'Ejecutada';
     if (status === 'skipped') return 'Omitida';
-    if (status === 'failed') return 'Falló';
+    if (status === 'failed') return 'Fall�';
     if (status === 'dry_run') return 'Dry-run';
     if (status === 'blocked') return 'Bloqueada';
     return item?.reason ? 'Procesada' : 'Pendiente';
   }
 
   binanceExecutionStatusClass(item: any): string {
-    const status = String(item?.status || '').toLowerCase();
-    if (status === 'executed') return 'hc-badge hc-win';
-    if (status === 'failed' || status === 'blocked') return 'hc-badge hc-loss';
-    if (status === 'skipped') return 'hc-badge hc-suppressed';
-    if (status === 'dry_run') return 'hc-badge hc-partial';
+    const status = this.binanceExecutionStatusLabel(item);
+    if (status === 'Cerrada') {
+      const outcome = this.binanceExecutionOutcomeLabel(item);
+      if (outcome === 'WIN') return 'hc-badge hc-win';
+      if (outcome === 'LOSS') return 'hc-badge hc-loss';
+      return 'hc-badge hc-partial';
+    }
+    if (status === 'Abierta' || status === 'Ejecutada') return 'hc-badge hc-partial';
+    if (status.startsWith('Fall') || status === 'Bloqueada') return 'hc-badge hc-loss';
+    if (status === 'Omitida') return 'hc-badge hc-suppressed';
+    if (status === 'Dry-run') return 'hc-badge hc-partial';
     return 'hc-badge hc-pending';
   }
 
   binanceExecutionOutcomeLabel(item: any): string {
+    const resolved = this.resolveTradeOutcome(
+      item?.linkedPosition?.win_exchange_net ||
+      item?.linkedPosition?.win_exchange ||
+      item?.win_exchange_net ||
+      item?.win_exchange ||
+      item?.execution_audit?.win_exchange_net ||
+      item?.execution_audit?.win_exchange ||
+      item?.linkedPrediction?.verification?.verification_outcome ||
+      item?.linkedPrediction?.verification_outcome,
+      item?.linkedPosition?.net_close_pnl_pct ??
+        item?.linkedPosition?.close_pnl_pct ??
+        item?.net_close_pnl_pct ??
+        item?.close_pnl_pct ??
+        item?.execution_audit?.net_close_pnl_pct ??
+        item?.execution_audit?.close_pnl_pct
+    );
+    if (resolved) return resolved;
+    if (String(item?.linkedPosition?.status || '').toLowerCase() === 'closed') return 'CERRADA';
     const outcome = String(
       item?.linkedPosition?.win_exchange ||
       item?.linkedPrediction?.verification?.verification_outcome ||
@@ -1576,7 +2051,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     if (outcome.includes('LOSS') || outcome === 'FALLIDO') return 'LOSS';
     if (outcome.includes('BREAKEVEN')) return 'BREAKEVEN';
     if (String(item?.status || '').toLowerCase() === 'executed') return 'ABIERTA';
-    return '—';
+    return '�';
   }
 
   binanceExecutionOutcomeClass(item: any): string {
@@ -1588,7 +2063,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   }
 
   binanceExecutionReason(item: any): string {
-    return String(item?.reason || item?.error_message || item?.linkedPosition?.close_reason || '—');
+    return String(item?.reason || item?.error_message || item?.linkedPosition?.close_reason || '�');
   }
 
   binanceExecutionDelayMs(item: any): number | null {
@@ -1614,6 +2089,43 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     }
     const parsed = new Date(raw);
     return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  }
+
+  private resolveBinanceExecutionActivityDate(item: any): Date {
+    const raw =
+      item?.linkedPosition?.closed_at ||
+      item?.execution_audit?.closed_at ||
+      item?.linkedPosition?.updated_at ||
+      item?.updated_at ||
+      item?.created_at ||
+      item?.opened_at ||
+      item?.timestamp ||
+      null;
+    return this.resolveBinanceExecutionDate({ created_at: raw });
+  }
+
+  private resolveTradeOutcome(rawOutcome: any, pnlValue?: any): 'WIN' | 'LOSS' | 'BREAKEVEN' | null {
+    const outcome = String(rawOutcome || '').toUpperCase();
+    if (outcome.includes('WIN') || outcome === 'VALIDADO') return 'WIN';
+    if (outcome.includes('LOSS') || outcome === 'FALLIDO') return 'LOSS';
+    if (outcome.includes('BREAKEVEN')) return 'BREAKEVEN';
+
+    const pnl = this.toNullableNum(pnlValue);
+    if (pnl == null) return null;
+    if (pnl > 0.000001) return 'WIN';
+    if (pnl < -0.000001) return 'LOSS';
+    return 'BREAKEVEN';
+  }
+
+  private sanitizeIntentDocIdPart(value: any): string {
+    return String(value || '')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 120);
+  }
+
+  private buildIntentDocId(predictionId: string | null, sourceProfile: string): string | null {
+    if (!predictionId) return null;
+    return `${this.sanitizeIntentDocIdPart(predictionId)}__${this.sanitizeIntentDocIdPart(sourceProfile || 'default')}`;
   }
 
   executionBadges(signal: any): ExecutionBadgeItem[] {
@@ -1720,9 +2232,9 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
     try {
       await this.firestoreService.saveBinanceBotConfig(payload);
-      this.mensaje = 'Configuración Binance guardada.';
+      this.mensaje = 'Configuraci�n Binance guardada.';
     } catch {
-      this.mensaje = 'No se pudo guardar configuración Binance.';
+      this.mensaje = 'No se pudo guardar configuraci�n Binance.';
     } finally {
       this.binanceConfigSaving = false;
     }
@@ -1814,15 +2326,64 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       return of(signals || []);
     }
 
-    return this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds).pipe(
-      map((predictions) => {
+    const intentIds = predictionIds.map((id) => this.buildIntentDocId(id, 'high_conviction')).filter(Boolean) as string[];
+    return combineLatest([
+      this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds),
+      this.firestoreService.getCollectionByIds<any>('binance_execution_intents', intentIds)
+    ]).pipe(
+      switchMap(([predictions, intents]) => {
+        const linkedPositionIds = Array.from(
+          new Set(
+            (intents || [])
+              .map((item) => item?.linked_position_id)
+              .filter((id) => !!id)
+          )
+        ) as string[];
+
+        return combineLatest([
+          of(predictions),
+          of(intents),
+          this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds),
+          linkedPositionIds.length
+            ? this.firestoreService.getCollectionByIds<any>('binance_open_positions', linkedPositionIds)
+            : of([] as any[])
+        ]);
+      }),
+      map(([predictions, intents, positionsByPrediction, positionsById]) => {
         const byId = new Map<string, any>();
         predictions.forEach((p) => byId.set(p.id, p));
+        const intentMap = new Map<string, any>();
+        (intents || []).forEach((item) => {
+          if (item?.prediction_id) {
+            intentMap.set(item.prediction_id, item);
+          }
+        });
+        const positionByIdMap = new Map<string, any>();
+        (positionsById || []).forEach((position) => positionByIdMap.set(position.id, position));
+        const positionByPredictionMap = new Map<string, any>();
+        (positionsByPrediction || []).forEach((position: any) => {
+          const key = `${position?.prediction_id || 'none'}__${position?.source_profile || position?.source || 'unknown'}`;
+          const current = positionByPredictionMap.get(key);
+          const currentTs = this.resolveBinanceExecutionDate(current).getTime();
+          const nextTs = this.resolveBinanceExecutionDate(position).getTime();
+          if (!current || nextTs >= currentTs) {
+            positionByPredictionMap.set(key, position);
+          }
+        });
         return (signals || []).map((signal) => {
           const linkedPrediction = signal?.prediction_id ? byId.get(signal.prediction_id) : null;
+          const linkedIntent = signal?.prediction_id ? intentMap.get(signal.prediction_id) : null;
+          const linkedPosition =
+            linkedIntent?.linked_position_id
+              ? positionByIdMap.get(linkedIntent.linked_position_id) || null
+              : (signal?.prediction_id
+                  ? positionByPredictionMap.get(`${signal.prediction_id}__high_conviction`) || null
+                  : null);
           return {
             ...signal,
-            linkedPrediction
+            linkedPrediction,
+            linkedIntent,
+            linkedPosition
           };
         });
       })
@@ -1842,11 +2403,22 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       return of(items || []);
     }
 
+    const linkedPositionIds = Array.from(
+      new Set(
+        (items || [])
+          .map((item) => item?.linked_position_id)
+          .filter((id) => !!id)
+      )
+    ) as string[];
+
     return combineLatest([
       this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds),
-      this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds)
+      this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds),
+      linkedPositionIds.length
+        ? this.firestoreService.getCollectionByIds<any>('binance_open_positions', linkedPositionIds)
+        : of([] as any[])
     ]).pipe(
-      map(([predictions, positions]) => {
+      map(([predictions, positions, positionsById]) => {
         const predictionMap = new Map<string, any>();
         predictions.forEach((item: any) => predictionMap.set(item.id, item));
 
@@ -1860,20 +2432,28 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
             positionMap.set(key, position);
           }
         });
+        const linkedPositionMap = new Map<string, any>();
+        (positionsById || []).forEach((position: any) => {
+          linkedPositionMap.set(position.id, position);
+        });
 
-        return (items || []).map((item) => {
+        return (items || [])
+          .map((item) => {
           const predictionId = item?.prediction_id || null;
           const sourceProfile = item?.source_profile || item?.source || 'unknown';
           const linkedPrediction = predictionId ? predictionMap.get(predictionId) : null;
-          const linkedPosition = predictionId
-            ? positionMap.get(`${predictionId}__${sourceProfile}`) || null
-            : null;
+          const linkedPosition = item?.linked_position_id
+            ? linkedPositionMap.get(item.linked_position_id) || null
+            : predictionId
+              ? positionMap.get(`${predictionId}__${sourceProfile}`) || null
+              : null;
           return {
             ...item,
             linkedPrediction,
             linkedPosition
           };
-        });
+        })
+          .sort((a, b) => this.resolveBinanceExecutionActivityDate(b).getTime() - this.resolveBinanceExecutionActivityDate(a).getTime());
       })
     );
   }
@@ -1897,6 +2477,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     total: number;
     wins: number;
     losses: number;
+    open: number;
     pending: number;
     suppressed: number;
     partial: number;
@@ -1912,6 +2493,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
         total: 0,
         wins: 0,
         losses: 0,
+        open: 0,
         pending: 0,
         suppressed: 0,
         partial: 0,
@@ -1925,6 +2507,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
     let wins = 0;
     let losses = 0;
+    let open = 0;
     let pending = 0;
     let suppressed = 0;
     let partial = 0;
@@ -1942,6 +2525,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       stabilitySum += this.resolveSignalStability(signal, confidence, quantum, timing);
       if (outcome === 'WIN') wins += 1;
       else if (outcome === 'LOSS') losses += 1;
+      else if (outcome === 'ABIERTA') open += 1;
       else if (outcome === 'SUPRIMIDA') {
         suppressed += 1;
         if (this.hasSuppressedVerification(signal)) {
@@ -1962,6 +2546,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
       total,
       wins,
       losses,
+      open,
       pending,
       suppressed,
       partial,
@@ -2106,9 +2691,9 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   formatFirestoreDate(value: any): string {
-    if (!value) return '—';
+    if (!value) return '�';
     const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
-    if (Number.isNaN(date.getTime())) return '—';
+    if (Number.isNaN(date.getTime())) return '�';
     return date.toLocaleString();
   }
 
@@ -2160,15 +2745,15 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
   latencyStageLabel(stage: string | null | undefined): string {
     switch (stage) {
       case 'signal_to_emit_ms':
-        return 'Signal → Emit';
+        return 'Signal ? Emit';
       case 'emit_to_intent_ms':
-        return 'Emit → Intent';
+        return 'Emit ? Intent';
       case 'intent_to_process_ms':
-        return 'Intent → Process';
+        return 'Intent ? Process';
       case 'process_to_attempt_ms':
-        return 'Process → Attempt';
+        return 'Process ? Attempt';
       case 'attempt_to_order_ms':
-        return 'Attempt → Order';
+        return 'Attempt ? Order';
       default:
         return 'N/A';
     }
@@ -2272,7 +2857,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
         certaintyWinRate: 0,
         classification: 'n/a',
         topFailureSymbols: [],
-        updatedAt: '—'
+        updatedAt: '�'
       };
     }
 
@@ -2302,7 +2887,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
 
     this.lastEmissionAt = latestEmissionSnapshot
       ? this.formatFirestoreDate(latestEmissionSnapshot?.created_at || latestEmissionSnapshot?.timestamp)
-      : '—';
+      : '�';
     this.lastEmissionCount = Number(latestEmissionMetrics?.signals_emitted || 0);
 
     return {
@@ -2344,6 +2929,7 @@ export class PrediccionesVelasComponent implements OnInit, OnDestroy {
     return item?.prediction_cycle || item;
   }
 }
+
 
 
 

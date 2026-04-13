@@ -38,6 +38,12 @@ export class FirestoreService {
     return collectionData(q, { idField: 'id' }) as Observable<T[]>;
   }
 
+  getNeutralSignalCandidates<T extends DocumentData>(max = 10): Observable<T[]> {
+    const ref = collection(this.firestore, 'neutral_signal_candidates');
+    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
+    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
+  }
+
   getBinanceExecutionIntents<T extends DocumentData>(max = 20): Observable<T[]> {
     const ref = collection(this.firestore, 'binance_execution_intents');
     const q = query(ref, orderBy('created_at', 'desc'), limit(max));

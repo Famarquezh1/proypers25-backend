@@ -1,5 +1,6 @@
 const { FieldValue } = require('firebase-admin/firestore');
 const { buildExecutionDisciplineMetrics } = require('./signal_adherence_monitor');
+const { resolveTradeCostConfig } = require('../services/execution/tradeCostModel');
 
 const EXECUTION_DISCIPLINE_ENABLED =
   String(process.env.EXECUTION_DISCIPLINE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -16,6 +17,28 @@ const SUMMARY_LOOKBACK_HOURS = Math.max(6, Math.min(24 * 30, Number(process.env.
 const LOG_LIMIT = Math.max(50, Math.min(2000, Number(process.env.EXECUTION_DISCIPLINE_LOG_LIMIT || 500)));
 const SIGNAL_SCAN_LIMIT = Math.max(250, Math.min(30000, Number(process.env.EXECUTION_DISCIPLINE_SIGNAL_SCAN_LIMIT || 5000)));
 const EXECUTION_SCORE_CACHE_TTL_MS = Math.max(1000, Number(process.env.EXECUTION_SCORE_CACHE_TTL_MS || 5000));
+const PROFIT_CAPTURE_MIN_BUFFER_PCT = Math.max(
+  resolveTradeCostConfig().minimum_gross_profit_pct,
+  Number(process.env.PROFIT_CAPTURE_MIN_BUFFER_PCT || 0.05)
+);
+const DYNAMIC_SL_ENABLED =
+  String(process.env.DYNAMIC_SL_ENABLED || 'true').toLowerCase() !== 'false';
+const DYNAMIC_SL_MIN_BUFFER_PCT = Math.max(
+  0.01,
+  Number(process.env.DYNAMIC_SL_MIN_BUFFER_PCT || 0.02)
+);
+const DYNAMIC_SL_MAX_BUFFER_PCT = Math.max(
+  DYNAMIC_SL_MIN_BUFFER_PCT,
+  Number(process.env.DYNAMIC_SL_MAX_BUFFER_PCT || 0.18)
+);
+const DYNAMIC_SL_VOLATILITY_MULTIPLIER = Math.max(
+  0.1,
+  Number(process.env.DYNAMIC_SL_VOLATILITY_MULTIPLIER || 0.55)
+);
+const DYNAMIC_SL_TIGHTEN_RATIO = Math.min(
+  1,
+  Math.max(0.15, Number(process.env.DYNAMIC_SL_TIGHTEN_RATIO || 0.45))
+);
 let executionScoreCache = { value: null, fetchedAt: 0 };
 
 function nowIso() {
@@ -404,6 +427,57 @@ function resolveStopLoss(entity = {}) {
   return toNum(entity.stop_loss ?? entity.trade_plan?.stop_loss ?? entity.intent?.stop_loss, null);
 }
 
+function resolveDynamicStopLoss(position = {}, stopLoss, entryPrice, markPrice, context = {}) {
+  if (!DYNAMIC_SL_ENABLED) return null;
+  if (!Number.isFinite(stopLoss) || !Number.isFinite(entryPrice) || entryPrice <= 0) return null;
+
+  const lifecyclePhase = String(
+    context?.lifecycle?.lifecycle_phase ||
+      position?.impulse_lifecycle?.lifecycle_phase ||
+      ''
+  ).toLowerCase();
+  const snapshot =
+    context?.market_snapshot ||
+    context?.lifecycle?.observation_snapshot ||
+    position?.last_microstructure_snapshot ||
+    position?.impulse_lifecycle?.observation_snapshot ||
+    {};
+  const spreadPct = Math.max(0, toNum(snapshot?.spread_bps, 0) / 100);
+  const velocityAbs = Math.abs(toNum(snapshot?.price_velocity_bps_per_sec, 0));
+  const realizedRangePct = Math.abs(
+    toNum(position?.impulse_lifecycle?.max_pnl_pct, 0) - toNum(position?.impulse_lifecycle?.min_pnl_pct, 0)
+  );
+  const volatilityPct = Math.max(
+    spreadPct * 4,
+    realizedRangePct * DYNAMIC_SL_VOLATILITY_MULTIPLIER,
+    velocityAbs * 0.02
+  );
+  let bufferPct = Math.min(
+    DYNAMIC_SL_MAX_BUFFER_PCT,
+    Math.max(DYNAMIC_SL_MIN_BUFFER_PCT, volatilityPct)
+  );
+
+  if (lifecyclePhase === 'deterioration' || toNum(context?.pnl_pct, 0) < 0) {
+    bufferPct = Math.max(DYNAMIC_SL_MIN_BUFFER_PCT, bufferPct * DYNAMIC_SL_TIGHTEN_RATIO);
+  }
+
+  const side = String(position?.side || '').toUpperCase();
+  const offset = entryPrice * (bufferPct / 100);
+  const adjustedStop =
+    side === 'BUY'
+      ? stopLoss - offset
+      : side === 'SELL'
+        ? stopLoss + offset
+        : stopLoss;
+
+  return {
+    adjusted_stop_loss: adjustedStop,
+    buffer_pct: bufferPct,
+    volatility_pct: volatilityPct,
+    lifecycle_phase: lifecyclePhase
+  };
+}
+
 function resolveRealEntryPrice(orderResponse = {}, fallback = null) {
   const avgPrice = toNum(orderResponse?.avgPrice, null);
   if (Number.isFinite(avgPrice) && avgPrice > 0) return avgPrice;
@@ -672,6 +746,7 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
   const earlyExitBlockPct = Number.isFinite(expectedTpPct) ? expectedTpPct * EARLY_EXIT_TP_RATIO : null;
   const currentMaxSeen = Math.max(toNum(position?.profit_capture_max_seen_pct, 0) || 0, toNum(pnlPct, 0) || 0);
   const profitCaptureArmed = Boolean(position?.profit_capture_armed);
+  const tradeCost = resolveTradeCostConfig();
   const basicTrailingTriggerPct = Math.max(0.03, Number(process.env.BINANCE_POSITION_TRAILING_TRIGGER_PCT || 0.12));
   const basicTrailingRetraceRatio = Math.min(
     0.9,
@@ -681,27 +756,51 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
     0.01,
     Number(process.env.BINANCE_POSITION_TRAILING_MIN_LOCK_PCT || 0.04)
   );
+  const dynamicStop = resolveDynamicStopLoss(position, stopLoss, entry, markPrice, context);
+  const effectiveStopLoss = Number.isFinite(dynamicStop?.adjusted_stop_loss)
+    ? dynamicStop.adjusted_stop_loss
+    : stopLoss;
   const lockFloorPct = Number.isFinite(captureTriggerPct)
-    ? Math.max(captureTriggerPct * 0.25, currentMaxSeen * 0.55)
+    ? Math.max(PROFIT_CAPTURE_MIN_BUFFER_PCT, captureTriggerPct * 0.25, currentMaxSeen * 0.55)
     : null;
   const trailingLockFloorPct =
     currentMaxSeen >= basicTrailingTriggerPct
-      ? Math.max(basicTrailingMinLockPct, currentMaxSeen * basicTrailingRetraceRatio)
+      ? Math.max(PROFIT_CAPTURE_MIN_BUFFER_PCT, basicTrailingMinLockPct, currentMaxSeen * basicTrailingRetraceRatio)
       : null;
 
   if (
-    Number.isFinite(stopLoss) &&
+    Number.isFinite(effectiveStopLoss) &&
     Number.isFinite(markPrice) &&
-    ((side === 'BUY' && markPrice <= stopLoss) || (side === 'SELL' && markPrice >= stopLoss))
+    ((side === 'BUY' && markPrice <= effectiveStopLoss) || (side === 'SELL' && markPrice >= effectiveStopLoss))
   ) {
+    const forcedReason =
+      Number.isFinite(stopLoss) && Math.abs(Number(effectiveStopLoss) - Number(stopLoss)) > 0.0000001
+        ? 'dynamic_sl_trigger'
+        : 'sl_violation_forced';
+    if (forcedReason === 'dynamic_sl_trigger') {
+      console.info('[DYNAMIC_SL_TRIGGER]', {
+        symbol: position?.symbol || 'UNKNOWN',
+        source_profile: position?.source_profile || position?.source || 'unknown',
+        mark_price: markPrice,
+        stop_loss: stopLoss,
+        adjusted_stop_loss: Number(effectiveStopLoss.toFixed(8)),
+        buffer_pct: Number(dynamicStop?.buffer_pct?.toFixed?.(4) || 0),
+        volatility_pct: Number(dynamicStop?.volatility_pct?.toFixed?.(4) || 0),
+        lifecycle_phase: dynamicStop?.lifecycle_phase || null,
+        pnl_pct: pnlPct
+      });
+    }
     return {
       forceClose: true,
-      forceReason: 'sl_violation_forced',
+      forceReason: forcedReason,
       blockExit: false,
       armProfitCapture: false,
       details: {
         mark_price: markPrice,
         stop_loss: stopLoss,
+        adjusted_stop_loss: Number.isFinite(effectiveStopLoss) ? Number(effectiveStopLoss.toFixed(8)) : null,
+        dynamic_sl_buffer_pct: Number(dynamicStop?.buffer_pct?.toFixed?.(4) || 0) || null,
+        dynamic_sl_volatility_pct: Number(dynamicStop?.volatility_pct?.toFixed?.(4) || 0) || null,
         pnl_pct: pnlPct
       }
     };
@@ -735,7 +834,9 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
       details: {
         pnl_pct: pnlPct,
         capture_trigger_pct: captureTriggerPct,
-        lock_floor_pct: lockFloorPct
+        lock_floor_pct: lockFloorPct,
+        estimated_roundtrip_cost_pct: tradeCost.cost_floor_pct,
+        minimum_gross_profit_pct: tradeCost.minimum_gross_profit_pct
       }
     };
   }
@@ -756,7 +857,9 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
         pnl_pct: pnlPct,
         trailing_trigger_pct: basicTrailingTriggerPct,
         trailing_lock_floor_pct: trailingLockFloorPct,
-        max_seen_pct: currentMaxSeen
+        max_seen_pct: currentMaxSeen,
+        estimated_roundtrip_cost_pct: tradeCost.cost_floor_pct,
+        minimum_gross_profit_pct: tradeCost.minimum_gross_profit_pct
       }
     };
   }
@@ -777,7 +880,9 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
         pnl_pct: pnlPct,
         capture_trigger_pct: captureTriggerPct,
         lock_floor_pct: lockFloorPct,
-        max_seen_pct: currentMaxSeen
+        max_seen_pct: currentMaxSeen,
+        estimated_roundtrip_cost_pct: tradeCost.cost_floor_pct,
+        minimum_gross_profit_pct: tradeCost.minimum_gross_profit_pct
       }
     };
   }
@@ -790,7 +895,9 @@ function evaluatePositionDiscipline(position = {}, markPrice, context = {}) {
       pnl_pct: pnlPct,
       expected_tp_pct: expectedTpPct,
       capture_trigger_pct: captureTriggerPct,
-      max_seen_pct: currentMaxSeen
+      max_seen_pct: currentMaxSeen,
+      estimated_roundtrip_cost_pct: tradeCost.cost_floor_pct,
+      minimum_gross_profit_pct: tradeCost.minimum_gross_profit_pct
     }
   };
 }

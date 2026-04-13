@@ -11,6 +11,7 @@ const quantumRoutes = require('./routes/quantum.route');
 const inversionRoute = require('./routes/inversion.route');
 const cronRoute = require('./routes/cron.route');
 const velasCronRoutes = require('./routes/velasCron');
+const { warmExchangeInfoCache } = require('./lib/binanceFuturesExecutor');
 
 const validarAutonomas = require('./utils/validar_autonomas');
 const ejecutarAutoaprendizaje = require('./scripts/autoaprendizaje');
@@ -29,6 +30,12 @@ const PORT = process.env.PORT || 8080;
 const CRON_SECRET = process.env.CRON_SECRET || null;
 const LEARNING_MODE = process.env.LEARNING_MODE || 'observe';
 const LEARNING_LOG = process.env.LEARNING_LOG === 'true';
+const EXCHANGE_INFO_WARMUP_ENABLED =
+  String(process.env.EXCHANGE_INFO_WARMUP_ENABLED || 'true').toLowerCase() === 'true';
+const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(
+  60000,
+  Number(process.env.EXCHANGE_INFO_WARMUP_INTERVAL_MS || 15 * 60 * 1000)
+);
 
 // 🔁 Firestore config
 const db = require('./firebase-admin-config');
@@ -57,6 +64,19 @@ app.use("/api", analizarRoute);
 app.use('/api/velas', velasRoutes);
 app.use('/api/validacion', validacionRoute);
 app.use('/', velasCronRoutes);
+
+if (EXCHANGE_INFO_WARMUP_ENABLED) {
+  const warmup = async (source) => {
+    try {
+      const summary = await warmExchangeInfoCache();
+      console.log('[EXCHANGE_INFO_WARMUP]', { source, ...summary });
+    } catch (err) {
+      console.warn('[EXCHANGE_INFO_WARMUP] failed', { source, error: err?.message || err });
+    }
+  };
+  setTimeout(() => warmup('startup'), 1500);
+  setInterval(() => warmup('interval'), EXCHANGE_INFO_WARMUP_INTERVAL_MS);
+}
 
 // 📅 Verificador de horario hábil (mercado NY)
 function esHorarioHabil() {

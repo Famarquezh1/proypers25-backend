@@ -192,6 +192,13 @@ export class VelasService {
     return this.http.get<any>(`${this.apiUrl}/api/velas/alpha-decay`, { params: httpParams });
   }
 
+  obtenerExploitationSummary(params?: { limit?: number; riskLimit?: number }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.limit) httpParams = httpParams.set('limit', String(params.limit));
+    if (params?.riskLimit) httpParams = httpParams.set('riskLimit', String(params.riskLimit));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/exploitation-summary`, { params: httpParams });
+  }
+
   obtenerConfidenceCalibration(params?: { refresh?: boolean; days?: number; maxDocs?: number }): Observable<any> {
     let httpParams = new HttpParams();
     if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
@@ -202,5 +209,17 @@ export class VelasService {
 
   obtenerExecutionDisciplineSummary(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/api/velas/execution-discipline-summary`);
+  }
+
+  obtenerEquityCurve(params?: {
+    refresh?: boolean;
+    maxTrades?: number;
+    initialCapital?: number;
+  }): Observable<any> {
+    let httpParams = new HttpParams();
+    if (params?.refresh) httpParams = httpParams.set('refresh', 'true');
+    if (params?.maxTrades) httpParams = httpParams.set('maxTrades', String(params.maxTrades));
+    if (params?.initialCapital) httpParams = httpParams.set('initialCapital', String(params.initialCapital));
+    return this.http.get<any>(`${this.apiUrl}/api/velas/equity-curve`, { params: httpParams });
   }
 }

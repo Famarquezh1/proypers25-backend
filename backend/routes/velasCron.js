@@ -36,8 +36,17 @@ router.post('/internal/cron/velas/predictions', async (req, res) => {
 
 router.post('/internal/cron/velas/prealerts', async (req, res) => {
   if (!checkSecret(req, res)) return;
-  await runPreAlertCycle();
-  res.json({ ok: true, source: 'scheduler', job: 'velas-prealerts' });
+  res.status(202).json({ ok: true, source: 'scheduler', job: 'velas-prealerts', accepted: true });
+  setImmediate(async () => {
+    try {
+      const summary = await runPreAlertCycle();
+      if (summary?.skipped) {
+        console.warn('[CRON] prealert cycle skipped', summary);
+      }
+    } catch (err) {
+      console.error('[CRON] prealert cycle failed', err?.message || err);
+    }
+  });
 });
 
 router.post('/internal/cron/binance/position-manager', async (req, res) => {

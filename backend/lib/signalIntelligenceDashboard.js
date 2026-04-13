@@ -21,6 +21,11 @@ const {
 const {
   getExecutionLatencySummary
 } = require('./execution_latency_engine');
+const {
+  getAdaptiveExitSummary,
+  getImpulseLifecycleSummary,
+  getPositionExitComparison
+} = require('./adaptiveExitAnalytics');
 
 const SNAPSHOT_COLLECTION = 'analytics_snapshots';
 const SNAPSHOT_DOC_ID = 'signal_intelligence_dashboard_v1';
@@ -227,7 +232,16 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     Math.min(30, Number(options.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
   );
 
-  const [intelligenceBase, suppressedReport, executionReport, executionDisciplineSummary, executionLatencySummary] = await Promise.all([
+  const [
+    intelligenceBase,
+    suppressedReport,
+    executionReport,
+    executionDisciplineSummary,
+    executionLatencySummary,
+    adaptiveExitSummary,
+    impulseLifecycleSummary,
+    positionExitComparison
+  ] = await Promise.all([
     runSignalIntelligenceAudit({
       days: intelligenceDays,
       maxDocs: intelligenceMaxDocs,
@@ -247,7 +261,20 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
       writeFiles: false
     }),
     EXECUTION_DISCIPLINE_ENABLED ? getExecutionDisciplineSummary(db) : Promise.resolve(null),
-    getExecutionLatencySummary(db)
+    getExecutionLatencySummary(db),
+    getAdaptiveExitSummary(db, {
+      days: intelligenceDays,
+      maxDocs: executionMaxDocs
+    }),
+    getImpulseLifecycleSummary(db, {
+      days: intelligenceDays,
+      maxDocs: executionMaxDocs
+    }),
+    getPositionExitComparison(db, {
+      days: intelligenceDays,
+      maxDocs: executionMaxDocs,
+      limit: 50
+    })
   ]);
 
   const intelligenceReport = await buildSignalIntelligenceComposite(intelligenceBase);
@@ -281,6 +308,18 @@ async function refreshSignalIntelligenceDashboardSnapshot(options = {}) {
     execution_latency: {
       fetched_at: fetchedAt,
       report: executionLatencySummary
+    },
+    adaptive_exit: {
+      fetched_at: fetchedAt,
+      report: adaptiveExitSummary
+    },
+    impulse_lifecycle: {
+      fetched_at: fetchedAt,
+      report: impulseLifecycleSummary
+    },
+    position_exit_comparison: {
+      fetched_at: fetchedAt,
+      report: positionExitComparison
     }
   };
 
@@ -323,6 +362,24 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
         report: await getExecutionLatencySummary(db)
       };
     }
+    if (!snapshotCache.payload.adaptive_exit) {
+      snapshotCache.payload.adaptive_exit = {
+        fetched_at: new Date().toISOString(),
+        report: await getAdaptiveExitSummary(db)
+      };
+    }
+    if (!snapshotCache.payload.impulse_lifecycle) {
+      snapshotCache.payload.impulse_lifecycle = {
+        fetched_at: new Date().toISOString(),
+        report: await getImpulseLifecycleSummary(db)
+      };
+    }
+    if (!snapshotCache.payload.position_exit_comparison) {
+      snapshotCache.payload.position_exit_comparison = {
+        fetched_at: new Date().toISOString(),
+        report: await getPositionExitComparison(db)
+      };
+    }
     return {
       payload: snapshotCache.payload,
       cached: true,
@@ -344,6 +401,24 @@ async function getSignalIntelligenceDashboardSnapshot(options = {}) {
         persisted.execution_latency = {
           fetched_at: new Date().toISOString(),
           report: await getExecutionLatencySummary(db)
+        };
+      }
+      if (!persisted.adaptive_exit) {
+        persisted.adaptive_exit = {
+          fetched_at: new Date().toISOString(),
+          report: await getAdaptiveExitSummary(db)
+        };
+      }
+      if (!persisted.impulse_lifecycle) {
+        persisted.impulse_lifecycle = {
+          fetched_at: new Date().toISOString(),
+          report: await getImpulseLifecycleSummary(db)
+        };
+      }
+      if (!persisted.position_exit_comparison) {
+        persisted.position_exit_comparison = {
+          fetched_at: new Date().toISOString(),
+          report: await getPositionExitComparison(db)
         };
       }
       return {

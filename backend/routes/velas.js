@@ -30,8 +30,27 @@ const {
 const {
   getExecutionLatencySummary
 } = require('../lib/execution_latency_engine');
+const {
+  getAdaptiveExitSummary,
+  getImpulseLifecycleSummary,
+  getPositionExitComparison
+} = require('../lib/adaptiveExitAnalytics');
+const {
+  getEquityCurveSnapshot
+} = require('../lib/equityCurve');
+const { getBinanceBotConfig } = require('../lib/binanceBotConfig');
 const { fetchBinanceSpot } = require('../services/dataSources/binance');
-const { executeSignalTrade, getMarkPrice, toBinanceSymbol } = require('../lib/binanceFuturesExecutor');
+const {
+  executeSignalTrade,
+  getMarkPrice,
+  toBinanceSymbol,
+  getExchangeInfoCacheStatus
+} = require('../lib/binanceFuturesExecutor');
+const {
+  getMarketStreamStatus,
+  syncOperationalMarketObservation
+} = require('../services/market/marketStreamWorker');
+const { getPreAlertRuntimeMetrics } = require('../tasks/velasScheduler');
 const db = require('../firebase-admin-config');
 const FieldValue = require('firebase-admin').firestore.FieldValue;
 
@@ -312,19 +331,38 @@ async function respondSignalIntelligenceDashboard(req, res) {
   try {
     const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
     const days = Math.max(1, Math.min(365, Number(req.query.days || process.env.SIGNAL_INTEL_AUDIT_DAYS || 30)));
-    const maxDocs = Math.max(1000, Math.min(300000, Number(req.query.maxDocs || process.env.SIGNAL_INTEL_AUDIT_MAX_DOCS || 25000)));
-    const snapshot = await getSignalIntelligenceDashboardSnapshot({
-      refresh,
-      days,
-      maxDocs,
-      suppressedMaxDocs: Math.max(50, Math.min(300000, Number(req.query.suppressedMaxDocs || process.env.AUDIT_MAX_DOCS || 250))),
-      executionMaxDocs: Math.max(50, Math.min(300000, Number(req.query.executionMaxDocs || process.env.AUDIT_MAX_DOCS || 250))),
-      concurrency: Math.max(1, Math.min(20, Number(req.query.concurrency || process.env.AUDIT_CONCURRENCY || 6))),
-      matchWindowMinutes: Math.max(
-        1,
-        Math.min(30, Number(req.query.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
-      )
-    });
+    const requestedMaxDocs = Math.max(
+      1000,
+      Math.min(12000, Number(req.query.maxDocs || process.env.SIGNAL_INTEL_AUDIT_MAX_DOCS || 8000))
+    );
+    const requestedSuppressedMaxDocs = Math.max(
+      50,
+      Math.min(500, Number(req.query.suppressedMaxDocs || process.env.AUDIT_MAX_DOCS || 150))
+    );
+    const requestedExecutionMaxDocs = Math.max(
+      50,
+      Math.min(500, Number(req.query.executionMaxDocs || process.env.AUDIT_MAX_DOCS || 150))
+    );
+    const requestedConcurrency = Math.max(
+      1,
+      Math.min(4, Number(req.query.concurrency || process.env.AUDIT_CONCURRENCY || 2))
+    );
+    const snapshot = await getSignalIntelligenceDashboardSnapshot(
+      refresh
+        ? {
+            refresh,
+            days,
+            maxDocs: requestedMaxDocs,
+            suppressedMaxDocs: requestedSuppressedMaxDocs,
+            executionMaxDocs: requestedExecutionMaxDocs,
+            concurrency: requestedConcurrency,
+            matchWindowMinutes: Math.max(
+              1,
+              Math.min(30, Number(req.query.matchWindowMinutes || process.env.EXEC_MATCH_WINDOW_MINUTES || 5))
+            )
+          }
+        : { refresh: false }
+    );
 
     return res.json({
       ok: true,
@@ -438,6 +476,264 @@ router.get('/execution-latency', async (_req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || 'execution_latency_summary_failed'
+    });
+  }
+});
+
+router.get('/adaptive-exit-summary', async (req, res) => {
+  try {
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    let report = null;
+    if (!refresh) {
+      const snapshot = await getSignalIntelligenceDashboardSnapshot({ refresh: false });
+      report = snapshot?.payload?.adaptive_exit?.report || null;
+    }
+    if (!report) {
+      report = await getAdaptiveExitSummary(db, {
+        days: Math.max(1, Math.min(365, Number(req.query.days || 30))),
+        maxDocs: Math.max(50, Math.min(4000, Number(req.query.maxDocs || 500)))
+      });
+    }
+    return res.json({ ok: true, report });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'adaptive_exit_summary_failed'
+    });
+  }
+});
+
+router.get('/impulse-lifecycle-summary', async (req, res) => {
+  try {
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    let report = null;
+    if (!refresh) {
+      const snapshot = await getSignalIntelligenceDashboardSnapshot({ refresh: false });
+      report = snapshot?.payload?.impulse_lifecycle?.report || null;
+    }
+    if (!report) {
+      report = await getImpulseLifecycleSummary(db, {
+        days: Math.max(1, Math.min(365, Number(req.query.days || 30))),
+        maxDocs: Math.max(50, Math.min(4000, Number(req.query.maxDocs || 500)))
+      });
+    }
+    return res.json({ ok: true, report });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'impulse_lifecycle_summary_failed'
+    });
+  }
+});
+
+router.get('/position-exit-comparison', async (req, res) => {
+  try {
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    let report = null;
+    if (!refresh) {
+      const snapshot = await getSignalIntelligenceDashboardSnapshot({ refresh: false });
+      report = snapshot?.payload?.position_exit_comparison?.report || null;
+    }
+    if (!report) {
+      report = await getPositionExitComparison(db, {
+        days: Math.max(1, Math.min(365, Number(req.query.days || 30))),
+        maxDocs: Math.max(50, Math.min(4000, Number(req.query.maxDocs || 500))),
+        limit: Math.max(10, Math.min(200, Number(req.query.limit || 50)))
+      });
+    }
+    return res.json({ ok: true, report });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'position_exit_comparison_failed'
+    });
+  }
+});
+
+router.get('/market-stream-status', async (_req, res) => {
+  try {
+    const refresh = String(_req.query.refresh || '').toLowerCase() === 'true';
+    const config = await getBinanceBotConfig(db);
+    if (refresh) {
+      await syncOperationalMarketObservation(db, { config });
+    }
+    const runtime = getMarketStreamStatus();
+    return res.json({
+      ok: true,
+      report: {
+        enabled: Boolean(config?.market_stream?.enabled || String(config?.market_stream?.mode || '').toLowerCase() !== 'off'),
+        mode: config?.market_stream?.mode || 'off',
+        snapshot_enabled: Boolean(config?.market_stream?.snapshot_enabled),
+        runtime_started: Boolean(runtime.started),
+        runtime_connected: Boolean(runtime.connected),
+        observed_symbols: runtime.observed_symbols || [],
+        active_streams: runtime.active_streams || [],
+        last_socket_open_at: runtime.last_socket_open_at || null,
+        last_socket_close_at: runtime.last_socket_close_at || null,
+        last_socket_error: runtime.last_socket_error || null,
+        reconnect_attempts: Number(runtime.reconnect_attempts || 0),
+        last_reconnect_delay_ms: Number(runtime.last_reconnect_delay_ms || 0),
+        last_message_at: runtime.last_message_at || null,
+        last_agg_trade_at: runtime.last_agg_trade_at || null,
+        last_book_ticker_at: runtime.last_book_ticker_at || null,
+        total_messages: Number(runtime.total_messages || 0),
+        agg_trade_messages: Number(runtime.agg_trade_messages || 0),
+        book_ticker_messages: Number(runtime.book_ticker_messages || 0),
+        stale_socket_detections: Number(runtime.stale_socket_detections || 0),
+        subscription_sync_count: Number(runtime.subscription_sync_count || 0),
+        messages_by_symbol: runtime.messages_by_symbol || {},
+        diagnostics: runtime.diagnostics || null,
+        sample_snapshots: Array.isArray(runtime.sample_snapshots) ? runtime.sample_snapshots : []
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'market_stream_status_failed'
+    });
+  }
+});
+
+router.get('/live-pipeline-status', async (req, res) => {
+  try {
+    const since = new Date(req.query.since || Date.now() - 6 * 60 * 60 * 1000);
+    if (!Number.isFinite(since.getTime())) {
+      return res.status(400).json({ ok: false, error: 'invalid_since' });
+    }
+    const nowMs = Date.now();
+    const windowMs = Math.max(60 * 1000, nowMs - since.getTime());
+    const previousSince = new Date(since.getTime() - windowMs);
+
+    const [recentIntentsSnap, previousIntentsSnap] = await Promise.all([
+      db.collection('binance_execution_intents').orderBy('created_at', 'desc').limit(500).get(),
+      db.collection('binance_execution_intents').orderBy('created_at', 'desc').limit(1000).get()
+    ]);
+
+    const toMs = (value) => {
+      if (!value) return 0;
+      if (typeof value?.toDate === 'function') return value.toDate().getTime();
+      const ms = new Date(value).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    };
+    const recentRows = recentIntentsSnap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter((row) => toMs(row.created_at) >= since.getTime());
+    const previousRows = previousIntentsSnap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter((row) => {
+        const createdAtMs = toMs(row.created_at);
+        return createdAtMs >= previousSince.getTime() && createdAtMs < since.getTime();
+      });
+
+    const countFailedTimeout = (rows = []) =>
+      rows.filter((row) => String(row.reason || '').toLowerCase() === 'failed_timeout').length;
+    const countExecuted = (rows = []) =>
+      rows.filter((row) => String(row.status || '').toLowerCase() === 'executed').length;
+
+    const runtime = getMarketStreamStatus();
+    const prealerts = getPreAlertRuntimeMetrics();
+    const currentFailedTimeout = countFailedTimeout(recentRows);
+    const previousFailedTimeout = countFailedTimeout(previousRows);
+    const executedPostFix = countExecuted(recentRows);
+    const failedTimeoutReductionPct =
+      previousFailedTimeout > 0
+        ? Number((((previousFailedTimeout - currentFailedTimeout) / previousFailedTimeout) * 100).toFixed(2))
+        : null;
+
+    return res.json({
+      ok: true,
+      report: {
+        since: since.toISOString(),
+        until: new Date().toISOString(),
+        prealerts,
+        exchange_info_cache: getExchangeInfoCacheStatus(),
+        market_stream: {
+          runtime_connected: Boolean(runtime.connected),
+          observed_symbols: Array.isArray(runtime.observed_symbols) ? runtime.observed_symbols.length : 0,
+          active_streams: Array.isArray(runtime.active_streams) ? runtime.active_streams.length : 0,
+          total_messages: Number(runtime.total_messages || 0),
+          agg_trade_messages: Number(runtime.agg_trade_messages || 0),
+          book_ticker_messages: Number(runtime.book_ticker_messages || 0),
+          diagnostics: runtime.diagnostics || null
+        },
+        intents: {
+          total: recentRows.length,
+          executed: executedPostFix,
+          failed_timeout: currentFailedTimeout,
+          failed_timeout_previous_window: previousFailedTimeout,
+          failed_timeout_reduction_pct: failedTimeoutReductionPct
+        }
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'live_pipeline_status_failed'
+    });
+  }
+});
+
+router.get('/exploitation-summary', async (req, res) => {
+  try {
+    const limit = Math.max(5, Math.min(50, Number(req.query.limit || 20)));
+    const riskLimit = Math.max(5, Math.min(50, Number(req.query.riskLimit || 10)));
+    const signalsSnap = await db
+      .collection('high_conviction_exploitation')
+      .orderBy('exploitation_priority', 'desc')
+      .limit(limit)
+      .get();
+    const topSignals = signalsSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }));
+
+    const riskSnap = await db
+      .collection('high_conviction_exploitation')
+      .orderBy('updated_at', 'desc')
+      .limit(Math.max(riskLimit * 3, 30))
+      .get();
+    const exitRisk = riskSnap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter((row) => row.exit_recommendation?.exit_signal)
+      .slice(0, riskLimit);
+
+    const adaptiveDoc = await db.collection('velas_adaptive_profiles').doc('latest').get();
+    const adaptiveProfile = adaptiveDoc.exists ? adaptiveDoc.data() : null;
+
+    return res.json({
+      ok: true,
+      report: {
+        top_signals: topSignals,
+        exit_alerts: exitRisk,
+        adaptive_metrics: adaptiveProfile
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'exploitation_summary_failed'
+    });
+  }
+});
+
+router.get('/equity-curve', async (req, res) => {
+  try {
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    const maxTrades = Math.max(50, Math.min(2000, Number(req.query.maxTrades || 1000)));
+    const initialCapital = Number(req.query.initialCapital || 0) || null;
+    const snapshot = await getEquityCurveSnapshot(db, {
+      refresh,
+      maxTrades,
+      initialCapital
+    });
+
+    return res.json({
+      ok: true,
+      cached: snapshot.cached,
+      fetched_at: snapshot.payload?.generated_at || new Date().toISOString(),
+      report: snapshot.payload
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'equity_curve_failed'
     });
   }
 });
