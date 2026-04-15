@@ -1224,7 +1224,7 @@ async function generarPrediccion({
   const gateStartedAtMs = Date.now();
   console.log('[DEBUG_STEP_7_6_BEFORE_NORMALIZATION]', symbol);
   console.log('[DEBUG_NORMALIZE_CALL_ATTEMPT]', symbol);
-  console.log('[DEBUG_AFTER_ATTEMPT_LINE]', symbol);
+  console.log('[DEBUG_AFTER_ATTEMPT_LINE_UPDATED_V1]', symbol);
 
   // Validación robusta de valores numéricos antes de quality gate
   quantumScore = Number.isFinite(quantumScore) ? quantumScore : Number(quantumScore) || 0;
