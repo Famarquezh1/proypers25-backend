@@ -774,35 +774,68 @@ function evaluateEventGate(confidence, quantumScore, timingScore, direction, imp
 }
 
 function normalizeQualityGateInput(input = {}) {
-  const confidence =
-    Number.isFinite(input.confidence) ? input.confidence : Number.isFinite(input.confidence_score)
-      ? input.confidence_score
-      : null;
-  const quantum =
-    Number.isFinite(input.quantum) ? input.quantum : Number.isFinite(input.quantum_score)
-      ? input.quantum_score
-      : null;
-  const timing =
-    Number.isFinite(input.timing) ? input.timing : Number.isFinite(input.timing_score)
-      ? input.timing_score
-      : null;
-  const stability = Number.isFinite(input.stability) ? input.stability : 0;
-  const impulsePresent = Boolean(input.impulse_present ?? input.impulse ?? false);
-  const contextQuality = Number.isFinite(input.context_quality)
-    ? input.context_quality
-    : Number.isFinite(input.context_score)
-      ? input.context_score
-      : 0;
+  try {
+    console.log('[DEBUG_NORMALIZE_START]', JSON.stringify(input));
 
-  return {
-    confidence,
-    quantum,
-    timing,
-    stability,
-    direction: input.direction ?? 'neutral',
-    impulse_present: impulsePresent,
-    context_quality: contextQuality
-  };
+    console.log('[DEBUG_NORMALIZE_BEFORE_CONFIDENCE]', input.confidence, input.confidence_score);
+    const confidence =
+      Number.isFinite(input.confidence) ? input.confidence : Number.isFinite(input.confidence_score)
+        ? input.confidence_score
+        : null;
+    console.log('[DEBUG_NORMALIZE_AFTER_CONFIDENCE]', confidence);
+
+    console.log('[DEBUG_NORMALIZE_BEFORE_QUANTUM]', input.quantum, input.quantum_score);
+    const quantum =
+      Number.isFinite(input.quantum) ? input.quantum : Number.isFinite(input.quantum_score)
+        ? input.quantum_score
+        : null;
+    console.log('[DEBUG_NORMALIZE_AFTER_QUANTUM]', quantum);
+
+    console.log('[DEBUG_NORMALIZE_BEFORE_TIMING]', input.timing, input.timing_score);
+    const timing =
+      Number.isFinite(input.timing) ? input.timing : Number.isFinite(input.timing_score)
+        ? input.timing_score
+        : null;
+    console.log('[DEBUG_NORMALIZE_AFTER_TIMING]', timing);
+
+    console.log('[DEBUG_NORMALIZE_BEFORE_STABILITY]', input.stability);
+    const stability = Number.isFinite(input.stability) ? input.stability : 0;
+    console.log('[DEBUG_NORMALIZE_AFTER_STABILITY]', stability);
+
+    console.log('[DEBUG_NORMALIZE_BEFORE_IMPULSE]', input.impulse_present, input.impulse);
+    const impulsePresent = Boolean(input.impulse_present ?? input.impulse ?? false);
+    console.log('[DEBUG_NORMALIZE_AFTER_IMPULSE]', impulsePresent);
+
+    console.log('[DEBUG_NORMALIZE_BEFORE_CONTEXT]', input.context_quality, input.context_score);
+    const contextQuality = Number.isFinite(input.context_quality)
+      ? input.context_quality
+      : Number.isFinite(input.context_score)
+        ? input.context_score
+        : 0;
+    console.log('[DEBUG_NORMALIZE_AFTER_CONTEXT]', contextQuality);
+
+    console.log('[DEBUG_NORMALIZE_RETURN]', {
+      confidence,
+      quantum,
+      timing,
+      stability,
+      impulsePresent,
+      contextQuality
+    });
+
+    return {
+      confidence,
+      quantum,
+      timing,
+      stability,
+      direction: input.direction ?? 'neutral',
+      impulse_present: impulsePresent,
+      context_quality: contextQuality
+    };
+  } catch (err) {
+    console.error('[DEBUG_NORMALIZE_CRASH]', err?.message || err, err?.stack);
+    throw err;
+  }
 }
 
 function formatTimeUTC(date) {
@@ -892,7 +925,16 @@ async function generarPrediccion({
   signal,
   taskContext
 } = {}) {
+  console.log('[DEBUG_PREDICCION_START]', symbol);
+  
+  // Validación TEMPRANA de símbolo - bloquear antes de cualquier procesamiento
+  if (!symbol || typeof symbol !== 'string' || symbol.includes('?')) {
+    console.log('[DEBUG_INVALID_SYMBOL_BLOCKED]', symbol);
+    return null;
+  }
+  
   throwIfAborted(signal, `Prediction cancelled for ${symbol || 'unknown'}`, 'OPERATION_ABORTED');
+  
   const frameMinutes = timeframes[timeframe] || 5;
   const analysisStartAt = new Date();
   const analysisStartIso = analysisStartAt.toISOString();
@@ -917,10 +959,12 @@ async function generarPrediccion({
     timeframe,
     profiling ? { profiling, signal, taskContext } : { signal, taskContext }
   );
+  console.log('[DEBUG_FETCH_CANDLES]', symbol);
 
   let spotPrice = null;
   let spotPriceSource = 'unresolved';
   try {
+    console.log('[DEBUG_FETCH_SPOT]', symbol);
     const fetchedSpot = await getCachedSpotPrice(symbolNormalized || symbolInput, timeframe, {
       preloadedCandles: sharedCandlesPromise,
       profiling,
@@ -932,6 +976,7 @@ async function generarPrediccion({
       spotPriceSource = fetchedSpot.source || 'unknown';
     }
   } catch (error) {
+    console.log('[DEBUG_FETCH_FALLBACK]', symbol);
     console.warn('[prediccionVelas] spot price fetch failed', {
       symbol: symbolInput,
       message: error?.message || 'sin detalle'
@@ -945,6 +990,7 @@ async function generarPrediccion({
 
   const precioActual = spotPrice;
   const predictionComputeStartedAtMs = Date.now();
+  console.log('[DEBUG_STEP_1_AFTER_BEFORE]', symbol);
   let contextFilter = buildDefaultContextFilter();
   const impulseMetrics = computeImpulseMetrics();
   const impulseMinPercent = timeframe === '1m' ? 0.2 : 0.5;
@@ -975,6 +1021,7 @@ async function generarPrediccion({
         mode: EVENT_CONTEXT_FILTER_MODE
       });
     } catch (err) {
+      console.log('[DEBUG_PREDICCION_ERROR] context_filter', err?.message || err);
       contextFilter = buildDefaultContextFilter({
         allow_event: EVENT_CONTEXT_FILTER_MODE === 'observe',
         would_block_event: true,
@@ -1158,26 +1205,113 @@ async function generarPrediccion({
     };
   }
 
+  console.log('[DEBUG_STEP_2_BEFORE_TRAINING]', symbol);
   const trainingStats = await trainingStatsPromise;
+  console.log('[DEBUG_STEP_3_AFTER_TRAINING]', symbol);
+  console.log('[DEBUG_ABORT_CHECK_1_BEFORE]', symbol);
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
+  console.log('[DEBUG_ABORT_CHECK_1_AFTER]', symbol);
+  console.log('[DEBUG_STEP_4_BEFORE_FEEDBACK]', symbol);
   const trainingFeedback = applyTrainingFeedback(confidence, quantumScore, trainingStats);
+  console.log('[DEBUG_STEP_5_AFTER_FEEDBACK]', symbol);
   confidence = trainingFeedback.confidence;
   quantumScore = trainingFeedback.quantumScore;
   const neutralRate = trainingStats?.neutral_rate ?? trainingStats?.neutralRate ?? null;
+  console.log('[DEBUG_STEP_6_BEFORE_STABILITY]', symbol);
   const stability = computeSignalStability(confidence, quantumScore, timingScore);
+  console.log('[DEBUG_STEP_7_AFTER_STABILITY]', symbol);
+  console.log('[DEBUG_STEP_7_5_AFTER_STABILITY]', symbol);
   const gateStartedAtMs = Date.now();
+  console.log('[DEBUG_STEP_7_6_BEFORE_NORMALIZATION]', symbol);
+  console.log('[DEBUG_NORMALIZE_CALL_ATTEMPT]', symbol);
+  console.log('[DEBUG_AFTER_ATTEMPT_LINE]', symbol);
 
+  // Validación robusta de valores numéricos antes de quality gate
+  quantumScore = Number.isFinite(quantumScore) ? quantumScore : Number(quantumScore) || 0;
+  timingScore = Number.isFinite(timingScore) ? timingScore : Number(timingScore) || 0;
+  console.log('[DEBUG_STEP_7_7_AFTER_NORMALIZATION]', symbol);
+
+  console.log('[DEBUG_STEP_7_8_BEFORE_GATE_INPUT]', symbol);
+  console.log('[DEBUG_STEP_8_BEFORE_GATE]', symbol);
+
+  console.log('[DEBUG_GATE_INPUT_CONSTRUCTION]', 'confidence', confidence, 'quantum', quantumScore, 'timing', timingScore);
+  console.log('[DEBUG_GATE_INPUT_DEPENDENCIES]', {
+    has_impulseMetrics: !!impulseMetrics,
+    impulse_present: impulseMetrics?.impulse_present,
+    has_contextFilter: !!contextFilter,
+    context_quality: contextFilter?.context_quality,
+    has_direction: !!direction,
+    has_stability: !!stability
+  });
+  console.log('[DEBUG_ABOUT_TO_CONSTRUCT_GATE_INPUT]', symbol);
+  
+  // Bloqueo CRÍTICO: validar objetos requeridos antes de construir gate
+  if (!contextFilter || !impulseMetrics) {
+    console.log('[DEBUG_BLOCKED_BEFORE_GATE]', symbolInput, {
+      hasContextFilter: !!contextFilter,
+      hasImpulseMetrics: !!impulseMetrics
+    });
+    return null;
+  }
+  
   const gateOriginalInput = {
-    confidence,
-    quantum_score: quantumScore,
-    timing_score: timingScore,
+    confidence: Number.isFinite(confidence) ? confidence : 0,
+
+    quantum: Number.isFinite(quantumScore) ? quantumScore : 0,
+    timing: Number.isFinite(timingScore) ? timingScore : 0,
+
+    impulse: impulseMetrics?.impulse_present ?? false,
+
+    stability: Number.isFinite(stability) ? stability : 0,
+
+    direction: direction ?? 'neutral',
+
+    context_quality: Number.isFinite(contextFilter?.context_quality)
+      ? contextFilter.context_quality
+      : 0,
+
+    context_score: Number.isFinite(contextFilter?.context_score)
+      ? contextFilter.context_score
+      : 0
+  };
+  console.log('[DEBUG_GATE_INPUT_CONSTRUCTED]', symbol, 'keys:', Object.keys(gateOriginalInput).length);
+  console.log('[DEBUG_AFTER_CONSTRUCT_GATE_INPUT]', JSON.stringify({
+    confidence: gateOriginalInput.confidence,
+    quantum_score: gateOriginalInput.quantum_score,
+    timing_score: gateOriginalInput.timing_score,
+    context_quality: gateOriginalInput.context_quality
+  }));
+  console.log('[DEBUG_GATE_CALL_DECISION]', JSON.stringify({
+    symbol: symbolInput,
+    hasConfidence: !!confidence,
+    hasQuantum: !!quantumScore,
+    hasTiming: !!timingScore,
+    hasContext: !!contextFilter,
+    hasImpulse: !!impulseMetrics,
     stability,
     direction,
-    impulse_present: impulseMetrics.impulse_present,
-    context_quality: contextFilter.context_quality,
-    context_score: contextFilter.context_score
-  };
+    gateOriginalInputKeys: Object.keys(gateOriginalInput).length
+  }));
+  
+  // VALIDACIÓN: Verificar si se ejecutará normalizeQualityGateInput
+  console.log('[DEBUG_BLOCKING_IF]', symbol, 'condition_check:', {confidence: !!confidence, quantumScore: !!quantumScore, gateOriginalInput: !!gateOriginalInput});
+  if (!confidence || !quantumScore || !gateOriginalInput) {
+    console.log('[DEBUG_GATE_SKIPPED]', JSON.stringify({
+      symbol: symbolInput,
+      reason: 'missing_required_data',
+      confidence: !!confidence,
+      quantumScore: !!quantumScore,
+      gateOriginalInput: !!gateOriginalInput
+    }));
+  } else {
+    console.log('[DEBUG_GATE_EXECUTING]', symbolInput);
+  }
+  
+  console.log('[DEBUG_BEFORE_NORMALIZE_CALL]', symbol);
+  console.log('[DEBUG_NORMALIZE_CALL_EXECUTING]', symbol);
   const gateNormalized = normalizeQualityGateInput(gateOriginalInput);
+  console.log('[DEBUG_AFTER_NORMALIZE_CALL]', symbol);
+  console.log('[DEBUG_NORMALIZE_CALL_COMPLETED]', symbol);
 
   if (QUALITY_GATE_AUDIT_ENABLED) {
     console.log('[QUALITY_GATE_NORMALIZED]', JSON.stringify({
@@ -1213,26 +1347,43 @@ async function generarPrediccion({
       preloadedConfig: await learningConfigPromise
     }
   );
+  console.log('[DEBUG_ABORT_CHECK_2_BEFORE]', symbol);
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
+  console.log('[DEBUG_ABORT_CHECK_2_AFTER]', symbol);
   const postLearningScores = {
     confidence: learningResult.confidence,
     quantumScore: learningResult.quantumScore,
     timingScore: learningResult.timingScore
   };
+  
+  // Validación robusta de valores numéricos en postLearningScores antes de quality gate
+  postLearningScores.quantumScore = Number.isFinite(postLearningScores.quantumScore) ? postLearningScores.quantumScore : Number(postLearningScores.quantumScore) || 0;
+  postLearningScores.timingScore = Number.isFinite(postLearningScores.timingScore) ? postLearningScores.timingScore : Number(postLearningScores.timingScore) || 0;
+  
   const stabilityPost = computeSignalStability(
     postLearningScores.confidence,
     postLearningScores.quantumScore,
     postLearningScores.timingScore
   );
   const gateOriginalInputPost = {
-    confidence: postLearningScores.confidence,
-    quantum_score: postLearningScores.quantumScore,
-    timing_score: postLearningScores.timingScore,
-    stability: stabilityPost,
-    direction,
-    impulse_present: impulseMetrics.impulse_present,
-    context_quality: contextFilter.context_quality,
-    context_score: contextFilter.context_score
+    confidence: Number.isFinite(postLearningScores.confidence) ? postLearningScores.confidence : 0,
+    
+    quantum: Number.isFinite(postLearningScores.quantumScore) ? postLearningScores.quantumScore : 0,
+    timing: Number.isFinite(postLearningScores.timingScore) ? postLearningScores.timingScore : 0,
+    
+    impulse: impulseMetrics?.impulse_present ?? false,
+    
+    stability: Number.isFinite(stabilityPost) ? stabilityPost : 0,
+    
+    direction: direction ?? 'neutral',
+    
+    context_quality: Number.isFinite(contextFilter?.context_quality)
+      ? contextFilter.context_quality
+      : 0,
+    
+    context_score: Number.isFinite(contextFilter?.context_score)
+      ? contextFilter.context_score
+      : 0
   };
   const gateNormalizedPost = normalizeQualityGateInput(gateOriginalInputPost);
   const neutralCandidate =
@@ -1420,7 +1571,13 @@ async function generarPrediccion({
         signal_emitted_observe: shadowObserveSignalEmitted,
         signal_emitted_enforce: shadowEnforceSignalEmitted
       }
-    }
+    },
+    // Alias fields para alignarse con quality gate evaluación
+    quantum: postLearningScores.quantumScore,
+    timing: postLearningScores.timingScore,
+    impulse: impulseMetrics.impulse_present,
+    confidence: postLearningScores.confidence,
+    direction: direction
   };
   if (LEARNING_MODE === 'observe') {
     if (PREDICCION_VERBOSE_LOGS) {
@@ -1463,6 +1620,14 @@ async function generarPrediccion({
       console.log('execution_adjustment', executionAdjustment);
     }
   }
+
+  // BUGFIX: Add missing confidence_score and impulse_present fields
+  const confidence_score = clamp(
+    ((postLearningScores.quantumScore || 0) * 0.5 + (postLearningScores.timingScore || 0) * 0.5),
+    0,
+    1
+  );
+  const impulse_present = impulseMetrics.impulse_present;
 
   const recomendacion = {
     simbolo: symbolInput,
@@ -1593,7 +1758,14 @@ async function generarPrediccion({
       timing_score: postLearningScores.timingScore
     },
     decision_pre_learning: decision_pre_learning,
-    decision_post_learning: decision_post_learning
+    decision_post_learning: decision_post_learning,
+    confidence: confidence_score,
+    confidence_score: confidence_score,
+    impulse_present: impulse_present,
+    // Alias fields para alignarse con velasScheduler present_fields
+    quantum: quantumScore,
+    timing: timingScore,
+    impulse: impulseMetrics.impulse_present
   };
 
   const postProcessStartedAtMs = Date.now();
@@ -1659,6 +1831,7 @@ async function generarPrediccion({
       }
     }
   } catch (err) {
+    console.log('[DEBUG_PREDICCION_ERROR] prealert', err?.message || err);
     console.warn('[MANUAL_PREALERT] skipped', err?.message || err);
   }
   const preAlertMs = elapsedMs(preAlertStartedAtMs);
@@ -1689,6 +1862,7 @@ async function generarPrediccion({
       highConvictionNotification = await sendHighConvictionNotification(highConvictionSignalData);
     }
   } catch (err) {
+    console.log('[DEBUG_PREDICCION_ERROR] high_conviction', err?.message || err);
     console.warn('[HIGH_CONVICTION] skipped', err?.message || err);
   }
 
@@ -1778,6 +1952,7 @@ async function generarPrediccion({
       };
     }
   } catch (err) {
+    console.log('[DEBUG_PREDICCION_ERROR] binance_execution', err?.message || err);
     binanceExecution = {
       attempted: true,
       executed: false,
@@ -1880,6 +2055,18 @@ async function generarPrediccion({
     };
   }
 
+  console.log('[DEBUG_PREDICCION_RETURN]', symbol);
+  console.log('[DEBUG_FINAL_STATE]', JSON.stringify({
+    symbol,
+    status,
+    has_recomendacion: !!recomendacion,
+    recomendacion_keys: recomendacion ? Object.keys(recomendacion).length : 0,
+    quantum: recomendacion?.quantum,
+    timing: recomendacion?.timing,
+    impulse: recomendacion?.impulse,
+    confidence: recomendacion?.confidence,
+    direction: recomendacion?.direction
+  }));
   return { id: docRef.id, ...recomendacion, status, verification: null, profiling };
 }
 
