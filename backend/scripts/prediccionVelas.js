@@ -1247,12 +1247,10 @@ async function generarPrediccion({
   
   // Bloqueo CRÍTICO: validar objetos requeridos antes de construir gate
   if (!contextFilter || !impulseMetrics) {
-    console.log('[DEBUG_BLOCKED_BEFORE_GATE]', symbolInput, {
-      hasContextFilter: !!contextFilter,
-      hasImpulseMetrics: !!impulseMetrics
-    });
+    console.error('[CRITICAL_BLOCK_HIT]', {symbol: symbolInput, hasContextFilter: !!contextFilter, hasImpulseMetrics: !!impulseMetrics});
     return null;
   }
+  console.log('[GATE_BUILD_PROCEEDING]', symbolInput);
   
   const gateOriginalInput = {
     confidence: Number.isFinite(confidence) ? confidence : 0,
@@ -1274,15 +1272,7 @@ async function generarPrediccion({
       ? contextFilter.context_score
       : 0
   };
-  console.log('[DEBUG_GATE_INPUT_CONSTRUCTED]', symbol, 'keys:', Object.keys(gateOriginalInput).length);
-  console.log('[DEBUG_AFTER_CONSTRUCT_GATE_INPUT]', JSON.stringify({
-    confidence: gateOriginalInput.confidence,
-    quantum_score: gateOriginalInput.quantum_score,
-    timing_score: gateOriginalInput.timing_score,
-    context_quality: gateOriginalInput.context_quality
-  }));
-  console.log('[DEBUG_GATE_CALL_DECISION]', JSON.stringify({
-    symbol: symbolInput,
+  console.log('[GATE_INPUT_BUILT]', symbol, gateOriginalInput.confidence);
     hasConfidence: !!confidence,
     hasQuantum: !!quantumScore,
     hasTiming: !!timingScore,
