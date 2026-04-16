@@ -1,4 +1,3 @@
-const yahooFinance = require('yahoo-finance2').default;
 const db = require('../firebase-admin-config');
 const { fetchBinanceSpot, BINANCE_FAIL_FAST_TIMEOUT_MS } = require('../services/dataSources/binance');
 const { fetchCandles } = require('../services/dataSources/fetchCandles');
@@ -30,7 +29,6 @@ const timeframes = {
   '1h': 60,
   '4h': 240
 };
-const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || null;
 const ENABLE_BINANCE = process.env.ENABLE_BINANCE === 'true';
 
 const randomBetween = (min, max) => Number((Math.random() * (max - min) + min).toFixed(4));
@@ -221,10 +219,6 @@ function markSpotFallback(state) {
   }
 }
 
-function shouldUseYahooSpotFallback(timeframe) {
-  return String(timeframe || '').toLowerCase() !== '5m';
-}
-
 function logSpotFetchFailFast(symbol, timeframe, fallbackUsed, decisionTimeMs, timeoutMs) {
   console.warn('[FETCH_FAIL_FAST]', {
     symbol,
@@ -234,16 +228,6 @@ function logSpotFetchFailFast(symbol, timeframe, fallbackUsed, decisionTimeMs, t
     fallback_used: fallbackUsed,
     decision_time_ms: Number(decisionTimeMs) || 0
   });
-}
-
-function resolveSpotFallbackSource(timeframe) {
-  if (shouldUseYahooSpotFallback(timeframe)) {
-    return 'yahoo';
-  }
-  if (ALPHA_VANTAGE_KEY) {
-    return 'alpha_vantage';
-  }
-  return 'candles_close';
 }
 
 function sanitizeForFirestore(value) {
@@ -335,250 +319,6 @@ function buildDefaultContextFilter(overrides = {}) {
     details: null,
     ...overrides
   };
-}
-
-async function fetchAlphaVantageSpot(symbol, options = {}) {
-  throwIfAborted(options?.signal, `AlphaVantage spot cancelled for ${symbol}`, 'OPERATION_ABORTED');
-  if (!ALPHA_VANTAGE_KEY) {
-    throw new Error('AlphaVantage key missing');
-  }
-  const cleanSymbol = symbol.replace('-', '').replace('/', '');
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(
-    cleanSymbol
-  )}&apikey=${ALPHA_VANTAGE_KEY}`;
-  const controller = new AbortController();
-  const removeAbortListener = addAbortListener(options?.signal, () => {
-    registerExternalCancellation(options, 'running', 'spot');
-    controller.abort(resolveAbortError(options?.signal, `AlphaVantage spot cancelled for ${symbol}`, 'OPERATION_ABORTED'));
-  });
-  const timer = setTimeout(() => controller.abort(), EXTERNAL_DATA_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    const data = await response.json();
-    const quote = data['Global Quote'];
-  if (!quote) {
-    throw new Error('AlphaVantage no devolviÃ³ cotizaciÃ³n');
-  }
-  const price = Number(quote['05. price']);
-  if (!price) {
-    throw new Error('AlphaVantage sin precio vÃ¡lido');
-  }
-  return price;
-  } catch (error) {
-    if (options?.signal?.aborted) {
-      throw resolveAbortError(options.signal, `AlphaVantage spot cancelled for ${symbol}`, 'OPERATION_ABORTED');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-    removeAbortListener();
-  }
-}
-
-async function obtenerSpotPrice(symbol, timeframe = '5m', options = {}) {
-  throwIfAborted(options?.signal, `Spot fetch cancelled for ${symbol}`, 'OPERATION_ABORTED');
-  const spotTiming = getSpotFetchTimingState(options, symbol, timeframe);
-  const spotStartedAtMs = Date.now();
-  if (!symbol) {
-    throw new Error('SÃ­mbolo requerido para spot price');
-  }
-
-  if (ENABLE_BINANCE) {
-    if (spotTiming) {
-      spotTiming.binance_attempted = true;
-      spotTiming.fallback_chain.push('binance');
-    }
-    const binanceStartedAtMs = Date.now();
-    try {
-      const price = await fetchBinanceSpot(symbol, {
-        timeoutMs: BINANCE_FAIL_FAST_TIMEOUT_MS,
-        retryOnTimeout: false,
-        signal: options?.signal,
-        taskContext: options?.taskContext,
-        trace: {
-          symbol,
-          call_type: 'spot',
-          origin: 'spot_fetch',
-          trace_id: createBinanceTraceId(symbol, timeframe, 'spot_fetch')
-        }
-      });
-      if (spotTiming) {
-        spotTiming.binance_success = true;
-        spotTiming.binance_latency_ms = elapsedMs(binanceStartedAtMs);
-        spotTiming.source = 'binance';
-        spotTiming.spot_fetch_ms = elapsedMs(spotStartedAtMs);
-        spotTiming.fallback_ms = 0;
-      }
-      console.log('[BINANCE] spot fetch ok', { symbol, price });
-      publishSpotFetchTiming(spotTiming, options);
-      return { price, source: 'binance' };
-    } catch (error) {
-      if (spotTiming) {
-        spotTiming.binance_latency_ms = elapsedMs(binanceStartedAtMs);
-        markSpotFallback(spotTiming);
-      }
-      if (error?.status === 429) {
-        console.warn('[BINANCE] spot fetch failed -> reason: rate_limited');
-      } else {
-        console.warn('[BINANCE] spot fetch failed -> reason:', error?.message || 'unknown');
-      }
-      if (error?.code === 'BINANCE_TIMEOUT') {
-        logSpotFetchFailFast(
-          symbol,
-          timeframe,
-          resolveSpotFallbackSource(timeframe),
-          elapsedMs(binanceStartedAtMs),
-          error?.timeout_ms || BINANCE_FAIL_FAST_TIMEOUT_MS
-        );
-      }
-    }
-  }
-
-  throwIfAborted(options?.signal, `Spot fetch cancelled for ${symbol}`, 'OPERATION_ABORTED');
-  const useYahooFallback = shouldUseYahooSpotFallback(timeframe);
-  const yahooSymbol = symbol === 'BTC-USDT' ? 'BTC-USD' : symbol;
-  let yahooError = null;
-  if (useYahooFallback) {
-    try {
-      if (spotTiming) {
-        markSpotFallback(spotTiming);
-        spotTiming.fallback_chain.push('yahoo');
-      }
-      const quote = await withExternalTimeout(() => yahooFinance.quote(yahooSymbol), 'Yahoo quote', {
-        signal: options?.signal,
-        taskContext: options?.taskContext,
-        callType: 'spot'
-      });
-      if (quote?.regularMarketPrice) {
-        if (spotTiming) {
-          spotTiming.source = 'yahoo';
-          spotTiming.spot_fetch_ms = elapsedMs(spotStartedAtMs);
-          spotTiming.fallback_ms =
-            spotTiming.fallback_started_at_ms == null ? 0 : elapsedMs(spotTiming.fallback_started_at_ms);
-        }
-        publishSpotFetchTiming(spotTiming, options);
-        return { price: Number(quote.regularMarketPrice), source: 'yahoo' };
-      }
-      throw new Error('Yahoo Finance sin precio');
-    } catch (error) {
-      yahooError = error;
-      console.warn('[YAHOO] spot fetch failed -> reason:', error?.message || 'unknown');
-    }
-  }
-
-  let alphaError = null;
-  if (ALPHA_VANTAGE_KEY) {
-    try {
-      if (spotTiming) {
-        markSpotFallback(spotTiming);
-        spotTiming.fallback_chain.push('alpha_vantage');
-      }
-      const price = await fetchAlphaVantageSpot(symbol, options);
-      if (spotTiming) {
-        spotTiming.source = 'alpha_vantage';
-        spotTiming.spot_fetch_ms = elapsedMs(spotStartedAtMs);
-        spotTiming.fallback_ms =
-          spotTiming.fallback_started_at_ms == null ? 0 : elapsedMs(spotTiming.fallback_started_at_ms);
-      }
-      publishSpotFetchTiming(spotTiming, options);
-      return { price, source: 'alpha_vantage' };
-    } catch (error) {
-      alphaError = error;
-      console.warn('[prediccionVelas] fallback AlphaVantage spot price', error.message);
-    }
-  }
-
-  if (!useYahooFallback && alphaError) {
-    console.warn('[YAHOO] spot fallback skipped for timeframe', timeframe);
-  } else if (useYahooFallback && yahooError && alphaError) {
-    console.warn('[prediccionVelas] spot fallback exhausted', {
-      symbol,
-      timeframe,
-      yahoo_error: yahooError?.message || null,
-      alpha_error: alphaError?.message || null
-    });
-  }
-
-  throwIfAborted(options?.signal, `Spot fetch cancelled for ${symbol}`, 'OPERATION_ABORTED');
-  if (spotTiming) {
-    markSpotFallback(spotTiming);
-    spotTiming.fallback_chain.push('candles_close');
-  }
-  const candles = await Promise.resolve(
-    options?.preloadedCandles ||
-      fetchCandles(
-        symbol,
-        timeframe,
-        options?.profiling
-          ? {
-              profiling: options.profiling,
-              traceOrigin: 'spot_fallback_candles_close',
-              signal: options?.signal,
-              taskContext: options?.taskContext
-            }
-          : {
-              traceOrigin: 'spot_fallback_candles_close',
-              signal: options?.signal,
-              taskContext: options?.taskContext
-            }
-      )
-  );
-  const lastClose = candles.length ? Number(candles[candles.length - 1]?.close) : NaN;
-  if (Number.isFinite(lastClose) && lastClose > 0) {
-    console.warn('[prediccionVelas] fallback candle close spot price', { symbol, timeframe, lastClose });
-    if (spotTiming) {
-      spotTiming.source = 'candles_close';
-      spotTiming.spot_fetch_ms = elapsedMs(spotStartedAtMs);
-      spotTiming.fallback_ms =
-        spotTiming.fallback_started_at_ms == null ? 0 : elapsedMs(spotTiming.fallback_started_at_ms);
-    }
-    publishSpotFetchTiming(spotTiming, options);
-    return { price: lastClose, source: 'candles_close' };
-  }
-
-  if (spotTiming) {
-    spotTiming.source = 'error';
-    spotTiming.spot_fetch_ms = elapsedMs(spotStartedAtMs);
-    spotTiming.fallback_ms =
-      spotTiming.fallback_started_at_ms == null ? 0 : elapsedMs(spotTiming.fallback_started_at_ms);
-  }
-  publishSpotFetchTiming(spotTiming, options);
-  throw new Error(`No se pudo obtener spot price real para ${symbol}`);
-}
-
-async function getCachedSpotPrice(symbol, timeframe = '5m', options = {}) {
-  throwIfAborted(options?.signal, `Spot cache wait cancelled for ${symbol}`, 'OPERATION_ABORTED');
-  const cacheKey = `${String(symbol || '').toUpperCase()}|${String(timeframe || '5m')}`;
-  const cached = spotPriceCache.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < PREDICTION_RUNTIME_CACHE_TTL_MS) {
-    const spotTiming = getSpotFetchTimingState(options, symbol, timeframe);
-    if (spotTiming) {
-      spotTiming.cache_hit = true;
-      spotTiming.source = cached?.value?.source || 'cache';
-      spotTiming.spot_fetch_ms = 0;
-      spotTiming.fallback_ms = 0;
-      publishSpotFetchTiming(spotTiming, options);
-    }
-    return cached.value;
-  }
-  if (inflightSpotRequests.has(cacheKey)) {
-    return raceWithSignal(
-      inflightSpotRequests.get(cacheKey),
-      options?.signal,
-      `Spot cache wait cancelled for ${symbol}`,
-      'OPERATION_ABORTED'
-    );
-  }
-  const request = obtenerSpotPrice(symbol, timeframe, options)
-    .then((value) => {
-      spotPriceCache.set(cacheKey, { value, fetchedAt: Date.now() });
-      return value;
-    })
-    .finally(() => {
-      inflightSpotRequests.delete(cacheKey);
-    });
-  inflightSpotRequests.set(cacheKey, request);
-  return request;
 }
 
 function computeExitWindow(timeframe, entryTime) {
@@ -925,16 +665,27 @@ async function generarPrediccion({
   signal,
   taskContext
 } = {}) {
-  console.log('[DEBUG_PREDICCION_START]', symbol);
-  
-  // Validación TEMPRANA de símbolo - bloquear antes de cualquier procesamiento
-  if (!symbol || typeof symbol !== 'string' || symbol.includes('?')) {
-    console.log('[DEBUG_INVALID_SYMBOL_BLOCKED]', symbol);
-    return null;
+  const rawSymbol = String(symbol ?? '').trim();
+
+  if (
+    !rawSymbol ||
+    rawSymbol.includes('?') ||
+    rawSymbol.length < 6 ||
+    !rawSymbol.includes('-')
+  ) {
+    console.log('[DEBUG_INVALID_SYMBOL_BLOCKED]', rawSymbol);
+
+    return {
+      skipped: true,
+      reason: 'invalid_symbol',
+      symbol: rawSymbol
+    };
   }
-  
+
+  console.log('[DEBUG_PREDICCION_START]', symbol);
+
   throwIfAborted(signal, `Prediction cancelled for ${symbol || 'unknown'}`, 'OPERATION_ABORTED');
-  
+
   const frameMinutes = timeframes[timeframe] || 5;
   const analysisStartAt = new Date();
   const analysisStartIso = analysisStartAt.toISOString();
@@ -954,37 +705,61 @@ async function generarPrediccion({
     : null;
   const trainingStatsPromise = loadTrainingStats(symbolNormalized);
   const learningConfigPromise = preloadLearningConfig(symbolNormalized || symbolInput, executionMode, timeframe);
+  console.log('[DEBUG_TIMEOUT_CONFIGURED]', symbolNormalized || symbolInput, 12000);
   const sharedCandlesPromise = fetchCandles(
-    symbolNormalized || symbolInput,
-    timeframe,
-    profiling ? { profiling, signal, taskContext } : { signal, taskContext }
-  );
+  symbolNormalized || symbolInput,
+  timeframe,
+  {
+    ...(profiling ? { profiling } : {}),
+    signal,
+    taskContext,
+    timeoutMs: 12000
+  }
+);
   console.log('[DEBUG_FETCH_CANDLES]', symbol);
+  console.log('[DEBUG_AFTER_FETCH_CANDLES_CALL]', {
+    symbol,
+    hasCandlesPromise: !!sharedCandlesPromise,
+    timeoutConfigured: 12000
+  });
 
+  // BINANCE-ONLY spot price extraction from candles
   let spotPrice = null;
-  let spotPriceSource = 'unresolved';
+  let spotPriceSource = 'binance_candles';
   try {
-    console.log('[DEBUG_FETCH_SPOT]', symbol);
-    const fetchedSpot = await getCachedSpotPrice(symbolNormalized || symbolInput, timeframe, {
-      preloadedCandles: sharedCandlesPromise,
-      profiling,
-      signal,
-      taskContext
-    });
-    if (Number.isFinite(fetchedSpot?.price)) {
-      spotPrice = roundPrice(fetchedSpot.price);
-      spotPriceSource = fetchedSpot.source || 'unknown';
+    const candles = await Promise.resolve(sharedCandlesPromise);
+    if (candles && candles.length > 0) {
+      const lastCandle = candles[candles.length - 1];
+      spotPrice = lastCandle?.close;
+      if (Number.isFinite(spotPrice) && spotPrice > 0) {
+        spotPrice = roundPrice(spotPrice);
+        console.log('[DEBUG_SPOT_FROM_BINANCE_CANDLES]', symbol, spotPrice);
+      } else {
+        spotPrice = null;
+      }
     }
   } catch (error) {
-    console.log('[DEBUG_FETCH_FALLBACK]', symbol);
-    console.warn('[prediccionVelas] spot price fetch failed', {
-      symbol: symbolInput,
-      message: error?.message || 'sin detalle'
-    });
+    console.log('[DEBUG_FETCH_CANDLES_FAILED]', symbol, error?.message);
   }
 
   if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
-    throw new Error(`No se pudo generar prediccion sin spot price valido para ${symbolInput || symbolNormalized}`);
+    console.log('[DEBUG_NO_BINANCE_DATA_SKIP]', symbolInput);
+    console.log('[DEBUG_EARLY_EXIT]', {
+      symbol: symbolInput,
+      reason: 'no_binance_data',
+      spotPrice_finite: Number.isFinite(spotPrice),
+      spotPrice_value: spotPrice,
+      confidence: 'NOT_DEFINED',
+      quantum: 'NOT_DEFINED',
+      timing: 'NOT_DEFINED',
+      direction: 'NOT_DEFINED',
+      impulse: 'NOT_DEFINED'
+    });
+    return {
+      skipped: true,
+      reason: 'no_binance_data',
+      symbol: symbolInput
+    };
   }
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
 
@@ -1032,11 +807,23 @@ async function generarPrediccion({
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
 
   const baseConfidence = clamp(0.45 + impulseMetrics.strength * 0.4 + randomBetween(-0.08, 0.08), 0.2, 0.99);
-  const timingScore = clamp(0.5 + impulseMetrics.strength * 0.4 + randomBetween(-0.1, 0.1), 0, 1);
+  let timingScore = clamp(0.5 + impulseMetrics.strength * 0.4 + randomBetween(-0.1, 0.1), 0, 1);
   const baseQuantum = clamp(0.4 + impulseMetrics.strength * 0.5 + randomBetween(-0.06, 0.06), 0.1, 0.99);
 
   let confidence = baseConfidence;
   let quantumScore = clamp(baseQuantum * (0.7 + timingScore * 0.3), 0.1, 0.99);
+
+  console.log('[DEBUG_FEATURES_VALUES]', {
+    symbol: symbolInput,
+    confidence_initial: confidence,
+    quantumScore_initial: quantumScore,
+    timingScore_initial: timingScore,
+    direction: direction,
+    impulse: impulseMetrics?.impulse_present,
+    baseConfidence,
+    baseQuantum
+  });
+
   const signedDeltaPct = directionSign === 0 ? 0 : Number((expectedMovePercent * directionSign).toFixed(2));
   const modelPriceEstimate = roundPrice(spotPrice * (1 + signedDeltaPct / 100), spotPrice);
   const gananciaEstim = Number((monto * (signedDeltaPct / 100)).toFixed(2));
@@ -1244,35 +1031,47 @@ async function generarPrediccion({
     has_stability: !!stability
   });
   console.log('[DEBUG_ABOUT_TO_CONSTRUCT_GATE_INPUT]', symbol);
-  
+
   // Bloqueo CRÍTICO: validar objetos requeridos antes de construir gate
   if (!contextFilter || !impulseMetrics) {
+    console.log('[DEBUG_BEFORE_RETURN]', {
+      symbol: symbolInput,
+      reason: 'missing_required_objects',
+      hasContextFilter: !!contextFilter,
+      hasImpulseMetrics: !!impulseMetrics,
+      hasCandles: !!sharedCandlesPromise,
+      spotPrice: spotPrice,
+      hasDirection: !!direction
+    });
     console.log('[DEBUG_BLOCKED_BEFORE_GATE]', symbolInput, {
       hasContextFilter: !!contextFilter,
       hasImpulseMetrics: !!impulseMetrics
     });
+    console.log('[DEBUG_EARLY_EXIT]', {
+      symbol: symbolInput,
+      reason: 'missing_critical_dependencies',
+      contextFilter: contextFilter ? 'EXISTS' : 'NULL',
+      impulseMetrics: impulseMetrics ? 'EXISTS' : 'NULL',
+      confidence: 'NOT_EVALUATED',
+      quantum: 'NOT_EVALUATED',
+      timing: 'NOT_EVALUATED',
+      direction: direction,
+      impulse: 'NOT_EVALUATED'
+    });
     return null;
   }
-  
+
+  const safeNumber = (v) => Number.isFinite(v) ? v : 0;
+
   const gateOriginalInput = {
-    confidence: Number.isFinite(confidence) ? confidence : 0,
-
-    quantum: Number.isFinite(quantumScore) ? quantumScore : 0,
-    timing: Number.isFinite(timingScore) ? timingScore : 0,
-
+    confidence: safeNumber(confidence),
+    quantum: safeNumber(quantumScore),
+    timing: safeNumber(timingScore),
+    stability: safeNumber(stability),
     impulse: impulseMetrics?.impulse_present ?? false,
-
-    stability: Number.isFinite(stability) ? stability : 0,
-
     direction: direction ?? 'neutral',
-
-    context_quality: Number.isFinite(contextFilter?.context_quality)
-      ? contextFilter.context_quality
-      : 0,
-
-    context_score: Number.isFinite(contextFilter?.context_score)
-      ? contextFilter.context_score
-      : 0
+    context_quality: safeNumber(contextFilter?.context_quality),
+    context_score: safeNumber(contextFilter?.context_score)
   };
   console.log('[DEBUG_GATE_INPUT_CONSTRUCTED]', symbol, 'keys:', Object.keys(gateOriginalInput).length);
   console.log('[DEBUG_AFTER_CONSTRUCT_GATE_INPUT]', JSON.stringify({
@@ -1292,7 +1091,7 @@ async function generarPrediccion({
     direction,
     gateOriginalInputKeys: Object.keys(gateOriginalInput).length
   }));
-  
+
   // VALIDACIÓN: Verificar si se ejecutará normalizeQualityGateInput
   console.log('[DEBUG_BLOCKING_IF]', symbol, 'condition_check:', {confidence: !!confidence, quantumScore: !!quantumScore, gateOriginalInput: !!gateOriginalInput});
   if (!confidence || !quantumScore || !gateOriginalInput) {
@@ -1306,10 +1105,24 @@ async function generarPrediccion({
   } else {
     console.log('[DEBUG_GATE_EXECUTING]', symbolInput);
   }
-  
+
   console.log('[DEBUG_BEFORE_NORMALIZE_CALL]', symbol);
   console.log('[DEBUG_NORMALIZE_CALL_EXECUTING]', symbol);
-  const gateNormalized = normalizeQualityGateInput(gateOriginalInput);
+
+  let gateNormalized = null;
+  try {
+    console.log('[DEBUG_SAFE_CALL_INPUT]', symbolInput, JSON.stringify(gateOriginalInput));
+    gateNormalized = normalizeQualityGateInput(gateOriginalInput);
+    console.log('[DEBUG_SAFE_CALL_SUCCESS]', symbolInput);
+  } catch (err) {
+    console.log('[DEBUG_SAFE_CALL_CRASH]', symbolInput, {
+      error: err?.message,
+      stack: err?.stack,
+      input: gateOriginalInput
+    });
+    return null;
+  }
+
   console.log('[DEBUG_AFTER_NORMALIZE_CALL]', symbol);
   console.log('[DEBUG_NORMALIZE_CALL_COMPLETED]', symbol);
 
@@ -1355,11 +1168,22 @@ async function generarPrediccion({
     quantumScore: learningResult.quantumScore,
     timingScore: learningResult.timingScore
   };
-  
+
+  console.log('[DEBUG_EARLY_EXIT_CHECK_LEARNING]', {
+    symbol: symbolInput,
+    learningResult_keys: Object.keys(learningResult).slice(0, 10),
+    confidence_from_learning: learningResult.confidence,
+    quantum_from_learning: learningResult.quantumScore,
+    timing_from_learning: learningResult.timingScore,
+    is_confidence_null: learningResult.confidence === null || learningResult.confidence === undefined,
+    is_quantum_null: learningResult.quantumScore === null || learningResult.quantumScore === undefined,
+    is_timing_null: learningResult.timingScore === null || learningResult.timingScore === undefined
+  });
+
   // Validación robusta de valores numéricos en postLearningScores antes de quality gate
   postLearningScores.quantumScore = Number.isFinite(postLearningScores.quantumScore) ? postLearningScores.quantumScore : Number(postLearningScores.quantumScore) || 0;
   postLearningScores.timingScore = Number.isFinite(postLearningScores.timingScore) ? postLearningScores.timingScore : Number(postLearningScores.timingScore) || 0;
-  
+
   const stabilityPost = computeSignalStability(
     postLearningScores.confidence,
     postLearningScores.quantumScore,
@@ -1367,26 +1191,40 @@ async function generarPrediccion({
   );
   const gateOriginalInputPost = {
     confidence: Number.isFinite(postLearningScores.confidence) ? postLearningScores.confidence : 0,
-    
+
     quantum: Number.isFinite(postLearningScores.quantumScore) ? postLearningScores.quantumScore : 0,
     timing: Number.isFinite(postLearningScores.timingScore) ? postLearningScores.timingScore : 0,
-    
+
     impulse: impulseMetrics?.impulse_present ?? false,
-    
+
     stability: Number.isFinite(stabilityPost) ? stabilityPost : 0,
-    
+
     direction: direction ?? 'neutral',
-    
+
     context_quality: Number.isFinite(contextFilter?.context_quality)
       ? contextFilter.context_quality
       : 0,
-    
+
     context_score: Number.isFinite(contextFilter?.context_score)
       ? contextFilter.context_score
       : 0
   };
-  const gateNormalizedPost = normalizeQualityGateInput(gateOriginalInputPost);
+  let gateNormalizedPost = null;
+  try {
+    console.log('[DEBUG_SAFE_CALL_POST_INPUT]', symbolInput, JSON.stringify(gateOriginalInputPost));
+    gateNormalizedPost = normalizeQualityGateInput(gateOriginalInputPost);
+    console.log('[DEBUG_SAFE_CALL_POST_SUCCESS]', symbolInput);
+  } catch (err) {
+    console.log('[DEBUG_SAFE_CALL_POST_CRASH]', symbolInput, {
+      error: err?.message,
+      stack: err?.stack,
+      input: gateOriginalInputPost
+    });
+    gateNormalizedPost = null;
+  }
+
   const neutralCandidate =
+    gateNormalizedPost &&
     ALLOW_NEUTRAL_EXPERIMENT &&
     gateNormalizedPost.direction === 'neutral' &&
     Number(gateNormalizedPost.confidence || 0) > 0.70 &&
@@ -1411,6 +1249,17 @@ async function generarPrediccion({
     );
   }
 
+  console.log('[DEBUG_BEFORE_QUALITY_GATE_EVALUATION]', {
+    symbol: symbolInput,
+    timeframe,
+    gateNormalizedPost_confidence: gateNormalizedPost?.confidence,
+    gateNormalizedPost_quantum: gateNormalizedPost?.quantum,
+    gateNormalizedPost_timing: gateNormalizedPost?.timing,
+    gateNormalizedPost_direction: gateNormalizedPost?.direction,
+    gateNormalizedPost_impulse_present: gateNormalizedPost?.impulse_present,
+    gateNormalizedPost_keys: gateNormalizedPost ? Object.keys(gateNormalizedPost) : 'NULL'
+  });
+
   const postTimeframeGate = evaluateTimeframeGate(
     timeframe,
     gateNormalizedPost.confidence,
@@ -1426,11 +1275,31 @@ async function generarPrediccion({
     gateNormalizedPost.impulse_present
   );
 
+  console.log('[DEBUG_QUALITY_GATE_RESULTS]', {
+    symbol,
+    timeframe,
+    isEventDriven,
+    preTimeframeGatePass: preTimeframeGate.pass,
+    preTimeframeGateReason: preTimeframeGate.reason,
+    preEventGatePass: preEventGate.pass,
+    preEventGateReason: preEventGate.reason,
+    postTimeframeGatePass: postTimeframeGate.pass,
+    postTimeframeGateReason: postTimeframeGate.reason,
+    postEventGatePass: postEventGate.pass,
+    postEventGateReason: postEventGate.reason
+  });
+
   let signalEmitted = isEventDriven
     ? preEventGate.pass
     : timeframe !== '1m'
     ? true
     : preTimeframeGate.pass;
+
+  console.log('[DEBUG_SIGNAL_EMITTED_AFTER_GATES]', {
+    symbol,
+    signalEmitted,
+    reason: isEventDriven ? 'event_gate' : (timeframe !== '1m' ? 'non_1m_override' : 'timeframe_gate')
+  });
 
   let signalEmittedPost = isEventDriven
     ? postEventGate.pass
@@ -1457,7 +1326,32 @@ async function generarPrediccion({
     isEventDriven,
     neutralRate
   });
+  console.log('[DEBUG_FEATURES_RAW]', {
+    symbol: symbolInput,
+    confidence_value: postLearningScores.confidence,
+    quantumScore_value: postLearningScores.quantumScore,
+    timingScore_value: postLearningScores.timingScore,
+    direction_value: direction,
+    impulse_present: impulseMetrics?.impulse_present,
+    signalEmitted_flag: signalEmitted
+  });
+  console.log('[DEBUG_BEFORE_QUALITY_GATE]', {
+    symbol,
+    confidence: postLearningScores.confidence,
+    quantumScore: postLearningScores.quantumScore,
+    timingScore: postLearningScores.timingScore,
+    stability: stabilityPost,
+    hasLowConfidencePenalty: !!reweighted.lowConfidencePenalty,
+    direction,
+    isEventDriven
+  });
   if (reweighted.lowConfidencePenalty) {
+    console.log('[DEBUG_SKIP_REASON]', 'low_confidence_penalty', {
+      symbol,
+      confidenceBefore: reweighted.confidence_before,
+      confidenceAfter: reweighted.confidence_after,
+      reason: reweighted.notes
+    });
     signalEmitted = false;
     signalEmittedPost = false;
   }
@@ -1469,6 +1363,14 @@ async function generarPrediccion({
     EVENT_CONTEXT_FILTER_MODE === 'enforce' &&
     !contextFilter.allow_event
   ) {
+    console.log('[DEBUG_SKIP_REASON]', 'event_context_filter_enforce', {
+      symbol,
+      eventContextFilterEnabled: EVENT_CONTEXT_FILTER_ENABLED,
+      mode: EVENT_CONTEXT_FILTER_MODE,
+      contextFilterAllowEvent: contextFilter.allow_event,
+      wouldBlockEvent: contextFilter.would_block_event,
+      signalEmittedBefore: signalBeforeContext
+    });
     signalEmitted = false;
     signalEmittedPost = false;
     suppressionReason = 'event_context';
@@ -1628,6 +1530,49 @@ async function generarPrediccion({
     1
   );
   const impulse_present = impulseMetrics.impulse_present;
+
+  console.log('[DEBUG_PRE_SIGNAL_OBJECT]', {
+    symbol: symbolInput,
+    has_confidence: postLearningScores.confidence !== null && postLearningScores.confidence !== undefined,
+    has_quantumScore: postLearningScores.quantumScore !== null && postLearningScores.quantumScore !== undefined,
+    has_timingScore: postLearningScores.timingScore !== null && postLearningScores.timingScore !== undefined,
+    has_direction: direction !== null && direction !== undefined,
+    has_impulse_present: impulse_present !== null && impulse_present !== undefined,
+    confidence_val: postLearningScores.confidence,
+    quantum_val: postLearningScores.quantumScore,
+    timing_val: postLearningScores.timingScore,
+    direction_val: direction,
+    impulse_val: impulse_present,
+    reweighted_keys: Object.keys(reweighted).slice(0, 5)
+  });
+
+  // FALLBACK: Ensure signal structure always exists if scores are valid
+  let predictedSignal = null;
+  if (
+    Number.isFinite(postLearningScores.confidence) &&
+    Number.isFinite(postLearningScores.quantumScore) &&
+    Number.isFinite(postLearningScores.timingScore)
+  ) {
+    predictedSignal = {
+      confidence: postLearningScores.confidence,
+      quantum: postLearningScores.quantumScore,
+      timing: postLearningScores.timingScore,
+      direction: direction || 'neutral',
+      impulse: impulse_present || false,
+      source: signalEmitted ? 'gate' : 'fallback'
+    };
+
+    console.log('[DEBUG_SIGNAL_FALLBACK_CREATED]', {
+      symbol: symbolInput,
+      signal_source: predictedSignal.source,
+      confidence: predictedSignal.confidence,
+      quantum: predictedSignal.quantum,
+      timing: predictedSignal.timing,
+      direction: predictedSignal.direction,
+      impulse: predictedSignal.impulse,
+      signalEmitted_flag: signalEmitted
+    });
+  }
 
   const recomendacion = {
     simbolo: symbolInput,
@@ -2065,8 +2010,19 @@ async function generarPrediccion({
     timing: recomendacion?.timing,
     impulse: recomendacion?.impulse,
     confidence: recomendacion?.confidence,
-    direction: recomendacion?.direction
+    direction: recomendacion?.direction,
+    signalEmitted: recomendacion?.signal_emitted,
+    suppressionReason: recomendacion?.suppression_reason,
+    contextFilterAllowEvent: contextFilter?.allow_event,
+    eventContextFilterEnabled: EVENT_CONTEXT_FILTER_ENABLED
   }));
+  console.log('[DEBUG_BEFORE_RETURN]', {
+    symbol,
+    hasRecommendation: !!recomendacion,
+    willEmitSignal: recomendacion?.signal_emitted,
+    suppressedBecause: recomendacion?.suppression_reason,
+    status: status
+  });
   return { id: docRef.id, ...recomendacion, status, verification: null, profiling };
 }
 
