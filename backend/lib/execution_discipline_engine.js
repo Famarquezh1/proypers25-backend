@@ -632,36 +632,41 @@ async function evaluateEntryDiscipline({ db, signalData = {}, intent = {}, sourc
     override_reason: 'normal_execution'
   }, null, '[EXECUTION_DISCIPLINE] persist normal entry observation failed');
 
-  const executionScore = await readCurrentExecutionScore(db);
-  if (executionScore != null && executionScore < EXECUTION_SCORE_MIN) {
-    const details = {
-      execution_score: executionScore,
-      minimum_required: EXECUTION_SCORE_MIN
-    };
-    persistEntryObservationAsync(db, signalData, {
-      late_entry_type: 'none',
-      execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
-      missed_opportunity: false,
-      missed_opportunity_type: 'execution_protection',
-      would_have_been_win: false,
-      would_have_been_loss: false,
-      override_applied: false,
-      override_reason: 'normal_execution'
-    }, {
-      type: 'entry_control',
-      event: 'execution_protection_mode',
-      blocked: isEnforceMode(),
-      source_profile: sourceProfile,
-      symbol: intent.symbol || signalData.symbol || signalData.simbolo || null,
-      prediction_id: resolvePredictionId(signalData),
-      execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
-      details
-    }, '[EXECUTION_DISCIPLINE] persist execution protection observation failed');
-    return {
-      blocked: isEnforceMode(),
-      reason: 'execution_protection_mode',
-      details
-    };
+  // Skip execution_score check for event_emitted profile - these signals rely on timing, not score
+  // This prevents expensive Firestore reads that can exceed timeout budget
+  let executionScore = null;
+  if (sourceProfile !== 'event_emitted') {
+    executionScore = await readCurrentExecutionScore(db);
+    if (executionScore != null && executionScore < EXECUTION_SCORE_MIN) {
+      const details = {
+        execution_score: executionScore,
+        minimum_required: EXECUTION_SCORE_MIN
+      };
+      persistEntryObservationAsync(db, signalData, {
+        late_entry_type: 'none',
+        execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
+        missed_opportunity: false,
+        missed_opportunity_type: 'execution_protection',
+        would_have_been_win: false,
+        would_have_been_loss: false,
+        override_applied: false,
+        override_reason: 'normal_execution'
+      }, {
+        type: 'entry_control',
+        event: 'execution_protection_mode',
+        blocked: isEnforceMode(),
+        source_profile: sourceProfile,
+        symbol: intent.symbol || signalData.symbol || signalData.simbolo || null,
+        prediction_id: resolvePredictionId(signalData),
+        execution_delay_ms: Number.isFinite(signalAgeMs) ? signalAgeMs : null,
+        details
+      }, '[EXECUTION_DISCIPLINE] persist execution protection observation failed');
+      return {
+        blocked: isEnforceMode(),
+        reason: 'execution_protection_mode',
+        details
+      };
+    }
   }
 
   return {
