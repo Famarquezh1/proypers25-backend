@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * EXHAUSTIVE VERIFICATION SCRIPT
- * 
+ *
  * Verifies that the fix for 7 Extra Phases endpoints is 100% correct
  * before Build 5 deployment
  */
@@ -25,7 +25,7 @@ console.log('╚═════════════════════�
 
 // ===== FILE EXISTENCE CHECKS =====
 console.log('1. FILE EXISTENCE:');
-check('critical_safety_monitor.js exists', 
+check('critical_safety_monitor.js exists',
   fs.existsSync('./backend/lib/critical_safety_monitor.js'),
   'Module file present'
 );
@@ -50,7 +50,7 @@ const syntaxChecks = [
 
 syntaxChecks.forEach(({ file, label }) => {
   try {
-    const result = spawnSync('node', ['-c', file], { 
+    const result = spawnSync('node', ['-c', file], {
       stdio: 'pipe',
       timeout: 5000
     });
@@ -65,7 +65,7 @@ console.log('\n3. MODULE LOADING:');
 try {
   const csm = require('./backend/lib/critical_safety_monitor');
   check('CriticalSafetyMonitor module loads', true, 'Module loaded successfully');
-  
+
   const expectedFunctions = [
     'runCriticalSafetyCheck',
     'checkRealInactivity',
@@ -77,9 +77,9 @@ try {
     'getSystemHeartbeats',
     'requiresImmediateAttention'
   ];
-  
+
   expectedFunctions.forEach(fn => {
-    check(`Function "${fn}" exported`, 
+    check(`Function "${fn}" exported`,
       typeof csm[fn] === 'function',
       `Type: ${typeof csm[fn]}`
     );
@@ -126,24 +126,24 @@ try {
     stdio: 'pipe',
     encoding: 'utf8'
   });
-  
+
   const logOutput = gitLog.stdout.trim();
   check('Git commit exists', gitLog.status === 0, logOutput);
-  
+
   const hasCommit572f469 = logOutput.includes('572f469');
   check('Commit 572f469 is HEAD', hasCommit572f469, 'Latest commit is the fix');
-  
+
   // Check for uncommitted changes in tracked files (not untracked files)
   const gitDiffStatus = spawnSync('git', ['diff', '--exit-code'], {
     cwd: '.',
     stdio: 'pipe'
   });
-  
+
   const gitDiffCachedStatus = spawnSync('git', ['diff', '--cached', '--exit-code'], {
     cwd: '.',
     stdio: 'pipe'
   });
-  
+
   const isClean = gitDiffStatus.status === 0 && gitDiffCachedStatus.status === 0;
   check('No uncommitted changes', isClean, isClean ? 'Working directory clean' : 'Untracked files only (OK)');
 } catch (err) {

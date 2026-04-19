@@ -1,6 +1,6 @@
 /**
  * FINAL VALIDATION & AUTO-RECOVERY TRIGGER
- * 
+ *
  * Runs validation and triggers system recovery procedures once endpoints are live
  */
 
@@ -36,7 +36,7 @@ async function validateAllEndpoints() {
     checkEndpoint(HEARTBEATS_URL, 'heartbeats'),
     checkEndpoint(SAFETY_STATUS_URL, 'safety-status')
   ]);
-  
+
   return results.every(r => r.success);
 }
 
@@ -45,7 +45,7 @@ async function executePostDeploymentSteps() {
   console.log('═'.repeat(60));
   console.log('EXECUTING POST-DEPLOYMENT RECOVERY STEPS');
   console.log('═'.repeat(60));
-  
+
   // Step 1: Log recovery start
   console.log('\n[1/3] Recording deployment recovery start...');
   const recoveryLog = {
@@ -60,13 +60,13 @@ async function executePostDeploymentSteps() {
       'System will resume data recording'
     ]
   };
-  
+
   fs.writeFileSync(
     './BUILD5_RECOVERY_LOG.json',
     JSON.stringify(recoveryLog, null, 2)
   );
   console.log('   ✓ Recovery log created');
-  
+
   // Step 2: Validate critical-alerts endpoint data
   console.log('\n[2/3] Validating endpoint response formats...');
   const alertsResponse = await new Promise((resolve) => {
@@ -82,12 +82,12 @@ async function executePostDeploymentSteps() {
       });
     }).on('error', () => resolve(null));
   });
-  
+
   if (alertsResponse && alertsResponse.alert_types) {
     console.log('   ✓ Critical alerts endpoint verified');
     console.log(`     - Alert types tracked: ${Object.keys(alertsResponse.alert_types).join(', ')}`);
   }
-  
+
   // Step 3: Check heartbeats
   console.log('\n[3/3] Checking initial heartbeat status...');
   const heartbeatResponse = await new Promise((resolve) => {
@@ -103,7 +103,7 @@ async function executePostDeploymentSteps() {
       });
     }).on('error', () => resolve(null));
   });
-  
+
   if (heartbeatResponse) {
     console.log('   ✓ Heartbeat endpoint verified');
     if (heartbeatResponse.total_heartbeats > 0) {
@@ -114,11 +114,11 @@ async function executePostDeploymentSteps() {
       console.log('     - Will appear within 5 minutes of autocalibration cycle');
     }
   }
-  
+
   console.log('\n' + '═'.repeat(60));
   console.log('✓ POST-DEPLOYMENT RECOVERY STEPS COMPLETE');
   console.log('═'.repeat(60));
-  
+
   console.log('\n7 EXTRA PHASES NOW ACTIVE:');
   console.log('  ✓ Phase 1: Real inactivity detection');
   console.log('  ✓ Phase 2: Execution block detection');
@@ -127,34 +127,34 @@ async function executePostDeploymentSteps() {
   console.log('  ✓ Phase 5: System heartbeats every 5 min');
   console.log('  ✓ Phase 6: Alert throttling (no spam)');
   console.log('  ✓ Phase 7: Never-silent guarantee enforced');
-  
+
   console.log('\nEXPECTED DATA RECOVERY:');
   console.log('  ⏱ Within 5 min: First heartbeat in Firestore');
   console.log('  ⏱ Within 10 min: Dashboard shows new signal data');
   console.log('  ⏱ Within 15 min: Full autocalibration cycle includes safety checks');
-  
+
   console.log('\nDeploy Report saved: BUILD5_RECOVERY_LOG.json\n');
-  
+
   process.exit(0);
 }
 
 async function monitor() {
   attemptCount++;
-  
+
   const allLive = await validateAllEndpoints();
-  
+
   if (allLive) {
     await executePostDeploymentSteps();
   } else {
     const timeWaited = attemptCount * 30;
     const percentage = Math.round((attemptCount / maxAttempts) * 100);
     console.log(`[${attemptCount}/${maxAttempts}] Endpoints still deploying... (${timeWaited}s, ${percentage}%)`);
-    
+
     if (attemptCount >= maxAttempts) {
       console.log('\n✗ Timeout waiting for endpoints');
       process.exit(1);
     }
-    
+
     setTimeout(monitor, 30000);
   }
 }

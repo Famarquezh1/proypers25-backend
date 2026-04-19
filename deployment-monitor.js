@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * BUILD 5 DEPLOYMENT MONITOR
- * 
+ *
  * Monitors Build 5 deployment and verifies endpoints become available
  * Executes validation and auto-recovery procedures when endpoints are live
  */
@@ -66,12 +66,12 @@ async function testEndpoint(endpoint) {
 async function checkAllEndpoints() {
   checkCount++;
   const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-  
+
   console.log(`\n[${timestamp}] CHECK #${checkCount}/${MAX_CHECKS}`);
   console.log('─'.repeat(56));
 
   const results = await Promise.all(ENDPOINTS.map(testEndpoint));
-  
+
   let allOk = true;
   for (const result of results) {
     const status = result.ok ? `✓ 200 OK` : `✗ ${result.status}`;
@@ -121,7 +121,7 @@ async function monitor() {
   }
 
   const allOk = await checkAllEndpoints();
-  
+
   if (allOk) {
     await executeValidation();
   } else {

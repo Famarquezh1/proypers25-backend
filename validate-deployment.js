@@ -1,6 +1,6 @@
 /**
  * POST-DEPLOYMENT VALIDATION FOR EXTRA PHASES
- * 
+ *
  * Validates that all 7 Extra Phases endpoints are working correctly
  * after Build 5 deployment
  */
@@ -39,7 +39,7 @@ const ENDPOINTS = [
 function testEndpoint(endpoint) {
   return new Promise((resolve) => {
     const url = `${BASE_URL}${endpoint.path}`;
-    
+
     https.get(url, { timeout: 5000 }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -47,7 +47,7 @@ function testEndpoint(endpoint) {
         try {
           const json = JSON.parse(data);
           const hasAllFields = endpoint.expectedFields.every(field => field in json);
-          
+
           resolve({
             endpoint: endpoint.name,
             path: endpoint.path,
@@ -85,20 +85,20 @@ async function runValidation() {
   console.log('\n╔════════════════════════════════════════════════════════════╗');
   console.log('║  EXTRA PHASES POST-DEPLOYMENT VALIDATION                   ║');
   console.log('╚════════════════════════════════════════════════════════════╝\n');
-  
+
   console.log(`Testing ${ENDPOINTS.length} endpoints...\n`);
-  
+
   let allPassed = true;
   const results = [];
-  
+
   for (const endpoint of ENDPOINTS) {
     const result = await testEndpoint(endpoint);
     results.push(result);
-    
+
     const icon = result.success ? '✓' : '✗';
     const status = result.success ? 'PASS' : 'FAIL';
     console.log(`${icon} ${result.endpoint.padEnd(35)} ${status}`);
-    
+
     if (!result.success) {
       allPassed = false;
       if (result.error) {
@@ -111,9 +111,9 @@ async function runValidation() {
       }
     }
   }
-  
+
   console.log('\n' + '═'.repeat(60));
-  
+
   if (allPassed) {
     console.log('✓ ALL ENDPOINTS OPERATIONAL');
     console.log('\n7 EXTRA PHASES DEPLOYMENT COMPLETE:');

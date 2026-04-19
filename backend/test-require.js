@@ -5,7 +5,7 @@ try {
   const CriticalSafetyMonitor = require('./lib/critical_safety_monitor');
   console.log('✅ Successfully required critical_safety_monitor');
   console.log('Exported functions:', Object.keys(CriticalSafetyMonitor));
-  
+
   // Check if functions exist
   if (!CriticalSafetyMonitor.getCriticalAlertsSummary) {
     console.log('❌ getCriticalAlertsSummary is not exported');
@@ -16,7 +16,7 @@ try {
   if (!CriticalSafetyMonitor.runCriticalSafetyCheck) {
     console.log('❌ runCriticalSafetyCheck is not exported');
   }
-  
+
   if (CriticalSafetyMonitor.getCriticalAlertsSummary &&
       CriticalSafetyMonitor.getSystemHeartbeats &&
       CriticalSafetyMonitor.runCriticalSafetyCheck) {

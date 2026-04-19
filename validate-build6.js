@@ -2,7 +2,7 @@
 
 /**
  * Validate Build 6 Deployment
- * 
+ *
  * Checks that:
  * 1. Endpoints respond 200 OK (not 404)
  * 2. Responses contain expected data structure
@@ -22,14 +22,14 @@ function checkEndpoint(path) {
   return new Promise((resolve) => {
     const url = `${BASE_URL}${path}`;
     const startTime = Date.now();
-    
+
     https.get(url, { timeout: 5000 }, (res) => {
       let data = '';
-      
+
       res.on('data', chunk => {
         data += chunk;
       });
-      
+
       res.on('end', () => {
         const duration = Date.now() - startTime;
         try {
@@ -76,12 +76,12 @@ async function validate() {
   );
 
   let allValid = true;
-  
+
   for (const result of results) {
     const status = result.valid ? '✓ SUCCESS' : '✗ FAILED';
     console.log(`${status} ${result.path}`);
     console.log(`  Status: ${result.status}, Duration: ${result.duration}ms`);
-    
+
     if (!result.valid) {
       console.log(`  Error: ${result.error || 'Unexpected status code'}`);
       allValid = false;

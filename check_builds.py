@@ -9,7 +9,7 @@ try:
         text=True,
         timeout=30
     )
-    
+
     if result.returncode == 0:
         builds = json.loads(result.stdout)
         print("\n=== RECENT BUILDS ===\n")
