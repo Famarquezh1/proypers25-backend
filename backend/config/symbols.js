@@ -1,0 +1,22 @@
+module.exports = [
+  'BTC-USD',
+  'ETH-USD',
+  'SOL-USD',
+  'BNB-USD',
+  'XRP-USD',
+  'ADA-USD',
+  'DOGE-USD',
+  'LINK-USD',
+  'AVAX-USD',
+  'MATIC-USD',
+  'DOT-USD',
+  'LTC-USD',
+  'TRX-USD',
+  'ATOM-USD',
+  'FIL-USD',
+  'NEAR-USD',
+  'APT-USD',
+  'ARB-USD',
+  'OP-USD',
+  'SUI-USD'
+];

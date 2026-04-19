@@ -17,6 +17,7 @@ const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
 
 function createDeepHealthRouter(db) {
   const router = express.Router();
+  console.log('[DeepHealthRouter] Creating router instance...');
 
   /**
    * GET /api/system/deep-health
@@ -24,6 +25,7 @@ function createDeepHealthRouter(db) {
    * Returns comprehensive system health status
    */
   router.get('/system/deep-health', async (req, res) => {
+    console.log('[DeepHealthRouter] GET /system/deep-health');
     try {
       const health = await getDeepHealthStatus(db);
       res.json(health);
@@ -90,6 +92,7 @@ function createDeepHealthRouter(db) {
    * Returns recent critical safety alerts (Extra Phases 1-4)
    */
   router.get('/system/critical-alerts', async (req, res) => {
+    console.log('[DeepHealthRouter] GET /system/critical-alerts');
     try {
       const limit = parseInt(req.query.limit || '50', 10);
       const alerts = await CriticalSafetyMonitor.getCriticalAlertsSummary(db, limit);
@@ -204,6 +207,7 @@ function createDeepHealthRouter(db) {
     }
   });
 
+  console.log('[DeepHealthRouter] Router configured with all 6 endpoints, returning...');
   return router;
 }
 

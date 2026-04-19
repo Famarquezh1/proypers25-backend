@@ -64,7 +64,9 @@ app.use('/api/modelos', modelosRoute);
 app.use("/api", analizarRoute);
 app.use('/api/velas', velasRoutes);
 app.use('/api/validacion', validacionRoute);
+console.log('[Server] Registering deep health router...');
 app.use('/api', createDeepHealthRouter(db));
+console.log('[Server] Deep health router registered');
 app.use('/', velasCronRoutes);
 
 if (EXCHANGE_INFO_WARMUP_ENABLED) {
