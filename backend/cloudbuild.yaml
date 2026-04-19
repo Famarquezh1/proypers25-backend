@@ -1,0 +1,35 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest'
+      - '-t'
+      - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:$COMMIT_SHA'
+      - '.'
+
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:$COMMIT_SHA'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/run'
+    args:
+      - 'deploy'
+      - 'proypers25-backend'
+      - '--image'
+      - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:$COMMIT_SHA'
+      - '--region'
+      - 'southamerica-west1'
+      - '--allow-unauthenticated'
+
+images:
+  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest'
+  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:$COMMIT_SHA'
+
+options:
+  machineType: 'N1_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
