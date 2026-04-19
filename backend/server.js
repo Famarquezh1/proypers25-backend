@@ -69,6 +69,17 @@ app.use('/api', createDeepHealthRouter(db));
 console.log('[Server] Deep health router registered');
 app.use('/', velasCronRoutes);
 
+// 404 handler for debugging
+app.use((req, res) => {
+  console.error('[404] Unhandled route:', req.method, req.path);
+  res.status(404).json({
+    error: 'Route not found',
+    method: req.method,
+    path: req.path,
+    timestamp: new Date()
+  });
+});
+
 if (EXCHANGE_INFO_WARMUP_ENABLED) {
   const warmup = async (source) => {
     try {
