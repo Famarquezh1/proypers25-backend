@@ -1,4 +1,4 @@
-console.log('🚀 Iniciando server.js...');
+console.log('🚀 Iniciando server.js - FIXED ENDPOINTS V2...');
 
 const express = require("express");
 const cors = require("cors");
