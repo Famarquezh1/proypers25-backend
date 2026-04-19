@@ -15,17 +15,6 @@ steps:
       - 'push'
       - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image'
 
-  # Deploy to Cloud Run
-  - name: 'gcr.io/cloud-builders/run'
-    args:
-      - 'deploy'
-      - 'proypers25-backend'
-      - '--image'
-      - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:fixed-endpoints'
-      - '--region'
-      - 'southamerica-west1'
-      - '--allow-unauthenticated'
-
 images:
   - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest'
   - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:fixed-endpoints'
@@ -33,4 +22,5 @@ images:
 options:
   machineType: 'N1_HIGHCPU_8'
   logging: CLOUD_LOGGING_ONLY
+
 
