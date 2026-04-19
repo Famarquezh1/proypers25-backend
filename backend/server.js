@@ -1,4 +1,4 @@
-console.log('🚀 Iniciando server.js - FIXED ENDPOINTS V2...');
+console.log('🚀 Iniciando server.js - DEEP HEALTH ENDPOINTS REGISTERED...');
 
 const express = require("express");
 const cors = require("cors");
