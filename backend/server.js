@@ -24,6 +24,7 @@ const analizarRoute = require('./routes/analizar.route');
 const validacionRoute = require('./routes/validacion.route');
 
 const velasRoutes = require('./routes/velas');
+const { createDeepHealthRouter } = require('./routes/deep_health_router');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -63,6 +64,7 @@ app.use('/api/modelos', modelosRoute);
 app.use("/api", analizarRoute);
 app.use('/api/velas', velasRoutes);
 app.use('/api/validacion', validacionRoute);
+app.use('/api', createDeepHealthRouter(db));
 app.use('/', velasCronRoutes);
 
 if (EXCHANGE_INFO_WARMUP_ENABLED) {
