@@ -13,6 +13,7 @@
  */
 
 const express = require('express');
+const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
 
 function createDeepHealthRouter(db) {
   const router = express.Router();
@@ -90,7 +91,6 @@ function createDeepHealthRouter(db) {
    */
   router.get('/system/critical-alerts', async (req, res) => {
     try {
-      const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
       const limit = parseInt(req.query.limit || '50', 10);
       const alerts = await CriticalSafetyMonitor.getCriticalAlertsSummary(db, limit);
 
@@ -123,13 +123,12 @@ function createDeepHealthRouter(db) {
    */
   router.get('/system/heartbeats', async (req, res) => {
     try {
-      const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
       const limit = parseInt(req.query.limit || '20', 10);
       const heartbeats = await CriticalSafetyMonitor.getSystemHeartbeats(db, limit);
 
       const now = new Date();
       const lastHeartbeat = heartbeats[0];
-      const timeSinceLastHeartbeat = lastHeartbeat 
+      const timeSinceLastHeartbeat = lastHeartbeat
         ? Math.floor((now - new Date(lastHeartbeat.timestamp)) / 1000)
         : null;
 
@@ -140,7 +139,7 @@ function createDeepHealthRouter(db) {
         is_healthy: timeSinceLastHeartbeat !== null && timeSinceLastHeartbeat < 600, // < 10 minutes
         heartbeats: heartbeats,
         summary: {
-          avg_signals_last_5m: heartbeats.length > 0 
+          avg_signals_last_5m: heartbeats.length > 0
             ? Math.round(heartbeats.reduce((s, h) => s + (h.signals_last_5m || 0), 0) / heartbeats.length)
             : 0,
           avg_executions_last_5m: heartbeats.length > 0
@@ -168,7 +167,6 @@ function createDeepHealthRouter(db) {
    */
   router.get('/system/safety-status', async (req, res) => {
     try {
-      const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
       const requiresAttention = await CriticalSafetyMonitor.requiresImmediateAttention(db);
       const recentAlerts = await CriticalSafetyMonitor.getCriticalAlertsSummary(db, 10);
       const recentHeartbeats = await CriticalSafetyMonitor.getSystemHeartbeats(db, 5);
