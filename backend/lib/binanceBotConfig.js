@@ -1,5 +1,8 @@
 const DEFAULT_CONFIG = {
   mode: 'off', // off | dry-run | live
+  execution_enabled: true,
+  position_size_percent: 0.1,
+  max_concurrent_trades: 1,
   use_funds_percent: 35,
   account_capital_usdt: 100,
   dynamic_sizing_enabled: true,
@@ -20,9 +23,9 @@ const DEFAULT_CONFIG = {
   min_recent_valid_records: 0,
   recent_records_window_minutes: 180,
   symbol_cooldown_minutes: 0,
-  min_confidence: 0.9,
-  min_quantum: 0.85,
-  min_timing: 0.8,
+  min_confidence: 0.65,
+  min_quantum: 0.6,
+  min_timing: 0.6,
   min_context_score: 3,
   min_context_quality: 0,
   min_risk_reward: 1.2,
@@ -51,9 +54,9 @@ const DEFAULT_EXECUTION_PROFILES = {
     allow_unlisted_symbols: true,
     use_funds_percent: 18,
     max_notional_usdt: 18,
-    min_confidence: 0.9,
-    min_quantum: 0.96,
-    min_timing: 0.88,
+    min_confidence: 0.65,
+    min_quantum: 0.6,
+    min_timing: 0.6,
     min_context_score: 0,
     min_context_quality: 0,
     min_risk_reward: 1.35,
@@ -63,9 +66,9 @@ const DEFAULT_EXECUTION_PROFILES = {
     enabled: true,
     mode: 'inherit',
     allow_unlisted_symbols: true,
-    min_confidence: 0.82,
-    min_quantum: 0.78,
-    min_timing: 0.7,
+    min_confidence: 0.65,
+    min_quantum: 0.6,
+    min_timing: 0.6,
     min_context_score: 0,
     min_context_quality: 0
   }
@@ -76,6 +79,18 @@ let cache = {
   value: null,
   loadedAt: 0
 };
+
+const RELAXED_ENTRY_MIN_CONFIDENCE = 0.65;
+const RELAXED_ENTRY_MIN_QUANTUM = 0.6;
+const RELAXED_ENTRY_MIN_TIMING = 0.6;
+
+function normalizeRelaxedThreshold(value, relaxedValue) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return relaxedValue;
+  }
+  return Math.max(relaxedValue, Math.min(numeric, relaxedValue));
+}
 
 function normalizeFeatureMode(value, fallback = 'off') {
   const raw = String(value ?? fallback).toLowerCase();
@@ -126,6 +141,15 @@ function normalizeProfileConfig(baseConfig, rawProfile, defaultProfile) {
     allow_unlisted_symbols:
       profile.allow_unlisted_symbols === true ||
       (defaultProfile?.allow_unlisted_symbols === true && profile.allow_unlisted_symbols !== false),
+    execution_enabled: profile.execution_enabled ?? baseConfig.execution_enabled,
+    position_size_percent: Math.max(
+      0.01,
+      Math.min(1, Number(profile.position_size_percent ?? baseConfig.position_size_percent ?? 0.1))
+    ),
+    max_concurrent_trades: Math.max(
+      1,
+      Math.floor(Number(profile.max_concurrent_trades ?? baseConfig.max_concurrent_trades ?? 1))
+    ),
     use_funds_percent: Math.max(1, Math.min(100, Number(profile.use_funds_percent ?? baseConfig.use_funds_percent))),
     account_capital_usdt: Math.max(5, Number(profile.account_capital_usdt ?? baseConfig.account_capital_usdt)),
     dynamic_sizing_enabled: profile.dynamic_sizing_enabled ?? baseConfig.dynamic_sizing_enabled,
@@ -155,9 +179,18 @@ function normalizeProfileConfig(baseConfig, rawProfile, defaultProfile) {
       0,
       Math.floor(Number(profile.symbol_cooldown_minutes ?? baseConfig.symbol_cooldown_minutes))
     ),
-    min_confidence: Number(profile.min_confidence ?? baseConfig.min_confidence),
-    min_quantum: Number(profile.min_quantum ?? baseConfig.min_quantum),
-    min_timing: Number(profile.min_timing ?? baseConfig.min_timing),
+    min_confidence: normalizeRelaxedThreshold(
+      profile.min_confidence ?? baseConfig.min_confidence,
+      RELAXED_ENTRY_MIN_CONFIDENCE
+    ),
+    min_quantum: normalizeRelaxedThreshold(
+      profile.min_quantum ?? baseConfig.min_quantum,
+      RELAXED_ENTRY_MIN_QUANTUM
+    ),
+    min_timing: normalizeRelaxedThreshold(
+      profile.min_timing ?? baseConfig.min_timing,
+      RELAXED_ENTRY_MIN_TIMING
+    ),
     min_context_score: Math.max(0, Math.min(4, Number(profile.min_context_score ?? baseConfig.min_context_score))),
     min_context_quality: Math.max(
       0,
@@ -173,6 +206,15 @@ function normalizeProfileConfig(baseConfig, rawProfile, defaultProfile) {
 function normalizeConfig(raw) {
   const cfg = { ...DEFAULT_CONFIG, ...(raw || {}) };
   cfg.mode = normalizeMode(cfg.mode);
+  cfg.execution_enabled = cfg.execution_enabled !== false;
+  cfg.position_size_percent = Math.max(
+    0.01,
+    Math.min(1, Number(cfg.position_size_percent ?? DEFAULT_CONFIG.position_size_percent))
+  );
+  cfg.max_concurrent_trades = Math.max(
+    1,
+    Math.floor(Number(cfg.max_concurrent_trades ?? DEFAULT_CONFIG.max_concurrent_trades))
+  );
   cfg.use_funds_percent = Math.max(1, Math.min(100, Number(cfg.use_funds_percent ?? DEFAULT_CONFIG.use_funds_percent)));
   cfg.account_capital_usdt = Math.max(5, Number(cfg.account_capital_usdt ?? DEFAULT_CONFIG.account_capital_usdt));
   cfg.dynamic_sizing_enabled = cfg.dynamic_sizing_enabled !== false;
@@ -201,9 +243,9 @@ function normalizeConfig(raw) {
     0,
     Math.floor(Number(cfg.symbol_cooldown_minutes ?? DEFAULT_CONFIG.symbol_cooldown_minutes))
   );
-  cfg.min_confidence = Number(cfg.min_confidence ?? DEFAULT_CONFIG.min_confidence);
-  cfg.min_quantum = Number(cfg.min_quantum ?? DEFAULT_CONFIG.min_quantum);
-  cfg.min_timing = Number(cfg.min_timing ?? DEFAULT_CONFIG.min_timing);
+  cfg.min_confidence = normalizeRelaxedThreshold(cfg.min_confidence ?? DEFAULT_CONFIG.min_confidence, RELAXED_ENTRY_MIN_CONFIDENCE);
+  cfg.min_quantum = normalizeRelaxedThreshold(cfg.min_quantum ?? DEFAULT_CONFIG.min_quantum, RELAXED_ENTRY_MIN_QUANTUM);
+  cfg.min_timing = normalizeRelaxedThreshold(cfg.min_timing ?? DEFAULT_CONFIG.min_timing, RELAXED_ENTRY_MIN_TIMING);
   cfg.min_context_score = Math.max(0, Math.min(4, Number(cfg.min_context_score ?? DEFAULT_CONFIG.min_context_score)));
   cfg.min_context_quality = Math.max(
     0,

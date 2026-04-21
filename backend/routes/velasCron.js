@@ -36,7 +36,24 @@ router.post('/internal/cron/velas/predictions', async (req, res) => {
 
 router.post('/internal/cron/velas/prealerts', async (req, res) => {
   if (!checkSecret(req, res)) return;
+  console.log('[CRON] runPreAlertCycle triggered via velas-prealerts');
   res.status(202).json({ ok: true, source: 'scheduler', job: 'velas-prealerts', accepted: true });
+  setImmediate(async () => {
+    try {
+      const summary = await runPreAlertCycle();
+      if (summary?.skipped) {
+        console.warn('[CRON] prealert cycle skipped', summary);
+      }
+    } catch (err) {
+      console.error('[CRON] prealert cycle failed', err?.message || err);
+    }
+  });
+});
+
+router.get('/internal/cron/predict', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+  console.log('[CRON] runPreAlertCycle triggered via /internal/cron/predict');
+  res.status(202).json({ ok: true, source: 'scheduler', job: 'predict', accepted: true });
   setImmediate(async () => {
     try {
       const summary = await runPreAlertCycle();

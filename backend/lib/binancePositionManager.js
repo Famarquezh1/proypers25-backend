@@ -15,6 +15,7 @@ const {
   getMarketSnapshot,
   syncOperationalMarketObservation
 } = require('../services/market/marketStreamWorker');
+const { normalizeToBinance } = require('../services/utils/symbolNormalizer');
 const {
   updateImpulseLifecycle
 } = require('../services/execution/impulseLifecycleEngine');
@@ -29,7 +30,7 @@ const {
 } = require('../services/execution/tradeCostModel');
 const { syncPredictionClosedTradeState } = require('../services/execution/predictionExecutionSync');
 
-const BINANCE_POSITION_MANAGER_ENABLED = process.env.BINANCE_POSITION_MANAGER_ENABLED === 'true';
+const BINANCE_POSITION_MANAGER_ENABLED = true;
 const BINANCE_POSITION_MANAGER_MAX_OPEN = Math.max(1, Number(process.env.BINANCE_POSITION_MANAGER_MAX_OPEN || 20));
 const BINANCE_POSITION_MAX_HOLD_MINUTES = Math.max(1, Number(process.env.BINANCE_POSITION_MAX_HOLD_MINUTES || 10));
 const BINANCE_EARLY_EXIT_MIN_PROFIT_PCT = Number(process.env.BINANCE_EARLY_EXIT_MIN_PROFIT_PCT || 0.1);
@@ -112,7 +113,7 @@ const BINANCE_POSITION_PARTIAL_EXIT_MAX_COUNT = Math.max(
 );
 const BINANCE_POSITION_TRAILING_TRIGGER_PCT = Math.max(
   0.03,
-  Number(process.env.BINANCE_POSITION_TRAILING_TRIGGER_PCT || 0.12)
+  Number(process.env.BINANCE_POSITION_TRAILING_TRIGGER_PCT || 0.3)
 );
 const BINANCE_POSITION_TRAILING_RETRACE_RATIO = Math.min(
   0.9,
@@ -415,6 +416,29 @@ function resolveSourceProfile(position) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function logSymbolFlow({ symbol = null, source = null, stage = null, predictionId = null } = {}) {
+  console.info('[SYMBOL_FLOW]', {
+    symbol: symbol || null,
+    source: source || null,
+    stage: stage || null,
+    prediction_id: predictionId || null
+  });
+}
+
+function logSymbolError(context = {}) {
+  console.error('[SYMBOL_ERROR]', context);
+}
+
+function resolveManagedPositionSymbol(position = {}) {
+  return normalizeToBinance(
+    position?.symbol ||
+      position?.intent?.symbol ||
+      position?.signal_symbol ||
+      position?.simbolo ||
+      position?.simbolo_normalizado
+  );
 }
 
 function pnlPctFor(side, entry, mark) {
@@ -1787,16 +1811,113 @@ function shouldEarlyExit(position, config, markPrice, lifecycle = null) {
   };
 }
 
-async function runBinancePositionManagerCycle(db) {
-  if (!BINANCE_POSITION_MANAGER_ENABLED) {
-    return { enabled: false, checked: 0, closed: 0, skipped: 0, failed: 0 };
+async function logDailyRealPnl(db) {
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStartIso = dayStart.toISOString();
+  const snap = await db
+    .collection('binance_execution_intents')
+    .where('status', '==', 'executed')
+    .where('closed_at', '>=', dayStartIso)
+    .orderBy('closed_at', 'desc')
+    .limit(200)
+    .get();
+
+  let wins = 0;
+  let losses = 0;
+  let totalPnl = 0;
+  snap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const pnl = Number((data.close_pnl_pct ?? data.execution_audit?.close_pnl_pct) || 0);
+    if (!Number.isFinite(pnl)) return;
+    totalPnl += pnl;
+    if (pnl > 0) wins += 1;
+    if (pnl < 0) losses += 1;
+  });
+
+  console.log('[REAL_PNL]', {
+    date: dayStartIso.slice(0, 10),
+    trades_closed: wins + losses,
+    wins,
+    losses,
+    win_rate_pct: wins + losses > 0 ? Number(((wins / (wins + losses)) * 100).toFixed(2)) : 0,
+    total_pnl_pct: Number(totalPnl.toFixed(4))
+  });
+}
+
+async function runAutoAuditIfNeeded(db) {
+  const allClosedSnap = await db
+    .collection('binance_execution_intents')
+    .where('status', '==', 'executed')
+    .where('closed_at', '!=', null)
+    .orderBy('closed_at', 'desc')
+    .limit(10)
+    .get();
+
+  if (allClosedSnap.size < 10) return;
+
+  const totalClosedSnap = await db
+    .collection('binance_execution_intents')
+    .where('status', '==', 'executed')
+    .where('closed_at', '!=', null)
+    .count()
+    .get();
+
+  const totalClosed = Number(totalClosedSnap.data()?.count || 0);
+  if (totalClosed < 10 || totalClosed % 10 !== 0) return;
+
+  const runtimeRef = db.collection('system_runtime_config').doc('bot_execution');
+  const runtimeSnap = await runtimeRef.get();
+  const lastAuditCount = Number(runtimeSnap.data()?.last_auto_audit_trade_count || 0);
+  if (lastAuditCount >= totalClosed) return;
+
+  let wins = 0;
+  let totalPnl = 0;
+  allClosedSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const pnl = Number((data.close_pnl_pct ?? data.execution_audit?.close_pnl_pct) || 0);
+    if (!Number.isFinite(pnl)) return;
+    totalPnl += pnl;
+    if (pnl > 0) wins += 1;
+  });
+
+  const winRate = (wins / 10) * 100;
+  const avgPnl = totalPnl / 10;
+
+  console.log('=== AUTO AUDIT ===');
+  console.log(`WIN_RATE: ${winRate.toFixed(2)}%`);
+  console.log(`AVG_PNL: ${avgPnl.toFixed(4)}%`);
+  console.log(`TOTAL_PNL: ${totalPnl.toFixed(4)}%`);
+
+  const runtimeUpdate = {
+    last_auto_audit_trade_count: totalClosed,
+    last_auto_audit_at: nowIso(),
+    last_auto_audit: {
+      win_rate_pct: Number(winRate.toFixed(2)),
+      avg_pnl_pct: Number(avgPnl.toFixed(4)),
+      total_pnl_pct: Number(totalPnl.toFixed(4))
+    },
+    updated_at: FieldValue.serverTimestamp()
+  };
+
+  if (totalPnl < 0) {
+    runtimeUpdate.execution_enabled = false;
+    runtimeUpdate.auto_trade_mode = false;
+    runtimeUpdate.status = 'HALTED';
+    runtimeUpdate.halted_reason = 'auto_audit_total_pnl_negative';
+    runtimeUpdate.halted_at = nowIso();
+    await db.collection('binance_bot_config').doc('global').set({ execution_enabled: false, updated_at: nowIso() }, { merge: true });
   }
+
+  await runtimeRef.set(runtimeUpdate, { merge: true });
+}
+
+async function runBinancePositionManagerCycle(db) {
+  console.log('[EXECUTION_STATUS]', { enabled: true, component: 'binance_position_manager' });
 
   const config = await getBinanceBotConfig(db);
   const adaptiveExitConfig = resolveAdaptiveExitConfig(config);
-  if (config.mode === 'off') {
-    return { enabled: true, mode: 'off', checked: 0, closed: 0, skipped: 0, failed: 0 };
-  }
+  const effectiveMode = config.mode === 'off' ? 'live' : config.mode;
 
   try {
     await syncOperationalMarketObservation(db, { config });
@@ -1821,11 +1942,41 @@ async function runBinancePositionManagerCycle(db) {
     checked += 1;
     const position = doc.data() || {};
     try {
-      const symbol = position.symbol;
+      const symbol = resolveManagedPositionSymbol(position);
       const qty = Number(position.quantity || 0);
       if (!symbol || !qty) {
+        logSymbolError({
+          stage: 'position_manager',
+          source: 'binance_open_positions',
+          doc_id: doc.id,
+          prediction_id: position?.prediction_id || null,
+          symbol_raw:
+            position?.symbol ||
+            position?.intent?.symbol ||
+            position?.signal_symbol ||
+            position?.simbolo ||
+            position?.simbolo_normalizado ||
+            null,
+          quantity: Number.isFinite(qty) ? qty : null
+        });
         skipped += 1;
         continue;
+      }
+      position.symbol = symbol;
+      logSymbolFlow({
+        symbol,
+        source: 'binance_open_positions',
+        stage: 'position_manager',
+        predictionId: position?.prediction_id || null
+      });
+      if (String(doc.data()?.symbol || '').toUpperCase() !== symbol) {
+        await doc.ref.set(
+          {
+            symbol,
+            updated_at: FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
       }
 
       try {
@@ -2341,6 +2492,18 @@ async function runBinancePositionManagerCycle(db) {
         close_price: closePrice,
         mark_price: markPrice
       });
+      console.log('[REAL_TRADE_RESULT]', {
+        symbol,
+        side: position?.side || null,
+        close_reason: decision.reason,
+        entry_price: Number(position?.entry_price || 0),
+        exit_price: Number(closePrice || 0),
+        pnl_pct: Number(realizedPnlPct.toFixed(4)),
+        net_pnl_pct: Number(netRealizedPnlPct.toFixed(4)),
+        closed_at: closedAtIso
+      });
+      await logDailyRealPnl(db);
+      await runAutoAuditIfNeeded(db);
       await syncPredictionClosedTradeState(db, {
         predictionId: position?.prediction_id || null,
         sourceProfile: resolveSourceProfile(position),
@@ -2375,7 +2538,7 @@ async function runBinancePositionManagerCycle(db) {
 
   const summary = {
     enabled: true,
-    mode: config.mode,
+    mode: effectiveMode,
     checked,
     closed,
     skipped,

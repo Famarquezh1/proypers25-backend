@@ -2,10 +2,14 @@ const db = require('../firebase-admin-config');
 const { FieldValue } = require('firebase-admin/firestore');
 const { fetchCandles } = require('../services/dataSources/fetchCandles');
 const {
+  FETCH_TIMEOUT_MS,
   BINANCE_CONCURRENCY_LIMIT,
   getBinanceConcurrencySnapshot
 } = require('../services/dataSources/binance');
-const { getTopBinanceFuturesSymbols } = require('../services/market/binanceSymbols');
+const {
+  ACTIVE_SYMBOLS,
+  getTopBinanceFuturesSymbols
+} = require('../services/market/binanceSymbols');
 const prediccionVelas = require('../scripts/prediccionVelas');
 const verificarPrediccionVelas = require('../scripts/verificacionVelas');
 const { run: runLearning } = require('../scripts/learning/learnFromCandleOutcomes');
@@ -24,6 +28,13 @@ const {
   selectPredictionConfigs,
   recordSymbolOutcome
 } = require('../lib/predictionSymbolRuntime');
+const {
+  detectSymbolImpulse,
+  getDetectedImpulses,
+  calculateImpulse,
+  getVolumeData,
+  getKlines
+} = require('../services/impulseDetector');
 
 const DEFAULT_PREDICTION_CONFIG = [
   { symbol: 'BTC-USD', timeframe: '5m', execution_mode: 'event_driven' },
@@ -73,13 +84,20 @@ const PREDICTION_CONFIG = (() => {
 const MIN_VERIFICATION_AGE_SECONDS = 60;
 // FEATURE_VELAS_MODEL_ENABLED toggles the feature-based candle model (writes to velas_probabilities).
 const FEATURE_VELAS_MODEL_ENABLED = process.env.FEATURE_VELAS_MODEL_ENABLED === 'true';
+const PREDICTION_TIMEOUT_MS = Math.max(25000, Number(process.env.PREDICTION_TIMEOUT_MS || 25000));
 const SCAN_CONCURRENCY = Math.max(1, Number(process.env.SCAN_CONCURRENCY || 10));
-const SCAN_SYMBOL_TIMEOUT_MS = Math.max(5000, Number(process.env.SCAN_SYMBOL_TIMEOUT_MS || 45000));
-const PREALERT_MAX_SYMBOLS = Math.max(1, Number(process.env.PREALERT_MAX_SYMBOLS || 20));
+const SCAN_SYMBOL_TIMEOUT_MS = Math.max(
+  PREDICTION_TIMEOUT_MS,
+  Number(process.env.SCAN_SYMBOL_TIMEOUT_MS || PREDICTION_TIMEOUT_MS)
+);
+const PREALERT_MAX_SYMBOLS = Math.max(
+  1,
+  Math.min(ACTIVE_SYMBOLS.length, Number(process.env.PREALERT_MAX_SYMBOLS || ACTIVE_SYMBOLS.length))
+);
 const PREALERT_SCAN_CONCURRENCY = Math.max(1, Number(process.env.PREALERT_SCAN_CONCURRENCY || 5));
 const PREALERT_SYMBOL_TIMEOUT_MS = Math.max(
-  5000,
-  Math.min(12000, Number(process.env.PREALERT_SYMBOL_TIMEOUT_MS || 10000))
+  PREDICTION_TIMEOUT_MS,
+  Number(process.env.PREALERT_SYMBOL_TIMEOUT_MS || PREDICTION_TIMEOUT_MS)
 );
 const PREALERT_CYCLE_TIMEOUT_MS = Math.max(30000, Number(process.env.PREALERT_CYCLE_TIMEOUT_MS || 90000));
 const PREALERT_WATCHDOG_TIMEOUT_MS = Math.max(
@@ -111,6 +129,8 @@ const PROFILING_FETCH_ENABLED =
   String(process.env.PROFILING_FETCH_ENABLED || 'false').toLowerCase() === 'true';
 const SCHEDULER_AUDIT_ENABLED =
   String(process.env.SCHEDULER_AUDIT_ENABLED || 'false').toLowerCase() === 'true';
+const DIAGNOSTIC_MODE =
+  String(process.env.DIAGNOSTIC_MODE || 'false').toLowerCase() === 'true';
 
 function resolvePrealertProducerConcurrency(requestedConcurrency) {
   const requested = Math.max(1, Number(requestedConcurrency) || PREALERT_SCAN_CONCURRENCY);
@@ -257,6 +277,20 @@ function logSymbolCancelled(taskContext) {
     reason: taskContext.cancellation_reason || 'timeout',
     stage: taskContext.stage === 'queued' ? 'queued' : 'running',
     cancelled_tasks_count: Number(taskContext.cancelled_tasks_count || 0)
+  });
+}
+
+function logPredictionTimeoutAdjusted(symbol, timeoutMs) {
+  console.log('[PREDICTION_TIMEOUT_ADJUSTED]', {
+    symbol: symbol || null,
+    timeout_ms: Number(timeoutMs) || PREDICTION_TIMEOUT_MS
+  });
+}
+
+function logTimeoutExpanded() {
+  console.log('[TIMEOUT_EXPANDED]', {
+    prediction_timeout_ms: PREDICTION_TIMEOUT_MS,
+    fetch_timeout_ms: FETCH_TIMEOUT_MS
   });
 }
 
@@ -505,7 +539,8 @@ async function resolvePredictionConfig(options = {}) {
     if (Array.isArray(symbols) && symbols.length > 0) {
       const dynamicConfig = buildDynamicPredictionConfig(symbols);
       const selected = await selectPredictionConfigs(db, dynamicConfig, { maxSymbols });
-      console.log('[CRON] dynamic symbols loaded', {
+      console.log('[CRON] active symbols loaded', {
+        active_symbols: ACTIVE_SYMBOLS,
         symbols_total: dynamicConfig.length,
         symbols_selected: selected.configs.length,
         cooldown_excluded: selected.summary.cooldown_excluded,
@@ -513,9 +548,9 @@ async function resolvePredictionConfig(options = {}) {
       });
       return selected;
     }
-    console.warn('[CRON] dynamic symbols empty, using PREDICTION_CONFIG fallback');
+    console.warn('[CRON] active symbols empty, using PREDICTION_CONFIG fallback');
   } catch (err) {
-    console.warn('[CRON] dynamic symbols unavailable, using PREDICTION_CONFIG fallback', err.message);
+    console.warn('[CRON] active symbols unavailable, using PREDICTION_CONFIG fallback', err.message);
   }
   const fallbackConfigs = Array.isArray(PREDICTION_CONFIG) ? PREDICTION_CONFIG : [];
   const selected = await selectPredictionConfigs(db, fallbackConfigs, { maxSymbols });
@@ -568,14 +603,17 @@ async function runPredictionCycle(options = {}) {
       : requestedCycleConcurrency;
   const progressState =
     options?.progressState && typeof options.progressState === 'object' ? options.progressState : null;
-  const symbolTimeoutMs =
+  const symbolTimeoutMs = Math.max(
+    PREDICTION_TIMEOUT_MS,
     Number(options.symbolTimeoutMs || 0) ||
-    (cycleType === 'prealert_cycle' ? PREALERT_SYMBOL_TIMEOUT_MS : SCAN_SYMBOL_TIMEOUT_MS);
+      (cycleType === 'prealert_cycle' ? PREALERT_SYMBOL_TIMEOUT_MS : SCAN_SYMBOL_TIMEOUT_MS)
+  );
   const includeFeatureModel =
     options.includeFeatureModel == null ? FEATURE_VELAS_MODEL_ENABLED : Boolean(options.includeFeatureModel);
   const includeCoherence =
     options.includeCoherence == null ? cycleType !== 'prealert_cycle' : Boolean(options.includeCoherence);
 
+  logTimeoutExpanded();
   const startedAt = nowIso();
   const cycleStartedMs = Date.now();
   console.log('[CRON] runPredictionCycle started', { startedAt, cycleType });
@@ -587,6 +625,17 @@ async function runPredictionCycle(options = {}) {
     : Array.isArray(predictionSelection)
       ? predictionSelection
       : [];
+
+  // [DEBUG] Critical: Check if predictionConfig is empty
+  console.log('[CRON] predictionConfig resolved', {
+    symbols_count: predictionConfig.length,
+    prediction_selection_type: typeof predictionSelection,
+    prediction_selection_keys: predictionSelection ? Object.keys(predictionSelection) : [],
+    first_symbol: predictionConfig[0]?.symbol || null,
+    load_symbols_ms: loadSymbolsMs,
+    cycle_type: cycleType
+  });
+
   const predictionSelectorSummary = predictionSelection?.summary || {
     cooldown_enabled: false,
     prioritization_enabled: false,
@@ -635,6 +684,7 @@ async function runPredictionCycle(options = {}) {
     let recordSymbolOutcomeTiming = null;
     let symbolCancelledLogged = false;
     try {
+      logPredictionTimeoutAdjusted(symbol, symbolTimeoutMs);
       result = await withTimeout(
         () =>
           prediccionVelas({
@@ -656,6 +706,82 @@ async function runPredictionCycle(options = {}) {
       const symbolDurationMs = Math.max(0, Date.now() - symbolStartedAtMs);
       processedOk += 1;
       symbolSuccess = true;
+
+      // [SIGNAL_EMISSION_DIAGNOSTIC] - Detect why signals are/aren't emitting
+      const diagnosticSignalInfo = {
+        symbol,
+        timeframe: config?.timeframe,
+        execution_mode: config?.execution_mode,
+        prediction_generated: !!result,
+        has_recomendacion: !!result?.recomendacion,
+        signal_emitted: result?.signal_emitted,
+        status: result?.status,
+        suppression_reason: result?.suppression_reason,
+        direction: result?.direction,
+        confidence: result?.confidence || result?.post_learning_scores?.confidence,
+        quantum_score: result?.quantum || result?.post_learning_scores?.quantum_score,
+        timing_score: result?.timing || result?.post_learning_scores?.timing_score,
+        gate_info: {
+          pre_event_gate_pass: result?.decision_pre_learning?.quality_gate_passed,
+          pre_event_gate_reason: result?.decision_pre_learning?.gate_reason,
+          event_context_filter_enabled: result?.event_context_filter?.enabled,
+          event_context_allow: result?.event_context_filter?.allow_event,
+          context_filter_would_block: result?.event_context_filter?.shadow?.would_block_event
+        },
+        execution_info: {
+          binance_execution_attempted: result?.binance_execution?.attempted,
+          binance_execution_executed: result?.binance_execution?.executed,
+          binance_execution_reason: result?.binance_execution?.reason
+        }
+      };
+      console.log('[SIGNAL_EMISSION_DIAGNOSTIC]', JSON.stringify(diagnosticSignalInfo));
+
+      // [SIGNAL_DECISION] - Detailed signal decision analysis
+      const actualConfidence = result?.confidence || result?.post_learning_scores?.confidence || 0;
+      const actualQuantum = result?.quantum || result?.post_learning_scores?.quantum_score || 0;
+      const actualTiming = result?.timing || result?.post_learning_scores?.timing_score || 0;
+      const classification = result?.direction === 'up' ? 'up' : result?.direction === 'down' ? 'down' : 'neutral';
+
+      // Simulate decision with relaxed thresholds for diagnostic
+      const relaxedConfidenceThreshold = 0.5;
+      const relaxedQuantumThreshold = 0.5;
+      const wouldEmitIfRelaxed =
+        !result?.suppression_reason &&
+        actualConfidence >= relaxedConfidenceThreshold &&
+        actualQuantum >= relaxedQuantumThreshold;
+
+      const signalDecision = {
+        symbol,
+        timeframe: config?.timeframe,
+        prediction: classification,
+        confidence: Number(actualConfidence.toFixed(4)),
+        quantum_score: Number(actualQuantum.toFixed(4)),
+        timing_score: Number(actualTiming.toFixed(4)),
+        classification: classification,
+        passed_quality_gate: result?.decision_pre_learning?.quality_gate_passed ?? null,
+        suppressed_reason: result?.suppression_reason || 'none',
+        signal_emitted: result?.signal_emitted || false,
+        diagnostic_mode_enabled: DIAGNOSTIC_MODE,
+        would_emit_if_relaxed: wouldEmitIfRelaxed,
+        relaxed_thresholds: {
+          confidence_min: relaxedConfidenceThreshold,
+          quantum_min: relaxedQuantumThreshold,
+          actual_confidence: Number(actualConfidence.toFixed(4)),
+          actual_quantum: Number(actualQuantum.toFixed(4))
+        }
+      };
+      console.log('[SIGNAL_DECISION]', JSON.stringify(signalDecision));
+
+      if (DIAGNOSTIC_MODE && wouldEmitIfRelaxed && !result?.signal_emitted) {
+        console.log('[DIAGNOSTIC_WOULD_EMIT]', JSON.stringify({
+          symbol,
+          reason: `Would emit with relaxed thresholds (confidence=${actualConfidence.toFixed(2)}, quantum=${actualQuantum.toFixed(2)})`,
+          current_suppression: result?.suppression_reason,
+          confidence_gap: Number((actualConfidence - (result?.post_learning_scores?.confidence_threshold || 0.6)).toFixed(4)),
+          quantum_gap: Number((actualQuantum - (result?.post_learning_scores?.quantum_threshold || 0.6)).toFixed(4))
+        }));
+      }
+
       if (result?.signal_emitted) {
         signalsEmitted += 1;
       } else {
@@ -815,6 +941,47 @@ async function runPredictionCycle(options = {}) {
       console.warn('[CRON] coherence snapshot failed', err.message);
     }
   }
+
+  // [SUPPRESSION_SUMMARY] - Final diagnostic of why signals weren't emitted
+  const emitRate = processedOk > 0 ? Number((signalsEmitted / processedOk * 100).toFixed(2)) : 0;
+  const suppressionRate = processedOk > 0 ? Number((signalsSuppressed / processedOk * 100).toFixed(2)) : 0;
+
+  console.log('[SUPPRESSION_SUMMARY]', JSON.stringify({
+    cycle_type: cycleType,
+    signals_emitted: signalsEmitted,
+    signals_suppressed: signalsSuppressed,
+    emit_rate_pct: emitRate,
+    suppression_rate_pct: suppressionRate,
+    suppression_breakdown: {
+      quality_gate: qualityGateSuppressed,
+      low_confidence: lowConfidenceSuppressed,
+      event_context: suppressionReasons['event_context'] || 0,
+      cooldown: predictionSelectorSummary.cooldown_excluded || 0
+    },
+    suppression_reasons_all: suppressionReasons,
+    total_processed: processedOk,
+    total_failed: failed,
+    emit_rate_pct: emitRate,
+    predefined_configs_count: predictionConfig.length,
+    diagnostic_mode_enabled: DIAGNOSTIC_MODE
+  }));
+
+  if (DIAGNOSTIC_MODE) {
+    console.log('[DIAGNOSTIC_CYCLE_ANALYSIS]', JSON.stringify({
+      cycle_type: cycleType,
+      analysis: {
+        prediction_coverage: Number((processedOk / predictionConfig.length * 100).toFixed(2)),
+        emission_rate: emitRate,
+        suppression_breakdown_pct: {
+          quality_gate: processedOk > 0 ? Number((qualityGateSuppressed / signalsSuppressed * 100).toFixed(1)) : 0,
+          low_confidence: processedOk > 0 ? Number((lowConfidenceSuppressed / signalsSuppressed * 100).toFixed(1)) : 0,
+          other: suppressionReasons ? Object.keys(suppressionReasons).filter(r => r !== 'quality_gate' && r !== 'low_confidence').length : 0
+        }
+      },
+      recommendation: emitRate < 5 ? 'TOO_RESTRICTIVE - Consider relaxing thresholds' : emitRate > 50 ? 'TOO_PERMISSIVE - Consider tightening thresholds' : 'NORMAL'
+    }));
+  }
+
   const cycleMetrics = {
     source: cycleType,
     created_at: nowIso(),
@@ -1550,6 +1717,79 @@ async function runLearningCycle() {
   }
 }
 
+async function runImpulseCycle(options = {}) {
+  const startedAt = nowIso();
+  const cycleStartedMs = Date.now();
+  console.log('[IMPULSE_CYCLE] Started at', startedAt);
+
+  try {
+    // Get list of symbols to monitor
+    const symbols = ACTIVE_SYMBOLS.slice(0, 25); // Top 25 symbols
+    console.log(`[IMPULSE_CYCLE] Scanning ${symbols.length} symbols for impulses`);
+
+    let detectedCount = 0;
+    const detectedImpulses = [];
+
+    // Batch detect impulses
+    for (const symbol of symbols) {
+      try {
+        const result = await detectSymbolImpulse(symbol);
+        
+        if (result.impulseDetected) {
+          detectedCount++;
+          detectedImpulses.push({
+            symbol: result.symbol,
+            direction: result.direction,
+            move1m: result.move1m,
+            move3m: result.move3m,
+            volumeRatio: result.volumeRatio,
+            strengthScore: result.strengthScore,
+            timestamp: result.timestamp
+          });
+          
+          console.log(`[IMPULSE_CYCLE] ✓ IMPULSE DETECTED: ${symbol}`, {
+            direction: result.direction,
+            move1m_pct: result.move1m.toFixed(4),
+            move3m_pct: result.move3m.toFixed(4),
+            volume_ratio: result.volumeRatio.toFixed(2),
+            strength_score: result.strengthScore.toFixed(2)
+          });
+        } else if (options.debug) {
+          console.log(`[IMPULSE_CYCLE] ✗ ${symbol}: ${result.reason || 'No impulse'}`);
+        }
+      } catch (err) {
+        console.error(`[IMPULSE_CYCLE] Error processing ${symbol}:`, err.message);
+      }
+    }
+
+    const durationMs = Date.now() - cycleStartedMs;
+    console.log(`[IMPULSE_CYCLE] Completed in ${durationMs}ms`, {
+      symbols_scanned: symbols.length,
+      impulses_detected: detectedCount,
+      detected_impulses: detectedImpulses.map(i => `${i.symbol}(${i.direction})`)
+    });
+
+    return {
+      success: true,
+      impulses_detected: detectedCount,
+      detected_impulses: detectedImpulses,
+      duration_ms: durationMs
+    };
+
+  } catch (err) {
+    const durationMs = Date.now() - cycleStartedMs;
+    console.error('[IMPULSE_CYCLE] Failed', {
+      error: err.message,
+      duration_ms: durationMs
+    });
+    return {
+      success: false,
+      error: err.message,
+      duration_ms: durationMs
+    };
+  }
+}
+
 async function runAuditCycle() {
   const startedAt = nowIso();
   console.log('[CRON] runAuditCycle started', startedAt);
@@ -1636,5 +1876,6 @@ module.exports = {
   runVerificationCycle,
   runLearningCycle,
   runAuditCycle,
+  runImpulseCycle,
   getPreAlertRuntimeMetrics
 };

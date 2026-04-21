@@ -11,7 +11,7 @@
 const DEFAULT_GLOBAL_PARAMS = {
   confidence_min: 0.65,
   quantum_min: 0.60,
-  timing_min: 0.55,
+  timing_min: 0.60,
   rr_min: 1.20,
   min_expected_move_pct: 0.25,
   execution_score_min: 50,
@@ -21,9 +21,9 @@ const DEFAULT_GLOBAL_PARAMS = {
 };
 
 const HARD_LIMITS = {
-  confidence_min: { min: 0.60, max: 0.85 },
-  quantum_min: { min: 0.55, max: 0.85 },
-  timing_min: { min: 0.50, max: 0.85 },
+  confidence_min: { min: 0.65, max: 0.85 },
+  quantum_min: { min: 0.60, max: 0.85 },
+  timing_min: { min: 0.60, max: 0.85 },
   rr_min: { min: 1.10, max: 2.00 },
   min_expected_move_pct: { min: 0.15, max: 1.00 },
   execution_score_min: { min: 45, max: 100 }
@@ -106,7 +106,7 @@ async function getEffectiveParams(db, symbol) {
     return {
       confidence_min: symbolConfig.confidence_min ?? globalConfig.confidence_min ?? 0.65,
       quantum_min: symbolConfig.quantum_min ?? globalConfig.quantum_min ?? 0.60,
-      timing_min: symbolConfig.timing_min ?? globalConfig.timing_min ?? 0.55,
+      timing_min: symbolConfig.timing_min ?? globalConfig.timing_min ?? 0.60,
       rr_min: symbolConfig.rr_min ?? globalConfig.rr_min ?? 1.20,
       min_expected_move_pct: symbolConfig.min_expected_move_pct ?? globalConfig.min_expected_move_pct ?? 0.25,
       execution_score_min: symbolConfig.execution_score_min ?? globalConfig.execution_score_min ?? 50,
@@ -121,7 +121,7 @@ async function getEffectiveParams(db, symbol) {
     return {
       confidence_min: 0.65,
       quantum_min: 0.60,
-      timing_min: 0.55,
+      timing_min: 0.60,
       rr_min: 1.20,
       min_expected_move_pct: 0.25,
       execution_score_min: 50,

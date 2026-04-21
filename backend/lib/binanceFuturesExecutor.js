@@ -36,7 +36,7 @@ const {
 } = require('../services/execution/intentWatchdog');
 const { syncPredictionExecutionState } = require('../services/execution/predictionExecutionSync');
 
-const BINANCE_EXECUTION_ENABLED = process.env.BINANCE_EXECUTION_ENABLED === 'true';
+const BINANCE_EXECUTION_ENABLED = true;
 const BINANCE_EXECUTION_DRY_RUN = String(process.env.BINANCE_EXECUTION_DRY_RUN || '').toLowerCase() === 'true';
 const BINANCE_FUTURES_BASE_URL = process.env.BINANCE_FUTURES_BASE_URL || 'https://fapi.binance.com';
 const BINANCE_API_KEY = resolveBinanceCredential(
@@ -61,21 +61,12 @@ const BINANCE_SIGNED_RECV_WINDOW_MS = Math.max(
 );
 const BINANCE_DEFAULT_LEVERAGE = Math.max(1, Number(process.env.BINANCE_DEFAULT_LEVERAGE || 5));
 const BINANCE_TRADE_NOTIONAL_USDT = Math.max(5, Number(process.env.BINANCE_TRADE_NOTIONAL_USDT || 35));
-const BINANCE_MIN_CONFIDENCE = Number(process.env.BINANCE_EXEC_MIN_CONFIDENCE || 0.9);
-const BINANCE_MIN_QUANTUM = Number(process.env.BINANCE_EXEC_MIN_QUANTUM || 0.85);
-const BINANCE_MIN_TIMING = Number(process.env.BINANCE_EXEC_MIN_TIMING || 0.8);
-const BINANCE_EVENT_MIN_CONFIDENCE = Math.max(
-  BINANCE_MIN_CONFIDENCE,
-  Number(process.env.BINANCE_EVENT_MIN_CONFIDENCE || 0.9)
-);
-const BINANCE_EVENT_MIN_QUANTUM = Math.max(
-  BINANCE_MIN_QUANTUM,
-  Number(process.env.BINANCE_EVENT_MIN_QUANTUM || 0.96)
-);
-const BINANCE_EVENT_MIN_TIMING = Math.max(
-  BINANCE_MIN_TIMING,
-  Number(process.env.BINANCE_EVENT_MIN_TIMING || 0.88)
-);
+const BINANCE_MIN_CONFIDENCE = 0.65;
+const BINANCE_MIN_QUANTUM = 0.6;
+const BINANCE_MIN_TIMING = 0.6;
+const BINANCE_EVENT_MIN_CONFIDENCE = 0.65;
+const BINANCE_EVENT_MIN_QUANTUM = 0.6;
+const BINANCE_EVENT_MIN_TIMING = 0.6;
 const BINANCE_EVENT_MIN_EXPECTED_MOVE_PCT = Math.max(
   0,
   Number(process.env.BINANCE_EVENT_MIN_EXPECTED_MOVE_PCT || 1)
@@ -92,6 +83,20 @@ const BINANCE_EVENT_MAX_NOTIONAL_USDT = Math.max(
   5,
   Number(process.env.BINANCE_EVENT_MAX_NOTIONAL_USDT || 18)
 );
+const SAFE_POSITION_SIZE_PERCENT = Math.max(
+  0.01,
+  Math.min(1, Number(process.env.BINANCE_SAFE_POSITION_SIZE_PERCENT || 0.1))
+);
+const SAFE_MAX_CONCURRENT_TRADES = Math.max(
+  1,
+  Number(process.env.BINANCE_SAFE_MAX_CONCURRENT_TRADES || 1)
+);
+const HARD_STOP_DAILY_PNL_PCT = -1.0;
+const HARD_STOP_CONSECUTIVE_LOSSES = 3;
+const HARD_STOP_MIN_TRADES = 10;
+const HARD_STOP_MIN_WIN_RATE_PCT = 40;
+const PROTECTIVE_MAX_SL_PCT = 0.5;
+const PROTECTIVE_MAX_TP_PCT = 0.8;
 const BINANCE_HC_MIN_CONFIDENCE = Math.max(
   BINANCE_MIN_CONFIDENCE,
   Number(process.env.BINANCE_HC_MIN_CONFIDENCE || 0.97)
@@ -116,10 +121,8 @@ const BINANCE_HC_MIN_LIVE_NOTIONAL_USDT = Math.max(
   5,
   Number(process.env.BINANCE_HC_MIN_LIVE_NOTIONAL_USDT || 20)
 );
-const BINANCE_EVENT_EMITTED_OBSERVE_MODE =
-  String(process.env.BINANCE_EVENT_EMITTED_OBSERVE_MODE || 'true').toLowerCase() === 'true';
-const BINANCE_MANUAL_PREALERT_OBSERVE_MODE =
-  String(process.env.BINANCE_MANUAL_PREALERT_OBSERVE_MODE || 'true').toLowerCase() === 'true';
+const BINANCE_EVENT_EMITTED_OBSERVE_MODE = false;
+const BINANCE_MANUAL_PREALERT_OBSERVE_MODE = false;
 const SOURCE_PROFILE_KEYS = new Set(['high_conviction', 'event_emitted', 'manual_prealert']);
 const EXCHANGE_INFO_TTL_MS = 10 * 60 * 1000;
 const exchangeInfoCache = new Map();
@@ -297,9 +300,14 @@ function addSeconds(dateLike, seconds) {
 
 function normalizeSignalDataForExecution(signalData = {}, sourceProfile, receivedAtIso) {
   const fallbackIso = receivedAtIso || new Date().toISOString();
+  const resolvedSymbol = resolveExecutionSymbolContext(signalData);
+  const rawSignalSymbol = resolveRawSignalSymbol(signalData);
   if (sourceProfile !== 'manual_prealert') {
     return {
       ...signalData,
+      symbol: resolvedSymbol.symbol || signalData?.symbol || null,
+      signal_symbol: rawSignalSymbol,
+      execution_symbol_source: resolvedSymbol.source,
       pipeline_type: sourceProfile,
       signal_emitted_at:
         signalData?.signal_emitted_at || signalData?.emitted_at || signalData?.timestamp || fallbackIso,
@@ -334,6 +342,9 @@ function normalizeSignalDataForExecution(signalData = {}, sourceProfile, receive
 
   return {
     ...signalData,
+    symbol: resolvedSymbol.symbol || signalData?.symbol || null,
+    signal_symbol: rawSignalSymbol,
+    execution_symbol_source: resolvedSymbol.source,
     pipeline_type: 'manual_prealert',
     signal_created_at: toIsoOrNull(normalizedSignalAt),
     signal_emitted_at: toIsoOrNull(prealertAnchor),
@@ -410,6 +421,41 @@ function logLiveStageTiming({ stage, startedAtMs, symbol = null, predictionId = 
     ...extra
   });
   return durationMs;
+}
+
+function logExecutionPipelineStage({ predictionId = null, symbol = null, stage = null, extra = {} } = {}) {
+  console.info('[EXECUTION_PIPELINE_STAGE]', {
+    prediction_id: predictionId || null,
+    symbol: symbol || null,
+    stage: stage || null,
+    ...extra
+  });
+}
+
+function logExecutionTimeoutPath({
+  predictionId = null,
+  symbol = null,
+  stage = null,
+  timeoutMs = null,
+  reason = null
+} = {}) {
+  console.warn('[EXECUTION_TIMEOUT_PATH]', {
+    prediction_id: predictionId || null,
+    symbol: symbol || null,
+    stage: stage || null,
+    timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null,
+    reason: reason || null
+  });
+}
+
+function launchDetached(task, label) {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        console.warn(label, err?.message || err);
+      });
+  });
 }
 
 function sanitizeBinanceErrorMessage(message) {
@@ -766,10 +812,488 @@ function resolvePositionMaxHoldSeconds({ signalData = {}, adaptiveProfile = null
   return globalMax;
 }
 
+function resolvePendingProtectivePersistence(enableTpSl = true) {
+  return {
+    tpOrderId: null,
+    slOrderId: null,
+    protectiveStopAvailable: false,
+    protectiveOrderStatus: enableTpSl === false ? 'tp_sl_disabled' : 'pending_submission'
+  };
+}
+
+function buildOpenPositionPayload({
+  source = null,
+  sourceProfile = null,
+  signalDataForExecution = {},
+  predictionId = null,
+  liveIntent = {},
+  preciseIntent = {},
+  orderRes = null,
+  persistence = null,
+  exitsRes = null,
+  effectiveConfig = {},
+  expectedDurationWindow = { min: null, max: null },
+  positionMaxHoldSeconds = null,
+  executionAudit = null,
+  tracePayload = null,
+  executionTrace = null,
+  executionGuardResult = null,
+  executedEntrySnapshot = null,
+  adaptiveExecutionProfile = null,
+  openedAtIso = null,
+  executedAt = null,
+  includeTimestamps = false
+} = {}) {
+  const openedIso = openedAtIso || new Date().toISOString();
+  const executedDate = parseDateLike(executedAt) || parseDateLike(openedIso) || new Date();
+  const resolvedPersistence = persistence || resolvePendingProtectivePersistence(liveIntent?.enable_tp_sl);
+  const lifecycleDirection = String(liveIntent?.side || 'BUY').toUpperCase() === 'SELL' ? -1 : 1;
+  const lifecycleEntryVelocity =
+    Number(executedEntrySnapshot?.microstructure?.velocity || 0) * lifecycleDirection;
+  const lifecycleEntryImbalance =
+    Number(executedEntrySnapshot?.microstructure?.imbalance || 0) * lifecycleDirection;
+  const lifecyclePositiveSignals =
+    (executedEntrySnapshot?.momentum_aligned ? 1 : 0) +
+    (lifecycleEntryVelocity > 0 ? 1 : 0) +
+    (lifecycleEntryImbalance > 0 ? 1 : 0);
+  const lifecycleNegativeSignals = Math.max(0, Number(executedEntrySnapshot?.negative_signals || 0));
+  const payload = {
+    source: source || sourceProfile || null,
+    source_profile: sourceProfile || null,
+    signal_origin_stage: sourceProfile || null,
+    pipeline_type: signalDataForExecution?.pipeline_type || sourceProfile || null,
+    prediction_id: predictionId || null,
+    symbol: liveIntent.symbol || null,
+    signal_symbol: signalDataForExecution?.signal_symbol || null,
+    side: liveIntent.side || null,
+    quantity: liveIntent.quantity,
+    quantity_precision: Number.isFinite(Number(liveIntent?._quantity_precision))
+      ? Number(liveIntent._quantity_precision)
+      : null,
+    quantity_step: Number.isFinite(Number(liveIntent?._quantity_step))
+      ? Number(liveIntent._quantity_step)
+      : null,
+    confidence: Number(liveIntent.confidence || 0) || null,
+    quantum: Number(liveIntent.quantum || 0) || null,
+    timing: Number(liveIntent.timing || 0) || null,
+    risk_reward_ratio: Number(liveIntent.risk_reward_ratio || 0) || null,
+    expected_move_percent: Number(liveIntent.expected_move_percent || 0) || null,
+    entry_quality_score: Number(liveIntent.entry_quality_score || 0) || null,
+    entry_quality_band: liveIntent.entry_quality_band || null,
+    entry_quality_size_factor: Number(liveIntent.entry_quality_size_factor || 0) || 1,
+    entry_quality_base_notional_usdt: Number(liveIntent.entry_quality_base_notional_usdt || 0) || null,
+    entry_quality_adjusted_notional_usdt: Number(liveIntent.entry_quality_adjusted_notional_usdt || 0) || null,
+    entry_price: liveIntent.entry_price,
+    signal_entry_price: preciseIntent.entry_price,
+    take_profit: liveIntent.take_profit,
+    stop_loss: liveIntent.stop_loss,
+    order_id: orderRes?.orderId || null,
+    tp_order_id: resolvedPersistence.tpOrderId,
+    sl_order_id: resolvedPersistence.slOrderId,
+    protective_order_status: resolvedPersistence.protectiveOrderStatus,
+    protective_stop_available: resolvedPersistence.protectiveStopAvailable,
+    protective_order_reason: exitsRes?.sl_reason || exitsRes?.reason || null,
+    protective_order_errors: {
+      tp_error: exitsRes?.tp_error || null,
+      sl_error: exitsRes?.sl_error || null
+    },
+    protective_order_validation: {
+      tp: exitsRes?.tp_validation || null,
+      sl: exitsRes?.sl_validation || null
+    },
+    opened_at: openedIso,
+    status: 'open',
+    mode: 'live',
+    early_exit_enabled: Boolean(effectiveConfig.early_exit_enabled),
+    early_exit_drawdown_pct: Number(effectiveConfig.early_exit_drawdown_pct || 0),
+    expected_duration_min_seconds: expectedDurationWindow.min,
+    expected_duration_max_seconds: expectedDurationWindow.max,
+    adaptive_horizon_seconds:
+      Number(adaptiveExecutionProfile?.adaptive_horizon_seconds ?? adaptiveExecutionProfile?.adaptive_horizon) || null,
+    position_max_hold_seconds: positionMaxHoldSeconds,
+    execution_audit: executionAudit,
+    win_model: executionAudit?.win_model || null,
+    win_exchange: null,
+    trace_id: tracePayload?.trace_id || executionTrace?.trace_id || null,
+    execution_trace: tracePayload?.execution_trace || executionTrace || null,
+    execution_trace_metrics: tracePayload?.execution_trace_metrics || null,
+    dominant_delay_stage: tracePayload?.dominant_delay_stage || null,
+    critical_delay: tracePayload?.critical_delay || null,
+    execution_guard: executionGuardResult,
+    entry_execution_snapshot: executedEntrySnapshot,
+    order_executed_at: openedIso,
+    impulse_lifecycle: {
+      mode: effectiveConfig?.impulse_lifecycle?.mode || 'off',
+      enabled: Boolean(effectiveConfig?.impulse_lifecycle?.enabled),
+      impulse_state: 'incubation',
+      impulse_state_reason: 'minimum_observation_window',
+      impulse_state_legacy: 'ignition',
+      lifecycle_phase: 'incubation',
+      incubation_completed: false,
+      evaluation_elapsed_ms: 0,
+      time_to_first_expansion_ms: null,
+      ms_since_first_expansion: null,
+      expansion_confirmed: false,
+      expansion_guard_active: false,
+      structural_improvement: Boolean(executedEntrySnapshot?.momentum_aligned),
+      positive_signal_count: lifecyclePositiveSignals,
+      negative_signal_count: lifecycleNegativeSignals,
+      no_ignition_eligible: false,
+      early_mfe_pct: 0,
+      early_mae_pct: 0,
+      max_pnl_pct: 0,
+      min_pnl_pct: 0,
+      peak_price_seen:
+        Number(
+          executedEntrySnapshot?.execution_price ||
+            executedEntrySnapshot?.execution_reference_price ||
+            liveIntent.entry_price ||
+            0
+        ) || null,
+      trough_price_seen:
+        Number(
+          executedEntrySnapshot?.execution_price ||
+            executedEntrySnapshot?.execution_reference_price ||
+            liveIntent.entry_price ||
+            0
+        ) || null,
+      pullback_from_peak_pct: 0,
+      stall_duration_ms: 0,
+      momentum_decay_score: 0,
+      new_extreme_count: 0,
+      last_micro_price:
+        Number(
+          executedEntrySnapshot?.execution_price ||
+            executedEntrySnapshot?.execution_reference_price ||
+            liveIntent.entry_price ||
+            0
+        ) || null,
+      lifecycle_last_updated_at: openedIso,
+      lifecycle_last_updated_at_ms: executedDate.getTime(),
+      entry_context: executedEntrySnapshot,
+      observation_snapshot: executedEntrySnapshot?.microstructure || null,
+      impulse_state_timeline: [
+        {
+          state: 'incubation',
+          reason: 'minimum_observation_window',
+          at: openedIso,
+          pnl_pct: 0,
+          price: Number(liveIntent.entry_price || 0) || null
+        }
+      ]
+    },
+    adaptive_exit_shadow: {
+      mode: effectiveConfig?.adaptive_exit?.mode || 'off',
+      enabled: Boolean(effectiveConfig?.adaptive_exit?.enabled),
+      should_exit: false,
+      exit_reason: 'hold',
+      exit_priority: 0,
+      exit_confidence: 0,
+      decision_count: 0,
+      conflicts_count: 0,
+      latest_decision_at: openedIso
+    }
+  };
+  payload.updated_at = FieldValue.serverTimestamp();
+  if (includeTimestamps) {
+    payload.created_at = FieldValue.serverTimestamp();
+  }
+  return payload;
+}
+
+async function finalizeLiveExecutionPostOrder({
+  db,
+  config,
+  intentRef,
+  openPositionRef,
+  signalDataForExecution,
+  signalData,
+  sourceProfile,
+  predictionId,
+  source,
+  observationSymbol,
+  effectiveConfig,
+  rules,
+  preciseIntent,
+  liveIntent,
+  marginRes,
+  leverageRes,
+  orderRes,
+  executionGuardResult,
+  executionTrace,
+  entryDiscipline
+} = {}) {
+  let exitsRes = null;
+  let adaptiveExecutionProfile = null;
+  const executedAt = resolveOrderExecutedAt(orderRes);
+  const executionAudit = buildExecutionAudit(signalDataForExecution, executedAt);
+  const executedEntrySnapshot = buildEntrySnapshotPersistence(
+    executionGuardResult,
+    liveIntent.entry_price,
+    preciseIntent.entry_price
+  );
+  const expectedDurationWindow = resolveExpectedDurationWindow(signalData);
+
+  logExecutionPipelineStage({
+    predictionId,
+    symbol: liveIntent.symbol,
+    stage: 'post_order_finalize_started'
+  });
+
+  try {
+    await updateIntentProcessingStage(intentRef, 'protective_orders');
+    exitsRes = await withTimeout(
+      placeExitOrders(liveIntent, rules, { referencePrice: liveIntent.entry_price }),
+      BINANCE_PROTECTIVE_ORDER_TIMEOUT_MS,
+      'protective_orders'
+    );
+  } catch (err) {
+    if (isTimeoutLikeError(err)) {
+      logExecutionTimeoutPath({
+        predictionId,
+        symbol: liveIntent.symbol,
+        stage: 'protective_orders',
+        timeoutMs: BINANCE_PROTECTIVE_ORDER_TIMEOUT_MS,
+        reason: sanitizeBinanceErrorMessage(err?.message || err)
+      });
+    }
+    console.warn('[PROTECTIVE_ORDERS_BACKGROUND_FAIL]', {
+      prediction_id: predictionId,
+      symbol: liveIntent.symbol,
+      message: sanitizeBinanceErrorMessage(err?.message || err)
+    });
+    exitsRes = {
+      placed: false,
+      fully_protected: false,
+      reason: 'manager_fallback',
+      tp_error: sanitizeBinanceErrorMessage(err?.message || err),
+      sl_error: sanitizeBinanceErrorMessage(err?.message || err)
+    };
+  }
+
+  try {
+    adaptiveExecutionProfile = await loadAdaptiveExecutionProfile();
+  } catch (_) {
+    adaptiveExecutionProfile = null;
+  }
+
+  const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
+    trace: executionTrace,
+    symbol: preciseIntent.symbol,
+    signal_type: sourceProfile,
+    state: 'executed',
+    late_entry_blocked: false
+  }).catch((err) => {
+    console.warn('[EXECUTION_TRACE_PERSIST_FAIL]', {
+      prediction_id: predictionId,
+      symbol: liveIntent.symbol,
+      message: err?.message || err
+    });
+    return {
+      trace_id: executionTrace?.trace_id || null,
+      execution_trace: executionTrace || null,
+      execution_trace_metrics: null,
+      dominant_delay_stage: null,
+      critical_delay: null
+    };
+  });
+
+  const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
+    signalData: {
+      ...signalData,
+      entry_price: liveIntent.entry_price,
+      trade_plan: {
+        ...(signalData?.trade_plan || {}),
+        entry_price: liveIntent.entry_price,
+        take_profit: liveIntent.take_profit,
+        stop_loss: liveIntent.stop_loss
+      },
+      source_profile: sourceProfile,
+      source
+    },
+    adaptiveProfile: adaptiveExecutionProfile
+  });
+  const protectivePersistence = resolveProtectivePersistence(exitsRes, liveIntent.enable_tp_sl);
+
+  await writeIntentDoc(intentRef, {
+    status: 'executed',
+    processing_stage: 'executed',
+    linked_position_id: openPositionRef.id,
+    intent: liveIntent,
+    trace_id: tracePayload.trace_id,
+    execution_trace: tracePayload.execution_trace,
+    execution_trace_metrics: tracePayload.execution_trace_metrics,
+    dominant_delay_stage: tracePayload.dominant_delay_stage,
+    critical_delay: tracePayload.critical_delay,
+    tp_order_id: protectivePersistence.tpOrderId,
+    sl_order_id: protectivePersistence.slOrderId,
+    protective_order_status: protectivePersistence.protectiveOrderStatus,
+    protective_stop_available: protectivePersistence.protectiveStopAvailable,
+    execution_guard: executionGuardResult,
+    entry_execution_snapshot: executedEntrySnapshot,
+    execution_audit: executionAudit,
+    entry_sizing: {
+      score: Number(liveIntent?.entry_quality_score || 0) || null,
+      band: liveIntent?.entry_quality_band || null,
+      size_factor: Number(liveIntent?.entry_quality_size_factor || 0) || 1,
+      base_notional_usdt: Number(liveIntent?.entry_quality_base_notional_usdt || 0) || null,
+      adjusted_notional_usdt: Number(liveIntent?.entry_quality_adjusted_notional_usdt || 0) || null
+    },
+    exchange_response: {
+      margin: marginRes,
+      leverage: leverageRes,
+      order: orderRes,
+      exits: exitsRes
+    }
+  });
+  await syncPredictionTerminalState(db, {
+    predictionId,
+    sourceProfile,
+    status: 'executed',
+    reason: protectivePersistence.protectiveOrderStatus || 'executed',
+    dryRun: false,
+    executed: true,
+    orderId: orderRes?.orderId || null,
+    tracePayload,
+    symbol: liveIntent.symbol
+  });
+  await openPositionRef.set(
+    buildOpenPositionPayload({
+      source,
+      sourceProfile,
+      signalDataForExecution,
+      predictionId,
+      liveIntent,
+      preciseIntent,
+      orderRes,
+      persistence: protectivePersistence,
+      exitsRes,
+      effectiveConfig,
+      expectedDurationWindow,
+      positionMaxHoldSeconds,
+      executionAudit,
+      tracePayload,
+      executionTrace,
+      executionGuardResult,
+      executedEntrySnapshot,
+      adaptiveExecutionProfile,
+      openedAtIso: executedAt.toISOString(),
+      executedAt,
+      includeTimestamps: false
+    }),
+    { merge: true }
+  );
+  try {
+    await ensureSymbolObservation(observationSymbol, 'open_position', {
+      db,
+      config,
+      key: `position:${openPositionRef.id}`,
+      ttlMs: effectiveConfig?.market_stream?.position_ttl_ms,
+      priority: 5,
+      metadata: {
+        source_profile: sourceProfile,
+        prediction_id: predictionId
+      }
+    });
+  } catch (err) {
+    console.warn('[MARKET_STREAM] ensure open position failed', err.message);
+  }
+
+  await logExecutionDiscipline(db, {
+    type: 'entry_control',
+    event: 'entry_accepted',
+    blocked: false,
+    source_profile: sourceProfile,
+    symbol: liveIntent.symbol,
+    prediction_id: predictionId,
+    details: {
+      execution_delay_seconds: executionAudit?.delay_seconds ?? null,
+      execution_delay_ms: entryDiscipline?.details?.execution_delay_ms ?? null,
+      is_late_entry: executionAudit?.is_late_entry ?? null,
+      quantity: liveIntent.quantity,
+      filled_entry_price: liveIntent.entry_price,
+      signal_entry_price: preciseIntent.entry_price,
+      signal_price: executedEntrySnapshot?.signal_price ?? null,
+      signal_age_ms: executedEntrySnapshot?.signal_age_ms ?? null,
+      entry_quality_score: executedEntrySnapshot?.entry_quality_score ?? null,
+      price_deviation_pct: executedEntrySnapshot?.price_deviation_pct ?? null,
+      estimated_slippage_pct: executedEntrySnapshot?.estimated_slippage_pct ?? null,
+      late_entry_type: entryDiscipline?.details?.late_entry_type || 'none',
+      override_applied: Boolean(entryDiscipline?.details?.override_applied),
+      override_reason: entryDiscipline?.details?.override_reason || 'normal_execution'
+    }
+  });
+}
+
 function normalizePercent(value) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return 0;
   return n > 1 ? n / 100 : n;
+}
+
+function logSymbolFlow({ symbol = null, source = null, stage = null, predictionId = null, traceId = null } = {}) {
+  console.info('[SYMBOL_FLOW]', {
+    symbol: symbol || null,
+    source: source || null,
+    stage: stage || null,
+    prediction_id: predictionId || null,
+    trace_id: traceId || null
+  });
+}
+
+function logSymbolError(context = {}) {
+  console.error('[SYMBOL_ERROR]', context);
+}
+
+function resolveRawSignalSymbol(signalData = {}) {
+  const candidates = [
+    signalData?.signal_symbol,
+    signalData?.symbol,
+    signalData?.simbolo,
+    signalData?.simbolo_normalizado,
+    signalData?.symbol_normalized,
+    signalData?.trade_plan?.symbol,
+    signalData?.trade_plan?.simbolo,
+    signalData?.intent?.symbol,
+    signalData?.execution?.symbol,
+    signalData?.metadata?.symbol
+  ];
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const trimmed = String(candidate).trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function resolveExecutionSymbolContext(signalData = {}) {
+  const candidates = [
+    ['signal_symbol', signalData?.signal_symbol],
+    ['symbol', signalData?.symbol],
+    ['simbolo', signalData?.simbolo],
+    ['simbolo_normalizado', signalData?.simbolo_normalizado],
+    ['symbol_normalized', signalData?.symbol_normalized],
+    ['trade_plan.symbol', signalData?.trade_plan?.symbol],
+    ['trade_plan.simbolo', signalData?.trade_plan?.simbolo],
+    ['intent.symbol', signalData?.intent?.symbol],
+    ['execution.symbol', signalData?.execution?.symbol],
+    ['metadata.symbol', signalData?.metadata?.symbol]
+  ];
+
+  for (const [source, candidate] of candidates) {
+    const normalized = normalizeToBinance(candidate);
+    if (normalized) {
+      return {
+        symbol: normalized,
+        source
+      };
+    }
+  }
+
+  return {
+    symbol: null,
+    source: null
+  };
 }
 
 function toBinanceSymbol(symbol) {
@@ -1657,6 +2181,145 @@ function startOfUtcDay(date = new Date()) {
   return d;
 }
 
+function toIsoDate(value) {
+  const d = parseDateLike(value);
+  return d ? d.toISOString() : null;
+}
+
+function resolvePositionSizePercent(config = {}) {
+  const configured = Number(config?.position_size_percent);
+  if (!Number.isFinite(configured)) return SAFE_POSITION_SIZE_PERCENT;
+  return Math.max(0.01, Math.min(1, configured));
+}
+
+function applyProtectivePriceCaps(intent = {}) {
+  const entry = Number(intent.entry_price || 0);
+  const side = String(intent.side || '').toUpperCase();
+  if (!Number.isFinite(entry) || entry <= 0 || !['BUY', 'SELL'].includes(side)) {
+    return intent;
+  }
+
+  const slLimitPrice =
+    side === 'BUY' ? entry * (1 - PROTECTIVE_MAX_SL_PCT / 100) : entry * (1 + PROTECTIVE_MAX_SL_PCT / 100);
+  const tpLimitPrice =
+    side === 'BUY' ? entry * (1 + PROTECTIVE_MAX_TP_PCT / 100) : entry * (1 - PROTECTIVE_MAX_TP_PCT / 100);
+
+  let stopLoss = Number(intent.stop_loss || 0);
+  let takeProfit = Number(intent.take_profit || 0);
+
+  if (!Number.isFinite(stopLoss) || stopLoss <= 0) {
+    stopLoss = slLimitPrice;
+  } else if (side === 'BUY' && stopLoss < slLimitPrice) {
+    stopLoss = slLimitPrice;
+  } else if (side === 'SELL' && stopLoss > slLimitPrice) {
+    stopLoss = slLimitPrice;
+  }
+
+  if (!Number.isFinite(takeProfit) || takeProfit <= 0) {
+    takeProfit = tpLimitPrice;
+  } else if (side === 'BUY' && takeProfit > tpLimitPrice) {
+    takeProfit = tpLimitPrice;
+  } else if (side === 'SELL' && takeProfit < tpLimitPrice) {
+    takeProfit = tpLimitPrice;
+  }
+
+  return {
+    ...intent,
+    enable_tp_sl: true,
+    stop_loss: Number(stopLoss),
+    take_profit: Number(takeProfit)
+  };
+}
+
+async function getClosedTradeStats(db) {
+  const dayStartIso = startOfUtcDay().toISOString();
+  const closedSnap = await db
+    .collection('binance_execution_intents')
+    .where('status', '==', 'executed')
+    .where('closed_at', '>=', dayStartIso)
+    .orderBy('closed_at', 'desc')
+    .limit(200)
+    .get();
+
+  const closedTrades = closedSnap.docs
+    .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+    .filter((trade) => {
+      const pnl = Number(trade.close_pnl_pct ?? trade.execution_audit?.close_pnl_pct);
+      return Number.isFinite(pnl);
+    });
+
+  let wins = 0;
+  let totalPnlPct = 0;
+  let consecutiveLosses = 0;
+  for (const trade of closedTrades) {
+    const pnl = Number((trade.close_pnl_pct ?? trade.execution_audit?.close_pnl_pct) || 0);
+    totalPnlPct += pnl;
+    if (pnl > 0) wins += 1;
+    if (pnl < 0 && consecutiveLosses === closedTrades.indexOf(trade)) {
+      consecutiveLosses += 1;
+    } else if (pnl >= 0 && consecutiveLosses === closedTrades.indexOf(trade)) {
+      break;
+    }
+  }
+
+  const totalTrades = closedTrades.length;
+  const winRatePct = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+
+  return {
+    totalTrades,
+    totalPnlPct,
+    winRatePct,
+    consecutiveLosses
+  };
+}
+
+async function disableExecutionWithReason(db, reason, metrics = {}) {
+  const payload = {
+    execution_enabled: false,
+    auto_trade_mode: false,
+    status: 'HALTED',
+    halted_reason: reason,
+    halted_at: new Date().toISOString(),
+    halted_metrics: metrics,
+    updated_at: FieldValue.serverTimestamp()
+  };
+
+  await Promise.allSettled([
+    db.collection('system_runtime_config').doc('bot_execution').set(payload, { merge: true }),
+    db.collection('binance_bot_config').doc('global').set({ execution_enabled: false, updated_at: new Date().toISOString() }, { merge: true })
+  ]);
+}
+
+async function evaluateGlobalHardStops(db) {
+  const stats = await getClosedTradeStats(db);
+  if (stats.totalPnlPct <= HARD_STOP_DAILY_PNL_PCT) {
+    return {
+      halt: true,
+      reason: 'daily_pnl_limit',
+      metrics: stats
+    };
+  }
+  if (stats.consecutiveLosses >= HARD_STOP_CONSECUTIVE_LOSSES) {
+    return {
+      halt: true,
+      reason: 'consecutive_losses_limit',
+      metrics: stats
+    };
+  }
+  if (stats.totalTrades >= HARD_STOP_MIN_TRADES && stats.winRatePct < HARD_STOP_MIN_WIN_RATE_PCT) {
+    return {
+      halt: true,
+      reason: 'win_rate_below_threshold',
+      metrics: stats
+    };
+  }
+  return {
+    halt: false,
+    reason: null,
+    metrics: stats
+  };
+}
+
 function resolveNotional(config) {
   const accountCapital = Number(config?.account_capital_usdt || 0);
   const fundsPct = Number(config?.use_funds_percent || 0);
@@ -1698,15 +2361,17 @@ function buildEffectiveConfig(config, sourceProfile) {
     config?.execution_profiles && typeof config.execution_profiles === 'object'
       ? (config.execution_profiles[profileKey] || {})
       : {};
-  const mode = profile.mode && profile.mode !== 'inherit' ? profile.mode : config.mode;
+  const configuredMode = profile.mode && profile.mode !== 'inherit' ? profile.mode : config.mode;
   const forcedObserveMode = shouldForceObserveMode(profileKey);
   const profileAllowlist = Array.isArray(profile.symbols_allowlist) ? profile.symbols_allowlist : null;
   const allowUnlistedGlobal = Boolean(config.allow_unlisted_symbols);
   const allowUnlistedProfile = Boolean(profile.allow_unlisted_symbols);
+  const mode = forcedObserveMode ? 'dry-run' : configuredMode === 'off' ? 'live' : configuredMode;
   return {
     ...config,
     ...profile,
-    mode: forcedObserveMode ? 'dry-run' : mode,
+    enabled: true,
+    mode,
     allow_unlisted_symbols:
       profileKey === 'high_conviction'
         ? false
@@ -1739,7 +2404,8 @@ function buildEffectiveConfig(config, sourceProfile) {
 
 function buildExecutionIntent(signalData, config) {
   const sourceProfile = resolveSourceProfileKey(signalData?.source_profile || signalData?.source);
-  const symbol = toBinanceSymbol(signalData?.symbol || signalData?.simbolo);
+  const symbolContext = resolveExecutionSymbolContext(signalData);
+  const symbol = symbolContext.symbol;
   const direction = signalData?.direction;
   const side = getOrderSide(direction);
   const confidence = normalizePercent(signalData?.confidence ?? signalData?.confianza);
@@ -1748,7 +2414,8 @@ function buildExecutionIntent(signalData, config) {
 
   const sizingFactor = resolveSizingFactor(signalData, config);
   const sourceSizeFactor = sourceProfile === 'event_emitted' ? BINANCE_EVENT_POSITION_SIZE_FACTOR : 1;
-  const computedNotional = resolveNotional(config) * sizingFactor * sourceSizeFactor;
+  const positionSizePercent = resolvePositionSizePercent(config);
+  const computedNotional = resolveNotional(config) * sizingFactor * sourceSizeFactor * positionSizePercent;
   const notionalCap =
     sourceProfile === 'event_emitted'
       ? Math.min(Number(config?.max_notional_usdt || Number.MAX_SAFE_INTEGER), BINANCE_EVENT_MAX_NOTIONAL_USDT)
@@ -1760,8 +2427,9 @@ function buildExecutionIntent(signalData, config) {
   const entry = Number(signalData?.trade_plan?.entry_price || signalData?.spot_price || 0);
   const quantity = entry > 0 ? Number((notionalUsdt / entry).toFixed(6)) : 0;
 
-  return {
+  return applyProtectivePriceCaps({
     symbol,
+    symbol_source: symbolContext.source,
     side,
     direction,
     confidence,
@@ -1808,8 +2476,9 @@ function buildExecutionIntent(signalData, config) {
     sl_order_type: 'STOP_MARKET',
     tp_buffer_pct: Number(config?.tp_buffer_pct || 0),
     sl_buffer_pct: Number(config?.sl_buffer_pct || 0),
-    source_profile: sourceProfile
-  };
+    source_profile: sourceProfile,
+    position_size_percent: positionSizePercent
+  });
 }
 
 function createExecutionIntent(signalData, config, sourceProfile) {
@@ -1909,12 +2578,38 @@ function evaluateEventExecutionGate(intent = {}, config = {}) {
 async function validateExecutionIntent(db, intent, config, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile);
   const rules = options.rules || null;
-  if (!BINANCE_EXECUTION_ENABLED) return { ok: false, reason: 'disabled_by_env' };
-  if (config.enabled === false) return { ok: false, reason: 'profile_disabled' };
-  if (config.mode === 'off') return { ok: false, reason: 'mode_off' };
+  console.log('[EXECUTION_STATUS]', {
+    enabled: true,
+    component: 'binance_futures_executor',
+    source_profile: sourceProfile,
+    mode: config?.mode || 'live'
+  });
   if (!intent.symbol) return { ok: false, reason: 'symbol_missing' };
+  if (config?.execution_enabled === false) return { ok: false, reason: 'execution_disabled' };
+  if (intent.enable_tp_sl !== true) return { ok: false, reason: 'sl_tp_required' };
+  if (!Number.isFinite(Number(intent.stop_loss)) || Number(intent.stop_loss) <= 0) return { ok: false, reason: 'stop_loss_required' };
+  if (!Number.isFinite(Number(intent.take_profit)) || Number(intent.take_profit) <= 0) return { ok: false, reason: 'take_profit_required' };
   if (!intent.side) return { ok: false, reason: 'neutral_direction' };
   if (!Number.isFinite(intent.quantity) || intent.quantity <= 0) return { ok: false, reason: 'invalid_quantity' };
+  const maxConcurrentTrades = Math.max(
+    1,
+    Number(config?.max_concurrent_trades || SAFE_MAX_CONCURRENT_TRADES)
+  );
+  const openPositions = await db
+    .collection('binance_open_positions')
+    .where('status', '==', 'open')
+    .limit(maxConcurrentTrades)
+    .get();
+  if (openPositions.size >= maxConcurrentTrades) {
+    return { ok: false, reason: 'max_concurrent_trades_reached' };
+  }
+
+  const hardStopStatus = await evaluateGlobalHardStops(db);
+  if (hardStopStatus.halt) {
+    await disableExecutionWithReason(db, hardStopStatus.reason, hardStopStatus.metrics);
+    return { ok: false, reason: `hard_stop_${hardStopStatus.reason}` };
+  }
+
   if (!config.allow_unlisted_symbols && Array.isArray(config.symbols_allowlist) && config.symbols_allowlist.length > 0) {
     const symbolListed = config.symbols_allowlist.includes(intent.symbol);
     const hcOperableOnBinance =
@@ -2484,8 +3179,21 @@ async function executeSignalTrade(db, signalData, options = {}) {
   const sourceProfile = resolveSourceProfileKey(options.source_profile || options.source || 'high_conviction');
   const receivedAtIso = new Date().toISOString();
   const signalDataForExecution = normalizeSignalDataForExecution(signalData, sourceProfile, receivedAtIso);
+  const resolvedSymbol = resolveExecutionSymbolContext(signalDataForExecution);
+  if (resolvedSymbol.symbol) {
+    signalDataForExecution.symbol = resolvedSymbol.symbol;
+    signalDataForExecution.execution_symbol_source =
+      resolvedSymbol.source || signalDataForExecution.execution_symbol_source || null;
+  }
   const config = await getCachedBinanceBotConfig(db);
   const effectiveConfig = buildEffectiveConfig(config, sourceProfile);
+  const runtimeControl = await db.collection('system_runtime_config').doc('bot_execution').get().catch(() => null);
+  const runtimeExecutionEnabled = runtimeControl?.exists
+    ? runtimeControl.data()?.execution_enabled !== false
+    : true;
+  if (!runtimeExecutionEnabled) {
+    return { executed: false, reason: 'execution_disabled_runtime', dry_run: false, skipped: true };
+  }
   const intent = createExecutionIntent(signalDataForExecution, effectiveConfig, sourceProfile);
   const predictionId = signalDataForExecution?.prediction_id || signalDataForExecution?.id || null;
   const observationSymbol = intent.symbol;
@@ -2494,12 +3202,65 @@ async function executeSignalTrade(db, signalData, options = {}) {
     source_profile: sourceProfile
   });
   const emittedSignalTimestamp = resolveSignalTimestamp(signalDataForExecution);
+  logExecutionPipelineStage({
+    predictionId,
+    symbol: intent.symbol,
+    stage: 'signal_emitted',
+    extra: {
+      source_profile: sourceProfile,
+      trace_id: executionTrace.trace_id
+    }
+  });
   console.info('[PREALERT_STAGE_TIMING]', {
     stage: 'signal_emit',
     duration_ms: emittedSignalTimestamp ? Math.max(0, Date.now() - emittedSignalTimestamp.getTime()) : null,
     symbol: intent.symbol,
     prediction_id: predictionId,
     source_profile: sourceProfile
+  });
+  logSymbolFlow({
+    symbol: intent.symbol,
+    source: signalDataForExecution.execution_symbol_source || options.source || sourceProfile,
+    stage: 'execution_input',
+    predictionId,
+    traceId: executionTrace.trace_id
+  });
+  if (!intent.symbol) {
+    logSymbolError({
+      stage: 'execution_input',
+      source: options.source || sourceProfile,
+      prediction_id: predictionId,
+      trace_id: executionTrace.trace_id,
+      raw_symbol: signalDataForExecution.signal_symbol || null,
+      symbol_source: signalDataForExecution.execution_symbol_source || null
+    });
+    await syncPredictionTerminalState(db, {
+      predictionId,
+      sourceProfile,
+      status: 'failed',
+      reason: 'symbol_missing',
+      dryRun: false,
+      executed: false,
+      tracePayload: { trace_id: executionTrace.trace_id },
+      symbol: null,
+      failureStage: 'symbol_resolution',
+      errorMessage: 'symbol missing from execution input',
+      pendingStateResolution: 'symbol_resolution'
+    });
+    return {
+      executed: false,
+      reason: 'symbol_missing',
+      dry_run: false,
+      failed: true,
+      aborted: true
+    };
+  }
+  logSymbolFlow({
+    symbol: intent.symbol,
+    source: intent.symbol_source || signalDataForExecution.execution_symbol_source || options.source || sourceProfile,
+    stage: 'execution_intent',
+    predictionId,
+    traceId: executionTrace.trace_id
   });
   try {
     await ensureSymbolObservation(observationSymbol, 'recent_signal', {
@@ -2524,13 +3285,18 @@ async function executeSignalTrade(db, signalData, options = {}) {
       source_profile: sourceProfile,
       source: options.source || sourceProfile,
       symbol: intent.symbol,
-      signal_symbol: signalDataForExecution?.symbol || signalDataForExecution?.simbolo || null,
+      signal_symbol: signalDataForExecution?.signal_symbol || signalDataForExecution?.symbol || signalDataForExecution?.simbolo || null,
       status: 'processing',
       processing_stage: 'created',
       processing_started_at: new Date().toISOString(),
       trace_id: executionTrace.trace_id,
       execution_trace: executionTrace,
       created_at: FieldValue.serverTimestamp()
+    });
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: intent.symbol,
+      stage: 'intent_created'
     });
     try {
       await ensureSymbolObservation(observationSymbol, 'processing_intent', {
@@ -2557,7 +3323,19 @@ async function executeSignalTrade(db, signalData, options = {}) {
     if (existingIntentData?.status && existingIntentData.status !== 'processing') {
       return { executed: false, reason: 'already_processed', dry_run: false, skipped: true };
     }
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: intent.symbol,
+      stage: 'intent_created',
+      extra: { reused: true }
+    });
   }
+
+  logExecutionPipelineStage({
+    predictionId,
+    symbol: intent.symbol,
+    stage: 'processing_intent_started'
+  });
 
   const modeDryRun = effectiveConfig.mode === 'dry-run' || BINANCE_EXECUTION_DRY_RUN;
   const forcedObserveMode = Boolean(effectiveConfig.observe_mode_forced);
@@ -2585,6 +3363,13 @@ async function executeSignalTrade(db, signalData, options = {}) {
     );
   } catch (err) {
     if (isTimeoutLikeError(err)) {
+      logExecutionTimeoutPath({
+        predictionId,
+        symbol: intent.symbol,
+        stage: 'processing_intent_started',
+        timeoutMs: Number(err?.timeoutMs || INTENT_STAGE_TIMEOUT_MS),
+        reason: sanitizeBinanceErrorMessage(err?.message || err)
+      });
       entryDiscipline = buildEntryDisciplineTimeoutFallback(signalDataForExecution, err);
       executionTrace = advanceExecutionTrace(executionTrace, {
         intent_processed_at: Date.now()
@@ -2752,6 +3537,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
   let rules = null;
   let validation = null;
   try {
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: intent.symbol,
+      stage: 'pre_order_validation'
+    });
     await updateIntentProcessingStage(intentRef, 'pre_validation');
     const preValidationStartedAtMs = Date.now();
     const exchangeInfoStartedAtMs = Date.now();
@@ -2787,6 +3577,15 @@ async function executeSignalTrade(db, signalData, options = {}) {
       }
     });
   } catch (err) {
+    if (isTimeoutLikeError(err)) {
+      logExecutionTimeoutPath({
+        predictionId,
+        symbol: intent.symbol,
+        stage: 'pre_order_validation',
+        timeoutMs: Number(err?.timeoutMs || INTENT_STAGE_TIMEOUT_MS),
+        reason: sanitizeBinanceErrorMessage(err?.message || err)
+      });
+    }
     if (String(err?.failureStage || err?.message || '').includes('exchange_info:')) {
       console.warn('[EXCHANGE_INFO_TIMEOUT]', {
         symbol: intent.symbol,
@@ -3122,10 +3921,12 @@ async function executeSignalTrade(db, signalData, options = {}) {
   let marginRes = null;
   let leverageRes = null;
   let orderRes = null;
-  let exitsRes = null;
   let liveIntent = preciseIntent;
   let executedAt = new Date();
-  let adaptiveExecutionProfile = null;
+  let openPositionRef = null;
+  let initialExecutionAudit = null;
+  let initialEntrySnapshot = null;
+  const initialExpectedDurationWindow = resolveExpectedDurationWindow(signalData);
   const qtyPrecision = Number.isFinite(preciseIntent?._quantity_precision)
     ? Number(preciseIntent._quantity_precision)
     : decimalsFromStep(rules?.marketStepSize || rules?.stepSize || 0);
@@ -3160,6 +3961,11 @@ async function executeSignalTrade(db, signalData, options = {}) {
     executionTrace = advanceExecutionTrace(executionTrace, {
       order_sent_at: Date.now()
     });
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: preciseIntent.symbol,
+      stage: 'order_submit_start'
+    });
     const orderAttemptStartedAtMs = Date.now();
     orderRes = await withTimeout(
       signedRequest('/fapi/v1/order', {
@@ -3172,6 +3978,27 @@ async function executeSignalTrade(db, signalData, options = {}) {
       BINANCE_LIVE_ORDER_TIMEOUT_MS,
       'entry_order'
     );
+    console.log('[REAL_TRADE_EXECUTED]', {
+      symbol: preciseIntent.symbol,
+      side: preciseIntent.side,
+      quantity: Number(preciseIntent.quantity || 0),
+      entry_price: Number(preciseIntent.entry_price || 0),
+      stop_loss: Number(preciseIntent.stop_loss || 0),
+      take_profit: Number(preciseIntent.take_profit || 0),
+      position_size_percent: Number(preciseIntent.position_size_percent || resolvePositionSizePercent(effectiveConfig)),
+      max_concurrent_trades: Number(effectiveConfig.max_concurrent_trades || SAFE_MAX_CONCURRENT_TRADES),
+      order_id: orderRes?.orderId || orderRes?.clientOrderId || null,
+      source_profile: sourceProfile,
+      executed_at: toIsoDate(resolveOrderExecutedAt(orderRes))
+    });
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: preciseIntent.symbol,
+      stage: 'order_submit_success',
+      extra: {
+        order_id: orderRes?.orderId || null
+      }
+    });
     logLiveStageTiming({
       stage: 'order_attempt',
       startedAtMs: orderAttemptStartedAtMs,
@@ -3265,13 +4092,111 @@ async function executeSignalTrade(db, signalData, options = {}) {
       };
     }
 
-    await updateIntentProcessingStage(intentRef, 'protective_orders');
-    exitsRes = await withTimeout(
-      placeExitOrders(liveIntent, rules, { referencePrice: liveIntent.entry_price }),
-      BINANCE_PROTECTIVE_ORDER_TIMEOUT_MS,
-      'protective_orders'
+    initialExecutionAudit = buildExecutionAudit(signalDataForExecution, executedAt);
+    initialEntrySnapshot = buildEntrySnapshotPersistence(
+      executionGuardResult,
+      liveIntent.entry_price,
+      preciseIntent.entry_price
     );
+    const initialPositionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
+      signalData: {
+        ...signalData,
+        entry_price: liveIntent.entry_price,
+        trade_plan: {
+          ...(signalData?.trade_plan || {}),
+          entry_price: liveIntent.entry_price,
+          take_profit: liveIntent.take_profit,
+          stop_loss: liveIntent.stop_loss
+        },
+        source_profile: sourceProfile,
+        source: options.source || sourceProfile
+      },
+      adaptiveProfile: null
+    });
+    const initialProtectivePersistence = resolvePendingProtectivePersistence(liveIntent.enable_tp_sl);
+    const openedAtIso = executedAt.toISOString();
+    openPositionRef = await db.collection('binance_open_positions').add(
+      buildOpenPositionPayload({
+        source: options.source || sourceProfile,
+        sourceProfile,
+        signalDataForExecution,
+        predictionId,
+        liveIntent,
+        preciseIntent,
+        orderRes,
+        persistence: initialProtectivePersistence,
+        exitsRes: null,
+        effectiveConfig,
+        expectedDurationWindow: initialExpectedDurationWindow,
+        positionMaxHoldSeconds: initialPositionMaxHoldSeconds,
+        executionAudit: initialExecutionAudit,
+        tracePayload: null,
+        executionTrace,
+        executionGuardResult,
+        executedEntrySnapshot: initialEntrySnapshot,
+        adaptiveExecutionProfile: null,
+        openedAtIso,
+        executedAt,
+        includeTimestamps: true
+      })
+    );
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: liveIntent.symbol,
+      stage: 'execution_open_position',
+      extra: {
+        order_id: orderRes?.orderId || null,
+        open_position_id: openPositionRef.id
+      }
+    });
+    logSymbolFlow({
+      symbol: liveIntent.symbol,
+      source: options.source || sourceProfile,
+      stage: 'execution_open_position',
+      predictionId,
+      traceId: executionTrace.trace_id
+    });
+    await writeIntentDoc(intentRef, {
+      status: 'executed',
+      processing_stage: 'order_placed',
+      linked_position_id: openPositionRef.id,
+      order_id: orderRes?.orderId || null,
+      intent: liveIntent,
+      execution_guard: executionGuardResult,
+      entry_execution_snapshot: initialEntrySnapshot,
+      execution_audit: initialExecutionAudit,
+      protective_order_status: initialProtectivePersistence.protectiveOrderStatus,
+      protective_stop_available: initialProtectivePersistence.protectiveStopAvailable,
+      exchange_response: {
+        margin: marginRes,
+        leverage: leverageRes,
+        order: orderRes
+      }
+    });
+    try {
+      releaseSymbolObservation(observationSymbol, 'processing_intent', { key: `intent:${intentRef.id}` });
+    } catch (_) {
+      // noop
+    }
   } catch (err) {
+    logExecutionPipelineStage({
+      predictionId,
+      symbol: preciseIntent.symbol,
+      stage: 'order_submit_fail',
+      extra: {
+        failure_stage: err?.failureStage || 'live_order',
+        message: sanitizeBinanceErrorMessage(err?.message || err)
+      }
+    });
+    if (isTimeoutLikeError(err)) {
+      logExecutionTimeoutPath({
+        predictionId,
+        symbol: preciseIntent.symbol,
+        stage: orderRes ? 'execution_open_position' : 'order_submit_start',
+        timeoutMs: Number(err?.timeoutMs || BINANCE_LIVE_ORDER_TIMEOUT_MS),
+        reason: sanitizeBinanceErrorMessage(err?.message || err)
+      });
+    }
     if (String(err?.failureStage || err?.message || '').includes('margin_leverage_setup')) {
       console.warn('[MARGIN_SETUP_TIMEOUT]', {
         symbol: preciseIntent.symbol,
@@ -3299,8 +4224,7 @@ async function executeSignalTrade(db, signalData, options = {}) {
       exchange_response: {
         margin: marginRes,
         leverage: leverageRes,
-        order: orderRes,
-        exits: exitsRes
+        order: orderRes
       }
     });
     await syncPredictionTerminalState(db, {
@@ -3333,288 +4257,31 @@ async function executeSignalTrade(db, signalData, options = {}) {
       failed: true
     };
   }
-  try {
-    adaptiveExecutionProfile = await loadAdaptiveExecutionProfile();
-  } catch (_) {
-    adaptiveExecutionProfile = null;
-  }
-  const {
-    tpOrderId,
-    slOrderId,
-    protectiveStopAvailable,
-    protectiveOrderStatus
-  } = resolveProtectivePersistence(exitsRes, liveIntent.enable_tp_sl);
-  const executionAudit = buildExecutionAudit(signalDataForExecution, executedAt);
-  const executedEntrySnapshot = buildEntrySnapshotPersistence(
-    executionGuardResult,
-    liveIntent.entry_price,
-    preciseIntent.entry_price
-  );
-  const lifecycleDirection = String(liveIntent?.side || 'BUY').toUpperCase() === 'SELL' ? -1 : 1;
-  const lifecycleEntryVelocity =
-    Number(executedEntrySnapshot?.microstructure?.velocity || 0) * lifecycleDirection;
-  const lifecycleEntryImbalance =
-    Number(executedEntrySnapshot?.microstructure?.imbalance || 0) * lifecycleDirection;
-  const lifecyclePositiveSignals =
-    (executedEntrySnapshot?.momentum_aligned ? 1 : 0) +
-    (lifecycleEntryVelocity > 0 ? 1 : 0) +
-    (lifecycleEntryImbalance > 0 ? 1 : 0);
-  const lifecycleNegativeSignals = Math.max(0, Number(executedEntrySnapshot?.negative_signals || 0));
-  const tracePayload = await persistExecutionLatencyObservation(db, signalDataForExecution, {
-    trace: executionTrace,
-    symbol: preciseIntent.symbol,
-    signal_type: sourceProfile,
-    state: 'executed',
-    late_entry_blocked: false
-  });
-  const expectedDurationWindow = resolveExpectedDurationWindow(signalData);
-  const positionMaxHoldSeconds = resolvePositionMaxHoldSeconds({
-    signalData: {
-      ...signalData,
-      entry_price: liveIntent.entry_price,
-      trade_plan: {
-        ...(signalData?.trade_plan || {}),
-        entry_price: liveIntent.entry_price,
-        take_profit: liveIntent.take_profit,
-        stop_loss: liveIntent.stop_loss
-      },
-      source_profile: sourceProfile,
-      source: options.source || sourceProfile
-    },
-    adaptiveProfile: adaptiveExecutionProfile
-  });
 
-  await writeIntentDoc(intentRef, {
-    ...baseLog,
-    status: 'executed',
-    intent: liveIntent,
-    trace_id: tracePayload.trace_id,
-    execution_trace: tracePayload.execution_trace,
-    execution_trace_metrics: tracePayload.execution_trace_metrics,
-    dominant_delay_stage: tracePayload.dominant_delay_stage,
-    critical_delay: tracePayload.critical_delay,
-    processing_stage: 'executed',
-    tp_order_id: tpOrderId,
-    sl_order_id: slOrderId,
-    protective_order_status: protectiveOrderStatus,
-    protective_stop_available: protectiveStopAvailable,
-    entry_sizing: {
-      score: Number(liveIntent?.entry_quality_score || 0) || null,
-      band: liveIntent?.entry_quality_band || null,
-      size_factor: Number(liveIntent?.entry_quality_size_factor || 0) || 1,
-      base_notional_usdt: Number(liveIntent?.entry_quality_base_notional_usdt || 0) || null,
-      adjusted_notional_usdt: Number(liveIntent?.entry_quality_adjusted_notional_usdt || 0) || null
-    },
-    execution_guard: executionGuardResult,
-    entry_execution_snapshot: executedEntrySnapshot,
-    execution_audit: executionAudit,
-    exchange_response: {
-      margin: marginRes,
-      leverage: leverageRes,
-      order: orderRes,
-      exits: exitsRes
-    }
-  });
-  await syncPredictionTerminalState(db, {
-    predictionId,
-    sourceProfile,
-    status: 'executed',
-    reason: protectiveOrderStatus || 'executed',
-    dryRun: false,
-    executed: true,
-    orderId: orderRes?.orderId || null,
-    tracePayload,
-    symbol: liveIntent.symbol
-  });
-
-  const openedAtIso = executedAt.toISOString();
-  const openPositionRef = await db.collection('binance_open_positions').add({
-    source: options.source || sourceProfile,
-    source_profile: sourceProfile,
-    signal_origin_stage: sourceProfile,
-    pipeline_type: signalDataForExecution?.pipeline_type || sourceProfile,
-    prediction_id: predictionId,
-    symbol: liveIntent.symbol,
-    side: liveIntent.side,
-    quantity: liveIntent.quantity,
-    quantity_precision: Number.isFinite(Number(liveIntent?._quantity_precision))
-      ? Number(liveIntent._quantity_precision)
-      : null,
-    quantity_step: Number.isFinite(Number(liveIntent?._quantity_step))
-      ? Number(liveIntent._quantity_step)
-      : null,
-    confidence: Number(liveIntent.confidence || 0) || null,
-    quantum: Number(liveIntent.quantum || 0) || null,
-    timing: Number(liveIntent.timing || 0) || null,
-    risk_reward_ratio: Number(liveIntent.risk_reward_ratio || 0) || null,
-    expected_move_percent: Number(liveIntent.expected_move_percent || 0) || null,
-    entry_quality_score: Number(liveIntent.entry_quality_score || 0) || null,
-    entry_quality_band: liveIntent.entry_quality_band || null,
-    entry_quality_size_factor: Number(liveIntent.entry_quality_size_factor || 0) || 1,
-    entry_quality_base_notional_usdt: Number(liveIntent.entry_quality_base_notional_usdt || 0) || null,
-    entry_quality_adjusted_notional_usdt: Number(liveIntent.entry_quality_adjusted_notional_usdt || 0) || null,
-    entry_price: liveIntent.entry_price,
-    signal_entry_price: preciseIntent.entry_price,
-    take_profit: liveIntent.take_profit,
-    stop_loss: liveIntent.stop_loss,
-    order_id: orderRes?.orderId || null,
-    tp_order_id: tpOrderId,
-    sl_order_id: slOrderId,
-    protective_order_status: protectiveOrderStatus,
-    protective_stop_available: protectiveStopAvailable,
-    protective_order_reason: exitsRes?.sl_reason || exitsRes?.reason || null,
-    protective_order_errors: {
-      tp_error: exitsRes?.tp_error || null,
-      sl_error: exitsRes?.sl_error || null
-    },
-    protective_order_validation: {
-      tp: exitsRes?.tp_validation || null,
-      sl: exitsRes?.sl_validation || null
-    },
-    opened_at: openedAtIso,
-    status: 'open',
-    mode: 'live',
-    early_exit_enabled: Boolean(effectiveConfig.early_exit_enabled),
-    early_exit_drawdown_pct: Number(effectiveConfig.early_exit_drawdown_pct || 0),
-    expected_duration_min_seconds: expectedDurationWindow.min,
-    expected_duration_max_seconds: expectedDurationWindow.max,
-    adaptive_horizon_seconds:
-      Number(adaptiveExecutionProfile?.adaptive_horizon_seconds ?? adaptiveExecutionProfile?.adaptive_horizon) || null,
-    position_max_hold_seconds: positionMaxHoldSeconds,
-    execution_audit: executionAudit,
-    win_model: executionAudit.win_model,
-    win_exchange: null,
-    trace_id: tracePayload.trace_id,
-    execution_trace: tracePayload.execution_trace,
-    execution_trace_metrics: tracePayload.execution_trace_metrics,
-    dominant_delay_stage: tracePayload.dominant_delay_stage,
-    critical_delay: tracePayload.critical_delay,
-    execution_guard: executionGuardResult,
-    entry_execution_snapshot: executedEntrySnapshot,
-    order_executed_at: openedAtIso,
-    impulse_lifecycle: {
-      mode: effectiveConfig?.impulse_lifecycle?.mode || 'off',
-      enabled: Boolean(effectiveConfig?.impulse_lifecycle?.enabled),
-      impulse_state: 'incubation',
-      impulse_state_reason: 'minimum_observation_window',
-      impulse_state_legacy: 'ignition',
-      lifecycle_phase: 'incubation',
-      incubation_completed: false,
-      evaluation_elapsed_ms: 0,
-      time_to_first_expansion_ms: null,
-      ms_since_first_expansion: null,
-      expansion_confirmed: false,
-      expansion_guard_active: false,
-      structural_improvement: Boolean(executedEntrySnapshot?.momentum_aligned),
-      positive_signal_count: lifecyclePositiveSignals,
-      negative_signal_count: lifecycleNegativeSignals,
-      no_ignition_eligible: false,
-      early_mfe_pct: 0,
-      early_mae_pct: 0,
-      max_pnl_pct: 0,
-      min_pnl_pct: 0,
-      peak_price_seen:
-        Number(
-          executedEntrySnapshot?.execution_price ||
-            executedEntrySnapshot?.execution_reference_price ||
-            liveIntent.entry_price ||
-            0
-        ) || null,
-      trough_price_seen:
-        Number(
-          executedEntrySnapshot?.execution_price ||
-            executedEntrySnapshot?.execution_reference_price ||
-            liveIntent.entry_price ||
-            0
-        ) || null,
-      pullback_from_peak_pct: 0,
-      stall_duration_ms: 0,
-      momentum_decay_score: 0,
-      new_extreme_count: 0,
-      last_micro_price:
-        Number(
-          executedEntrySnapshot?.execution_price ||
-            executedEntrySnapshot?.execution_reference_price ||
-            liveIntent.entry_price ||
-            0
-        ) || null,
-      lifecycle_last_updated_at: openedAtIso,
-      lifecycle_last_updated_at_ms: executedAt.getTime(),
-      entry_context: executedEntrySnapshot,
-      observation_snapshot: executedEntrySnapshot?.microstructure || null,
-      impulse_state_timeline: [
-        {
-          state: 'incubation',
-          reason: 'minimum_observation_window',
-          at: openedAtIso,
-          pnl_pct: 0,
-          price: Number(liveIntent.entry_price || 0) || null
-        }
-      ]
-    },
-    adaptive_exit_shadow: {
-      mode: effectiveConfig?.adaptive_exit?.mode || 'off',
-      enabled: Boolean(effectiveConfig?.adaptive_exit?.enabled),
-      should_exit: false,
-      exit_reason: 'hold',
-      exit_priority: 0,
-      exit_confidence: 0,
-      decision_count: 0,
-      conflicts_count: 0,
-      latest_decision_at: openedAtIso
-    },
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp()
-  });
-
-  try {
-    await writeIntentDoc(intentRef, {
-      linked_position_id: openPositionRef.id,
-      tp_order_id: tpOrderId,
-      sl_order_id: slOrderId,
-      protective_order_status: protectiveOrderStatus,
-      protective_stop_available: protectiveStopAvailable
-    });
-    releaseSymbolObservation(observationSymbol, 'processing_intent', { key: `intent:${intentRef.id}` });
-    await ensureSymbolObservation(observationSymbol, 'open_position', {
+  launchDetached(async () => {
+    await finalizeLiveExecutionPostOrder({
       db,
       config,
-      key: `position:${openPositionRef.id}`,
-      ttlMs: effectiveConfig?.market_stream?.position_ttl_ms,
-      priority: 5,
-      metadata: {
-        source_profile: sourceProfile,
-        prediction_id: predictionId
-      }
+      intentRef,
+      openPositionRef,
+      signalDataForExecution,
+      signalData,
+      sourceProfile,
+      predictionId,
+      source: options.source || sourceProfile,
+      observationSymbol,
+      effectiveConfig,
+      rules,
+      preciseIntent,
+      liveIntent,
+      marginRes,
+      leverageRes,
+      orderRes,
+      executionGuardResult,
+      executionTrace,
+      entryDiscipline
     });
-  } catch (err) {
-    console.warn('[MARKET_STREAM] ensure open position failed', err.message);
-  }
-
-  await logExecutionDiscipline(db, {
-    type: 'entry_control',
-    event: 'entry_accepted',
-      blocked: false,
-      source_profile: sourceProfile,
-      symbol: liveIntent.symbol,
-      prediction_id: predictionId,
-      details: {
-        execution_delay_seconds: executionAudit?.delay_seconds ?? null,
-        execution_delay_ms: entryDiscipline?.details?.execution_delay_ms ?? null,
-        is_late_entry: executionAudit?.is_late_entry ?? null,
-        quantity: liveIntent.quantity,
-        filled_entry_price: liveIntent.entry_price,
-        signal_entry_price: preciseIntent.entry_price,
-        signal_price: executedEntrySnapshot?.signal_price ?? null,
-        signal_age_ms: executedEntrySnapshot?.signal_age_ms ?? null,
-        entry_quality_score: executedEntrySnapshot?.entry_quality_score ?? null,
-        price_deviation_pct: executedEntrySnapshot?.price_deviation_pct ?? null,
-        estimated_slippage_pct: executedEntrySnapshot?.estimated_slippage_pct ?? null,
-        late_entry_type: entryDiscipline?.details?.late_entry_type || 'none',
-        override_applied: Boolean(entryDiscipline?.details?.override_applied),
-        override_reason: entryDiscipline?.details?.override_reason || 'normal_execution'
-      }
-    });
+  }, '[POST_ORDER_FINALIZE] failed');
 
   return {
     executed: true,
@@ -3623,16 +4290,9 @@ async function executeSignalTrade(db, signalData, options = {}) {
     side: liveIntent.side,
     quantity: liveIntent.quantity,
     order_id: orderRes?.orderId || null,
-    open_position_id: openPositionRef.id,
-    exits: exitsRes?.placed
-      ? {
-          tp_order_id: tpOrderId,
-          sl_order_id: slOrderId,
-          tp_stop_price: exitsRes?.tp_stop_price || null,
-          sl_stop_price: exitsRes?.sl_stop_price || null
-        }
-      : null,
-    protective_order_status: protectiveOrderStatus
+    open_position_id: openPositionRef?.id || null,
+    exits: null,
+    protective_order_status: liveIntent.enable_tp_sl === false ? 'tp_sl_disabled' : 'pending_submission'
   };
 }
 

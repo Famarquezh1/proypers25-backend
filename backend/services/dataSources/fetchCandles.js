@@ -1,5 +1,8 @@
 const yahooFinance = require('yahoo-finance2').default;
-const { fetchBinanceCandles, BINANCE_FAIL_FAST_TIMEOUT_MS } = require('./binance');
+const {
+  fetchBinanceCandles,
+  FETCH_TIMEOUT_MS
+} = require('./binance');
 const {
   addAbortListener,
   createAbortError,
@@ -13,8 +16,18 @@ const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || null;
 const ENABLE_BINANCE = process.env.ENABLE_BINANCE === 'true';
 const PROFILING_FETCH_ENABLED =
   String(process.env.PROFILING_FETCH_ENABLED || 'false').toLowerCase() === 'true';
-const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
-const CANDLE_CACHE_TTL_MS = Math.max(2000, Number(process.env.CANDLE_CACHE_TTL_MS || 15000));
+const YAHOO_SOURCE_TIMEOUT_MS = Math.max(5000, Number(process.env.YAHOO_FETCH_TIMEOUT_MS || 5000));
+const ALPHA_SOURCE_TIMEOUT_MS = Math.max(5000, Number(process.env.ALPHA_FETCH_TIMEOUT_MS || 5000));
+const FALLBACK_DECISION_BUDGET_MS = Math.max(
+  YAHOO_SOURCE_TIMEOUT_MS,
+  Number(process.env.FALLBACK_DECISION_BUDGET_MS || YAHOO_SOURCE_TIMEOUT_MS)
+);
+const EXTERNAL_DATA_TIMEOUT_MS = Math.max(
+  YAHOO_SOURCE_TIMEOUT_MS,
+  Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || YAHOO_SOURCE_TIMEOUT_MS)
+);
+const MAX_FETCH_WINDOW_MS = Math.max(15000, Number(process.env.MAX_FETCH_WINDOW_MS || 15000));
+const CANDLE_CACHE_TTL_MS = Math.max(1000, Number(process.env.CANDLE_CACHE_TTL_MS || 5000));
 const CANDLE_CACHE_STALE_TTL_MS = Math.max(
   CANDLE_CACHE_TTL_MS,
   Number(process.env.CANDLE_CACHE_STALE_TTL_MS || 120000)
@@ -72,7 +85,18 @@ function publishFetchTiming(options, state) {
   if (options?.profiling && typeof options.profiling === 'object') {
     options.profiling.fetch_candles = payload;
   }
+  console.log('[FETCH_LATENCY]', {
+    symbol: payload.symbol,
+    duration_ms: payload.total_ms,
+    source: payload.source_used || 'unknown'
+  });
   if (!PROFILING_FETCH_ENABLED) {
+    if (payload.source_used === 'none') {
+      console.log('[FETCH_SKIPPED]', {
+        symbol: payload.symbol,
+        reason: 'all_sources_failed'
+      });
+    }
     return;
   }
   console.log('[FETCH_CANDLES_TIMING]', payload);
@@ -86,6 +110,12 @@ function publishFetchTiming(options, state) {
       final_source: payload.source_used
     });
   }
+  if (payload.source_used === 'none') {
+    console.log('[FETCH_SKIPPED]', {
+      symbol: payload.symbol,
+      reason: 'all_sources_failed'
+    });
+  }
 }
 
 function markFallbackStart(state) {
@@ -96,26 +126,15 @@ function markFallbackStart(state) {
 }
 
 function shouldSkipYahooFallback(timeframe) {
-  return String(timeframe || '').toLowerCase() === '5m';
-}
-
-function logFetchFailFast(symbol, timeframe, fallbackUsed, decisionTimeMs, timeoutMs) {
-  console.warn('[FETCH_FAIL_FAST]', {
-    symbol,
-    timeframe,
-    stage: 'candles',
-    binance_timeout_ms: Number(timeoutMs) || BINANCE_FAIL_FAST_TIMEOUT_MS,
-    fallback_used: fallbackUsed,
-    decision_time_ms: Number(decisionTimeMs) || 0
-  });
+  return false;
 }
 
 function resolveNextFallbackSource(timeframe, hasAlphaKey, hasStaleCache) {
-  if (hasAlphaKey) {
-    return 'alpha';
-  }
   if (!shouldSkipYahooFallback(timeframe)) {
     return 'yahoo';
+  }
+  if (hasAlphaKey) {
+    return 'alpha';
   }
   if (hasStaleCache) {
     return 'stale_cache';
@@ -131,13 +150,69 @@ function registerExternalCancellation(options = {}, stage = 'running', callType 
   });
 }
 
+function logFallbackAttempt(source, symbol, timeframe, timeoutMs = null) {
+  console.log('[FALLBACK_ATTEMPT]', {
+    source,
+    symbol,
+    timeframe,
+    timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null
+  });
+}
+
+function logFallbackSuccess(source, symbol, timeframe, durationMs, rows, timeoutMs = null) {
+  console.log('[FALLBACK_SUCCESS]', {
+    source,
+    symbol,
+    timeframe,
+    duration_ms: Number(durationMs) || 0,
+    rows: Number(rows) || 0,
+    timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null
+  });
+}
+
+function logFallbackFail(source, symbol, timeframe, reason, durationMs = 0, timeoutMs = null) {
+  console.warn('[FALLBACK_FAIL]', {
+    source,
+    symbol,
+    timeframe,
+    reason: reason || 'unknown',
+    duration_ms: Number(durationMs) || 0,
+    timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null
+  });
+}
+
+function logTimeoutFixApplied(source, timeoutMs) {
+  console.log('[TIMEOUT_FIX_APPLIED]', {
+    source,
+    timeout_ms: Number(timeoutMs) || EXTERNAL_DATA_TIMEOUT_MS
+  });
+}
+
+function logFetchWindowExceeded(symbol, timeframe, totalTimeMs) {
+  console.warn('[FETCH_WINDOW_EXCEEDED]', {
+    symbol,
+    timeframe,
+    total_time_ms: Number(totalTimeMs) || 0
+  });
+}
+
+function resolveExternalTimeoutMs(options = {}) {
+  const requested = Number(options?.timeoutMs);
+  const timeoutFloorMs = Math.max(250, Number(options?.timeoutFloorMs || EXTERNAL_DATA_TIMEOUT_MS));
+  if (Number.isFinite(requested) && requested >= 250) {
+    return Math.max(timeoutFloorMs, requested);
+  }
+  return timeoutFloorMs;
+}
+
 function withExternalTimeout(promiseFactory, label, options = {}) {
   let timeoutId;
   let removeAbortListener = () => {};
+  const timeoutMs = resolveExternalTimeoutMs(options);
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(`${label} timeout after ${EXTERNAL_DATA_TIMEOUT_MS}ms`)),
-      EXTERNAL_DATA_TIMEOUT_MS
+      () => reject(new Error(`${label} timeout after ${timeoutMs}ms`)),
+      timeoutMs
     );
   });
   const abortPromise = new Promise((_, reject) => {
@@ -180,6 +255,21 @@ function normalizeAlphaSymbol(symbol) {
   return cleaned;
 }
 
+function normalizeYahooSymbol(symbol) {
+  if (!symbol) return symbol;
+  const cleaned = String(symbol).toUpperCase().replace(/\//g, '-').replace(/_/g, '-');
+  if (cleaned.endsWith('-USDT')) {
+    return `${cleaned.slice(0, -5)}-USD`;
+  }
+  if (cleaned.endsWith('USDT')) {
+    return `${cleaned.slice(0, -4)}-USD`;
+  }
+  if (cleaned.endsWith('USD') && !cleaned.endsWith('-USD')) {
+    return `${cleaned.slice(0, -3)}-USD`;
+  }
+  return cleaned;
+}
+
 async function fetchAlphaCandles(symbol, interval, options = {}) {
   throwIfAborted(options?.signal, `Alpha candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
   if (!ALPHA_VANTAGE_KEY) {
@@ -191,11 +281,17 @@ async function fetchAlphaCandles(symbol, interval, options = {}) {
     baseSymbol
   )}&market=USD&interval=${encodeURIComponent(alphaInterval)}&outputsize=compact&apikey=${ALPHA_VANTAGE_KEY}`;
   const controller = new AbortController();
+  const timeoutMs = resolveExternalTimeoutMs({
+    ...options,
+    timeoutMs: options?.timeoutMs ?? ALPHA_SOURCE_TIMEOUT_MS,
+    timeoutFloorMs: options?.timeoutFloorMs ?? ALPHA_SOURCE_TIMEOUT_MS
+  });
+  logTimeoutFixApplied('alpha', timeoutMs);
   const removeAbortListener = addAbortListener(options?.signal, () => {
     registerExternalCancellation(options, 'running', 'candles');
     controller.abort(resolveAbortError(options?.signal, `Alpha candles cancelled for ${symbol}`, 'OPERATION_ABORTED'));
   });
-  const timer = setTimeout(() => controller.abort(), EXTERNAL_DATA_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
@@ -247,32 +343,115 @@ function lookbackDaysForTimeframe(timeframe) {
   }
 }
 
+function resolveYahooChartParams(timeframe) {
+  const normalized = String(timeframe || '5m').toLowerCase();
+  const lookbackDays = lookbackDaysForTimeframe(normalized);
+  switch (normalized) {
+    case '1m':
+      return {
+        interval: '1m',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    case '5m':
+      return {
+        interval: '5m',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    case '15m':
+      return {
+        interval: '15m',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    case '30m':
+      return {
+        interval: '30m',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    case '1h':
+      return {
+        interval: '1h',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    case '4h':
+      return {
+        interval: '1h',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+    default:
+      return {
+        interval: '5m',
+        period1: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+      };
+  }
+}
+
+function mapYahooChartRows(result = {}) {
+  if (Array.isArray(result?.quotes)) {
+    return result.quotes
+      .map((row) => ({
+        timestamp: row?.date instanceof Date ? row.date.getTime() : Number(new Date(row?.date || row?.timestamp || 0)),
+        open: Number(row?.open),
+        high: Number(row?.high),
+        low: Number(row?.low),
+        close: Number(row?.close),
+        volume: Number(row?.volume)
+      }))
+      .filter((row) => [row.timestamp, row.open, row.high, row.low, row.close, row.volume].every(Number.isFinite));
+  }
+
+  const chartResult =
+    result?.chart?.result?.[0] ||
+    result?.result?.[0] ||
+    result;
+  const timestamps = Array.isArray(chartResult?.timestamp) ? chartResult.timestamp : [];
+  const quote = Array.isArray(chartResult?.indicators?.quote)
+    ? chartResult.indicators.quote[0]
+    : null;
+  if (!timestamps.length || !quote) {
+    return [];
+  }
+
+  const opens = Array.isArray(quote.open) ? quote.open : [];
+  const highs = Array.isArray(quote.high) ? quote.high : [];
+  const lows = Array.isArray(quote.low) ? quote.low : [];
+  const closes = Array.isArray(quote.close) ? quote.close : [];
+  const volumes = Array.isArray(quote.volume) ? quote.volume : [];
+
+  return timestamps
+    .map((timestamp, index) => ({
+      timestamp: Number(timestamp) * 1000,
+      open: Number(opens[index]),
+      high: Number(highs[index]),
+      low: Number(lows[index]),
+      close: Number(closes[index]),
+      volume: Number(volumes[index])
+    }))
+    .filter((row) => [row.open, row.high, row.low, row.close, row.volume].every(Number.isFinite));
+}
+
 async function fetchYahooCandles(symbol, timeframe, options = {}) {
-  const now = new Date();
-  const lookbackDays = lookbackDaysForTimeframe(timeframe);
-  const period1 = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  const { interval, period1 } = resolveYahooChartParams(timeframe);
+  const timeoutMs = resolveExternalTimeoutMs({
+    ...options,
+    timeoutFloorMs: options?.timeoutFloorMs ?? YAHOO_SOURCE_TIMEOUT_MS
+  });
+  logTimeoutFixApplied('yahoo', timeoutMs);
   const rows = await withExternalTimeout(
     () =>
-      yahooFinance.historical(symbol, {
-        period1,
-        period2: now,
-        interval: timeframe
+      yahooFinance.chart(normalizeYahooSymbol(symbol), {
+        interval,
+        period1
       }),
     'Yahoo candles',
     {
       signal: options?.signal,
       taskContext: options?.taskContext,
-      callType: 'candles'
+      callType: 'candles',
+      timeoutMs,
+      timeoutFloorMs: options?.timeoutFloorMs ?? YAHOO_SOURCE_TIMEOUT_MS
     }
   );
-  return (rows || []).map((row) => ({
-    timestamp: row.date || row.timestamp || row.datetime || row.time,
-    open: row.open,
-    high: row.high,
-    low: row.low,
-    close: row.close,
-    volume: row.volume
-  }));
+  return mapYahooChartRows(rows);
 }
 
 async function fetchCandles(symbol, interval, options = {}) {
@@ -298,14 +477,29 @@ async function fetchCandles(symbol, interval, options = {}) {
   }
 
   const fetchPromise = (async () => {
+    const fetchStartedAtMs = timing.started_at_ms;
+    const getFetchElapsedMs = () => elapsedMs(fetchStartedAtMs);
+    const getRemainingFetchWindowMs = () => Math.max(0, MAX_FETCH_WINDOW_MS - getFetchElapsedMs());
+    const abortForFetchWindow = () => {
+      logFetchWindowExceeded(symbol, interval, getFetchElapsedMs());
+      return null;
+    };
+
     throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
+    if (getRemainingFetchWindowMs() <= 0) {
+      return abortForFetchWindow();
+    }
     if (ENABLE_BINANCE) {
       timing.binance_attempted = true;
       timing.fallback_chain.push('binance');
       const binanceStartedAtMs = Date.now();
       try {
+        const binanceTimeoutMs = Math.min(FETCH_TIMEOUT_MS, getRemainingFetchWindowMs());
+        if (binanceTimeoutMs <= 0) {
+          return abortForFetchWindow();
+        }
         const rows = await fetchBinanceCandles(symbol, interval, {
-          timeoutMs: BINANCE_FAIL_FAST_TIMEOUT_MS,
+          timeoutMs: binanceTimeoutMs,
           retryOnTimeout: false,
           signal: options?.signal,
           taskContext: options?.taskContext,
@@ -334,60 +528,50 @@ async function fetchCandles(symbol, interval, options = {}) {
           console.warn(`[BINANCE] fetch failed -> reason: ${err.message}`);
         }
         markFallbackStart(timing);
-        if (err?.code === 'BINANCE_TIMEOUT') {
-          logFetchFailFast(
-            symbol,
-            interval,
-            resolveNextFallbackSource(interval, Boolean(ALPHA_VANTAGE_KEY), hasStaleCache),
-            timing.binance_latency_ms,
-            err?.timeout_ms || BINANCE_FAIL_FAST_TIMEOUT_MS
-          );
-        }
       }
     } else {
       console.log('[BINANCE] disabled by ENABLE_BINANCE=false');
       markFallbackStart(timing);
     }
 
-    throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
-    timing.fallback_chain.push('alpha');
-    const alphaStartedAtMs = Date.now();
-    try {
-      const rows = await fetchAlphaCandles(symbol, interval, options);
-      timing.alpha_fetch_ms = elapsedMs(alphaStartedAtMs);
-      if (rows.length) {
-        timing.source_used = 'alpha';
-        console.log(`[ALPHA] candle fetch ok (${rows.length} velas)`);
-        candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
-        return rows;
-      }
-      console.warn('[ALPHA] no data, fallback triggered');
-    } catch (err) {
-      timing.alpha_fetch_ms = elapsedMs(alphaStartedAtMs);
-      console.warn(`[ALPHA] fetch failed -> reason: ${err.message}`);
-    }
+    const totalFetchElapsedMs = getFetchElapsedMs();
+    const remainingFetchWindowMs = getRemainingFetchWindowMs();
+    const canAttemptYahooFallback =
+      !shouldSkipYahooFallback(interval) &&
+      totalFetchElapsedMs < MAX_FETCH_WINDOW_MS &&
+      remainingFetchWindowMs >= Math.min(YAHOO_SOURCE_TIMEOUT_MS, FALLBACK_DECISION_BUDGET_MS);
 
     throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
-    if (!shouldSkipYahooFallback(interval)) {
+    if (canAttemptYahooFallback) {
       timing.fallback_chain.push('yahoo');
       const yahooStartedAtMs = Date.now();
+      logFallbackAttempt('yahoo', symbol, interval, YAHOO_SOURCE_TIMEOUT_MS);
       try {
-        const rows = await fetchYahooCandles(symbol, interval, options);
+        const rows = await fetchYahooCandles(symbol, interval, {
+          ...options,
+          timeoutMs: YAHOO_SOURCE_TIMEOUT_MS,
+          timeoutFloorMs: YAHOO_SOURCE_TIMEOUT_MS
+        });
         timing.yahoo_fetch_ms = elapsedMs(yahooStartedAtMs);
         if (rows.length) {
           timing.source_used = 'yahoo';
-          console.log(`[YAHOO] candle fetch ok (${rows.length} velas)`);
+          logFallbackSuccess('yahoo', symbol, interval, timing.yahoo_fetch_ms, rows.length, YAHOO_SOURCE_TIMEOUT_MS);
           candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
           return rows;
         }
-        console.warn('[YAHOO] no data, fallback triggered');
+        logFallbackFail('yahoo', symbol, interval, 'empty_result', timing.yahoo_fetch_ms, YAHOO_SOURCE_TIMEOUT_MS);
       } catch (err) {
         timing.yahoo_fetch_ms = elapsedMs(yahooStartedAtMs);
-        console.warn(`[YAHOO] fetch failed -> reason: ${err.message}`);
+        logFallbackFail('yahoo', symbol, interval, err?.message, timing.yahoo_fetch_ms, YAHOO_SOURCE_TIMEOUT_MS);
       }
+    } else if (timing.fallback_triggered && remainingFetchWindowMs < YAHOO_SOURCE_TIMEOUT_MS) {
+      return abortForFetchWindow();
     }
 
     throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
+    if (getFetchElapsedMs() >= MAX_FETCH_WINDOW_MS) {
+      return abortForFetchWindow();
+    }
     if (hasStaleCache) {
       timing.fallback_chain.push('stale_cache');
       timing.source_used = 'stale_cache';
@@ -400,7 +584,7 @@ async function fetchCandles(symbol, interval, options = {}) {
       return cached.rows;
     }
 
-    return [];
+    return null;
   })().finally(() => {
     timing.total_ms = elapsedMs(timing.started_at_ms);
     timing.fallback_ms =

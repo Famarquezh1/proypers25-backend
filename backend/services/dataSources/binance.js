@@ -17,15 +17,17 @@ const INTERVAL_MAP = {
   '1h': '1h'
 };
 
-const BINANCE_HTTP_TIMEOUT_MS = Math.max(2000, Number(process.env.BINANCE_HTTP_TIMEOUT_MS || 8000));
+const FETCH_TIMEOUT_MS = Math.max(10000, Number(process.env.FETCH_TIMEOUT_MS || 10000));
+const BINANCE_HTTP_TIMEOUT_MS = Math.max(FETCH_TIMEOUT_MS, Number(process.env.BINANCE_HTTP_TIMEOUT_MS || FETCH_TIMEOUT_MS));
 const BINANCE_FAIL_FAST_TIMEOUT_MS = Math.max(
-  1500,
-  Math.min(2500, Number(process.env.BINANCE_FAIL_FAST_TIMEOUT_MS || 2000))
+  FETCH_TIMEOUT_MS,
+  Number(process.env.BINANCE_FAIL_FAST_TIMEOUT_MS || FETCH_TIMEOUT_MS)
 );
 const BINANCE_CONCURRENCY_LIMIT = Math.max(
   1,
   Math.min(8, Number(process.env.BINANCE_CONCURRENCY_LIMIT || 5))
 );
+const MARKET_CACHE_TTL_MS = Math.max(1000, Number(process.env.MARKET_CACHE_TTL_MS || 5000));
 const BINANCE_CALL_TRACE_ENABLED =
   String(process.env.BINANCE_CALL_TRACE_ENABLED || process.env.PROFILING_FETCH_ENABLED || 'false').toLowerCase() ===
   'true';
@@ -34,6 +36,62 @@ const BINANCE_CONCURRENCY_LOG_ENABLED =
   'true';
 let activeBinanceCalls = 0;
 const queuedBinanceCalls = [];
+const marketCache = new Map();
+
+function getCached(cacheKey) {
+  const entry = marketCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() - entry.ts > MARKET_CACHE_TTL_MS) {
+    marketCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(cacheKey, data) {
+  marketCache.set(cacheKey, {
+    data,
+    ts: Date.now()
+  });
+}
+
+function fetchWithTimeout(promiseFactory, ms = FETCH_TIMEOUT_MS, onTimeout = () => {}) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      onTimeout();
+      const error = new Error('FETCH_TIMEOUT');
+      error.code = 'FETCH_TIMEOUT';
+      error.timeout_ms = ms;
+      reject(error);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve().then(() => promiseFactory()),
+    timeoutPromise
+  ]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
+function logFetchTimeoutAdjusted(options = {}, timeoutMs) {
+  if (options?.trace?.market !== 'futures') {
+    return;
+  }
+  console.log('[FETCH_TIMEOUT_ADJUSTED]', {
+    symbol: options?.trace?.symbol || null,
+    timeout_ms: Number(timeoutMs) || FETCH_TIMEOUT_MS
+  });
+}
+
+function logTimeoutFixApplied(source, timeoutMs) {
+  console.log('[TIMEOUT_FIX_APPLIED]', {
+    source,
+    timeout_ms: Number(timeoutMs) || FETCH_TIMEOUT_MS
+  });
+}
 
 function notifyTaskCancellation(options = {}, stage = 'running') {
   registerTaskCancellation(options?.taskContext, {
@@ -66,7 +124,7 @@ function normalizeBinanceSymbol(symbol) {
 function resolveTimeoutMs(options = {}) {
   const override = Number(options?.timeoutMs);
   if (Number.isFinite(override) && override >= 250) {
-    return override;
+    return Math.max(FETCH_TIMEOUT_MS, Math.min(override, BINANCE_HTTP_TIMEOUT_MS));
   }
   return BINANCE_HTTP_TIMEOUT_MS;
 }
@@ -239,8 +297,21 @@ async function acquireBinanceCallSlot(options = {}) {
 
 async function fetchJsonWithTimeout(url, options = {}) {
   throwIfAborted(options?.signal, 'Binance request cancelled before start', 'BINANCE_CANCELLED');
+  const cacheKey = url;
+  const cached = getCached(cacheKey);
+  if (cached != null) {
+    console.log('[FETCH_LATENCY]', {
+      symbol: options?.trace?.symbol || null,
+      duration_ms: 0,
+      source: 'cache',
+      call_type: options?.trace?.call_type || 'other'
+    });
+    return cached;
+  }
   const slot = await acquireBinanceCallSlot(options);
   const timeoutMs = resolveTimeoutMs(options);
+  logTimeoutFixApplied('binance', timeoutMs);
+  logFetchTimeoutAdjusted(options, timeoutMs);
   const controller = new AbortController();
   const startedAtMs = Date.now();
   let abortedByExternal = false;
@@ -250,18 +321,28 @@ async function fetchJsonWithTimeout(url, options = {}) {
     notifyTaskCancellation(options, 'running');
     controller.abort(createBinanceCancelledError(options));
   });
-  const timer = setTimeout(() => {
-    abortedByTimeout = true;
-    controller.abort(createAbortError(`Binance timeout after ${timeoutMs}ms`, 'BINANCE_TIMEOUT'));
-  }, timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetchWithTimeout(
+      () => fetch(url, { signal: controller.signal }),
+      timeoutMs,
+      () => {
+        abortedByTimeout = true;
+        controller.abort(createAbortError(`Binance timeout after ${timeoutMs}ms`, 'BINANCE_TIMEOUT'));
+      }
+    );
     if (!response.ok) {
       const error = new Error(`Binance status ${response.status}`);
       error.status = response.status;
       throw error;
     }
     const data = await response.json();
+    setCache(cacheKey, data);
+    console.log('[FETCH_LATENCY]', {
+      symbol: options?.trace?.symbol || null,
+      duration_ms: Math.max(0, Date.now() - startedAtMs),
+      source: `binance_${options?.trace?.market || 'unknown'}`,
+      call_type: options?.trace?.call_type || 'other'
+    });
     publishBinanceCallTrace(options, {
       ...buildTraceMetadata(options, { startedAtMs }),
       duration_ms: Math.max(0, Date.now() - startedAtMs),
@@ -274,7 +355,7 @@ async function fetchJsonWithTimeout(url, options = {}) {
     return data;
   } catch (error) {
     let normalizedError = error;
-    if (abortedByTimeout) {
+    if (abortedByTimeout || error?.code === 'FETCH_TIMEOUT') {
       const timeoutError = new Error(`Binance timeout after ${timeoutMs}ms`);
       timeoutError.code = 'BINANCE_TIMEOUT';
       timeoutError.timeout_ms = timeoutMs;
@@ -282,6 +363,18 @@ async function fetchJsonWithTimeout(url, options = {}) {
     } else if (abortedByExternal || options?.signal?.aborted) {
       normalizedError = createBinanceCancelledError(options);
     }
+    console.log('[FETCH_SKIPPED]', {
+      symbol: options?.trace?.symbol || null,
+      reason:
+        normalizedError?.code === 'BINANCE_TIMEOUT'
+          ? 'timeout'
+          : normalizedError?.code === 'BINANCE_CANCELLED'
+            ? 'cancelled'
+            : normalizedError?.message || 'fetch_error',
+      source: `binance_${options?.trace?.market || 'unknown'}`,
+      duration_ms: Math.max(0, Date.now() - startedAtMs),
+      call_type: options?.trace?.call_type || 'other'
+    });
     publishBinanceCallTrace(options, {
       ...buildTraceMetadata(options, { startedAtMs }),
       duration_ms: Math.max(0, Date.now() - startedAtMs),
@@ -298,7 +391,6 @@ async function fetchJsonWithTimeout(url, options = {}) {
     });
     throw normalizedError;
   } finally {
-    clearTimeout(timer);
     removeAbortListener();
     slot.release();
   }
@@ -412,6 +504,7 @@ async function fetchBinanceSpot(symbol, options = {}) {
 module.exports = {
   fetchBinanceCandles,
   fetchBinanceSpot,
+  FETCH_TIMEOUT_MS,
   BINANCE_FAIL_FAST_TIMEOUT_MS,
   BINANCE_CONCURRENCY_LIMIT,
   getBinanceConcurrencySnapshot: () => ({

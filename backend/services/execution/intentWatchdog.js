@@ -2,12 +2,12 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { syncPredictionExecutionState } = require('./predictionExecutionSync');
 
 const INTENT_STAGE_TIMEOUT_MS = Math.max(
-  10000,
-  Number(process.env.BINANCE_INTENT_STAGE_TIMEOUT_MS || 20000)
+  15000,
+  Number(process.env.BINANCE_INTENT_STAGE_TIMEOUT_MS || 30000)
 );
 const STALE_PROCESSING_TIMEOUT_MS = Math.max(
-  30000,
-  Number(process.env.BINANCE_INTENT_STALE_TIMEOUT_MS || 60000)
+  INTENT_STAGE_TIMEOUT_MS * 3,
+  Number(process.env.BINANCE_INTENT_STALE_TIMEOUT_MS || 120000)
 );
 const STALE_PROCESSING_SCAN_LIMIT = Math.max(
   10,
@@ -31,6 +31,15 @@ function buildTimeoutError(label, timeoutMs) {
   err.timeoutMs = timeoutMs;
   err.failureStage = label;
   return err;
+}
+
+function resolveProcessingHeartbeatDate(data = {}) {
+  return (
+    parseDateLike(data.processing_stage_updated_at) ||
+    parseDateLike(data.updated_at) ||
+    parseDateLike(data.processing_started_at) ||
+    parseDateLike(data.created_at)
+  );
 }
 
 async function withTimeout(promise, timeoutMs = INTENT_STAGE_TIMEOUT_MS, label = 'intent_stage') {
@@ -92,9 +101,16 @@ async function reapStaleProcessingIntents(db, options = {}) {
   const staleIds = [];
   for (const doc of snap.docs) {
     const data = doc.data() || {};
-    const createdAt = parseDateLike(data.created_at);
-    if (!createdAt) continue;
-    if (now - createdAt.getTime() < staleAfterMs) continue;
+    const heartbeatAt = resolveProcessingHeartbeatDate(data);
+    if (!heartbeatAt) continue;
+    if (now - heartbeatAt.getTime() < staleAfterMs) continue;
+    console.warn('[EXECUTION_TIMEOUT_PATH]', {
+      prediction_id: data.prediction_id || null,
+      symbol: data.symbol || null,
+      stage: data.processing_stage || 'processing',
+      timeout_ms: staleAfterMs,
+      reason: 'processing_timeout_watchdog'
+    });
     await doc.ref.set(
       {
         status: 'failed',

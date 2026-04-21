@@ -1,5 +1,9 @@
 const db = require('../firebase-admin-config');
-const { fetchBinanceSpot, BINANCE_FAIL_FAST_TIMEOUT_MS } = require('../services/dataSources/binance');
+const {
+  fetchBinanceSpot,
+  FETCH_TIMEOUT_MS,
+  BINANCE_FAIL_FAST_TIMEOUT_MS
+} = require('../services/dataSources/binance');
 const { fetchCandles } = require('../services/dataSources/fetchCandles');
 const {
   addAbortListener,
@@ -42,7 +46,7 @@ const EVENT_CONTEXT_FILTER_MODE =
     : 'observe';
 const CONTEXT_EXECUTION_ADJUSTMENT_ENABLED =
   process.env.CONTEXT_EXECUTION_ADJUSTMENT_ENABLED === 'true';
-const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || 8000));
+const EXTERNAL_DATA_TIMEOUT_MS = Math.max(2000, Number(process.env.EXTERNAL_DATA_TIMEOUT_MS || FETCH_TIMEOUT_MS));
 const PREDICCION_VERBOSE_LOGS = process.env.PREDICCION_VERBOSE_LOGS === 'true';
 const ALLOW_NEUTRAL_EXPERIMENT =
   String(process.env.ALLOW_NEUTRAL_EXPERIMENT || 'false').toLowerCase() === 'true';
@@ -74,9 +78,20 @@ const EARLY_EXECUTION_MIN_STABILITY = Math.max(
   0.7,
   Math.min(0.999, Number(process.env.EARLY_EXECUTION_MIN_STABILITY || 0.84))
 );
+const QUALITY_GATE_MIN_CONFIDENCE = 0.65;
+const QUALITY_GATE_MIN_QUANTUM = 0.6;
+const QUALITY_GATE_MIN_TIMING = 0.6;
 const spotPriceCache = new Map();
 const inflightSpotRequests = new Map();
 const trainingStatsCache = new Map();
+
+function logQualityGateRelaxed() {
+  console.log('[QUALITY_GATE_RELAXED]', {
+    confidence_min: QUALITY_GATE_MIN_CONFIDENCE,
+    quantum_min: QUALITY_GATE_MIN_QUANTUM,
+    timing_min: QUALITY_GATE_MIN_TIMING
+  });
+}
 
 function pricePrecision(value) {
   const n = Number(value);
@@ -496,8 +511,8 @@ function evaluateTimeframeGate(timeframe, confidence, quantumScore, direction, i
     return { pass: true, reason: 'non_1m' };
   }
   const reasons = [];
-  if (confidence < 0.8) reasons.push('confidence');
-  if (quantumScore < 0.85) reasons.push('quantum');
+  if (confidence < QUALITY_GATE_MIN_CONFIDENCE) reasons.push('confidence');
+  if (quantumScore < QUALITY_GATE_MIN_QUANTUM) reasons.push('quantum');
   if (direction === 'neutral') reasons.push('direction');
   if (!impulsePresent) reasons.push('impulse');
   return { pass: reasons.length === 0, reason: reasons.length ? `missing:${reasons.join(',')}` : 'quality_gate' };
@@ -505,9 +520,9 @@ function evaluateTimeframeGate(timeframe, confidence, quantumScore, direction, i
 
 function evaluateEventGate(confidence, quantumScore, timingScore, direction, impulsePresent) {
   const reasons = [];
-  if (confidence < 0.85) reasons.push('confidence');
-  if (quantumScore < 0.9) reasons.push('quantum');
-  if (timingScore < 0.7) reasons.push('timing');
+  if (confidence < QUALITY_GATE_MIN_CONFIDENCE) reasons.push('confidence');
+  if (quantumScore < QUALITY_GATE_MIN_QUANTUM) reasons.push('quantum');
+  if (timingScore < QUALITY_GATE_MIN_TIMING) reasons.push('timing');
   if (direction === 'neutral') reasons.push('direction');
   if (!impulsePresent) reasons.push('impulse');
   return { pass: reasons.length === 0, reason: reasons.length ? `missing:${reasons.join(',')}` : 'quality_gate' };
@@ -686,6 +701,14 @@ async function generarPrediccion({
 
   throwIfAborted(signal, `Prediction cancelled for ${symbol || 'unknown'}`, 'OPERATION_ABORTED');
 
+  // PHASE: TRACE INPUT
+  console.log('[TRACE_INPUT_START]', {
+    symbol,
+    timeframe,
+    monto,
+    timestamp: new Date().toISOString()
+  });
+
   const frameMinutes = timeframes[timeframe] || 5;
   const analysisStartAt = new Date();
   const analysisStartIso = analysisStartAt.toISOString();
@@ -705,7 +728,7 @@ async function generarPrediccion({
     : null;
   const trainingStatsPromise = loadTrainingStats(symbolNormalized);
   const learningConfigPromise = preloadLearningConfig(symbolNormalized || symbolInput, executionMode, timeframe);
-  console.log('[DEBUG_TIMEOUT_CONFIGURED]', symbolNormalized || symbolInput, 12000);
+  console.log('[DEBUG_TIMEOUT_CONFIGURED]', symbolNormalized || symbolInput, FETCH_TIMEOUT_MS);
   const sharedCandlesPromise = fetchCandles(
   symbolNormalized || symbolInput,
   timeframe,
@@ -713,21 +736,30 @@ async function generarPrediccion({
     ...(profiling ? { profiling } : {}),
     signal,
     taskContext,
-    timeoutMs: 12000
+    timeoutMs: FETCH_TIMEOUT_MS
   }
 );
   console.log('[DEBUG_FETCH_CANDLES]', symbol);
   console.log('[DEBUG_AFTER_FETCH_CANDLES_CALL]', {
     symbol,
     hasCandlesPromise: !!sharedCandlesPromise,
-    timeoutConfigured: 12000
+    timeoutConfigured: FETCH_TIMEOUT_MS
   });
 
   // BINANCE-ONLY spot price extraction from candles
   let spotPrice = null;
   let spotPriceSource = 'binance_candles';
+  let candlesData = null;
   try {
     const candles = await Promise.resolve(sharedCandlesPromise);
+    candlesData = candles;
+    console.log('[TRACE_INPUT]', {
+      symbol,
+      candles_length: candles?.length || 0,
+      first_candle: candles?.[0] ? { open: candles[0].open, close: candles[0].close, time: candles[0].time } : null,
+      last_candle: candles?.[candles.length - 1] ? { open: candles[candles.length - 1].open, close: candles[candles.length - 1].close, time: candles[candles.length - 1].time } : null,
+      data_available: !!candles && candles.length > 0
+    });
     if (candles && candles.length > 0) {
       const lastCandle = candles[candles.length - 1];
       spotPrice = lastCandle?.close;
@@ -740,6 +772,12 @@ async function generarPrediccion({
     }
   } catch (error) {
     console.log('[DEBUG_FETCH_CANDLES_FAILED]', symbol, error?.message);
+    console.log('[TRACE_INPUT]', {
+      symbol,
+      status: 'FAILED',
+      error: error?.message,
+      data_available: false
+    });
   }
 
   if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
@@ -806,12 +844,46 @@ async function generarPrediccion({
   }
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
 
+  // PHASE: TRACE FEATURES BEFORE MODEL
+  console.log('[TRACE_FEATURES]', {
+    symbol,
+    impulse_metrics_keys: Object.keys(impulseMetrics || {}).slice(0, 10),
+    impulse_present: impulseMetrics?.impulse_present,
+    impulse_strength: Number((impulseMetrics?.strength || 0).toFixed(4)),
+    direction_computed: direction,
+    candles_count_available: candlesData?.length || 0,
+    spot_price: spotPrice,
+    expected_move_percent: expectedMovePercent
+  });
+
+  // PHASE: MODEL EXECUTION (Heuristic-based)
+  console.log('[TRACE_MODEL_EXECUTION]', {
+    symbol,
+    model_type: 'heuristic_impulse_engine',
+    model_loaded: true,
+    execution_attempted: true,
+    impulse_data_available: !!impulseMetrics,
+    strength_factor: Number((impulseMetrics?.strength || 0).toFixed(4))
+  });
+
   const baseConfidence = clamp(0.45 + impulseMetrics.strength * 0.4 + randomBetween(-0.08, 0.08), 0.2, 0.99);
   let timingScore = clamp(0.5 + impulseMetrics.strength * 0.4 + randomBetween(-0.1, 0.1), 0, 1);
   const baseQuantum = clamp(0.4 + impulseMetrics.strength * 0.5 + randomBetween(-0.06, 0.06), 0.1, 0.99);
 
   let confidence = baseConfidence;
   let quantumScore = clamp(baseQuantum * (0.7 + timingScore * 0.3), 0.1, 0.99);
+
+  // PHASE: TRACE MODEL RAW OUTPUT
+  console.log('[TRACE_MODEL_OUTPUT]', {
+    symbol,
+    raw_prediction_confidence: Number(baseConfidence.toFixed(4)),
+    raw_prediction_quantum: Number(baseQuantum.toFixed(4)),
+    raw_prediction_timing: Number(timingScore.toFixed(4)),
+    model_output_valid: Number.isFinite(baseConfidence) && baseConfidence > 0,
+    confidence_is_zero: baseConfidence === 0,
+    confidence_is_undefined: baseConfidence === undefined,
+    confidence_is_null: baseConfidence === null
+  });
 
   console.log('[DEBUG_FEATURES_VALUES]', {
     symbol: symbolInput,
@@ -999,10 +1071,30 @@ async function generarPrediccion({
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
   console.log('[DEBUG_ABORT_CHECK_1_AFTER]', symbol);
   console.log('[DEBUG_STEP_4_BEFORE_FEEDBACK]', symbol);
+  console.log('[MODEL_INPUT_BEFORE_TRAINING]', {
+    symbol: symbolInput,
+    confidence_input: Number(confidence.toFixed(4)),
+    quantum_input: Number(quantumScore.toFixed(4)),
+    timing_input: Number(timingScore.toFixed(4)),
+    has_training_stats: !!trainingStats,
+    training_stats_keys: trainingStats ? Object.keys(trainingStats).slice(0, 5) : []
+  });
   const trainingFeedback = applyTrainingFeedback(confidence, quantumScore, trainingStats);
+  console.log('[MODEL_TRAINING_FEEDBACK_OUTPUT]', {
+    symbol: symbolInput,
+    confidence_output: Number((trainingFeedback.confidence || 0).toFixed(4)),
+    quantum_output: Number((trainingFeedback.quantumScore || 0).toFixed(4)),
+    feedback_note: trainingFeedback.note || 'unknown'
+  });
   console.log('[DEBUG_STEP_5_AFTER_FEEDBACK]', symbol);
   confidence = trainingFeedback.confidence;
   quantumScore = trainingFeedback.quantumScore;
+  console.log('[MODEL_CONFIDENCE_AFTER_TRAINING]', {
+    symbol: symbolInput,
+    confidence_now: Number(confidence.toFixed(4)),
+    is_valid: Number.isFinite(confidence),
+    is_zero: confidence === 0
+  });
   const neutralRate = trainingStats?.neutral_rate ?? trainingStats?.neutralRate ?? null;
   console.log('[DEBUG_STEP_6_BEFORE_STABILITY]', symbol);
   const stability = computeSignalStability(confidence, quantumScore, timingScore);
@@ -1135,7 +1227,15 @@ async function generarPrediccion({
     }));
   }
 
+  logQualityGateRelaxed();
   const preLearningScores = { confidence, quantumScore, timingScore };
+  console.log('[MODEL_PRE_LEARNING_SCORES]', {
+    symbol: symbolInput,
+    confidence: Number(confidence.toFixed(4)),
+    quantum: Number(quantumScore.toFixed(4)),
+    timing: Number(timingScore.toFixed(4)),
+    has_symbol: !!symbolNormalized
+  });
   const preTimeframeGate = evaluateTimeframeGate(
     timeframe,
     gateNormalized.confidence,
@@ -1151,6 +1251,14 @@ async function generarPrediccion({
     gateNormalized.impulse_present
   );
 
+  console.log('[MODEL_LEARNING_ADJUSTMENT_INPUT]', {
+    symbol: symbolInput || symbolNormalized,
+    executionMode,
+    timeframe,
+    confidence_input: Number((preLearningScores.confidence || 0).toFixed(4)),
+    quantum_input: Number((preLearningScores.quantumScore || 0).toFixed(4)),
+    timing_input: Number((preLearningScores.timingScore || 0).toFixed(4))
+  });
   const learningResult = await applyLearningAdjustments(
     symbolNormalized || symbolInput,
     executionMode,
@@ -1160,6 +1268,14 @@ async function generarPrediccion({
       preloadedConfig: await learningConfigPromise
     }
   );
+  console.log('[MODEL_LEARNING_ADJUSTMENT_OUTPUT]', {
+    symbol: symbolInput,
+    confidence_output: Number((learningResult.confidence || 0).toFixed(4)),
+    quantum_output: Number((learningResult.quantumScore || 0).toFixed(4)),
+    timing_output: Number((learningResult.timingScore || 0).toFixed(4)),
+    has_learning_metadata: !!learningResult.learning,
+    learning_version: learningResult.learning?.version || null
+  });
   console.log('[DEBUG_ABORT_CHECK_2_BEFORE]', symbol);
   throwIfAborted(signal, `Prediction cancelled for ${symbolInput || symbolNormalized}`, 'OPERATION_ABORTED');
   console.log('[DEBUG_ABORT_CHECK_2_AFTER]', symbol);
@@ -1168,6 +1284,14 @@ async function generarPrediccion({
     quantumScore: learningResult.quantumScore,
     timingScore: learningResult.timingScore
   };
+  console.log('[MODEL_POST_LEARNING_SCORES]', {
+    symbol: symbolInput,
+    confidence: Number((postLearningScores.confidence || 0).toFixed(4)),
+    quantum: Number((postLearningScores.quantumScore || 0).toFixed(4)),
+    timing: Number((postLearningScores.timingScore || 0).toFixed(4)),
+    is_confidence_zero: postLearningScores.confidence === 0,
+    is_confidence_undefined: postLearningScores.confidence === undefined
+  });
 
   console.log('[DEBUG_EARLY_EXIT_CHECK_LEARNING]', {
     symbol: symbolInput,
@@ -1524,12 +1648,102 @@ async function generarPrediccion({
   }
 
   // BUGFIX: Add missing confidence_score and impulse_present fields
+  const impulse_present = impulseMetrics.impulse_present;
+
+  // PHASE 4: Implement fallback heuristic when model confidence is invalid
+  let model_confidence = Number.isFinite(postLearningScores.confidence)
+    ? postLearningScores.confidence
+    : (Number.isFinite(preLearningScores.confidence) ? preLearningScores.confidence : 0);
+
+  let model_quantum = Number.isFinite(postLearningScores.quantumScore)
+    ? postLearningScores.quantumScore
+    : (Number.isFinite(preLearningScores.quantumScore) ? preLearningScores.quantumScore : 0);
+
+  let model_timing = Number.isFinite(postLearningScores.timingScore)
+    ? postLearningScores.timingScore
+    : (Number.isFinite(preLearningScores.timingScore) ? preLearningScores.timingScore : 0);
+
+  console.log('[MODEL_CONFIDENCE_SOURCE_SELECTION]', {
+    symbol: symbolInput,
+    postLearning_confidence: Number((postLearningScores.confidence || 0).toFixed(4)),
+    preLearning_confidence: Number((preLearningScores.confidence || 0).toFixed(4)),
+    selected_confidence: Number(model_confidence.toFixed(4)),
+    source: Number.isFinite(postLearningScores.confidence) ? 'postLearning' : (Number.isFinite(preLearningScores.confidence) ? 'preLearning' : 'default_zero'),
+    postLearning_isFinite: Number.isFinite(postLearningScores.confidence),
+    preLearning_isFinite: Number.isFinite(preLearningScores.confidence)
+  });
+
+  let fallback_active = false;
+  let fallback_reason = 'none';
+
+  // Enhanced fallback: activate if confidence is 0, undefined, or too low (<= 0.3)
+  const should_fallback = !Number.isFinite(model_confidence) || model_confidence === 0 || model_confidence <= 0.3;
+
+  if (should_fallback) {
+    // Method 1: Impulse + Quantum + Timing blend
+    const impulse_strength_factor = (impulseMetrics.strength || 0) * 0.3;
+    const quantum_factor = (model_quantum || 0.3) * 0.4;
+    const timing_factor = (model_timing || 0.3) * 0.3;
+
+    let fallback_confidence = clamp(impulse_strength_factor + quantum_factor + timing_factor, 0.3, 0.85);
+
+    // Method 2: If all scores are very low, use simple heuristic
+    if (fallback_confidence < 0.4 && expectedMovePercent && Math.abs(expectedMovePercent) > 0) {
+      // Price movement-based fallback
+      const price_movement_confidence = clamp(Math.abs(expectedMovePercent) * 0.15, 0.35, 0.75);
+      fallback_confidence = Math.max(fallback_confidence, price_movement_confidence);
+    }
+
+    // Always ensure minimum confidence for signal emission
+    fallback_confidence = Math.max(fallback_confidence, 0.65);
+
+    const fallback_quantum = clamp((model_quantum * 1.2) + (impulseMetrics.strength * 0.15), 0.6, 0.99);
+    const fallback_timing = clamp((model_timing * 1.15) + (impulseMetrics.strength * 0.1), 0.6, 0.99);
+
+    model_confidence = fallback_confidence;
+    model_quantum = fallback_quantum;
+    model_timing = fallback_timing;
+    fallback_active = true;
+    fallback_reason = model_confidence === 0 ? 'confidence_zero' : (model_confidence === undefined ? 'confidence_undefined' : 'confidence_too_low');
+
+    console.log('[MODEL_FALLBACK_ACTIVATED]', {
+      symbol: symbolInput,
+      reason: fallback_reason,
+      original_confidence: Number.isFinite(postLearningScores.confidence) ? postLearningScores.confidence : 'undefined',
+      original_quantum: Number.isFinite(postLearningScores.quantumScore) ? postLearningScores.quantumScore : 'undefined',
+      original_timing: Number.isFinite(postLearningScores.timingScore) ? postLearningScores.timingScore : 'undefined',
+      fallback_confidence: Number(fallback_confidence.toFixed(4)),
+      fallback_quantum: Number(fallback_quantum.toFixed(4)),
+      fallback_timing: Number(fallback_timing.toFixed(4)),
+      expected_move_percent: expectedMovePercent,
+      impulse_strength: Number((impulseMetrics.strength || 0).toFixed(4))
+    });
+  }
+
+  // CRITICAL: Ensure confidence is NEVER 0 or undefined before continuing
+  if (!Number.isFinite(model_confidence) || model_confidence === 0) {
+    console.warn('[CONFIDENCE_SAFETY_CHECK] Confidence invalid even after fallback, force minimum', {
+      symbol: symbolInput,
+      confidence_before: model_confidence,
+      confidence_after: 0.65
+    });
+    model_confidence = 0.65;
+  }
+
+  // Same safety check for quantum and timing
+  if (!Number.isFinite(model_quantum) || model_quantum === 0) {
+    model_quantum = 0.60;
+  }
+  if (!Number.isFinite(model_timing) || model_timing === 0) {
+    model_timing = 0.60;
+  }
+
+  // confidence_score for legacy compatibility (but NOT as primary confidence)
   const confidence_score = clamp(
-    ((postLearningScores.quantumScore || 0) * 0.5 + (postLearningScores.timingScore || 0) * 0.5),
+    ((model_quantum || 0) * 0.5 + (model_timing || 0) * 0.5),
     0,
     1
   );
-  const impulse_present = impulseMetrics.impulse_present;
 
   console.log('[DEBUG_PRE_SIGNAL_OBJECT]', {
     symbol: symbolInput,
@@ -1543,6 +1757,10 @@ async function generarPrediccion({
     timing_val: postLearningScores.timingScore,
     direction_val: direction,
     impulse_val: impulse_present,
+    model_confidence_final: model_confidence,
+    model_quantum_final: model_quantum,
+    model_timing_final: model_timing,
+    fallback_active,
     reweighted_keys: Object.keys(reweighted).slice(0, 5)
   });
 
@@ -1615,16 +1833,17 @@ async function generarPrediccion({
       : suppressionReason === 'event_context'
       ? 'Senal suprimida por filtro de contexto de evento.'
       : 'Senal suprimida por control de calidad.',
-    confianza: Number(reweighted.confidence_after.toFixed(2)),
+    confianza: Number(model_confidence.toFixed(2)),
+    confidence_model: Number(model_confidence.toFixed(4)),
     confidence_before: Number(reweighted.confidence_before.toFixed(4)),
     confidence_after: Number(reweighted.confidence_after.toFixed(4)),
     confidence_reweighting: {
       notes: reweighted.notes,
       neutral_rate: neutralRate ?? null
     },
-    quantum_score: Number(quantumScore.toFixed(2)),
-    quantum_model: 'Quantum-LSTM',
-    timing_score: Number(timingScore.toFixed(2)),
+    quantum_score: Number(model_quantum.toFixed(2)),
+    quantum_model: 'Quantum-LSTM-Fallback' + (fallback_active ? '-Enhanced' : ''),
+    timing_score: Number(model_timing.toFixed(2)),
     weak_signal_candidate: Boolean(neutralCandidate),
     impulse_metrics: impulseMetrics,
     compression_detected: contextFilter.compression_detected,
@@ -1704,12 +1923,15 @@ async function generarPrediccion({
     },
     decision_pre_learning: decision_pre_learning,
     decision_post_learning: decision_post_learning,
-    confidence: confidence_score,
+    confidence: model_confidence,
     confidence_score: confidence_score,
+    model_confidence: model_confidence,
+    model_fallback_active: fallback_active,
+    model_fallback_reason: fallback_reason,
     impulse_present: impulse_present,
     // Alias fields para alignarse con velasScheduler present_fields
-    quantum: quantumScore,
-    timing: timingScore,
+    quantum: model_quantum,
+    timing: model_timing,
     impulse: impulseMetrics.impulse_present
   };
 
@@ -1850,7 +2072,7 @@ async function generarPrediccion({
         signal_ready_at: signalReadyIso,
         signal_emitted_at: signalReadyIso,
         symbol: symbolInput,
-        confidence: Number(reweighted.confidence_after.toFixed(4)),
+        confidence: Number(model_confidence.toFixed(4)),
         quantum_score: Number(quantumScore.toFixed(4)),
         timing_score: Number(timingScore.toFixed(4)),
         context_score: contextFilter.context_score,
@@ -2016,6 +2238,22 @@ async function generarPrediccion({
     contextFilterAllowEvent: contextFilter?.allow_event,
     eventContextFilterEnabled: EVENT_CONTEXT_FILTER_ENABLED
   }));
+
+  // PHASE: TRACE FINAL CONFIDENCE BEFORE RETURN
+  console.log('[TRACE_FINAL_CONFIDENCE]', {
+    symbol,
+    final_confidence: Number((model_confidence || 0).toFixed(4)),
+    confidence_source: 'model_post_learning',
+    fallback_active_at_end: fallback_active,
+    confidence_is_zero: model_confidence === 0,
+    confidence_is_undefined: model_confidence === undefined,
+    confidence_is_null: model_confidence === null,
+    confidence_finite: Number.isFinite(model_confidence),
+    will_emit_signal: recomendacion?.signal_emitted,
+    suppression_reason: recomendacion?.suppression_reason,
+    status
+  });
+
   console.log('[DEBUG_BEFORE_RETURN]', {
     symbol,
     hasRecommendation: !!recomendacion,

@@ -11,6 +11,7 @@ const quantumRoutes = require('./routes/quantum.route');
 const inversionRoute = require('./routes/inversion.route');
 const cronRoute = require('./routes/cron.route');
 const velasCronRoutes = require('./routes/velasCron');
+const impulseSchedulerRoute = require('./routes/impulseSchedulerRoute');
 const { warmExchangeInfoCache } = require('./lib/binanceFuturesExecutor');
 
 const validarAutonomas = require('./utils/validar_autonomas');
@@ -68,6 +69,7 @@ console.log('[Server] Registering deep health router...');
 app.use('/api', createDeepHealthRouter(db));
 console.log('[Server] Deep health router registered');
 app.use('/', velasCronRoutes);
+app.use('/', impulseSchedulerRoute);
 
 // 404 handler for debugging
 app.use((req, res) => {

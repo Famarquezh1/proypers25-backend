@@ -1,0 +1,242 @@
+════════════════════════════════════════════════════════════════════
+  IMMEDIATE ACTION ITEMS - IMPULSE DETECTOR V2
+  Deploy Date: 2026-04-21 10:51 UTC
+════════════════════════════════════════════════════════════════════
+
+✅ COMPLETED TASKS:
+  • Code changes (impulseDetector.js, velasScheduler.js, routes)
+  • Docker build (2m 36s)
+  • Cloud Run deployment
+  • Health check verification
+  • Cloud Scheduler job creation
+
+⏳ PENDING TASKS (USER ACTION REQUIRED):
+
+════════════════════════════════════════════════════════════════════
+ACTION 1: SET ENVIRONMENT VARIABLES (CRITICAL)
+════════════════════════════════════════════════════════════════════
+
+REQUIRED: Before trading starts, set env vars in Cloud Run
+
+Command:
+  gcloud run services update proypers25-backend \
+    --region southamerica-west1 \
+    --project proypers2025 \
+    --set-env-vars CRON_SECRET=proypers25-cron-secret,execution_enabled=true,position_size=0.25
+
+Optional:
+  --set-env-vars DEBUG_IMPULSE=false
+
+Why:
+  • CRON_SECRET: Validates scheduler requests
+  • execution_enabled: Controls trade execution
+  • position_size: Conservative 0.25x sizing
+  • DEBUG_IMPULSE: Verbose logging for troubleshooting
+
+════════════════════════════════════════════════════════════════════
+ACTION 2: VERIFY DEPLOYMENT (IMMEDIATE)
+════════════════════════════════════════════════════════════════════
+
+Test health endpoint:
+  curl https://proypers25-backend-518292923158.southamerica-west1.run.app/internal/health/impulse
+
+Expected response (200 OK):
+  {
+    "status": "healthy",
+    "impulse_system": "operational",
+    "timestamp": "2026-04-21T10:50:25.915Z",
+    "signals_collection_exists": true
+  }
+
+════════════════════════════════════════════════════════════════════
+ACTION 3: VERIFY SCHEDULER (IMMEDIATE)
+════════════════════════════════════════════════════════════════════
+
+Check scheduler status:
+  gcloud scheduler jobs describe impulse-trading-v2 \
+    --location southamerica-east1 \
+    --project proypers2025
+
+Expected:
+  state: ENABLED
+  schedule: '*/15 * * * *'
+  scheduleTime: '2026-04-21T11:00:00Z'
+
+════════════════════════════════════════════════════════════════════
+ACTION 4: MONITOR LOGS (ONGOING)
+════════════════════════════════════════════════════════════════════
+
+After setting env vars, watch for first cycle execution (should be ~11:00 UTC):
+
+Real-time logs:
+  gcloud run services logs read proypers25-backend \
+    --region southamerica-west1 \
+    --project proypers2025 \
+    --limit 100 \
+    --follow
+
+Or tail logs for impulse cycles:
+  gcloud logging read "textPayload=~'IMPULSE_CYCLE'" \
+    --project proypers2025 \
+    --limit 50 \
+    --format json
+
+Expected log entries:
+  [IMPULSE_CYCLE] Started at 2026-04-21T11:00:00Z
+  [IMPULSE_CYCLE] Scanning 25 symbols for impulses
+  [IMPULSE_CYCLE] ✓ IMPULSE DETECTED: BTCUSDT
+  [IMPULSE_CYCLE] Completed in Xms
+  [IMPULSE_CRON] Pending confirmation: BTCUSDT:UP
+  [IMPULSE_CRON] ✓ CONFIRMED: BTCUSDT:UP (age: 1 cycles)
+
+════════════════════════════════════════════════════════════════════
+ACTION 5: MANUAL TEST (OPTIONAL)
+════════════════════════════════════════════════════════════════════
+
+Trigger scheduler manually to test (runs immediately):
+  gcloud scheduler jobs run impulse-trading-v2 \
+    --location southamerica-east1 \
+    --project proypers2025
+
+Then check logs for execution results (should appear within 10 seconds)
+
+════════════════════════════════════════════════════════════════════
+ACTION 6: WAIT FOR FIRST CYCLE (2-6 HOURS)
+════════════════════════════════════════════════════════════════════
+
+Timeline:
+  • 11:00 UTC: First cycle (detection)
+  • 11:15 UTC: Second cycle (confirmation)
+  • 11:30 UTC: Third cycle (more confirmations & trade execution)
+  • 13:00 UTC: First trades close (~90 minutes later)
+  • 15:00-16:00 UTC: 10+ trades closed
+
+Monitor:
+  • Check logs every 15 minutes
+  • Count detected vs confirmed impulses
+  • Watch Firestore collections:
+    - high_conviction_impulse_signals (should have entries)
+    - active_impulse_trades (should have entries after confirmation)
+
+════════════════════════════════════════════════════════════════════
+ACTION 7: RUN AUDIT (AFTER 10+ TRADES)
+════════════════════════════════════════════════════════════════════
+
+Expected timing: 5-6 hours post-deployment
+
+When ready:
+  cd c:\Desarrollo\proypers25\backend
+  node audit_impulse_trades.js 20
+
+This will show:
+  • WIN_RATE (must be ≥ 55%)
+  • AVG_MOVE_CAPTURED (must be ≥ 0.4%)
+  • Best/worst trades
+  • Total PnL
+
+Decision:
+  IF both criteria pass:
+    → VIABLE: Scale to 0.5x position size
+    → Continue monitoring
+    → Scale further after next 20 trades if metrics hold
+  
+  IF either criterion fails:
+    → NOT VIABLE: HALT immediately
+    → Set execution_enabled=false
+    → Investigate and adjust thresholds
+
+════════════════════════════════════════════════════════════════════
+QUICK REFERENCE
+════════════════════════════════════════════════════════════════════
+
+Service URL:
+  https://proypers25-backend-518292923158.southamerica-west1.run.app
+
+Health check:
+  /internal/health/impulse
+
+Cycle endpoint:
+  /internal/cron/impulse/cycle (POST, requires x-cron-secret header)
+
+Scheduler job:
+  impulse-trading-v2 (southamerica-east1, every 15 min)
+
+Key files modified:
+  • backend/services/impulseDetector.js
+  • backend/tasks/velasScheduler.js
+  • backend/routes/impulseSchedulerRoute.js
+
+Firestore collections:
+  • high_conviction_impulse_signals
+  • active_impulse_trades
+
+════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING
+════════════════════════════════════════════════════════════════════
+
+Issue: No [IMPULSE_CYCLE] logs appearing
+  Solution 1: Verify scheduler job is ENABLED
+  Solution 2: Check x-cron-secret matches between Cloud Run and scheduler
+  Solution 3: Verify CRON_SECRET is set in Cloud Run environment
+
+Issue: "403 Forbidden" in scheduler logs
+  Solution: x-cron-secret header doesn't match
+  Fix: Get current value in Cloud Run and update scheduler job
+  $ gcloud scheduler jobs update impulse-trading-v2 \
+      --location southamerica-east1 \
+      --project proypers2025 \
+      --headers "x-cron-secret=[NEW_VALUE]"
+
+Issue: No impulses detected in logs
+  Solution 1: Market might not have impulses (check manually)
+  Solution 2: Set DEBUG_IMPULSE=true to see rejection reasons
+  Solution 3: Check Binance API availability
+  $ curl https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=5
+
+Issue: Trades not executing after confirmation
+  Solution 1: Check execution_enabled is true
+  Solution 2: Check position_size is set (0.25)
+  Solution 3: Check risk manager not halted (check logs for "HALT")
+
+════════════════════════════════════════════════════════════════════
+CRITICAL SUCCESS FACTORS
+════════════════════════════════════════════════════════════════════
+
+1. Environment variables MUST be set before trading
+   → If not set, trades won't execute
+   → Service will still detect impulses
+
+2. x-cron-secret MUST match exactly
+   → Between Cloud Scheduler and Cloud Run
+   → Any mismatch causes 403 errors
+
+3. Monitor early (first 2-4 cycles)
+   → Ensure detection is working
+   → Confirm scheduler is triggering
+   → Catch any configuration issues
+
+4. Wait full 10+ trades before audit
+   → Don't make decisions on 1-2 trades
+   → Need statistical significance
+   → Minimum 5-6 hours recommended
+
+5. Scale cautiously after audit
+   → If viable: 0.25x → 0.5x
+   → Not immediately to 1x
+   → Validate at each tier
+
+════════════════════════════════════════════════════════════════════
+COMPLETION TIMELINE
+════════════════════════════════════════════════════════════════════
+
+2026-04-21 10:51 UTC: ✓ Deployment complete
+2026-04-21 ~11:00 UTC: First cycle (expect 1-3 impulses detected)
+2026-04-21 ~11:15 UTC: Confirmations (expect impulses → CONFIRMED)
+2026-04-21 ~11:30 UTC: Trade executions (expect trades to open)
+2026-04-21 ~13:00 UTC: First trades close (~2 hours later)
+2026-04-21 ~16:00-17:00 UTC: 10+ trades closed → Ready for audit
+2026-04-21 ~17:00 UTC: Run audit → Decision (viable or not)
+
+Total time to decision: ~6 hours
+
+════════════════════════════════════════════════════════════════════

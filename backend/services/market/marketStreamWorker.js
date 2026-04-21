@@ -18,9 +18,21 @@ const MARKET_STREAM_HEALTHCHECK_INTERVAL_MS = Math.max(
   2000,
   Number(process.env.MARKET_STREAM_HEALTHCHECK_INTERVAL_MS || 5000)
 );
+const MARKET_STREAM_AGGTRADE_STALE_MS = Math.max(
+  5000,
+  Number(process.env.MARKET_STREAM_AGGTRADE_STALE_MS || 5000)
+);
 const MARKET_STREAM_STALE_SOCKET_MS = Math.max(
   MARKET_STREAM_HEALTHCHECK_INTERVAL_MS * 2,
   Number(process.env.MARKET_STREAM_STALE_SOCKET_MS || 20000)
+);
+const MARKET_STREAM_MAX_RECONNECT_ATTEMPTS = Math.max(
+  1,
+  Number(process.env.MARKET_STREAM_MAX_RECONNECT_ATTEMPTS || 3)
+);
+const MARKET_STREAM_DISABLE_MS = Math.max(
+  5000,
+  Number(process.env.MARKET_STREAM_DISABLE_MS || 10000)
 );
 const MARKET_STREAM_RECENT_SIGNAL_TTL_MS = Math.max(
   60 * 1000,
@@ -72,6 +84,37 @@ function isSocketAlive(ws) {
   return Boolean(ws && ws.readyState === WebSocket.OPEN);
 }
 
+function logSymbolFlow({ symbol = null, source = null, stage = null, predictionId = null } = {}) {
+  console.info('[SYMBOL_FLOW]', {
+    symbol: symbol || null,
+    source: source || null,
+    stage: stage || null,
+    prediction_id: predictionId || null
+  });
+}
+
+function logSymbolError(context = {}) {
+  console.error('[SYMBOL_ERROR]', context);
+}
+
+function resolveObservationSymbol(data = {}) {
+  return normalizeSymbol(
+    data?.symbol ||
+      data?.simbolo ||
+      data?.simbolo_normalizado ||
+      data?.signal_symbol ||
+      data?.intent?.symbol ||
+      data?.intent?.signal_symbol ||
+      data?.metadata?.symbol
+  );
+}
+
+function logObservedSymbols(stage, source = 'market_stream') {
+  for (const symbol of microstructureState.getObservedSymbols()) {
+    logSymbolFlow({ symbol, source, stage });
+  }
+}
+
 class MarketStreamWorker {
   constructor() {
     this.ws = null;
@@ -103,6 +146,8 @@ class MarketStreamWorker {
     this.connectionSeq = 0;
     this.staleSocketDetections = 0;
     this.subscriptionSyncCount = 0;
+    this.disabledUntilMs = 0;
+    this.disabledReason = null;
   }
 
   async ensureStarted(db, config = null) {
@@ -110,6 +155,9 @@ class MarketStreamWorker {
     const effectiveConfig = config || this.lastConfig || (this.db ? await getBinanceBotConfig(this.db) : null);
     this.lastConfig = effectiveConfig;
     if (!isStreamEnabled(effectiveConfig)) {
+      return false;
+    }
+    if (this.disabledUntilMs > Date.now()) {
       return false;
     }
     if (isSocketAlive(this.ws) && !this.isSocketStale()) {
@@ -127,6 +175,73 @@ class MarketStreamWorker {
   isSocketStale(now = Date.now()) {
     if (!this.lastMessageAtMs) return false;
     return now - this.lastMessageAtMs > MARKET_STREAM_STALE_SOCKET_MS;
+  }
+
+  resetSocketState() {
+    this.activeSubscriptions.clear();
+    this.lastSocketCloseAt = new Date().toISOString();
+    this.lastMessageAt = null;
+    this.lastAggTradeAt = null;
+    this.lastBookTickerAt = null;
+    this.lastMessageAtMs = 0;
+    this.lastAggTradeAtMs = 0;
+    this.lastBookTickerAtMs = 0;
+    this.connecting = false;
+  }
+
+  disableStreamTemporarily(ms = MARKET_STREAM_DISABLE_MS, reason = 'temporary_disable') {
+    const delayMs = Math.max(1000, Number(ms || MARKET_STREAM_DISABLE_MS));
+    this.disabledUntilMs = Date.now() + delayMs;
+    this.disabledReason = reason;
+    this.reconnectAttempts = 0;
+    this.lastReconnectDelayMs = delayMs;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.removeAllListeners();
+        this.ws.terminate();
+      } catch (_) {
+        // noop
+      }
+      this.ws = null;
+    }
+    this.resetSocketState();
+    logObservedSymbols('market_stream_disabled', reason);
+    console.warn(`[MARKET_STREAM] disabled for ${delayMs}ms`, { reason });
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      this.disabledUntilMs = 0;
+      this.disabledReason = null;
+      try {
+        await this.ensureStarted(this.db, this.lastConfig);
+        logObservedSymbols('market_stream_reenabled', reason);
+      } catch (err) {
+        console.warn('[MARKET_STREAM] re-enable failed', err.message);
+      }
+    }, delayMs);
+    this.reconnectTimer.unref?.();
+  }
+
+  reconnectStream(reason = 'manual_reconnect') {
+    if (this.disabledUntilMs > Date.now()) {
+      return;
+    }
+    logObservedSymbols('market_stream_reconnect', reason);
+    console.warn('[MARKET_STREAM] reconnect requested', { reason });
+    if (this.ws) {
+      try {
+        this.ws.removeAllListeners();
+        this.ws.terminate();
+      } catch (_) {
+        // noop
+      }
+      this.ws = null;
+    }
+    this.resetSocketState();
+    this.scheduleReconnect();
   }
 
   connect() {
@@ -154,6 +269,8 @@ class MarketStreamWorker {
       this.activeSubscriptions.clear();
       this.reconnectAttempts = 0;
       this.lastReconnectDelayMs = null;
+      this.disabledUntilMs = 0;
+      this.disabledReason = null;
       this.lastSocketOpenAt = new Date().toISOString();
       this.lastSocketError = null;
       this.lastMessageAt = null;
@@ -163,6 +280,7 @@ class MarketStreamWorker {
       this.lastAggTradeAtMs = 0;
       this.lastBookTickerAtMs = 0;
       console.log('[MARKET_STREAM] websocket connected');
+      logObservedSymbols('market_stream_connected', 'market_stream');
       this.scheduleSync();
     });
 
@@ -178,9 +296,7 @@ class MarketStreamWorker {
     ws.on('close', () => {
       if (this.ws !== ws || connectionId !== this.connectionSeq) return;
       this.ws = null;
-      this.connecting = false;
-      this.activeSubscriptions.clear();
-      this.lastSocketCloseAt = new Date().toISOString();
+      this.resetSocketState();
       console.warn('[MARKET_STREAM] websocket closed');
       if (this.started) {
         this.scheduleReconnect();
@@ -214,26 +330,7 @@ class MarketStreamWorker {
         if (isSocketAlive(this.ws) && this.isSocketStale()) {
           this.staleSocketDetections += 1;
           console.warn('[MARKET_STREAM] stale socket detected, forcing reconnect');
-          try {
-            const staleSocket = this.ws;
-            if (staleSocket) {
-              staleSocket.removeAllListeners();
-              staleSocket.terminate();
-            }
-            this.ws = null;
-            this.connecting = false;
-            this.activeSubscriptions.clear();
-            this.lastSocketCloseAt = new Date().toISOString();
-            this.lastMessageAt = null;
-            this.lastAggTradeAt = null;
-            this.lastBookTickerAt = null;
-            this.lastMessageAtMs = 0;
-            this.lastAggTradeAtMs = 0;
-            this.lastBookTickerAtMs = 0;
-            this.scheduleReconnect();
-          } catch (_) {
-            this.ws = null;
-          }
+          this.reconnectStream('stale_socket');
           return;
         }
         if (isSocketAlive(this.ws)) {
@@ -242,13 +339,12 @@ class MarketStreamWorker {
             .length;
           const aggTradeStale =
             this.lastAggTradeAtMs > 0 &&
-            Date.now() - this.lastAggTradeAtMs > MARKET_STREAM_STALE_SOCKET_MS;
+            Date.now() - this.lastAggTradeAtMs > MARKET_STREAM_AGGTRADE_STALE_MS;
           if (desiredStreamCount !== this.activeSubscriptions.size) {
             this.scheduleSync();
           } else if (desiredStreamCount > 0 && aggTradeStale) {
             console.warn('[MARKET_STREAM] aggTrade feed stale, forcing resubscription');
-            this.activeSubscriptions.clear();
-            this.scheduleSync();
+            this.reconnectStream('aggtrade_stale');
           }
         }
         if (!isSocketAlive(this.ws) && !this.connecting) {
@@ -263,6 +359,13 @@ class MarketStreamWorker {
 
   scheduleReconnect() {
     if (this.reconnectTimer) return;
+    if (this.disabledUntilMs > Date.now()) {
+      return;
+    }
+    if (this.reconnectAttempts >= MARKET_STREAM_MAX_RECONNECT_ATTEMPTS) {
+      this.disableStreamTemporarily(MARKET_STREAM_DISABLE_MS, 'max_reconnect_attempts');
+      return;
+    }
     const delayMs = Math.min(
       30000,
       MARKET_STREAM_RECONNECT_DELAY_MS * Math.max(1, this.reconnectAttempts + 1)
@@ -399,8 +502,22 @@ class MarketStreamWorker {
 
   async ensureSymbolObservation(symbol, reason, options = {}) {
     const normalized = normalizeSymbol(symbol);
-    if (!normalized) return null;
+    if (!normalized) {
+      logSymbolError({
+        stage: 'market_stream_observe',
+        source: reason || 'market_stream',
+        prediction_id: options?.metadata?.prediction_id || null,
+        symbol_raw: symbol || null
+      });
+      return null;
+    }
     microstructureState.ensureObservation(normalized, reason, options);
+    logSymbolFlow({
+      symbol: normalized,
+      source: reason || 'market_stream',
+      stage: 'market_stream_observe',
+      predictionId: options?.metadata?.prediction_id || null
+    });
     await this.ensureStarted(options.db || this.db, options.config || this.lastConfig);
     this.scheduleSync();
     return microstructureState.getSnapshot(normalized);
@@ -458,7 +575,18 @@ class MarketStreamWorker {
 
     for (const doc of openSnap.docs) {
       const data = doc.data() || {};
-      await this.ensureSymbolObservation(data.symbol, 'open_position', {
+      const symbol = resolveObservationSymbol(data);
+      if (!symbol) {
+        logSymbolError({
+          stage: 'market_stream_open_position',
+          source: 'binance_open_positions',
+          prediction_id: data?.prediction_id || null,
+          doc_id: doc.id,
+          symbol_raw: data?.symbol || data?.signal_symbol || data?.simbolo || data?.simbolo_normalizado || null
+        });
+        continue;
+      }
+      await this.ensureSymbolObservation(symbol, 'open_position', {
         db,
         config,
         key: `position:${doc.id}`,
@@ -475,8 +603,23 @@ class MarketStreamWorker {
       const createdAtMs = extractTimestampMs(data.created_at) || now;
       if (now - createdAtMs > MARKET_STREAM_INTENT_TTL_MS) continue;
       if (!['processing', 'executed'].includes(String(data.status || '').toLowerCase())) continue;
-      const symbol = data?.intent?.symbol || data?.symbol;
-      if (!symbol) continue;
+      const symbol = resolveObservationSymbol(data);
+      if (!symbol) {
+        logSymbolError({
+          stage: 'market_stream_intent',
+          source: 'binance_execution_intents',
+          prediction_id: data?.prediction_id || null,
+          doc_id: doc.id,
+          symbol_raw:
+            data?.intent?.symbol ||
+            data?.symbol ||
+            data?.signal_symbol ||
+            data?.simbolo ||
+            data?.simbolo_normalizado ||
+            null
+        });
+        continue;
+      }
       await this.ensureSymbolObservation(symbol, 'execution_intent', {
         db,
         config,
@@ -495,8 +638,17 @@ class MarketStreamWorker {
       const signalTsMs = extractTimestampMs(data.timestamp) || extractTimestampMs(data.created_at);
       if (!signalTsMs || now - signalTsMs > signalLookbackMs) continue;
       if (data.signal_emitted !== true) continue;
-      const symbol = normalizeSymbol(data.symbol || data.simbolo);
-      if (!symbol) continue;
+      const symbol = resolveObservationSymbol(data);
+      if (!symbol) {
+        logSymbolError({
+          stage: 'market_stream_signal',
+          source: 'velas_predicciones',
+          prediction_id: data?.prediction_id || null,
+          doc_id: doc.id,
+          symbol_raw: data?.symbol || data?.simbolo || data?.simbolo_normalizado || null
+        });
+        continue;
+      }
       await this.ensureSymbolObservation(symbol, 'recent_signal', {
         db,
         config,
@@ -527,6 +679,8 @@ class MarketStreamWorker {
       last_socket_open_at: this.lastSocketOpenAt,
       last_socket_close_at: this.lastSocketCloseAt,
       last_socket_error: this.lastSocketError,
+      disabled_until_ms: this.disabledUntilMs || null,
+      disabled_reason: this.disabledReason,
       last_message_at: this.lastMessageAt,
       last_agg_trade_at: this.lastAggTradeAt,
       last_book_ticker_at: this.lastBookTickerAt,
