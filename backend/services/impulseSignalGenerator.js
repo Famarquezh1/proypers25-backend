@@ -71,7 +71,8 @@ async function generateImpulseSignal(symbol) {
       },
       noise_metrics: noiseCheck.metrics,
       entry_price: impulseData.candles['1m_close'],
-      created_at: admin.firestore.Timestamp.now(),
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at_ms: Date.now(),
       status: 'PENDING_EXECUTION'
     };
 

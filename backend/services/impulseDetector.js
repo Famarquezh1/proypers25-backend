@@ -111,12 +111,12 @@ function detectImpulse({ candles, volumeData }) {
   // CRITERION 1: EARLY IMPULSE
   // =========================
   // Detect START of movement, not confirmation
-  // move1m ≥ 0.2% (current 1-min momentum)
-  // move3m ≥ 0.3% (3-min overall direction)
+  // move1m ≥ 0.015% (current 1-min momentum)
+  // move3m ≥ 0.035% (3-min overall direction)
 
   const earlyImpulse =
-    absMove1m >= 0.2 &&
-    absMove3m >= 0.3;
+    absMove1m >= 0.015 &&
+    absMove3m >= 0.035;
 
   if (!earlyImpulse) {
     return {
@@ -125,7 +125,7 @@ function detectImpulse({ candles, volumeData }) {
       move1m: absMove1m,
       move3m: absMove3m,
       volumeRatio,
-      reason: `Early impulse criteria not met: move1m=${absMove1m.toFixed(4)}% (need ≥0.2%), move3m=${absMove3m.toFixed(4)}% (need ≥0.3%)`
+      reason: `Early impulse criteria not met: move1m=${absMove1m.toFixed(4)}% (need ≥0.015%), move3m=${absMove3m.toFixed(4)}% (need ≥0.035%)`
     };
   }
 
@@ -152,7 +152,7 @@ function detectImpulse({ candles, volumeData }) {
   // CRITERION 3: DIRECTION CONTINUITY
   // =========================
   // Confirm direction with ≥2 consecutive candles in same direction
-  
+
   const lastCandle = candles[candles.length - 1];
   const prevCandle = candles[candles.length - 2];
 
@@ -175,9 +175,9 @@ function detectImpulse({ candles, volumeData }) {
   // =========================
   // CRITERION 4: VOLUME CONFIRMATION
   // =========================
-  // volumeRatio ≥ 1.3x (institutional interest)
+  // volumeRatio ≥ 0.5x (validation mode for slow markets)
 
-  const volumeOk = volumeRatio >= 1.3;
+  const volumeOk = volumeRatio >= 0.5;
 
   if (!volumeOk) {
     return {
@@ -186,7 +186,7 @@ function detectImpulse({ candles, volumeData }) {
       move1m: absMove1m,
       move3m: absMove3m,
       volumeRatio,
-      reason: `Insufficient volume: ${volumeRatio.toFixed(2)}x (need ≥1.3x)`
+      reason: `Insufficient volume: ${volumeRatio.toFixed(2)}x (need ≥0.5x)`
     };
   }
 

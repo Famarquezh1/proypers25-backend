@@ -19,18 +19,37 @@ const RISK_CONFIG = {
   MAX_POSITION_SIZE_PERCENT: 0.25
 };
 
+function getCooldownThreshold(windowMs) {
+  return admin.firestore.Timestamp.fromMillis(Date.now() - windowMs);
+}
+
+async function getRecentClosedTradesForSymbol(symbol, windowMs) {
+  const threshold = getCooldownThreshold(windowMs);
+  const snapshot = await db.collection('active_impulse_trades')
+    .where('symbol', '==', symbol)
+    .get();
+
+  return snapshot.docs
+    .map((doc) => doc.data())
+    .filter((trade) => trade?.closed_at && trade.closed_at.toMillis() > threshold.toMillis());
+}
+
 /**
  * Get current portfolio metrics
  */
 async function getPortfolioMetrics() {
   try {
+    const closedThreshold = getCooldownThreshold(24 * 60 * 60 * 1000);
     const openTradesSnapshot = await db.collection('active_impulse_trades')
       .where('status', '==', 'OPEN')
       .get();
 
     const closedTodaySnapshot = await db.collection('active_impulse_trades')
-      .where('closed_at', '>', admin.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000))
       .get();
+
+    const closedTodayTrades = closedTodaySnapshot.docs
+      .map((doc) => doc.data())
+      .filter((trade) => trade?.closed_at && trade.closed_at.toMillis() > closedThreshold.toMillis());
 
     let totalOpenPnl = 0;
     let totalClosedPnl = 0;
@@ -46,8 +65,7 @@ async function getPortfolioMetrics() {
     });
 
     // Closed trades
-    closedTodaySnapshot.forEach(doc => {
-      const trade = doc.data();
+    closedTodayTrades.forEach((trade) => {
       if (trade.pnl_pct) {
         totalClosedPnl += trade.pnl_pct;
         if (trade.pnl_pct > 0) winCount++;
@@ -56,14 +74,14 @@ async function getPortfolioMetrics() {
     });
 
     const totalPnlToday = totalOpenPnl + totalClosedPnl;
-    const winRate = closedTodaySnapshot.size > 0
-      ? (winCount / closedTodaySnapshot.size) * 100
+    const winRate = closedTodayTrades.length > 0
+      ? (winCount / closedTodayTrades.length) * 100
       : 0;
 
     return {
       open_trades_count: openTradesSnapshot.size,
       open_trades_pnl: totalOpenPnl,
-      closed_today: closedTodaySnapshot.size,
+      closed_today: closedTodayTrades.length,
       closed_today_pnl: totalClosedPnl,
       total_pnl_today: totalPnlToday,
       win_count: winCount,
@@ -121,15 +139,14 @@ async function getSymbolRiskStatus(symbol) {
       .get();
 
     // Get recent closed trades for symbol
-    const recentSnapshot = await db.collection('active_impulse_trades')
-      .where('symbol', '==', symbol)
-      .where('closed_at', '>', admin.firestore.Timestamp.fromMillis(Date.now() - RISK_CONFIG.COOLDOWN_PER_SYMBOL_MS))
-      .get();
+    const recentTrades = await getRecentClosedTradesForSymbol(symbol, RISK_CONFIG.COOLDOWN_PER_SYMBOL_MS);
 
     let lastTradeTime = null;
-    if (recentSnapshot.size > 0) {
-      const lastTrade = recentSnapshot.docs[0].data();
-      lastTradeTime = lastTrade.closed_at.toMillis();
+    if (recentTrades.length > 0) {
+      lastTradeTime = recentTrades.reduce((latest, trade) => {
+        const closedAt = trade.closed_at.toMillis();
+        return Math.max(latest, closedAt);
+      }, 0);
     }
 
     const cooldownExpired = !lastTradeTime || (Date.now() - lastTradeTime) > RISK_CONFIG.COOLDOWN_PER_SYMBOL_MS;

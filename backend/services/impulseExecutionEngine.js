@@ -14,9 +14,21 @@ const BINANCE_API = 'https://fapi.binance.com/fapi/v1';
 const ORDER_TIMEOUT = 30000; // 30 seconds
 
 // Risk parameters
-const MAX_CONCURRENT_TRADES = 2;
+const MAX_CONCURRENT_TRADES = 1;
 const MAX_TRADES_PER_SYMBOL = 1;
 const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+const POSITION_SIZE_PERCENT = 0.10;
+
+async function getRecentClosedTradesForSymbol(symbol, windowMs) {
+  const thresholdMs = Date.now() - windowMs;
+  const snapshot = await db.collection('active_impulse_trades')
+    .where('symbol', '==', symbol)
+    .get();
+
+  return snapshot.docs
+    .map((doc) => doc.data())
+    .filter((trade) => trade?.closed_at && trade.closed_at.toMillis() > thresholdMs);
+}
 
 // Exit parameters
 const TP_MIN = 0.6; // +0.6%
@@ -50,12 +62,9 @@ async function checkRiskControls(symbol) {
     }
 
     // Check cooldown
-    const recentTradesSnapshot = await db.collection('active_impulse_trades')
-      .where('symbol', '==', symbol)
-      .where('closed_at', '>', admin.firestore.Timestamp.fromMillis(Date.now() - COOLDOWN_MS))
-      .get();
+    const recentTrades = await getRecentClosedTradesForSymbol(symbol, COOLDOWN_MS);
 
-    if (recentTradesSnapshot.size > 0) {
+    if (recentTrades.length > 0) {
       return { allowed: false, reason: `Cooldown active for ${symbol}` };
     }
 
@@ -119,7 +128,7 @@ async function executeImpulseTrade(signal) {
     }
 
     // Calculate position size (conservative: 0.25x)
-    const positionSizePercent = 0.0025; // 0.25%
+    const positionSizePercent = POSITION_SIZE_PERCENT; // 10%
     const quantity = 1.0; // Simplified - real implementation would calculate based on account balance
 
     // Execute market order
@@ -191,15 +200,21 @@ async function executeImpulseTrade(signal) {
 async function processImpulseSignals() {
   try {
     const signalsSnapshot = await db.collection('high_conviction_impulse_signals')
-      .where('status', '==', 'PENDING_EXECUTION')
-      .limit(10)
+      .orderBy('created_at', 'desc')
+      .limit(20)
       .get();
 
     const executedTrades = [];
+    const pendingSignals = signalsSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((signal) => signal.status === 'PENDING_EXECUTION')
+      .slice(0, 10);
 
-    for (const doc of signalsSnapshot.docs) {
-      const signal = { id: doc.id, ...doc.data() };
-
+    for (const signal of pendingSignals) {
+      console.log('[TRADE_CANDIDATE]', {
+        symbol: signal.symbol,
+        qualityScore: signal.qualityScore ?? null
+      });
       // Execute trade
       const trade = await executeImpulseTrade(signal);
       if (trade) {

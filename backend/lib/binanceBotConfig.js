@@ -1,7 +1,7 @@
 const DEFAULT_CONFIG = {
   mode: 'off', // off | dry-run | live
   execution_enabled: true,
-  position_size_percent: 0.1,
+  position_size_percent: 0.05,
   max_concurrent_trades: 1,
   use_funds_percent: 35,
   account_capital_usdt: 100,

@@ -19,7 +19,7 @@ async function enableBotExecution() {
     const botExecutionRuntime = {
       execution_enabled: true,
       auto_trade_mode: true,
-      position_size_percent: 0.10,
+      position_size_percent: 0.05,
       max_concurrent_trades: 1,
       status: 'ACTIVE',
       enabled_at: admin.firestore.Timestamp.now(),
@@ -44,7 +44,7 @@ async function enableBotExecution() {
     const binanceBotGlobal = {
       mode: 'live',
       execution_enabled: true,
-      position_size_percent: 0.10,
+      position_size_percent: 0.05,
       max_concurrent_trades: 1,
       enable_tp_sl: true,
       updated_at: new Date().toISOString()

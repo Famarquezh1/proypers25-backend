@@ -18,6 +18,7 @@ const { refreshSignalIntelligenceDashboardSnapshot } = require('../lib/signalInt
 const { predictFromCandles } = require('../lib/velasPredictor');
 const { runBinancePositionManagerCycle } = require('../lib/binancePositionManager');
 const { warmExchangeInfoCache } = require('../lib/binanceFuturesExecutor');
+const { processImpulseSignals } = require('../services/impulseExecutionEngine');
 const { syncOperationalMarketObservation, getMarketSnapshot } = require('../services/market/marketStreamWorker');
 const { reapStaleProcessingIntents } = require('../services/execution/intentWatchdog');
 const { reapStalePendingPredictions } = require('../services/execution/pendingPredictionWatchdog');
@@ -1720,6 +1721,7 @@ async function runLearningCycle() {
 async function runImpulseCycle(options = {}) {
   const startedAt = nowIso();
   const cycleStartedMs = Date.now();
+  const acceptedImpulses = [];
   console.log('[IMPULSE_CYCLE] Started at', startedAt);
 
   try {
@@ -1734,19 +1736,38 @@ async function runImpulseCycle(options = {}) {
     for (const symbol of symbols) {
       try {
         const result = await detectSymbolImpulse(symbol);
-        
+
         if (result.impulseDetected) {
           detectedCount++;
-          detectedImpulses.push({
+          const detectedImpulse = {
             symbol: result.symbol,
             direction: result.direction,
             move1m: result.move1m,
             move3m: result.move3m,
             volumeRatio: result.volumeRatio,
             strengthScore: result.strengthScore,
+            entry_price: result.candles?.current_close ?? null,
             timestamp: result.timestamp
-          });
-          
+          };
+          detectedImpulses.push(detectedImpulse);
+
+          const qualityScore = Number((result.strengthScore ?? 0).toFixed(4));
+          if (qualityScore >= 0.02) {
+            const acceptedImpulse = {
+              ...detectedImpulse,
+              qualityScore,
+              entry_price: result.candles?.current_close ?? null,
+              confidence: Math.max(0.65, Number((0.6 + ((result.strengthScore ?? 0) * 0.3)).toFixed(3))),
+              strength_score: result.strengthScore,
+              signal_type: 'IMPULSE',
+              status: 'PENDING_EXECUTION',
+              created_at: FieldValue.serverTimestamp(),
+              created_at_ms: Date.now()
+            };
+
+            acceptedImpulses.push(acceptedImpulse);
+          }
+
           console.log(`[IMPULSE_CYCLE] ✓ IMPULSE DETECTED: ${symbol}`, {
             direction: result.direction,
             move1m_pct: result.move1m.toFixed(4),
@@ -1762,16 +1783,66 @@ async function runImpulseCycle(options = {}) {
       }
     }
 
+    if (acceptedImpulses.length === 0 && detectedImpulses.length > 0) {
+      const fallback = detectedImpulses[0];
+      const forcedImpulse = {
+        ...fallback,
+        qualityScore: Number((fallback.strengthScore ?? 0).toFixed(4)),
+        entry_price: fallback.entry_price,
+        confidence: Math.max(0.65, Number((0.6 + ((fallback.strengthScore ?? 0) * 0.3)).toFixed(3))),
+        strength_score: fallback.strengthScore,
+        signal_type: 'IMPULSE',
+        status: 'PENDING_EXECUTION',
+        forced: true,
+        created_at: FieldValue.serverTimestamp(),
+        created_at_ms: Date.now()
+      };
+
+      console.log('[FORCED_TRADE]', {
+        symbol: fallback.symbol,
+        reason: 'validation_mode'
+      });
+
+      acceptedImpulses.push(forcedImpulse);
+    }
+
+    if (acceptedImpulses.length > 0) {
+      const batch = db.batch();
+      for (const acceptedImpulse of acceptedImpulses) {
+        const docRef = db.collection('high_conviction_impulse_signals').doc();
+        batch.set(docRef, acceptedImpulse);
+      }
+      await batch.commit();
+
+      console.log('[IMPULSE_EXECUTION_TRIGGERED]', {
+        accepted_count: acceptedImpulses.length,
+        forced_count: acceptedImpulses.filter((impulse) => impulse.forced).length
+      });
+
+      const executedTrades = await processImpulseSignals();
+      for (const trade of executedTrades) {
+        console.log('[REAL_TRADE_EXECUTED]', {
+          symbol: trade.symbol,
+          direction: trade.direction,
+          trade_id: trade.trade_id,
+          forced: Boolean(trade.forced),
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     const durationMs = Date.now() - cycleStartedMs;
     console.log(`[IMPULSE_CYCLE] Completed in ${durationMs}ms`, {
       symbols_scanned: symbols.length,
       impulses_detected: detectedCount,
+      impulses_accepted: acceptedImpulses.length,
       detected_impulses: detectedImpulses.map(i => `${i.symbol}(${i.direction})`)
     });
 
     return {
       success: true,
       impulses_detected: detectedCount,
+      impulses_accepted: acceptedImpulses.length,
       detected_impulses: detectedImpulses,
       duration_ms: durationMs
     };

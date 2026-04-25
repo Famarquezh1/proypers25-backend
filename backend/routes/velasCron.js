@@ -6,7 +6,8 @@ const {
   runBinanceManagerCycle,
   runVerificationCycle,
   runLearningCycle,
-  runAuditCycle
+  runAuditCycle,
+  runImpulseCycle
 } = require('../tasks/velasScheduler');
 
 const router = express.Router();
@@ -88,6 +89,20 @@ router.post('/internal/cron/velas/audit', async (req, res) => {
   if (!checkSecret(req, res)) return;
   await runAuditCycle();
   res.json({ ok: true });
+});
+
+router.post('/internal/cron/velas/impulse-cycle', async (req, res) => {
+  if (!checkSecret(req, res)) return;
+  console.log('[CRON] runImpulseCycle triggered via /internal/cron/velas/impulse-cycle');
+  res.status(202).json({ ok: true, source: 'scheduler', job: 'velas-impulse-cycle', accepted: true });
+  setImmediate(async () => {
+    try {
+      const summary = await runImpulseCycle();
+      console.log('[CRON] impulse-cycle result', summary);
+    } catch (err) {
+      console.error('[CRON] impulse-cycle failed', err?.message || err);
+    }
+  });
 });
 
 router.post('/internal/cron/velas/full-cycle', async (req, res) => {
