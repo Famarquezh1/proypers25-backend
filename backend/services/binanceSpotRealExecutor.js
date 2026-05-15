@@ -725,17 +725,17 @@ async function buildRealSpotEntryDiagnostic(db, config, exposure = { total: 0 },
         const latestScan = latestScanDoc.data() || {};
         const latestScanId = latestScan.scan_id || latestScanDoc.id;
         const scanCreatedAt = parseDateLike(latestScan.created_at || latestScan.createdAt);
-        const scanAgeMinutes = scanCreatedAt
-            ? (Date.now() - scanCreatedAt.getTime()) / (60 * 1000)
-            : null;
+        const scanAgeMinutes = scanCreatedAt ?
+            (Date.now() - scanCreatedAt.getTime()) / (60 * 1000) :
+            null;
 
         diagnostic.latest_scan_id = latestScanId;
-        diagnostic.latest_scan_age_minutes = Number.isFinite(scanAgeMinutes)
-            ? Number(scanAgeMinutes.toFixed(2))
-            : null;
-        diagnostic.recent_scan_ok = config.require_recent_scan === true
-            ? Number.isFinite(scanAgeMinutes) && scanAgeMinutes <= Number(config.max_scan_age_minutes || 0)
-            : true;
+        diagnostic.latest_scan_age_minutes = Number.isFinite(scanAgeMinutes) ?
+            Number(scanAgeMinutes.toFixed(2)) :
+            null;
+        diagnostic.recent_scan_ok = config.require_recent_scan === true ?
+            Number.isFinite(scanAgeMinutes) && scanAgeMinutes <= Number(config.max_scan_age_minutes || 0) :
+            true;
 
         const candidateSnapshot = await db.collection(PAPER_CANDIDATES_COLLECTION)
             .where('scan_id', '==', latestScanId)
@@ -747,22 +747,21 @@ async function buildRealSpotEntryDiagnostic(db, config, exposure = { total: 0 },
         const categoryFiltered = scoreFiltered.filter((candidate) => Array.isArray(config.allowed_categories) && config.allowed_categories.includes(candidate.category));
 
         const availableCapital = Math.max(0, Number(config.max_total_capital_usdt || 0) - Number(exposure.total || 0));
-        const capitalAllowed = openPositionsCount < Number(config.max_open_positions || 0)
-            && availableCapital >= Number(config.max_position_usdt || 0);
+        const capitalAllowed = openPositionsCount < Number(config.max_open_positions || 0) &&
+            availableCapital >= Number(config.max_position_usdt || 0);
         const capitalFiltered = capitalAllowed ? categoryFiltered : [];
 
         diagnostic.candidates_seen = candidates.length;
         diagnostic.candidates_after_score_filter = scoreFiltered.length;
         diagnostic.candidates_after_category_filter = categoryFiltered.length;
         diagnostic.candidates_after_capital_filter = capitalFiltered.length;
-        diagnostic.selected_candidate = capitalFiltered[0]
-            ? {
+        diagnostic.selected_candidate = capitalFiltered[0] ? {
                 symbol: String(capitalFiltered[0].symbol || '').toUpperCase(),
                 score: Number(capitalFiltered[0].opportunityScore || 0),
                 category: capitalFiltered[0].category || null,
                 scan_id: capitalFiltered[0].scan_id || latestScanId
-            }
-            : null;
+            } :
+            null;
 
         if (diagnostic.recent_scan_ok === false) {
             diagnostic.rejected_reasons.push('SCAN_TOO_OLD');
@@ -902,7 +901,7 @@ async function closeRealPosition(db, position, exitPrice, closeReason) {
 /**
  * Build execution decision snapshot for forensic traceability
  * Captures exactly what config and data was used to decide execution
- * 
+ *
  * FORENSIC ONLY - Does not change decision logic
  */
 function buildExecutionDecisionSnapshot(candidate, config, diagnostic, options = {}) {
@@ -911,25 +910,25 @@ function buildExecutionDecisionSnapshot(candidate, config, diagnostic, options =
     const snapshot = {
         // TIMING
         executed_at: new Date().toISOString(),
-        
+
         // WHAT WAS EVALUATED
         symbol: String(candidate.symbol || '').toUpperCase(),
         score_at_execution: Number(candidate.opportunityScore || 0) || null,
         category_at_execution: candidate.category || null,
-        
+
         // CONFIG THRESHOLDS USED
         min_score_required: Number(config.min_opportunity_score || 0),
         allowed_categories_at_execution: config.allowed_categories || [],
-        
+
         // FILTER RESULTS
         passed_score_filter: Number(candidate.opportunityScore || 0) >= Number(config.min_opportunity_score || 0),
         passed_category_filter: Array.isArray(config.allowed_categories) && config.allowed_categories.includes(candidate.category),
-        
+
         // TRACE
         source_module: 'binanceSpotRealExecutor.js::findBestRealSpotCandidate',
         intent_id: candidate.intent_id || options.intent_id || null,
         is_forced: options.is_forced === true,
-        
+
         // REASON
         validation_reason: buildValidationReason({
             score: Number(candidate.opportunityScore || 0),
@@ -937,11 +936,11 @@ function buildExecutionDecisionSnapshot(candidate, config, diagnostic, options =
             category: candidate.category,
             allowedCategories: config.allowed_categories
         }),
-        
+
         // CONFIG STATE
         config_source: 'real_spot_config/control',
         config_updated_at: config.updated_at || config.updatedAt || null,
-        
+
         // STRATEGY
         strategy_mode: options.strategy || 'CONSERVATIVE'
     };
@@ -954,35 +953,35 @@ function buildExecutionDecisionSnapshot(candidate, config, diagnostic, options =
  */
 function buildValidationReason(filters) {
     const reasons = [];
-    
+
     if (filters.score >= filters.threshold) {
         reasons.push(`Score ${filters.score.toFixed(2)} >= ${filters.threshold}`);
     } else {
         reasons.push(`Score ${filters.score.toFixed(2)} < ${filters.threshold} [FAILED]`);
     }
-    
+
     if (filters.allowedCategories && filters.allowedCategories.includes(filters.category)) {
         reasons.push(`Category ${filters.category} allowed`);
     } else {
         reasons.push(`Category ${filters.category} not in ${JSON.stringify(filters.allowedCategories)} [FAILED]`);
     }
-    
+
     return reasons.join(' | ');
 }
 
 /**
  * Log near-miss opportunities when no candidate is selected
  * Captures candidates that almost passed filters, to audit if system is too restrictive
- * 
+ *
  * FORENSIC ONLY - No execution impact, only observability
  */
 async function logNearMissOpportunities(db, candidates, config, rejectionReason) {
     if (!db || !candidates || !config) return;
-    
+
     try {
         const minScore = Number(config.min_opportunity_score || 70);
         const scoreBuffer = 10; // Consider near-miss if within 10 points of threshold
-        
+
         // Find candidates that were close to passing
         const nearMisses = candidates
             .filter(c => {
@@ -991,11 +990,11 @@ async function logNearMissOpportunities(db, candidates, config, rejectionReason)
             })
             .sort((a, b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
             .slice(0, 10); // Top 10 near-misses only
-        
+
         if (nearMisses.length === 0) {
             return; // Nothing to log
         }
-        
+
         const cycleId = `near_miss_${Date.now()}`;
         const nearMissLog = {
             cycle_id: cycleId,
@@ -1017,14 +1016,14 @@ async function logNearMissOpportunities(db, candidates, config, rejectionReason)
                 source_module: 'binanceSpotRealExecutor.js::logNearMissOpportunities'
             }))
         };
-        
+
         // Save to Firestore
         await db.collection('near_miss_opportunity_log').doc(cycleId).set(nearMissLog);
-        
+
         console.log(`[REAL_EXECUTOR::NEAR_MISS] Logged ${nearMisses.length} near-miss opportunities`);
         console.log(`  Reason: ${rejectionReason}`);
         console.log(`  Best near-miss: ${nearMisses[0].symbol} (score: ${Number(nearMisses[0].opportunityScore || 0).toFixed(2)}, ${minScore - Number(nearMisses[0].opportunityScore || 0)} points away)`);
-        
+
     } catch (error) {
         console.error('[REAL_EXECUTOR::NEAR_MISS] Error logging near-miss:', error.message);
     }
@@ -1058,19 +1057,19 @@ async function findBestRealSpotCandidate(db, config) {
         const latestScan = latestScanDoc.data() || {};
         const latestScanId = latestScan.scan_id || latestScanDoc.id;
         const scanCreatedAt = parseDateLike(latestScan.created_at || latestScan.createdAt);
-        const scanAgeMinutes = scanCreatedAt
-            ? (Date.now() - scanCreatedAt.getTime()) / (60 * 1000)
-            : null;
+        const scanAgeMinutes = scanCreatedAt ?
+            (Date.now() - scanCreatedAt.getTime()) / (60 * 1000) :
+            null;
 
         diagnostic.latest_scan_id = latestScanId;
-        diagnostic.latest_scan_age_minutes = Number.isFinite(scanAgeMinutes)
-            ? Number(scanAgeMinutes.toFixed(2))
-            : null;
+        diagnostic.latest_scan_age_minutes = Number.isFinite(scanAgeMinutes) ?
+            Number(scanAgeMinutes.toFixed(2)) :
+            null;
 
         // Check scan recency
-        diagnostic.recent_scan_ok = config.require_recent_scan === true
-            ? Number.isFinite(scanAgeMinutes) && scanAgeMinutes <= Number(config.max_scan_age_minutes || 0)
-            : true;
+        diagnostic.recent_scan_ok = config.require_recent_scan === true ?
+            Number.isFinite(scanAgeMinutes) && scanAgeMinutes <= Number(config.max_scan_age_minutes || 0) :
+            true;
 
         if (diagnostic.recent_scan_ok === false) {
             diagnostic.rejected_reasons.push('SCAN_TOO_OLD');
@@ -1093,37 +1092,37 @@ async function findBestRealSpotCandidate(db, config) {
         diagnostic.candidates_seen = candidates.length;
 
         // Filter by score
-        const sortedCandidates = [...candidates].sort((left, right) => 
+        const sortedCandidates = [...candidates].sort((left, right) =>
             Number(right.opportunityScore || 0) - Number(left.opportunityScore || 0)
         );
-        const scoreFiltered = sortedCandidates.filter((candidate) => 
+        const scoreFiltered = sortedCandidates.filter((candidate) =>
             Number(candidate.opportunityScore || 0) >= Number(config.min_opportunity_score || 0)
         );
 
         if (!scoreFiltered.length) {
             diagnostic.candidates_after_score_filter = 0;
             diagnostic.rejected_reasons.push('NO_CANDIDATES_MEET_SCORE');
-            
+
             // Log near-miss opportunities for audit
             await logNearMissOpportunities(db, candidates, config, 'NO_CANDIDATES_MEET_SCORE');
-            
+
             return { candidate: null, diagnostic };
         }
 
         diagnostic.candidates_after_score_filter = scoreFiltered.length;
 
         // Filter by category
-        const categoryFiltered = scoreFiltered.filter((candidate) => 
+        const categoryFiltered = scoreFiltered.filter((candidate) =>
             Array.isArray(config.allowed_categories) && config.allowed_categories.includes(candidate.category)
         );
 
         if (!categoryFiltered.length) {
             diagnostic.candidates_after_category_filter = 0;
             diagnostic.rejected_reasons.push('NO_CANDIDATES_MEET_CATEGORY');
-            
+
             // Log near-miss opportunities for audit
             await logNearMissOpportunities(db, scoreFiltered, config, 'NO_CANDIDATES_MEET_CATEGORY');
-            
+
             return { candidate: null, diagnostic };
         }
 
@@ -1164,10 +1163,10 @@ async function findBestRealSpotCandidate(db, config) {
 
         if (!capitalFiltered.length) {
             diagnostic.rejected_reasons.push('ALL_SYMBOLS_ALREADY_OPEN');
-            
+
             // Log near-miss opportunities for audit
             await logNearMissOpportunities(db, categoryFiltered, config, 'ALL_SYMBOLS_ALREADY_OPEN');
-            
+
             return { candidate: null, diagnostic };
         }
 
@@ -1183,20 +1182,20 @@ async function findBestRealSpotCandidate(db, config) {
 
         // BUILD EXECUTION DECISION SNAPSHOT FOR FORENSICS
         const executionDecisionSnapshot = buildExecutionDecisionSnapshot(selected, config, diagnostic);
-        
+
         // LOG EXECUTION DECISION
         console.log(`[REAL_EXECUTOR::FORENSIC] Symbol: ${selected.symbol}`);
         console.log(`  Score Used: ${Number(selected.opportunityScore || 0).toFixed(2)} vs Threshold: ${Number(config.min_opportunity_score || 0)}`);
         console.log(`  Category: ${selected.category} vs Allowed: ${JSON.stringify(config.allowed_categories)}`);
         console.log(`  Reason: ${executionDecisionSnapshot.validation_reason}`);
 
-        return { 
+        return {
             candidate: {
                 ...selected,
                 symbol: String(selected.symbol || '').toUpperCase(),
-                execution_decision_snapshot: executionDecisionSnapshot  // FORENSIC FIELD
-            }, 
-            diagnostic 
+                execution_decision_snapshot: executionDecisionSnapshot // FORENSIC FIELD
+            },
+            diagnostic
         };
 
     } catch (error) {
@@ -1343,7 +1342,7 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                                 partial_exit: strategyMetadata.partial_exit
                             } : null,
                             safety_version: SAFETY_VERSION,
-                            
+
                             // FORENSIC FIELD - EXECUTION DECISION SNAPSHOT
                             execution_decision_snapshot: candidate.execution_decision_snapshot || null
                         };
@@ -1352,7 +1351,7 @@ async function runRealSpotExecutionCycle(db, options = {}) {
 
                         console.log(`[REAL_EXECUTOR] Position created: ${positionId}`);
                         console.log(`[REAL_EXECUTOR::FORENSIC] Snapshot saved - Score: ${positionData.execution_decision_snapshot?.score_at_execution || 'N/A'}, Threshold: ${positionData.execution_decision_snapshot?.min_score_required || 'N/A'}`);
-                        
+
                         openedCount = 1;
                         orderCreated = true;
                         selectedSymbol = candidate.symbol;
