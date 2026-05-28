@@ -5,8 +5,24 @@
  */
 
 const admin = require('firebase-admin');
+const axios = require('axios');
+const crypto = require('crypto');
 
 const db = admin.firestore();
+const BINANCE_FUTURES_BASE_URL = process.env.BINANCE_FUTURES_BASE_URL || 'https://fapi.binance.com';
+const BINANCE_API_KEY = resolveBinanceCredential(
+  process.env.BINANCE_API_KEY,
+  process.env.BINANCE_FUTURES_API_KEY,
+  process.env.BINANCE_KEY,
+  process.env.BINANCE_APIKEY
+);
+const BINANCE_API_SECRET = resolveBinanceCredential(
+  process.env.BINANCE_API_SECRET,
+  process.env.BINANCE_FUTURES_API_SECRET,
+  process.env.BINANCE_SECRET_KEY,
+  process.env.BINANCE_SECRET
+);
+const BINANCE_RECV_WINDOW_MS = Math.max(5000, Number(process.env.BINANCE_SIGNED_RECV_WINDOW_MS || 10000));
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -18,6 +34,78 @@ const RISK_CONFIG = {
   COOLDOWN_PER_SYMBOL_MS: 10 * 60 * 1000,
   MAX_POSITION_SIZE_PERCENT: 0.25
 };
+const RISK_BLOCK_SOURCE_FILE = 'backend/services/impulseRiskManager.js';
+
+function logRiskBlockSource(payload) {
+  console.log('[RISK_BLOCK_SOURCE]', payload);
+}
+
+function resolveBinanceCredential(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const sanitized = String(candidate)
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '')
+      .replace(/\r/g, '')
+      .replace(/\n/g, '')
+      .trim();
+    if (sanitized) return sanitized;
+  }
+  return '';
+}
+
+function buildSignedQuery(params) {
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+}
+
+const client = {
+  async futuresPositionRisk() {
+    if (!BINANCE_API_KEY || !BINANCE_API_SECRET) {
+      throw new Error('missing_api_credentials');
+    }
+
+    const timestamp = Date.now();
+    const query = buildSignedQuery({
+      timestamp,
+      recvWindow: BINANCE_RECV_WINDOW_MS
+    });
+    const signature = crypto
+      .createHmac('sha256', BINANCE_API_SECRET)
+      .update(query)
+      .digest('hex');
+
+    const url = `${BINANCE_FUTURES_BASE_URL}/fapi/v2/positionRisk?${query}&signature=${signature}`;
+    const response = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'X-MBX-APIKEY': BINANCE_API_KEY
+      }
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  }
+};
+
+async function getRealOpenPositions() {
+  try {
+    const positions = await client.futuresPositionRisk();
+    const openPositions = positions.filter((position) => Number(position?.positionAmt || 0) !== 0);
+    console.log('[RISK_REAL_POSITIONS]', { count: openPositions.length });
+    return {
+      ok: true,
+      openPositions
+    };
+  } catch (error) {
+    console.log('[RISK_REAL_POSITIONS]', { count: null, error: error?.message || String(error) });
+    return {
+      ok: false,
+      openPositions: [],
+      reason: error?.message || String(error)
+    };
+  }
+}
 
 function getCooldownThreshold(windowMs) {
   return admin.firestore.Timestamp.fromMillis(Date.now() - windowMs);
@@ -178,21 +266,61 @@ async function validateTrade(symbol) {
     // Check global halt
     const haltCheck = await shouldHaltTrading();
     if (haltCheck.should_halt) {
+      logRiskBlockSource({
+        file: RISK_BLOCK_SOURCE_FILE,
+        function: 'validateTrade',
+        symbol,
+        reason: `Trading halted: ${haltCheck.reason}`,
+        activeCount: null,
+        maxConcurrent: RISK_CONFIG.MAX_CONCURRENT_TRADES,
+        realBinancePositionsCount: null
+      });
       return { valid: false, reason: `Trading halted: ${haltCheck.reason}` };
     }
 
     // Check symbol-specific risk
     const symbolStatus = await getSymbolRiskStatus(symbol);
     if (!symbolStatus.can_trade) {
+      logRiskBlockSource({
+        file: RISK_BLOCK_SOURCE_FILE,
+        function: 'validateTrade',
+        symbol,
+        reason: 'Symbol blocked: max trades reached or cooldown active',
+        activeCount: Number(symbolStatus.open_trades || 0),
+        maxConcurrent: RISK_CONFIG.MAX_CONCURRENT_TRADES,
+        realBinancePositionsCount: null
+      });
       return { valid: false, reason: `Symbol blocked: max trades reached or cooldown active` };
     }
 
-    // Check global concurrent limit
-    const openSnapshot = await db.collection('active_impulse_trades')
-      .where('status', '==', 'OPEN')
-      .get();
-
-    if (openSnapshot.size >= RISK_CONFIG.MAX_CONCURRENT_TRADES) {
+    // Check global concurrent limit using Binance as source of truth
+    const realPositionState = await getRealOpenPositions();
+    if (!realPositionState.ok) {
+      logRiskBlockSource({
+        file: RISK_BLOCK_SOURCE_FILE,
+        function: 'validateTrade',
+        symbol,
+        reason: `Real position check failed: ${realPositionState.reason}`,
+        activeCount: null,
+        maxConcurrent: RISK_CONFIG.MAX_CONCURRENT_TRADES,
+        realBinancePositionsCount: null
+      });
+      return { valid: false, reason: `Real position check failed: ${realPositionState.reason}` };
+    }
+    if (realPositionState.openPositions.length === 0) {
+      console.log('[RISK_OVERRIDE_NO_REAL_POSITION]', { symbol });
+      return { valid: true };
+    }
+    if (realPositionState.openPositions.length >= RISK_CONFIG.MAX_CONCURRENT_TRADES) {
+      logRiskBlockSource({
+        file: RISK_BLOCK_SOURCE_FILE,
+        function: 'validateTrade',
+        symbol,
+        reason: `Max concurrent trades (${RISK_CONFIG.MAX_CONCURRENT_TRADES}) reached`,
+        activeCount: realPositionState.openPositions.length,
+        maxConcurrent: RISK_CONFIG.MAX_CONCURRENT_TRADES,
+        realBinancePositionsCount: realPositionState.openPositions.length
+      });
       return { valid: false, reason: `Max concurrent trades (${RISK_CONFIG.MAX_CONCURRENT_TRADES}) reached` };
     }
 
@@ -200,6 +328,15 @@ async function validateTrade(symbol) {
 
   } catch (error) {
     console.error(`[VALIDATE_TRADE] Error for ${symbol}:`, error.message);
+    logRiskBlockSource({
+      file: RISK_BLOCK_SOURCE_FILE,
+      function: 'validateTrade',
+      symbol,
+      reason: `Validation error: ${error.message}`,
+      activeCount: null,
+      maxConcurrent: RISK_CONFIG.MAX_CONCURRENT_TRADES,
+      realBinancePositionsCount: null
+    });
     return { valid: false, reason: `Validation error: ${error.message}` };
   }
 }
@@ -242,5 +379,6 @@ module.exports = {
   getSymbolRiskStatus,
   validateTrade,
   logRiskMetrics,
+  getRealOpenPositions,
   RISK_CONFIG
 };

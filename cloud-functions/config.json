@@ -1,0 +1,15 @@
+{
+  "name": "generateSpotScans",
+  "description": "Generates fresh spot opportunity scans for real trading - called by Cloud Scheduler every 45 minutes",
+  "runtime": "nodejs20",
+  "entryPoint": "generateSpotScans",
+  "sourceArchiveUrl": null,
+  "environmentVariables": {
+    "CRON_SECRET": "proypers25-cron-secret"
+  },
+  "serviceAccountEmail": "proypers2025@appspot.gserviceaccount.com",
+  "labels": {
+    "system": "spot-trading",
+    "automation": "scheduler"
+  }
+}

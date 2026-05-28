@@ -1811,17 +1811,66 @@ function shouldEarlyExit(position, config, markPrice, lifecycle = null) {
   };
 }
 
+function isFirestoreIndexMissingError(err) {
+  const message = String(err?.message || err || '').toLowerCase();
+  return (
+    message.includes('requires an index') ||
+    message.includes('failed_precondition') ||
+    message.includes('create_composite')
+  );
+}
+
+async function fetchClosedExecutedIntentsWithFallback(db, options = {}) {
+  const safeLimit = Math.max(10, Math.min(Number(options.limit || 50), 500));
+  const dayStartIso = options.dayStartIso || null;
+
+  try {
+    let query = db
+      .collection('binance_execution_intents')
+      .where('status', '==', 'executed')
+      .where('closed_at', '!=', null)
+      .orderBy('closed_at', 'desc')
+      .limit(safeLimit);
+    if (dayStartIso) {
+      query = db
+        .collection('binance_execution_intents')
+        .where('status', '==', 'executed')
+        .where('closed_at', '>=', dayStartIso)
+        .orderBy('closed_at', 'desc')
+        .limit(safeLimit);
+    }
+    return await query.get();
+  } catch (err) {
+    if (!isFirestoreIndexMissingError(err)) throw err;
+    console.warn('[INTENT_CLOSED_SCAN_FALLBACK]', {
+      limit: safeLimit,
+      day_start_iso: dayStartIso,
+      message: String(err?.message || err)
+    });
+    const rawSnap = await db.collection('binance_execution_intents').orderBy('created_at', 'desc').limit(1000).get();
+    const filteredDocs = rawSnap.docs.filter((doc) => {
+      const data = doc.data() || {};
+      if (String(data.status || '').toLowerCase() !== 'executed') return false;
+      const closedAt = String(data.closed_at || '');
+      if (!closedAt) return false;
+      if (dayStartIso && closedAt < dayStartIso) return false;
+      return true;
+    }).slice(0, safeLimit);
+    return {
+      size: filteredDocs.length,
+      docs: filteredDocs
+    };
+  }
+}
+
 async function logDailyRealPnl(db) {
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayStartIso = dayStart.toISOString();
-  const snap = await db
-    .collection('binance_execution_intents')
-    .where('status', '==', 'executed')
-    .where('closed_at', '>=', dayStartIso)
-    .orderBy('closed_at', 'desc')
-    .limit(200)
-    .get();
+  const snap = await fetchClosedExecutedIntentsWithFallback(db, {
+    limit: 200,
+    dayStartIso
+  });
 
   let wins = 0;
   let losses = 0;
@@ -1846,13 +1895,9 @@ async function logDailyRealPnl(db) {
 }
 
 async function runAutoAuditIfNeeded(db) {
-  const allClosedSnap = await db
-    .collection('binance_execution_intents')
-    .where('status', '==', 'executed')
-    .where('closed_at', '!=', null)
-    .orderBy('closed_at', 'desc')
-    .limit(10)
-    .get();
+  const allClosedSnap = await fetchClosedExecutedIntentsWithFallback(db, {
+    limit: 10
+  });
 
   if (allClosedSnap.size < 10) return;
 

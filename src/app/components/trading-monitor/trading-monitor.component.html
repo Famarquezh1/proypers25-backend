@@ -1,0 +1,961 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm rounded">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Menú</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menuNav"
+      aria-controls="menuNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="menuNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard']" routerLinkActive="active">Formulario</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard/historial']" routerLinkActive="active">Historial</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard/autonoma']" routerLinkActive="active">Autónoma</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard/entrenamientos']" routerLinkActive="active">Entrenamientos</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard/predicciones-velas']" routerLinkActive="active">Predicciones Velas</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/dashboard/historial-velas']" routerLinkActive="active">Historial Velas</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/trading-monitor']" routerLinkActive="active">Monitor Spot</a>
+        </li>
+      </ul>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-light btn-sm" disabled title="Monitor de solo lectura">
+          <i class="bi bi-eye"></i> Lectura
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid trading-monitor-container mt-4">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="display-4 mb-2">
+        <i class="bi bi-graph-up-arrow"></i> Monitor Proypers25 — Binance Spot
+      </h1>
+      <p class="text-muted mb-4">
+        Sistema de monitoreo en tiempo real (solo lectura)
+        <span *ngIf="lastUpdateTime" class="ms-3">
+          | Última actualización: <strong>{{ formatDateTime(lastUpdateTime) }}</strong>
+        </span>
+      </p>
+    </div>
+  </div>
+
+  <!-- ESTADO DE CARGA -->
+  <div *ngIf="isLoading" class="row mb-4">
+    <div class="col-12 text-center">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Cargando...</span>
+      </div>
+      <p class="mt-2">Cargando datos del monitor...</p>
+    </div>
+  </div>
+
+  <!-- MENSAJES DE ERROR -->
+  <div *ngIf="hasError && !isLoading" class="row mb-4">
+    <div class="col-12">
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>Error al conectar con el backend:</strong>
+        <br>{{ errorMessage }}
+        <button type="button" class="btn-close" (click)="loadMonitorData()"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTÓN ACTUALIZAR -->
+  <div class="row mb-4" *ngIf="!isLoading">
+    <div class="col-12">
+      <button class="btn btn-primary" (click)="loadMonitorData()">
+        <i class="bi bi-arrow-clockwise"></i> Actualizar Ahora
+      </button>
+      <small class="ms-3 text-muted">(Auto-refresh cada 15 segundos)</small>
+    </div>
+  </div>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <div *ngIf="!isLoading && !hasError">
+    <!-- ========== SECCIÓN 1: ESTADO REAL SPOT ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-gear-fill"></i> Estado Sistema Real Spot
+        </h2>
+      </div>
+
+      <!-- Card de Estado Principal -->
+      <div class="col-md-4 mb-3">
+        <div [ngClass]="getSystemStatusClass()" class="card text-white h-100">
+          <div class="card-body">
+            <h5 class="card-title">Estado Sistema</h5>
+            <p class="card-text display-6 fw-bold">{{ getSystemStatusText() }}</p>
+            <hr>
+            <small>
+              <i class="bi bi-toggle-on"></i> Enabled: 
+              <strong [class.text-danger]="!realExecution?.real_spot_enabled">
+                {{ realExecution?.real_spot_enabled ? 'SÍ' : 'NO' }}
+              </strong>
+            </small>
+            <br>
+            <small>
+              <i class="bi bi-shield-exclamation"></i> Kill Switch: 
+              <strong [class.text-success]="realExecution?.kill_switch">
+                {{ realExecution?.kill_switch ? 'ACTIVO' : 'INACTIVO' }}
+              </strong>
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card de Posiciones -->
+      <div class="col-md-4 mb-3">
+        <div class="card h-100" [ngClass]="realExecution?.open_real_positions > 0 ? 'border-warning' : 'border-info'">
+          <div class="card-body">
+            <h5 class="card-title">Posiciones</h5>
+            <p class="card-text">
+              <span class="h4">{{ realExecution?.open_real_positions || 0 }}</span>
+              <small class="text-muted">Abiertas</small>
+            </p>
+            <hr>
+            <p class="card-text">
+              <span class="h6">{{ realExecution?.closed_real_positions || 0 }}</span>
+              <small class="text-muted">Cerradas</small>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card de Capital y PnL -->
+      <div class="col-md-4 mb-3">
+        <div class="card h-100" [ngClass]="hasHighCapitalAlert() ? 'border-danger' : 'border-success'">
+          <div class="card-body">
+            <h5 class="card-title">Capital Expuesto</h5>
+            <p class="card-text">
+              <span class="h4">{{ formatNumber(realExecution?.total_real_capital_exposed) }}</span>
+              <small class="text-muted">USDT</small>
+            </p>
+            <hr>
+            <p class="card-text">
+              <span class="h6" [ngClass]="realExecution?.total_net_pnl_usdt >= 0 ? 'text-success' : 'text-danger'">
+                {{ formatNumber(realExecution?.total_net_pnl_usdt) }} USDT
+              </span>
+              <br>
+              <small class="text-muted">
+                {{ formatPercent(realExecution?.total_net_pnl_pct) }}
+              </small>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Más Cards de Configuración -->
+      <div class="col-md-6 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Configuración</h5>
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Max Posición:</strong></td>
+                  <td>{{ realExecution?.config_summary?.max_position_usdt || 'N/A' }} USDT</td>
+                </tr>
+                <tr>
+                  <td><strong>Max Capital Total:</strong></td>
+                  <td>{{ realExecution?.config_summary?.max_total_capital_usdt || 'N/A' }} USDT</td>
+                </tr>
+                <tr>
+                  <td><strong>Max Posiciones Abiertas:</strong></td>
+                  <td>{{ realExecution?.config_summary?.max_open_positions || 'N/A' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card de Win Rate -->
+      <div class="col-md-6 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Estadísticas</h5>
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Win Rate:</strong></td>
+                  <td>{{ formatPercent(realExecution?.win_rate) }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Safety Status:</strong></td>
+                  <td>
+                    <span class="badge" [ngClass]="realExecution?.safety_status === 'SAFE' ? 'bg-success' : 'bg-warning'">
+                      {{ realExecution?.safety_status || 'N/A' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 2: HYBRID MODE (70/30) ========== -->
+    <div class="row mb-4" *ngIf="hybridMode">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-diagram-3"></i> Hybrid Mode - Estrategia 70/30
+        </h2>
+      </div>
+
+      <!-- Overview Cards -->
+      <div class="col-md-6 mb-3">
+        <div class="card border-info bg-light">
+          <div class="card-body">
+            <h5 class="card-title">📊 Distribución de Capital</h5>
+            <div class="progress mb-2" style="height: 25px;">
+              <div class="progress-bar bg-success" role="progressbar" 
+                [style.width]="'70%'" aria-valuenow="70" aria-valuemin="0" aria-valuemax="100">
+                <small class="fw-bold">CONSERVATIVE 70%</small>
+              </div>
+              <div class="progress-bar bg-danger" role="progressbar" 
+                [style.width]="'30%'" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">
+                <small class="fw-bold">MOONSHOT 30%</small>
+              </div>
+            </div>
+            <table class="table table-sm table-borderless mt-3">
+              <tbody>
+                <tr>
+                  <td><strong>Total Disponible:</strong></td>
+                  <td class="text-end"><strong>{{ hybridMode?.allocation?.total_available_usdt }} USDT</strong></td>
+                </tr>
+                <tr>
+                  <td><strong>Conservative (70%):</strong></td>
+                  <td class="text-end text-success"><strong>{{ hybridMode?.allocation?.conservative_total_usdt }} USDT</strong></td>
+                </tr>
+                <tr>
+                  <td><strong>Moonshot (30%):</strong></td>
+                  <td class="text-end text-danger"><strong>{{ hybridMode?.allocation?.moonshot_total_usdt }} USDT</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exposure Card -->
+      <div class="col-md-6 mb-3">
+        <div class="card border-warning">
+          <div class="card-body">
+            <h5 class="card-title">💰 Exposición Actual</h5>
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Capital Expuesto:</strong></td>
+                  <td class="text-end">{{ hybridMode?.summary?.total_capital_exposed | number:'1.2-2' }} / {{ hybridMode?.summary?.total_available }} USDT</td>
+                </tr>
+                <tr>
+                  <td><strong>Posiciones Abiertas:</strong></td>
+                  <td class="text-end">{{ hybridMode?.summary?.total_open_positions }}</td>
+                </tr>
+                <tr class="table-success">
+                  <td><strong>Conservative:</strong></td>
+                  <td class="text-end">{{ hybridMode?.summary?.conservative_positions }} pos</td>
+                </tr>
+                <tr class="table-danger">
+                  <td><strong>Moonshot:</strong></td>
+                  <td class="text-end">{{ hybridMode?.summary?.moonshot_positions }} pos</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONSERVATIVE STRATEGY -->
+      <div class="col-md-6 mb-3">
+        <div class="card border-success">
+          <div class="card-header bg-success text-white">
+            <h5 class="mb-0">🎯 CONSERVATIVE STRATEGY (70%)</h5>
+          </div>
+          <div class="card-body">
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Capital:</strong></td>
+                  <td class="text-end">{{ hybridMode?.conservative_strategy?.capital_available | number:'1.2-2' }} / {{ hybridMode?.conservative_strategy?.capital_limit }} USDT</td>
+                </tr>
+                <tr>
+                  <td><strong>Posiciones:</strong></td>
+                  <td class="text-end">{{ hybridMode?.conservative_strategy?.open_positions_count }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Timeout:</strong></td>
+                  <td class="text-end">24 horas</td>
+                </tr>
+              </tbody>
+            </table>
+            <hr>
+            <div>
+              <strong>Targets:</strong>
+              <br>
+              <small class="text-success">✓ TP1: +{{ hybridMode?.conservative_strategy?.targets?.tp1_pct }}%</small>
+              <br>
+              <small class="text-success">✓ TP2: +{{ hybridMode?.conservative_strategy?.targets?.tp2_pct }}%</small>
+              <br>
+              <small class="text-danger">⚠ SL: {{ hybridMode?.conservative_strategy?.targets?.sl_pct }}%</small>
+            </div>
+            <div class="mt-3" *ngIf="hybridMode?.conservative_strategy?.open_positions?.length">
+              <small><strong>Posiciones Abiertas:</strong></small>
+              <div *ngFor="let pos of hybridMode?.conservative_strategy?.open_positions" class="small p-2 bg-light rounded mt-2">
+                {{ pos.symbol }}: {{ pos.capital_usdt }} USDT en {{ pos.entry_price | number:'1.4-4' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MOONSHOT STRATEGY -->
+      <div class="col-md-6 mb-3">
+        <div class="card border-danger">
+          <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">🚀 MOONSHOT STRATEGY (30%)</h5>
+          </div>
+          <div class="card-body">
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Capital:</strong></td>
+                  <td class="text-end">{{ hybridMode?.moonshot_strategy?.capital_available | number:'1.2-2' }} / {{ hybridMode?.moonshot_strategy?.capital_limit }} USDT</td>
+                </tr>
+                <tr>
+                  <td><strong>Posiciones:</strong></td>
+                  <td class="text-end">{{ hybridMode?.moonshot_strategy?.open_positions_count }} / {{ hybridMode?.moonshot_strategy?.max_open_positions }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Timeout:</strong></td>
+                  <td class="text-end">{{ hybridMode?.moonshot_strategy?.timeout_days }} días</td>
+                </tr>
+              </tbody>
+            </table>
+            <hr>
+            <div>
+              <strong>Targets:</strong>
+              <br>
+              <small class="text-warning">🎰 TP1: +{{ hybridMode?.moonshot_strategy?.targets?.tp1_pct }}%</small>
+              <br>
+              <small class="text-warning">🎰 TP2: +{{ hybridMode?.moonshot_strategy?.targets?.tp2_pct }}%</small>
+              <br>
+              <small class="text-warning">🎰 TP3: +{{ hybridMode?.moonshot_strategy?.targets?.tp3_pct }}%</small>
+              <br>
+              <small class="text-danger">⚠ SL: {{ hybridMode?.moonshot_strategy?.targets?.sl_pct }}%</small>
+            </div>
+            <div class="mt-3" *ngIf="hybridMode?.moonshot_strategy?.open_positions?.length">
+              <small><strong>Posiciones Abiertas:</strong></small>
+              <div *ngFor="let pos of hybridMode?.moonshot_strategy?.open_positions" class="small p-2 bg-light rounded mt-2">
+                {{ pos.symbol }}: {{ pos.capital_usdt }} USDT en {{ pos.entry_price | number:'1.8-8' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Moonshot Criteria -->
+      <div class="col-12 mb-3">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">🔍 Moonshot Token Criteria</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-3">
+                <small><strong>Token Age:</strong></small>
+                <br>
+                <small>{{ hybridMode?.moonshot_strategy?.token_criteria?.min_age_days }} - {{ hybridMode?.moonshot_strategy?.token_criteria?.max_age_days }} days</small>
+              </div>
+              <div class="col-md-3">
+                <small><strong>Price Range:</strong></small>
+                <br>
+                <small>${{ hybridMode?.moonshot_strategy?.token_criteria?.min_price_usd }} - ${{ hybridMode?.moonshot_strategy?.token_criteria?.max_price_usd }}</small>
+              </div>
+              <div class="col-md-3">
+                <small><strong>Min Volume:</strong></small>
+                <br>
+                <small>${{ hybridMode?.moonshot_strategy?.token_criteria?.min_volume_usdt | number:'1.0-0' }}</small>
+              </div>
+              <div class="col-md-3">
+                <small><strong>Min Holders:</strong></small>
+                <br>
+                <small>{{ hybridMode?.moonshot_strategy?.token_criteria?.min_holders }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 3: PREFLIGHT CREDENCIALES ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-key-fill"></i> Preflight Credenciales
+        </h2>
+      </div>
+
+      <!-- Alerta de Retiros -->
+      <div class="col-12 mb-3" *ngIf="hasWithdrawalAlert()">
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+          <strong>⚠️ PELIGRO: API KEY CON RETIROS HABILITADOS</strong>
+          <br>
+          Esta clave API tiene permiso de retiros habilitado. Es una configuración de riesgo.
+          Asegúrate de que esto es intencional.
+        </div>
+      </div>
+
+      <!-- Alerta de Balance Bajo -->
+      <div class="col-12 mb-3" *ngIf="hasLowBalanceAlert()">
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+          <strong>⚠️ ADVERTENCIA: Balance bajo</strong>
+          <br>
+          El balance disponible es menor a 10 USDT. No hay suficientes fondos para operaciones.
+        </div>
+      </div>
+
+      <!-- Cards de Estado Credenciales -->
+      <div class="col-md-4 mb-3">
+        <div [ngClass]="preflightData?.credentials_valid ? 'border-success' : 'border-danger'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="bi" [ngClass]="preflightData?.credentials_valid ? 'bi-check-circle text-success' : 'bi-x-circle text-danger'"></i>
+              Credenciales
+            </h5>
+            <p class="card-text">
+              {{ preflightData?.credentials_valid ? '✓ Válidas' : '✗ Inválidas' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4 mb-3">
+        <div [ngClass]="preflightData?.account_accessible ? 'border-success' : 'border-danger'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="bi" [ngClass]="preflightData?.account_accessible ? 'bi-check-circle text-success' : 'bi-x-circle text-danger'"></i>
+              Cuenta Accesible
+            </h5>
+            <p class="card-text">
+              {{ preflightData?.account_accessible ? '✓ Sí' : '✗ No' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4 mb-3">
+        <div [ngClass]="preflightData?.can_trade ? 'border-success' : 'border-danger'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="bi" [ngClass]="preflightData?.can_trade ? 'bi-check-circle text-success' : 'bi-x-circle text-danger'"></i>
+              Puede Operar
+            </h5>
+            <p class="card-text">
+              {{ preflightData?.can_trade ? '✓ Sí' : '✗ No' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Detalles -->
+      <div class="col-12 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Detalles de Permisos</h5>
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Permiso</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Restricciones API Accesibles:</strong></td>
+                  <td>
+                    <span class="badge" [ngClass]="preflightData?.api_restrictions_accessible ? 'bg-success' : 'bg-danger'">
+                      {{ preflightData?.api_restrictions_accessible ? '✓ Sí' : '✗ No' }}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Retiros Habilitados en API Key:</strong></td>
+                  <td>
+                    <span class="badge" [ngClass]="preflightData?.enable_withdrawals_api_key ? 'bg-danger' : 'bg-success'">
+                      {{ preflightData?.enable_withdrawals_api_key ? '⚠️ SÍ (Peligro)' : '✓ NO (Seguro)' }}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Permiso de Retiro Seguro:</strong></td>
+                  <td>
+                    <span class="badge" [ngClass]="preflightData?.withdrawal_permission_safe ? 'bg-success' : 'bg-danger'">
+                      {{ preflightData?.withdrawal_permission_safe ? '✓ Sí' : '✗ No' }}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Balance USDT Disponible:</strong></td>
+                  <td>
+                    <span class="badge bg-info">
+                      {{ formatNumber(preflightData?.usdt_balance_free) }} USDT
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Orden Real Creada:</strong></td>
+                  <td>
+                    <span class="badge" [ngClass]="preflightData?.real_order_created ? 'bg-success' : 'bg-secondary'">
+                      {{ preflightData?.real_order_created ? '✓ Sí' : '✗ No' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 4: POSICIONES REALES ABIERTAS ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-bookmark-fill"></i> Posiciones Reales Abiertas
+        </h2>
+      </div>
+
+      <div class="col-12">
+        <div *ngIf="!hasOpenPositions()" class="alert alert-info">
+          Sin posiciones reales abiertas
+        </div>
+
+        <div *ngIf="hasOpenPositions()" class="table-responsive">
+          <table class="table table-hover table-striped">
+            <thead class="table-dark">
+              <tr>
+                <th>Símbolo</th>
+                <th>Estado</th>
+                <th>Precio Entry</th>
+                <th>Precio Actual</th>
+                <th>Capital</th>
+                <th>Cantidad</th>
+                <th>TP1</th>
+                <th>TP2</th>
+                <th>SL</th>
+                <th>PnL No Realizado</th>
+                <th>Creada</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let pos of getOpenPositions()">
+                <td><strong>{{ pos.symbol }}</strong></td>
+                <td>
+                  <span class="badge bg-warning">{{ pos.status }}</span>
+                </td>
+                <td>{{ formatNumber(pos.entry_price) }}</td>
+                <td>{{ formatNumber(pos.current_price) }}</td>
+                <td>{{ formatNumber(pos.capital_usdt) }} USDT</td>
+                <td>{{ formatNumber(pos.quantity) }}</td>
+                <td>{{ formatNumber(pos.take_profit_1_price) }}</td>
+                <td>{{ formatNumber(pos.take_profit_2_price) }}</td>
+                <td>{{ formatNumber(pos.stop_loss_price) }}</td>
+                <td>
+                  <span [ngClass]="pos.unrealized_pnl_usdt >= 0 ? 'text-success' : 'text-danger'">
+                    {{ formatNumber(pos.unrealized_pnl_usdt) }} USDT
+                    ({{ formatPercent(pos.unrealized_pnl_pct) }})
+                  </span>
+                </td>
+                <td><small>{{ formatDateTime(pos.created_at) }}</small></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 5: ÚLTIMOS TRADES CERRADOS ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-clipboard-check"></i> Últimos Trades Reales Cerrados
+        </h2>
+      </div>
+
+      <div class="col-12">
+        <div *ngIf="getClosedTrades().length === 0" class="alert alert-info">
+          Sin trades cerrados aún
+        </div>
+
+        <div *ngIf="getClosedTrades().length > 0" class="table-responsive">
+          <table class="table table-hover table-striped">
+            <thead class="table-dark">
+              <tr>
+                <th>Símbolo</th>
+                <th>Motivo Cierre</th>
+                <th>Precio Entry</th>
+                <th>Precio Exit</th>
+                <th>PnL Estimado</th>
+                <th>Creada</th>
+                <th>Cerrada</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let trade of getClosedTrades()">
+                <td><strong>{{ trade.symbol }}</strong></td>
+                <td>
+                  <span class="badge" [ngClass]="trade.close_reason === 'TAKE_PROFIT_1' || trade.close_reason === 'TAKE_PROFIT_2' ? 'bg-success' : 'bg-danger'">
+                    {{ trade.close_reason }}
+                  </span>
+                </td>
+                <td>{{ formatNumber(trade.entry_price) }}</td>
+                <td>{{ formatNumber(trade.exit_price) }}</td>
+                <td>
+                  <span [ngClass]="trade.estimated_net_pnl_usdt >= 0 ? 'text-success fw-bold' : 'text-danger fw-bold'">
+                    {{ formatNumber(trade.estimated_net_pnl_usdt) }} USDT
+                    ({{ formatPercent(trade.estimated_net_pnl_pct) }})
+                  </span>
+                </td>
+                <td><small>{{ formatDateTime(trade.created_at) }}</small></td>
+                <td><small>{{ formatDateTime(trade.closed_at) }}</small></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 6: ENTRY DIAGNOSTIC ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-search"></i> Entry Diagnostic (Próximo Candidate)
+        </h2>
+      </div>
+
+      <!-- Card de Scan -->
+      <div class="col-md-6 mb-3">
+        <div [ngClass]="realExecution?.entry_diagnostic?.recent_scan_ok ? 'border-success' : 'border-danger'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">Scan de Oportunidades</h5>
+            <p class="card-text">
+              <strong>ID:</strong> {{ realExecution?.entry_diagnostic?.latest_scan_id || 'N/A' }}
+            </p>
+            <p class="card-text">
+              <strong>Edad:</strong> {{ realExecution?.entry_diagnostic?.latest_scan_age_minutes | number:'1.1-1' }} minutos
+            </p>
+            <p class="card-text">
+              <span class="badge" [ngClass]="realExecution?.entry_diagnostic?.recent_scan_ok ? 'bg-success' : 'bg-danger'">
+                {{ realExecution?.entry_diagnostic?.recent_scan_ok ? '✓ Válido' : '✗ Vencido' }}
+              </span>
+            </p>
+            <hr *ngIf="isScanTooOld()">
+            <p class="text-danger fw-bold" *ngIf="isScanTooOld()">
+              ⚠️ Scan demasiado viejo (>90 min). Se requiere scan fresco.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card de Candidato -->
+      <div class="col-md-6 mb-3">
+        <div *ngIf="hasSelectedCandidate(); else noCandidateCard" class="card border-info">
+          <div class="card-body">
+            <h5 class="card-title">Candidato Seleccionado</h5>
+            <p class="card-text">
+              <strong>Símbolo:</strong> {{ realExecution?.entry_diagnostic?.selected_candidate?.symbol }}
+            </p>
+            <p class="card-text">
+              <strong>Score:</strong> {{ realExecution?.entry_diagnostic?.selected_candidate?.score }}
+            </p>
+            <p class="card-text">
+              <strong>Categoría:</strong> {{ realExecution?.entry_diagnostic?.selected_candidate?.category }}
+            </p>
+          </div>
+        </div>
+        <ng-template #noCandidateCard>
+          <div class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title">Candidato Seleccionado</h5>
+              <p class="card-text text-muted">
+                No hay candidato seleccionado en este momento.
+              </p>
+            </div>
+          </div>
+        </ng-template>
+      </div>
+
+      <!-- Tabla de Filtros -->
+      <div class="col-12 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Filtros de Selección</h5>
+            <table class="table table-sm table-borderless">
+              <tbody>
+                <tr>
+                  <td><strong>Candidatos Vistos:</strong></td>
+                  <td>{{ realExecution?.entry_diagnostic?.candidates_seen || 'N/A' }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Después de Score Filter (≥70):</strong></td>
+                  <td>{{ realExecution?.entry_diagnostic?.candidates_after_score_filter || 'N/A' }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Después de Category Filter:</strong></td>
+                  <td>{{ realExecution?.entry_diagnostic?.candidates_after_category_filter || 'N/A' }}</td>
+                </tr>
+                <tr>
+                  <td><strong>Después de Capital Filter:</strong></td>
+                  <td>{{ realExecution?.entry_diagnostic?.candidates_after_capital_filter || 'N/A' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Razones de Rechazo -->
+      <div class="col-12 mb-3" *ngIf="realExecution?.entry_diagnostic?.rejected_reasons?.length > 0">
+        <div class="card border-warning">
+          <div class="card-body">
+            <h5 class="card-title">Razones de Rechazo</h5>
+            <ul class="mb-0">
+              <li *ngFor="let reason of realExecution?.entry_diagnostic?.rejected_reasons">
+                {{ reason }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado de Orden -->
+      <div class="col-md-6 mb-3">
+        <div [ngClass]="realExecution?.entry_diagnostic?.order_created ? 'border-success bg-light-green' : 'border-secondary'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">Orden Creada</h5>
+            <p class="card-text">
+              <span class="badge" [ngClass]="realExecution?.entry_diagnostic?.order_created ? 'bg-success' : 'bg-secondary'">
+                {{ realExecution?.entry_diagnostic?.order_created ? '✓ Sí' : '✗ No' }}
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6 mb-3">
+        <div [ngClass]="realExecution?.entry_diagnostic?.order_creation_path_reached ? 'border-info' : 'border-secondary'" class="card">
+          <div class="card-body">
+            <h5 class="card-title">Path de Creación Alcanzado</h5>
+            <p class="card-text">
+              <span class="badge" [ngClass]="realExecution?.entry_diagnostic?.order_creation_path_reached ? 'bg-info' : 'bg-secondary'">
+                {{ realExecution?.entry_diagnostic?.order_creation_path_reached ? '✓ Sí' : '✗ No' }}
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 7: PAPER EXECUTION ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-newspaper"></i> Paper Execution (Simulación)
+        </h2>
+      </div>
+
+      <div class="col-md-3 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Posiciones Abiertas</h5>
+            <p class="card-text display-5">{{ paperExecution?.open_paper_positions || 0 }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Posiciones Cerradas</h5>
+            <p class="card-text display-5">{{ paperExecution?.closed_paper_positions || 0 }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">PnL Total</h5>
+            <p [ngClass]="paperExecution?.total_net_pnl_usdt >= 0 ? 'text-success' : 'text-danger'" class="card-text display-5">
+              {{ formatNumber(paperExecution?.total_net_pnl_usdt) }}
+            </p>
+            <small class="text-muted">USDT</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Win Rate</h5>
+            <p class="card-text display-5">{{ formatPercent(paperExecution?.win_rate) }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Posiciones de Papel Abiertas -->
+      <div class="col-12 mb-3" *ngIf="getPaperOpenPositions().length > 0">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Posiciones Abiertas de Papel</h5>
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Símbolo</th>
+                    <th>Status</th>
+                    <th>Cantidad</th>
+                    <th>Precio Entry</th>
+                    <th>Precio Actual</th>
+                    <th>PnL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let pos of getPaperOpenPositions()">
+                    <td>{{ pos.symbol }}</td>
+                    <td><span class="badge bg-info">{{ pos.status }}</span></td>
+                    <td>{{ formatNumber(pos.quantity) }}</td>
+                    <td>{{ formatNumber(pos.entry_price) }}</td>
+                    <td>{{ formatNumber(pos.current_price) }}</td>
+                    <td [ngClass]="pos.unrealized_pnl_usdt >= 0 ? 'text-success' : 'text-danger'">
+                      {{ formatNumber(pos.unrealized_pnl_usdt) }} USDT
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SECCIÓN 8: SPOT OPPORTUNITIES ========== -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <h2 class="h3 mb-3">
+          <i class="bi bi-lightning-fill"></i> Top 20 Oportunidades Spot
+        </h2>
+      </div>
+
+      <div class="col-md-4 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Símbolos Escaneados</h5>
+            <p class="card-text display-5">{{ spotOpportunities?.total_symbols_scanned || 0 }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Candidatos Guardados</h5>
+            <p class="card-text display-5">{{ spotOpportunities?.candidates_saved || 0 }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4 mb-3">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Top 20 Disponibles</h5>
+            <p class="card-text display-5">{{ getTopOpportunities().length || 0 }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Top 20 -->
+      <div class="col-12 mb-3" *ngIf="getTopOpportunities().length > 0">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Rankings de Oportunidades</h5>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped">
+                <thead class="table-dark">
+                  <tr>
+                    <th>#</th>
+                    <th>Símbolo</th>
+                    <th>Score</th>
+                    <th>Categoría</th>
+                    <th>Recomendación</th>
+                    <th>Volumen</th>
+                    <th>Cambio Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let opp of getTopOpportunities(); let idx = index">
+                    <td class="fw-bold">{{ idx + 1 }}</td>
+                    <td><strong>{{ opp.symbol }}</strong></td>
+                    <td>
+                      <span class="badge bg-primary">{{ opp.opportunityScore }}</span>
+                    </td>
+                    <td>
+                      <span class="badge" [ngClass]="
+                        opp.category === 'BREAKOUT' ? 'bg-success' : 
+                        opp.category === 'MOMENTUM' ? 'bg-info' : 
+                        'bg-warning'
+                      ">
+                        {{ opp.category || 'N/A' }}
+                      </span>
+                    </td>
+                    <td>{{ opp.recommendation || 'N/A' }}</td>
+                    <td>{{ opp.volume_info || 'N/A' }}</td>
+                    <td [ngClass]="opp.price_change_pct >= 0 ? 'text-success' : 'text-danger'">
+                      {{ opp.price_change_pct ? formatPercent(opp.price_change_pct / 100) : 'N/A' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12" *ngIf="getTopOpportunities().length === 0">
+        <div class="alert alert-info">
+          No hay oportunidades disponibles en este momento.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER INFO -->
+  <div class="row mt-5 mb-4">
+    <div class="col-12">
+      <hr>
+      <p class="text-muted text-center small">
+        <i class="bi bi-shield-check"></i> Sistema de solo lectura — No se pueden ejecutar órdenes desde este monitor.
+        <br>
+        <i class="bi bi-clock"></i> Actualización automática cada 15 segundos.
+      </p>
+    </div>
+  </div>
+</div>

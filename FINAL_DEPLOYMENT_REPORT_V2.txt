@@ -23,19 +23,19 @@ WHAT WAS DELIVERED
 ✅ PHASE 1: IMPULSE DETECTOR V2 (Precision Entry Detection)
    File: backend/services/impulseDetector.js
    Lines: 298 (complete rewrite from v1)
-   
+
    Key Innovation: Early impulse detection vs late confirmation
      v1 (OLD): move5m ≥ 0.5% (LATE entry, loses edge)
      v2 (NEW): move1m ≥ 0.2% AND move3m ≥ 0.3% (EARLY entry, captures momentum)
-   
+
    Detection Logic:
      ✓ Criterion 1: Early impulse (move1m ≥ 0.2% AND move3m ≥ 0.3%)
      ✓ Criterion 2: No overextension (move3m < 0.6%)
      ✓ Criterion 3: Direction continuity (≥2 candles same direction)
      ✓ Criterion 4: Volume confirmation (volumeRatio ≥ 1.3x)
-   
+
    Strength Score: Weighted calculation (0-1 scale, floor 0.6 for detected)
-   
+
    Exports:
      • detectImpulse({ candles, volumeData })
      • detectSymbolImpulse(symbol)
@@ -47,12 +47,12 @@ WHAT WAS DELIVERED
 ✅ PHASE 2: INTEGRATION INTO SCHEDULER (velasScheduler.js)
    File: backend/tasks/velasScheduler.js
    Changes: +3 modifications
-   
+
    Added:
      ✓ Import of impulseDetector module
      ✓ New function: runImpulseCycle(options)
      ✓ Updated module.exports to include runImpulseCycle
-   
+
    Functionality:
      • Scans 25 symbols for impulses per cycle
      • Logs each detection with full metrics
@@ -62,13 +62,13 @@ WHAT WAS DELIVERED
 ✅ PHASE 3: CONFIRMATION LAYER (1-Cycle Validation)
    File: backend/routes/impulseSchedulerRoute.js
    Changes: +4 modifications
-   
+
    Confirmation Logic:
      • confirmationState Map: { symbol:direction } → { detected_at, metrics, ...}
      • Cycle N: Detect impulses, store with timestamp
      • Cycle N+1+: Revalidate, mark as CONFIRMED if ≥1 cycle old
      • Prevents false reversals and premature entry
-   
+
    Anti-Replay Protection:
      • Automatic cleanup after confirmation
      • Only confirmed impulses proceed to execution
@@ -76,54 +76,54 @@ WHAT WAS DELIVERED
 
 ✅ PHASE 4-5: TRADING PARAMETERS
    Configured in impulseExecutionEngine.js (pre-existing, unchanged)
-   
+
    Take Profit: +0.6% to +1.0%
      └─ Randomized per signal strength
      └─ Conservative asymmetric risk/reward
-   
+
    Stop Loss: -0.4% to -0.6%
      └─ Tight protection on early entries
      └─ Prevents runaway losses
-   
+
    Trailing Stop: Activates at +0.3% profit
      └─ Auto-locks gains
      └─ Manages risk on winning trades
 
 ✅ PHASE 6: RISK MANAGEMENT (Pre-Existing, Verified)
    File: backend/services/impulseRiskManager.js
-   
+
    Position Limits:
      • MAX_CONCURRENT_TRADES: 2
      • MAX_TRADES_PER_SYMBOL: 1
      • COOLDOWN_PER_SYMBOL: 10 minutes
-   
+
    Halt Conditions:
      • Daily loss ≤ -2% → HALT
      • 3+ consecutive losses → HALT
      • Auto-resume next day or after recovery
 
 ✅ PHASE 7: BUILD & DEPLOYMENT (100% Complete)
-   
+
    Step 1: Docker Build ✓ SUCCESS
      Command: gcloud builds submit --config cloudbuild.yaml
      Build ID: a37079a2-ccce-4f24-aa82-27990bda3636
      Duration: 2m 36s
      Status: ✓ SUCCESS
      Output: southamerica-west1-docker.pkg.dev/proypers2025/backend-repo/backend-image:latest
-   
+
    Step 2: Cloud Run Deployment ✓ SUCCESS
      Service: proypers25-backend
      Revision: proypers25-backend-00413-nxj
      Region: southamerica-west1
      Traffic: 100% routed
      Status: ✓ Serving
-   
+
    Step 3: Health Check ✓ VERIFIED
      Endpoint: /internal/health/impulse
      Response: 200 OK
      Status: "healthy"
      impulse_system: "operational"
-   
+
    Step 4: Cloud Scheduler Job ✓ CREATED
      Job Name: impulse-trading-v2
      Location: southamerica-east1
@@ -142,16 +142,16 @@ WHAT WAS DELIVERED
 
 ✅ PHASE 9: AUDIT FRAMEWORK (Ready)
    File: backend/audit_impulse_trades.js (pre-existing, ready to use)
-   
+
    Usage (after 10+ closed trades):
      $ node audit_impulse_trades.js 20
-   
+
    Metrics Calculated:
      • WIN_RATE (must be ≥ 55%)
      • AVG_PNL per trade
      • AVG_MOVE_CAPTURED (must be ≥ 0.4%)
      • BEST_TRADE / WORST_TRADE
-   
+
    Decision Logic:
      IF WIN_RATE ≥ 55% AND AVG_MOVE ≥ 0.4%:
        → VIABLE: Scale to 0.5x, continue trading
@@ -289,7 +289,7 @@ MODIFIED:
     └─ Line ~31: Added import statement
     └─ Line ~1713: Added runImpulseCycle() function (65 lines)
     └─ Line ~1802: Added runImpulseCycle to exports
-  
+
   ✓ backend/routes/impulseSchedulerRoute.js
     └─ Line ~9: Updated import source to velasScheduler.js
     └─ Line ~17: Added confirmationState Map

@@ -1,0 +1,271 @@
+.trading-monitor-container {
+  background-color: #f8f9fa;
+  padding-bottom: 3rem;
+}
+
+/* Fuente global */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  color: #212529;
+}
+
+/* Cards */
+.card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  height: 100%;
+}
+
+.card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.card-title {
+  font-weight: 600;
+  color: #212529;
+  font-size: 1rem;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+/* Cards de Estado con colores específicos */
+.card.bg-danger,
+.card.bg-warning,
+.card.bg-success {
+  border: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card.bg-danger {
+  background-color: #dc3545 !important;
+}
+
+.card.bg-warning {
+  background-color: #ffc107 !important;
+  color: #000 !important;
+}
+
+.card.bg-success {
+  background-color: #28a745 !important;
+}
+
+/* Cards con bordes coloreados */
+.card.border-success {
+  border: 2px solid #28a745 !important;
+}
+
+.card.border-danger {
+  border: 2px solid #dc3545 !important;
+}
+
+.card.border-warning {
+  border: 2px solid #ffc107 !important;
+}
+
+.card.border-info {
+  border: 2px solid #17a2b8 !important;
+}
+
+.card.border-secondary {
+  border: 2px solid #6c757d !important;
+}
+
+/* Tables */
+table {
+  font-size: 0.95rem;
+}
+
+.table-dark {
+  background-color: #343a40;
+}
+
+.table-dark th {
+  color: #fff;
+  font-weight: 600;
+  border-color: #454d55;
+}
+
+.table-hover tbody tr:hover {
+  background-color: #f5f5f5;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Alerts */
+.alert {
+  border-radius: 6px;
+  border: none;
+  margin-bottom: 1rem;
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.alert-info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+/* Badges */
+.badge {
+  padding: 0.4rem 0.6rem;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+/* Spinner */
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .trading-monitor-container {
+    padding: 1rem;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  .card {
+    margin-bottom: 1rem !important;
+  }
+
+  .table-responsive {
+    font-size: 0.85rem;
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+}
+
+/* Utility classes */
+.text-success {
+  color: #28a745;
+}
+
+.text-danger {
+  color: #dc3545;
+}
+
+.text-warning {
+  color: #ffc107;
+}
+
+.text-info {
+  color: #17a2b8;
+}
+
+.fw-bold {
+  font-weight: 600;
+}
+
+.display-5 {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.display-6 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+/* Indicadores visuales */
+.bg-light-green {
+  background-color: #d4edda;
+}
+
+/* Status indicators */
+.status-armed {
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+  }
+}
+
+.status-safe {
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+  }
+}
+
+/* Icons */
+.bi {
+  margin-right: 0.4rem;
+}
+
+/* Separadores */
+hr {
+  margin: 0.75rem 0;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Alineación */
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: #6c757d !important;
+}
+
+/* Padding utilities */
+.mt-4 { margin-top: 1.5rem; }
+.mb-4 { margin-bottom: 1.5rem; }
+.mb-3 { margin-bottom: 1rem; }
+.ms-3 { margin-left: 1rem; }
+
+/* Button styles */
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+.btn-primary:hover {
+  background-color: #0056b3;
+  border-color: #0056b3;
+}
+
+/* Form controls */
+.form-control {
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.form-control:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}

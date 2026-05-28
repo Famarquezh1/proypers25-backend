@@ -1,1480 +1,192 @@
 ﻿<div class="velas-panel">
   <div class="panel-toolbar">
-    <h2>Predicciones de Velas</h2>
-    <button class="btn btn-sm btn-outline-secondary" (click)="toggleCompactMode()">
-      {{ compactMode ? 'Modo completo' : 'Modo compacto' }}
-    </button>
-  </div>
-  <div [class.compact-mode]="compactMode" [class.mobile-optimized]="uiMobileOptimized">
-  <div class="control-row mb-3">
-    <div class="form-group">
-      <label for="symbolSelect">Símbolo</label>
-      <select id="symbolSelect" class="form-select" [(ngModel)]="candidatoSymbol">
-        <option *ngFor="let symbol of symbols" [value]="symbol">{{ symbol }}</option>
-      </select>
-    </div>
-    <div class="form-group" *ngIf="executionMode !== 'event_driven'">
-      <label for="timeframeSelect">Timeframe</label>
-      <select id="timeframeSelect" class="form-select" [(ngModel)]="selectedTimeframe">
-        <option *ngFor="let tf of timeframes" [value]="tf">{{ tf }}</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label for="modeSelect">Modo de ejecución</label>
-      <select id="modeSelect" class="form-select" [(ngModel)]="executionMode">
-        <option *ngFor="let mode of executionModes" [value]="mode.value">{{ mode.label }}</option>
-      </select>
-      <p *ngIf="executionMode === 'event_driven'" class="text-muted small mt-1">
-        Event-Driven ejecuta según micro-impulsos; el timeframe solo sirve de contexto y no altera las ventanas de entrada/salida.
-      </p>
-    </div>
-    <div class="form-group">
-      <label for="montoInput">Monto (USD)</label>
-      <input id="montoInput" type="number" class="form-control" [(ngModel)]="monto" min="10" />
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-success me-2" (click)="generarPrediccion()" [disabled]="cargando">Generar</button>
+    <h2>Proypers25 Impulse Console</h2>
+    <div class="impulse-stats-badge" style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+      <span class="badge bg-light text-dark" style="margin-right: 8px;">cycles={{ impulseStats.cycles }}</span>
+      <span class="badge bg-light text-dark" style="margin-right: 8px;">Detected={{ impulseStats.detected }}</span>
+      <span class="badge bg-light text-dark;">Executed={{ impulseStats.executed }}</span>
     </div>
   </div>
 
-  <div *ngIf="mensaje" class="alert alert-info">{{ mensaje }}</div>
+  <section class="high-conviction-panel mb-4">
+    <h3>Execution Health</h3>
+    <p class="small text-muted panel-context-note">Resumen operativo directo desde <code>binance_execution_intents</code> y <code>active_impulse_trades</code></p>
 
-  <ng-container *ngIf="symbolStatusChips$ | async as symbolChips">
-    <div class="symbol-chip-row" *ngIf="symbolChips.length">
-      <button
-        type="button"
-        class="symbol-chip"
-        *ngFor="let chip of symbolChips; trackBy: trackBySymbol"
-        [class.symbol-chip-active]="chip.status === 'activa'"
-        [class.symbol-chip-suppressed]="chip.status === 'suprimida'"
-        [class.symbol-chip-selected]="selectedHistorySymbol === chip.symbol"
-        (click)="toggleHistorySymbolFilter(chip.symbol)"
-      >
-        <strong>{{ chip.symbol }}</strong>
-        <span>{{ chip.status }}</span>
-      </button>
-    </div>
-  </ng-container>
-
-  <section class="mobile-section" [class.is-open]="isSectionOpen('opportunities')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('opportunities')">
-      <span>Oportunidades próximas</span>
-      <span>{{ isSectionOpen('opportunities') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('opportunities')">
-  <div class="opportunities-panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div>
-        <h3 class="mb-0">Oportunidades próximas</h3>
-        <p class="text-muted small mb-0">Solo setups operables y señales emitidas con ventana activa o próxima.</p>
-      </div>
-    </div>
-
-    <ng-container *ngIf="latestTelegramAlert$ | async as latestAlert">
-      <div *ngIf="latestAlert" class="telegram-alert-banner">
-        <strong>Última alerta Telegram:</strong>
-        {{ latestAlert.symbol }} · {{ telegramAlertDirection(latestAlert) }} · {{ latestTelegramAlertDate(latestAlert) }}
+    <ng-container *ngIf="executionHealthSummary$ | async as health">
+      <div *ngIf="health" style="display:flex;flex-wrap:wrap;gap:.45rem;">
+        <span class="badge bg-light text-dark">intents {{ health.intents_total }}</span>
+        <span class="badge bg-success">executed {{ health.executed_count }}</span>
+        <span class="badge bg-warning text-dark">blocked {{ health.blocked_count }}</span>
+        <span class="badge bg-danger">failed {{ health.failed_count }}</span>
+        <span class="badge bg-warning text-dark">net edge rejected {{ health.net_edge_rejected_count }}</span>
+        <span class="badge bg-secondary">orphan blocked {{ health.orphan_blocked_count }}</span>
+        <span class="badge bg-light text-dark">results {{ health.results_total }}</span>
+        <span class="badge bg-info text-dark">timeout exits {{ health.timeout_exit_count }}</span>
+        <span class="badge bg-success">TP {{ health.take_profit_count }}</span>
+        <span class="badge bg-danger">SL {{ health.stop_loss_count }}</span>
+        <span class="badge bg-success">win {{ health.win_count }}</span>
+        <span class="badge bg-danger">loss {{ health.loss_count }}</span>
       </div>
     </ng-container>
-
-    <ng-container *ngIf="telegramNotifications$ | async as telegramAlerts">
-      <div *ngIf="telegramAlerts.length" class="telegram-history mb-3">
-        <div class="telegram-history-header">
-          <h4 class="mb-0">Pre-alertas Telegram recientes</h4>
-          <span class="text-muted small">Enviadas y cruzadas con su resultado actual</span>
-        </div>
-        <div class="telegram-history-sections">
-          <div class="telegram-history-section" *ngIf="telegramWinNotifications$ | async as telegramWins">
-            <div class="telegram-history-section-title">
-              Victorias confirmadas <span class="text-muted">({{ telegramWins.length }})</span>
-            </div>
-            <div class="telegram-history-empty" *ngIf="!telegramWins.length">Aún no hay pre-alertas con WIN.</div>
-            <div class="telegram-history-carousel" *ngIf="telegramWins.length">
-              <div class="telegram-history-card telegram-history-card-win" *ngFor="let alert of telegramWins">
-                <div class="d-flex justify-content-between align-items-center gap-2">
-                  <div>
-                    <strong>{{ alert.symbol }}</strong>
-                    <div class="small text-muted">{{ latestTelegramAlertDate(alert) }}</div>
-                  </div>
-                  <span [class]="telegramAlertOutcomeClass(alert)">{{ telegramAlertOutcome(alert) }}</span>
-                </div>
-
-                <div class="telegram-history-metrics">
-                  <span>{{ telegramAlertDirection(alert) }}</span>
-                  <span>Conf. {{ normalizePercent(alert.confidence) | percent:'1.0-0' }}</span>
-                  <span>Stability {{ normalizePercent(alert.stability) | percent:'1.0-0' }}</span>
-                  <span>Spot {{ alert.spot_price | number:'1.2-2' }}</span>
-                </div>
-
-                <div class="small">
-                  <strong>Ventana vigilada:</strong> {{ telegramAlertWindow(alert) }}
-                </div>
-                <div class="small" *ngIf="alert.trade_plan">
-                  <strong>Entrada:</strong> {{ alert.trade_plan.entry_price | number:'1.2-4' }}
-                  · <strong>SL:</strong> {{ alert.trade_plan.stop_loss | number:'1.2-4' }}
-                  · <strong>TP:</strong> {{ alert.trade_plan.take_profit | number:'1.2-4' }}
-                </div>
-                <div class="small text-muted" *ngIf="alert.trade_plan">
-                  Salida objetivo: {{ alert.trade_plan.target_exit_price | number:'1.2-4' }}
-                  · R:R {{ alert.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
-                </div>
-                <div class="small text-muted">
-                  Resultado actual: {{ verificationOutcomeLabel(alert.linkedPrediction || alert) }}
-                </div>
-                <div class="small text-muted">
-                  {{ telegramAlertRemarks(alert) }}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="telegram-history-section" *ngIf="telegramPendingNotifications$ | async as telegramPending">
-            <div class="telegram-history-section-title">
-              Pendientes y resto <span class="text-muted">({{ telegramPending.length }})</span>
-            </div>
-            <div class="telegram-history-empty" *ngIf="!telegramPending.length">No hay alertas pendientes o en seguimiento.</div>
-            <div class="telegram-history-carousel" *ngIf="telegramPending.length">
-              <div class="telegram-history-card" *ngFor="let alert of telegramPending">
-                <div class="d-flex justify-content-between align-items-center gap-2">
-                  <div>
-                    <strong>{{ alert.symbol }}</strong>
-                    <div class="small text-muted">{{ latestTelegramAlertDate(alert) }}</div>
-                  </div>
-                  <span [class]="telegramAlertOutcomeClass(alert)">{{ telegramAlertOutcome(alert) }}</span>
-                </div>
-
-                <div class="telegram-history-metrics">
-                  <span>{{ telegramAlertDirection(alert) }}</span>
-                  <span>Conf. {{ normalizePercent(alert.confidence) | percent:'1.0-0' }}</span>
-                  <span>Stability {{ normalizePercent(alert.stability) | percent:'1.0-0' }}</span>
-                  <span>Spot {{ alert.spot_price | number:'1.2-2' }}</span>
-                </div>
-
-                <div class="small">
-                  <strong>Ventana vigilada:</strong> {{ telegramAlertWindow(alert) }}
-                </div>
-                <div class="small" *ngIf="alert.trade_plan">
-                  <strong>Entrada:</strong> {{ alert.trade_plan.entry_price | number:'1.2-4' }}
-                  · <strong>SL:</strong> {{ alert.trade_plan.stop_loss | number:'1.2-4' }}
-                  · <strong>TP:</strong> {{ alert.trade_plan.take_profit | number:'1.2-4' }}
-                </div>
-                <div class="small text-muted" *ngIf="alert.trade_plan">
-                  Salida objetivo: {{ alert.trade_plan.target_exit_price | number:'1.2-4' }}
-                  · R:R {{ alert.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
-                </div>
-                <div class="small text-muted">
-                  Resultado actual: {{ verificationOutcomeLabel(alert.linkedPrediction || alert) }}
-                </div>
-                <div class="small text-muted">
-                  {{ telegramAlertRemarks(alert) }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </ng-container>
-
-    <ng-container *ngIf="oportunidades$ | async as oportunidades">
-      <p *ngIf="!oportunidades.length" class="text-muted mb-0">
-        No hay oportunidades manuales operables en este momento.
-      </p>
-
-      <div *ngIf="oportunidades.length" class="opportunities-grid">
-        <div class="opportunity-card" *ngFor="let item of oportunidades">
-          <div class="d-flex justify-content-between align-items-center gap-2">
-            <div>
-              <strong>{{ item.simbolo }}</strong>
-              <div class="small text-muted">
-                {{ item.direction === 'down' ? 'Baja' : item.direction === 'up' ? 'Alza' : 'Neutral' }}
-                · Prioridad {{ opportunityPriority(item) }}
-              </div>
-            </div>
-            <span [class]="opportunityStateClass(item)">{{ opportunityState(item) }}</span>
-          </div>
-
-          <div class="opportunity-metrics">
-            <span>Conf. {{ item.confidence | percent:'1.0-0' }}</span>
-            <span>Stability {{ item.stability | percent:'1.0-0' }}</span>
-            <span>Quantum {{ item.quantum | percent:'1.0-0' }}</span>
-          </div>
-
-          <div [class]="opportunityCountdownClass(item)">
-            <span>{{ opportunityWindowLabel(item) }}</span>
-            <strong>{{ opportunityCountdown(item) }}</strong>
-          </div>
-
-          <div class="small text-muted">
-            Entrada local: {{ opportunityLocalWindow(item, 'start') }} – {{ opportunityLocalWindow(item, 'end') }}
-          </div>
-          <div class="small text-muted">
-            UTC: {{ item.entry_window?.start }} – {{ item.entry_window?.end }}
-          </div>
-        </div>
-      </div>
-    </ng-container>
-  </div>
-    </div>
   </section>
 
-  <section class="mobile-section" [class.is-open]="isSectionOpen('monitoring')" *ngIf="monitoringSnapshots$ | async as monitoringSnapshots">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('monitoring')">
-      <span>Monitoreo del sistema</span>
-      <span>{{ isSectionOpen('monitoring') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('monitoring')">
-  <div class="monitoring-panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div>
-        <h3 class="mb-0">Monitoreo del sistema</h3>
-        <p class="text-muted small mb-0">Resumen operativo del ciclo y certeza auditada (solo lectura).</p>
-      </div>
-      <span class="text-muted small">Actualizado: {{ monitoringSummary.updatedAt }}</span>
-    </div>
+  <section class="high-conviction-panel mb-4">
+    <h3>Market Detection</h3>
+    <p class="small text-muted panel-context-note">Fuente: <code>impulse_logs</code></p>
 
-    <div *ngIf="monitoringSnapshots.length; else noMonitoringData" class="monitoring-stats">
-      <span class="monitor-pill">Solicitados: <strong>{{ monitoringSummary.symbolsRequested }}</strong></span>
-      <span class="monitor-pill">S&iacute;mbolos: <strong>{{ monitoringSummary.symbolsTotal }}</strong></span>
-      <span class="monitor-pill" *ngIf="monitoringSummary.symbolsExcludedCooldown > 0">En cooldown: <strong>{{ monitoringSummary.symbolsExcludedCooldown }}</strong></span>
-      <span class="monitor-pill">Procesados: <strong>{{ monitoringSummary.processedOk }}</strong></span>
-      <span class="monitor-pill">Fallidos: <strong>{{ monitoringSummary.failed }}</strong></span>
-      <span class="monitor-pill">Emitidas: <strong>{{ monitoringSummary.emitted }}</strong></span>
-      <span class="monitor-pill">Suprimidas: <strong>{{ monitoringSummary.suppressed }}</strong></span>
-      <span class="monitor-pill">Supresi&oacute;n: <strong>{{ monitoringSummary.suppressionRate | percent:'1.0-1' }}</strong></span>
-      <span class="monitor-pill">Duraci&oacute;n ciclo: <strong>{{ (monitoringSummary.cycleDurationMs / 1000) | number:'1.0-0' }}s</strong></span>
-      <span class="monitor-pill">Certeza auditada: <strong>{{ monitoringSummary.certaintyWinRate | percent:'1.0-1' }}</strong></span>
-      <span class="monitor-pill">Clasificaci&oacute;n: <strong>{{ monitoringSummary.classification }}</strong></span>
-      <span class="monitor-pill">Última emisión: <strong>{{ lastEmissionAt }}</strong> <span *ngIf="lastEmissionCount > 0">({{ lastEmissionCount }})</span></span>
-    </div>
-
-    <div *ngIf="monitoringSummary.topFailureSymbols.length" class="monitoring-stats" style="margin-top:-0.15rem;">
-      <span class="text-muted small">Símbolos con fallos recientes:</span>
-      <span class="monitor-pill text-danger border-danger-subtle" *ngFor="let symbol of monitoringSummary.topFailureSymbols">{{ symbol }}</span>
-    </div>
-
-    <div *ngIf="monitoringTrend.length" class="monitoring-trend">
-      <span class="monitor-pill monitor-trend-pill" *ngFor="let point of monitoringTrend">
-        {{ point.createdAtLabel }}: <strong>{{ point.winRate | percent:'1.0-1' }}</strong>
-      </span>
-    </div>
-  </div>
-    </div>
-  </section>
-  <ng-template #noMonitoringData>
-    <p class="text-muted mb-0">A&uacute;n no hay snapshots de monitoreo.</p>
-  </ng-template>
-
-
-
-  <section class="mobile-section" [class.is-open]="isSectionOpen('equityCurve')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('equityCurve')">
-      <span>Execution Equity Curve</span>
-      <span>{{ isSectionOpen('equityCurve') ? '?' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('equityCurve')">
-      <div class="equity-panel mb-4">
-        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-          <div>
-            <h3 class="mb-0">Execution Equity Curve</h3>
-            <p class="text-muted small mb-0">Curva cerrada del bot + ajuste visible al balance real actual de Binance Futures M.</p>
-          </div>
-          <button class="btn btn-sm btn-outline-primary" (click)="cargarEquityCurve(true)" [disabled]="equityCurveLoading">
-            {{ equityCurveLoading ? 'Actualizando...' : 'Actualizar' }}
-          </button>
-        </div>
-
-        <div *ngIf="equityCurveError" class="alert alert-warning py-2 mb-2">
-          {{ equityCurveError }}
-        </div>
-
-        <div class="monitoring-stats" *ngIf="!equityCurveError">
-          <span class="monitor-pill">Capital base inicial: <strong>{{ equityCurveSummary.initialCapital | number:'1.2-2' }} USDT</strong></span>
-          <span class="monitor-pill">Capital actual Binance: <strong>{{ equityCurveSummary.currentCapital | number:'1.2-4' }} USDT</strong></span>
-          <span class="monitor-pill">Ruta trazada: <strong>{{ equityCurveSummary.curveCapital | number:'1.2-4' }} USDT</strong></span>
-          <span class="monitor-pill">Crecimiento total: <strong>{{ equityCurveSummary.totalGrowthPct | number:'1.2-2' }}%</strong></span>
-          <span class="monitor-pill">Trades: <strong>{{ equityCurveSummary.totalTrades }}</strong></span>
-          <span class="monitor-pill">Wins: <strong>{{ equityCurveSummary.wins }}</strong></span>
-          <span class="monitor-pill">Losses: <strong>{{ equityCurveSummary.losses }}</strong></span>
-          <span class="monitor-pill">Breakeven: <strong>{{ equityCurveSummary.breakevens }}</strong></span>
-          <span class="monitor-pill">Max drawdown: <strong>{{ equityCurveSummary.maxDrawdownPct | number:'1.2-2' }}%</strong></span>
-        </div>
-        <div *ngIf="!equityCurveError" class="text-muted small mb-2 equity-curve-note">
-          La curva azul sigue una sola ruta de capital reconstruida con movimientos reales de Binance Futures y se sincroniza hasta el capital actual del wallet.
-        </div>
-
-        <div *ngIf="equityCurveLoading" class="text-muted small py-2">Cargando equity curve...</div>
-        <div *ngIf="!equityCurveLoading && !equityCurveError && !equityCurveCandles.length" class="text-muted small py-2">
-          A?n no hay trades cerrados suficientes para dibujar la curva de equity.
-        </div>
-
-        <div *ngIf="!equityCurveLoading && equityCurveCandles.length" class="equity-chart-shell">
-          <div #equityChartContainer class="equity-chart-container"></div>
-
-          <div class="equity-chart-legend">
-            <span class="equity-legend-item"><span class="equity-legend-line equity-legend-curve"></span> Ruta real del capital</span>
-            <span class="text-muted small">Una sola curva, desde el capital base hasta el balance actual de Binance.</span>
-          </div>
-
-          <div class="equity-hover-card" *ngIf="equityHoveredTrade as hoveredTrade">
-            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-              <div>
-                <strong>{{ hoveredTrade.symbol }}</strong>
-                <span class="text-muted small"> ? {{ formatFirestoreDate(hoveredTrade.closed_at || hoveredTrade.time * 1000) }}</span>
-              </div>
-              <div class="exec-badge-row">
-                <span [class]="equityOutcomeClass(hoveredTrade)">{{ hoveredTrade.outcome }}</span>
-                <span [class]="binanceExecutionSourceClass({ source_profile: hoveredTrade.source_profile })">{{ equitySourceLabel(hoveredTrade) }}</span>
-              </div>
-            </div>
-            <div class="equity-hover-grid">
-              <div><strong>PnL:</strong> <span [class]="equityPnlClass(hoveredTrade)">{{ hoveredTrade.pnl_pct | number:'1.3-3' }}%</span></div>
-              <div><strong>Raz?n:</strong> {{ hoveredTrade.close_reason || '?' }}</div>
-              <div><strong>Open:</strong> {{ hoveredTrade.open | number:'1.2-2' }}</div>
-              <div><strong>High:</strong> {{ hoveredTrade.high | number:'1.2-2' }}</div>
-              <div><strong>Low:</strong> {{ hoveredTrade.low | number:'1.2-2' }}</div>
-              <div><strong>Close:</strong> {{ hoveredTrade.close | number:'1.2-2' }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-  <section class="mobile-section" [class.is-open]="isSectionOpen('signalIntel')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('signalIntel')">
-      <span>Signal Intelligence</span>
-      <span>{{ isSectionOpen('signalIntel') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('signalIntel')">
-  <div class="signal-intel-panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div>
-        <h3 class="mb-0">Signal Intelligence</h3>
-        <p class="text-muted small mb-0">Auditoría estadística del detector y del contexto (solo lectura).</p>
-        <p class="signal-intel-help mb-0">
-          ¿Para qué sirve? Mide si las señales emitidas realmente tienen ventaja estadística (edge).
-          <span class="d-block">Ejemplo: expectancy &gt; 0 y win_rate alto = contexto favorable.</span>
-          <span class="d-block">También revela si Binance está ejecutando con disciplina o degradando el edge.</span>
-        </p>
-      </div>
-      <div class="d-flex align-items-center gap-2">
-        <span class="text-muted small">Actualizado: {{ signalIntelUpdatedAt }}</span>
-        <button class="btn btn-sm btn-outline-primary" (click)="cargarSignalIntelligence(true)" [disabled]="signalIntelLoading">
-          {{ signalIntelLoading ? 'Actualizando...' : 'Actualizar' }}
-        </button>
-      </div>
-    </div>
-
-    <div *ngIf="signalIntelError" class="alert alert-warning py-2 mb-2">
-      {{ signalIntelError }}
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Total: <strong>{{ signalIntelSummary.totalSignals }}</strong></span>
-      <span class="monitor-pill">Emitidas: <strong>{{ signalIntelSummary.emitted }}</strong></span>
-      <span class="monitor-pill">Suprimidas: <strong>{{ signalIntelSummary.suppressed }}</strong></span>
-      <span class="monitor-pill">Suprimidas verificadas: <strong>{{ signalIntelSummary.suppressedVerified }}</strong></span>
-      <span class="monitor-pill">Pendientes: <strong>{{ signalIntelSummary.pending }}</strong></span>
-      <span class="monitor-pill">Win rate emitidas: <strong>{{ formatPctOrNA(signalIntelSummary.winRateEmitted) }}</strong></span>
-      <span class="monitor-pill">Win rate suprimidas: <strong>{{ formatPctOrNA(signalIntelSummary.winRateSuppressed) }}</strong></span>
-      <span class="monitor-pill">Win rate global: <strong>{{ formatPctOrNA(signalIntelSummary.winRateGlobal) }}</strong></span>
-      <span class="monitor-pill">Expectancy emitidas: <strong>{{ formatEdge(signalIntelSummary.expectancyEmitted) }}</strong></span>
-      <span class="monitor-pill">Expectancy global: <strong>{{ formatEdge(signalIntelSummary.expectancyGlobal) }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Suprimidas auditadas: <strong>{{ signalIntelSuppressedSummary.totalSuppressed }}</strong></span>
-      <span class="monitor-pill">Wins contrafactuales: <strong>{{ signalIntelSuppressedSummary.wins }}</strong></span>
-      <span class="monitor-pill">Losses contrafactuales: <strong>{{ signalIntelSuppressedSummary.losses }}</strong></span>
-      <span class="monitor-pill">Win rate suprimidas auditadas: <strong>{{ formatPctOrNA(signalIntelSuppressedSummary.winRateSuppressed) }}</strong></span>
-      <span class="monitor-pill">Expectancy suprimidas: <strong>{{ formatEdge(signalIntelSuppressedSummary.expectancySuppressed) }}</strong></span>
-      <span class="monitor-pill">Delta vs emitidas: <strong>{{ formatEdge(signalIntelSuppressedSummary.deltaVsEmitted) }}</strong></span>
-      <span class="monitor-pill">Lead time promedio: <strong>{{ signalIntelSuppressedSummary.leadTimeAvg != null ? (signalIntelSuppressedSummary.leadTimeAvg | number:'1.0-1') + 's' : 'N/A' }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Signal adherence: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.signalAdherence) }}</strong></span>
-      <span class="monitor-pill">Manual trades: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.manualTradeRate) }}</strong></span>
-      <span class="monitor-pill">Execution discipline score: <strong>{{ formatScoreOrNA(signalIntelExecutionSummary.executionDisciplineScore) }}/100</strong></span>
-      <span class="monitor-pill">Late exit rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.lateExitRate) }}</strong></span>
-      <span class="monitor-pill">Early exit rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.earlyExitRate) }}</strong></span>
-      <span class="monitor-pill">SL violation rate: <strong>{{ formatPctOrNA(signalIntelExecutionSummary.slViolationRate) }}</strong></span>
-      <span class="monitor-pill">Profit capture ratio: <strong>{{ signalIntelExecutionSummary.profitCaptureRatio != null ? (signalIntelExecutionSummary.profitCaptureRatio | number:'1.2-2') + 'x' : 'N/A' }}</strong></span>
-      <span class="monitor-pill">Edge decay: <strong>{{ formatEdge(signalIntelExecutionSummary.edgeDecay) }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Execution rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.executionRate) }}</strong></span>
-      <span class="monitor-pill">Missed Wins: <strong>{{ signalIntelExecutionMetaSummary.missedWins }}</strong></span>
-      <span class="monitor-pill">Missed Losses: <strong>{{ signalIntelExecutionMetaSummary.missedLosses }}</strong></span>
-      <span class="monitor-pill">Late Entry Rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</strong></span>
-      <span class="monitor-pill">Execution Delay Avg: <strong>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</strong></span>
-      <span class="monitor-pill">Soft late executed: <strong>{{ signalIntelExecutionMetaSummary.lateEntrySoftExecuted }}</strong></span>
-      <span class="monitor-pill">Soft late blocked: <strong>{{ signalIntelExecutionMetaSummary.lateEntrySoftBlocked }}</strong></span>
-      <span class="monitor-pill">Soft late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.softLateRatio) }}</strong></span>
-      <span class="monitor-pill">Hard late ratio: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.hardLateRatio) }}</strong></span>
-      <span class="monitor-pill">Missed WIN rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedWinRate) }}</strong></span>
-      <span class="monitor-pill">Missed LOSS rate: <strong>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedLossRate) }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Adaptive TP: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveTp) }}</strong></span>
-      <span class="monitor-pill">Adaptive SL: <strong>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveSl) }}</strong></span>
-      <span class="monitor-pill">Adaptive horizon: <strong>{{ formatSecondsOrNA(signalIntelAdaptiveProfile.adaptiveHorizon) }}</strong></span>
-      <span class="monitor-pill">Learning status: <strong>{{ signalIntelAdaptiveProfile.learningStatus }}</strong></span>
-      <span class="monitor-pill">Edge quality score: <strong>{{ formatScoreOrNA(signalIntelAdaptiveProfile.edgeQualityScore) }}/100</strong></span>
-      <span class="monitor-pill">Última calibración: <strong>{{ signalIntelAdaptiveProfile.lastCalibrationTime }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Ranking habilitado: <strong>{{ signalIntelRankingSummary.enabled ? 'Sí' : 'No' }}</strong></span>
-      <span class="monitor-pill">Operables rankeadas: <strong>{{ signalIntelRankingSummary.operableCount }}</strong></span>
-      <span class="monitor-pill">Top global: <strong>{{ signalIntelRankingSummary.topGlobalCount }}</strong></span>
-      <span class="monitor-pill">Top por símbolo: <strong>{{ signalIntelRankingSummary.topSymbolCount }}</strong></span>
-      <span class="monitor-pill">Top por régimen: <strong>{{ signalIntelRankingSummary.topRegimeCount }}</strong></span>
-      <span class="monitor-pill">Percentil medio: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.avgRankingPercentile) }}</strong></span>
-      <span class="monitor-pill">Contexto recomendado: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.minContextQualityRecommended) }}</strong></span>
-      <span class="monitor-pill">Ranking recomendado: <strong>{{ formatScoreOrNA(signalIntelRankingSummary.minRankingRecommended) }}</strong></span>
-    </div>
-
-    <div class="monitoring-stats" *ngIf="!signalIntelError">
-      <span class="monitor-pill">Expectancy Stability Score: <strong>{{ formatScoreOrNA(signalIntelLearningSummary.expectancyStabilityScore) }}/100</strong></span>
-      <span class="monitor-pill">Counterfactual expectancy: <strong>{{ formatEdge(signalIntelLearningSummary.counterfactualExpectancy) }}</strong></span>
-      <span class="monitor-pill">Counterfactual win rate: <strong>{{ formatPctOrNA(signalIntelLearningSummary.counterfactualWinRate) }}</strong></span>
-      <span class="monitor-pill">Missed alpha: <strong>{{ formatEdge(signalIntelLearningSummary.missedAlpha) }}</strong></span>
-      <span class="monitor-pill">False negative rate: <strong>{{ formatPctOrNA(signalIntelLearningSummary.falseNegativeRate) }}</strong></span>
-      <span class="monitor-pill">Alpha decay rate: <strong>{{ formatEdge(signalIntelLearningSummary.alphaDecayRate) }}</strong></span>
-      <span class="monitor-pill">Expectancy trend: <strong>{{ signalIntelLearningSummary.expectancyTrend }}</strong></span>
-      <span class="monitor-pill">Walk-forward expectancy: <strong>{{ formatEdge(signalIntelLearningSummary.walkforwardExpectancy) }}</strong></span>
-    </div>
-
-    <div class="signal-intel-grid" *ngIf="!signalIntelError">
-      <div class="signal-intel-card">
-        <h4>Adaptive calibration</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Adaptive TP</span>
-            <span>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveTp) }}</span>
-            <span>Adaptive SL</span>
-            <span>{{ formatEdge(signalIntelAdaptiveProfile.adaptiveSl) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Adaptive horizon</span>
-            <span>{{ formatSecondsOrNA(signalIntelAdaptiveProfile.adaptiveHorizon) }}</span>
-            <span>Edge quality score</span>
-            <span>{{ formatScoreOrNA(signalIntelAdaptiveProfile.edgeQualityScore) }}/100</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Learning status</span>
-            <span>{{ signalIntelAdaptiveProfile.learningStatus }}</span>
-            <span>Recalibró esta corrida</span>
-            <span>{{ signalIntelAdaptiveProfile.recalibrated ? 'Sí' : 'No' }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Última calibración</span>
-            <span class="signal-intel-span-3">{{ signalIntelAdaptiveProfile.lastCalibrationTime }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Adaptive profiles</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Versión calibración</span>
-            <span>{{ signalIntelAdaptiveRankingProfile.calibrationVersion }}</span>
-            <span>Bucket contexto líder</span>
-            <span>{{ signalIntelAdaptiveContextProfile.bestBucket }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Min rank recomendado</span>
-            <span>{{ formatScoreOrNA(signalIntelAdaptiveRankingProfile.minRankingScoreRecommended) }}</span>
-            <span>Min context quality</span>
-            <span>{{ formatScoreOrNA(signalIntelAdaptiveRankingProfile.minContextQualityRecommended) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Win rate bucket líder</span>
-            <span>{{ formatPctOrNA(signalIntelAdaptiveContextProfile.bestBucketWinRate) }}</span>
-            <span>Expectancy bucket líder</span>
-            <span>{{ formatEdge(signalIntelAdaptiveContextProfile.bestBucketExpectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Top ranked recent signals</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelRankedSignals.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelRankedSignals.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-rank">
-            <span>Símbolo</span><span>Rank</span><span>%il</span><span>Conf.</span><span>Operable</span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-rank" *ngFor="let s of signalIntelRankedSignals">
-            <span>{{ s.simbolo }}</span>
-            <span>{{ s.signal_ranking_score != null ? (s.signal_ranking_score | number:'1.1-1') : 'N/A' }}</span>
-            <span>{{ formatScoreOrNA(s.ranking_percentile) }}</span>
-            <span>{{ formatPctOrNA(s.confidence) }}</span>
-            <span>{{ s.is_ranked_operable ? 'Sí' : 'No' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Ranking por régimen</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelRankingRegimes.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelRankingRegimes.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Régimen</span><span>Total</span><span>Operables</span><span>Score medio</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let item of signalIntelRankingRegimes">
-            <span>{{ item.regime }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ item.operable }}</span>
-            <span>{{ formatScoreOrNA(item.avg_score) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Top símbolos por edge</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelTopSymbols.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelTopSymbols.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let s of signalIntelTopSymbols">
-            <span>{{ s.symbol }}</span>
-            <span>{{ s.total_signals }}</span>
-            <span>{{ formatPctOrNA(s.win_rate) }}</span>
-            <span>{{ formatEdge(s.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Disciplina de ejecución</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Win rate modelo</span>
-            <span>{{ formatPctOrNA(signalIntelExecutionSummary.modelWinRate) }}</span>
-            <span>Win rate real</span>
-            <span>{{ formatPctOrNA(signalIntelExecutionSummary.realWinRate) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Expectancy real</span>
-            <span>{{ formatEdge(signalIntelExecutionSummary.realExpectancy) }}</span>
-            <span>Slippage medio</span>
-            <span>{{ formatEdge(signalIntelExecutionSummary.executionSlippagePct) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Fuente trades</span>
-            <span class="signal-intel-span-3">{{ signalIntelExecutionSummary.dataSource }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Execution rate</span>
-            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.executionRate) }}</span>
-            <span>Soft executed</span>
-            <span>{{ signalIntelExecutionMetaSummary.lateEntrySoftExecuted }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Missed wins</span>
-            <span>{{ signalIntelExecutionMetaSummary.missedWins }}</span>
-            <span>Missed losses</span>
-            <span>{{ signalIntelExecutionMetaSummary.missedLosses }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Late entry rate</span>
-            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.lateEntryRate) }}</span>
-            <span>Delay promedio</span>
-            <span>{{ signalIntelExecutionMetaSummary.executionDelayAvgMs != null ? (signalIntelExecutionMetaSummary.executionDelayAvgMs | number:'1.0-0') + ' ms' : 'N/A' }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Soft blocked</span>
-            <span>{{ signalIntelExecutionMetaSummary.lateEntrySoftBlocked }}</span>
-            <span>Missed WIN rate</span>
-            <span>{{ formatPctOrNA(signalIntelExecutionMetaSummary.missedWinRate) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Execution Latency Intelligence</h4>
-        <div class="alert alert-warning py-2 mb-2" *ngIf="latencyWarningActive()">
-          Warning: la latencia p95 supera la ventana de entrada de {{ signalIntelLatencySummary.entryWindowSeconds }}s.
-        </div>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Latencia promedio</span>
-            <span>{{ formatMsOrNA(signalIntelLatencySummary.avgTotalLatency) }}</span>
-            <span>Latencia p95</span>
-            <span>{{ formatMsOrNA(signalIntelLatencySummary.p95Latency) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Latencia p50</span>
-            <span>{{ formatMsOrNA(signalIntelLatencySummary.p50Latency) }}</span>
-            <span>Máxima</span>
-            <span>{{ formatMsOrNA(signalIntelLatencySummary.maxLatency) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Etapa más lenta</span>
-            <span>{{ latencyStageLabel(signalIntelLatencySummary.topBottleneckStage) }}</span>
-            <span>Critical delays</span>
-            <span>{{ signalIntelLatencySummary.criticalDelayCount }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Late blocked</span>
-            <span>{{ signalIntelLatencySummary.lateEntryBlockedCount }}</span>
-            <span>Ventana entrada</span>
-            <span>{{ signalIntelLatencySummary.entryWindowSeconds }}s</span>
-          </div>
-        </div>
-        <div class="signal-intel-table" *ngIf="signalIntelLatencyBreakdown.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Etapa</span><span class="signal-intel-span-3">Media</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let item of signalIntelLatencyBreakdown">
-            <span>{{ item.label }}</span>
-            <span class="signal-intel-span-3">{{ formatMsOrNA(item.value) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Context quality vs resultado</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelContextQualityBuckets.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelContextQualityBuckets.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let b of signalIntelContextQualityBuckets">
-            <span>{{ b.bucket }}</span>
-            <span>{{ b.total }}</span>
-            <span>{{ formatPctOrNA(b.win_rate) }}</span>
-            <span>{{ formatEdge(b.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Context Intelligence</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Filtro activo</span>
-            <span>{{ signalIntelContextSummary.enabled ? 'Sí' : 'No' }}</span>
-            <span>Modo</span>
-            <span>{{ signalIntelContextSummary.mode }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Mejor bucket</span>
-            <span>{{ signalIntelContextSummary.bestBucket }}</span>
-            <span>Win rate</span>
-            <span>{{ formatPctOrNA(signalIntelContextSummary.bestBucketWinRate) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Expectancy bucket</span>
-            <span class="signal-intel-span-3">{{ formatEdge(signalIntelContextSummary.bestBucketExpectancy) }}</span>
-          </div>
-        </div>
-        <div class="signal-intel-empty" *ngIf="!signalIntelContextRegimes.length">Sin régimen auditado.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelContextRegimes.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Régimen</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let item of signalIntelContextRegimes">
-            <span>{{ item.regime }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatPctOrNA(item.win_rate) }}</span>
-            <span>{{ formatEdge(item.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Suprimidas: top símbolos por edge</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelSuppressedTopSymbols.length">
-          Sin datos de suprimidas auditadas.
-        </div>
-        <div class="signal-intel-table" *ngIf="signalIntelSuppressedTopSymbols.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
-            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>MFE</span><span>MAE</span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let s of signalIntelSuppressedTopSymbols">
-            <span>{{ s.symbol }}</span>
-            <span>{{ s.total_signals }}</span>
-            <span>{{ formatPctOrNA(s.win_rate) }}</span>
-            <span>{{ formatEdge(s.expectancy) }}</span>
-            <span>{{ formatEdge(s.avg_MFE) }}</span>
-            <span>{{ formatEdge(s.avg_MAE) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Ejecución real: top símbolos por edge</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelExecutionTopSymbols.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelExecutionTopSymbols.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Símbolo</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let s of signalIntelExecutionTopSymbols">
-            <span>{{ s.symbol }}</span>
-            <span>{{ s.total_signals }}</span>
-            <span>{{ formatPctOrNA(s.win_rate) }}</span>
-            <span>{{ formatEdge(s.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Suprimidas: context quality</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelSuppressedContextBuckets.length">
-          Sin buckets de context quality.
-        </div>
-        <div class="signal-intel-table" *ngIf="signalIntelSuppressedContextBuckets.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
-            <span>Bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>MFE</span><span></span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let b of signalIntelSuppressedContextBuckets">
-            <span>{{ b.bucket }}</span>
-            <span>{{ b.total }}</span>
-            <span>{{ formatPctOrNA(b.win_rate) }}</span>
-            <span>{{ formatEdge(b.expectancy) }}</span>
-            <span>{{ formatEdge(b.mfe) }}</span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Counterfactual Learning</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Counterfactual expectancy</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.counterfactualExpectancy) }}</span>
-            <span>Counterfactual win rate</span>
-            <span>{{ formatPctOrNA(signalIntelLearningSummary.counterfactualWinRate) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Missed alpha</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.missedAlpha) }}</span>
-            <span>False negative rate</span>
-            <span>{{ formatPctOrNA(signalIntelLearningSummary.falseNegativeRate) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Expectancy Stability</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Stability score</span>
-            <span>{{ formatScoreOrNA(signalIntelLearningSummary.expectancyStabilityScore) }}/100</span>
-            <span>Variance</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.expectancyVariance) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Walk-forward expectancy</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.walkforwardExpectancy) }}</span>
-            <span>Walk-forward edge decay</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.walkforwardEdgeDecay) }}</span>
-          </div>
-        </div>
-        <div class="signal-intel-empty" *ngIf="!signalIntelWeeklyExpectancy.length">Sin ventanas semanales.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelWeeklyExpectancy.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Semana</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let item of signalIntelWeeklyExpectancy">
-            <span>{{ item.iso_week }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatPctOrNA(item.win_rate) }}</span>
-            <span>{{ formatEdge(item.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Regime Learning</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelLearningRegimes.length">Sin datos.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelLearningRegimes.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
-            <span>Régimen</span><span>Total</span><span>Win rate</span><span>Expectancy</span><span>Densidad</span><span></span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelLearningRegimes">
-            <span>{{ item.regime }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatPctOrNA(item.win_rate) }}</span>
-            <span>{{ formatEdge(item.expectancy) }}</span>
-            <span>{{ formatPctOrNA(item.signal_density) }}</span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Confidence Calibration</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelConfidenceCalibration.length">Sin buckets.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelConfidenceCalibration.length">
-          <div class="signal-intel-row signal-intel-head">
-            <span>Bucket</span><span>Total</span><span>Win rate real</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row" *ngFor="let item of signalIntelConfidenceCalibration">
-            <span>{{ item.bucket }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatPctOrNA(item.win_rate) }}</span>
-            <span>{{ formatEdge(item.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Alpha Decay & Survivorship</h4>
-        <div class="signal-intel-table">
-          <div class="signal-intel-row">
-            <span>Alpha decay rate</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.alphaDecayRate) }}</span>
-            <span>Rolling delta</span>
-            <span>{{ formatEdge(signalIntelLearningSummary.rollingExpectancyDelta) }}</span>
-          </div>
-          <div class="signal-intel-row">
-            <span>Trend</span>
-            <span class="signal-intel-span-3">{{ signalIntelLearningSummary.expectancyTrend }}</span>
-          </div>
-        </div>
-        <div class="signal-intel-empty" *ngIf="!signalIntelSymbolSurvivorship.length">Sin símbolos evaluados.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelSymbolSurvivorship.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
-            <span>Símbolo</span><span>Total</span><span>Expectancy reciente</span><span>Trend</span><span>Edge decay</span><span>Degradado</span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelSymbolSurvivorship">
-            <span>{{ item.symbol }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatEdge(item.recent_expectancy) }}</span>
-            <span>{{ formatEdge(item.trend) }}</span>
-            <span>{{ formatEdge(item.edge_decay) }}</span>
-            <span>{{ item.degraded ? 'Sí' : 'No' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="signal-intel-card">
-        <h4>Expectancy Stability Matrix</h4>
-        <div class="signal-intel-empty" *ngIf="!signalIntelMatrixCells.length">Sin celdas suficientes.</div>
-        <div class="signal-intel-table" *ngIf="signalIntelMatrixCells.length">
-          <div class="signal-intel-row signal-intel-head signal-intel-row-wide">
-            <span>Símbolo</span><span>Régimen</span><span>Rank bucket</span><span>Total</span><span>Win rate</span><span>Expectancy</span>
-          </div>
-          <div class="signal-intel-row signal-intel-row-wide" *ngFor="let item of signalIntelMatrixCells">
-            <span>{{ item.symbol }}</span>
-            <span>{{ item.regime }}</span>
-            <span>{{ item.rank_bucket }}</span>
-            <span>{{ item.total }}</span>
-            <span>{{ formatPctOrNA(item.win_rate) }}</span>
-            <span>{{ formatEdge(item.expectancy) }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-    </div>
-  </section>
-
-  <section class="mobile-section" [class.is-open]="isSectionOpen('binanceConfig')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('binanceConfig')">
-      <span>Binance Bot Config</span>
-      <span>{{ isSectionOpen('binanceConfig') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('binanceConfig')">
-  <div class="binance-config-panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div>
-        <h3 class="mb-0">Binance Bot Config</h3>
-        <p class="text-muted small mb-0">Reglas operativas del bot (off / dry-run / live).</p>
-      </div>
-      <button class="btn btn-sm btn-primary" (click)="guardarBinanceConfig()" [disabled]="binanceConfigSaving">
-        {{ binanceConfigSaving ? 'Guardando...' : 'Guardar configuración' }}
-      </button>
-    </div>
-
-    <div class="binance-operating-note">
-      <div class="binance-operating-header">Modo operativo real</div>
-      <div class="binance-operating-profiles">
-        <div class="binance-operating-pill" *ngFor="let profile of executionOperatingProfiles">
-          <span class="binance-operating-label">{{ profile.label }}</span>
-          <span class="binance-operating-mode" [class.is-live]="profile.mode === 'LIVE'">{{ profile.mode }}</span>
-          <span class="binance-operating-detail">{{ profile.detail }}</span>
-        </div>
-      </div>
-      <div class="binance-operating-list">
-        <span class="binance-operating-item" *ngFor="let hint of hcExecutionSafetyHints">{{ hint }}</span>
-      </div>
-    </div>
-
-    <div class="binance-config-grid">
-      <div class="form-group">
-        <label>Modo</label>
-        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.mode">
-          <option value="off">off</option>
-          <option value="dry-run">dry-run</option>
-          <option value="live">live</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>% uso fondos</label>
-        <input class="form-control form-control-sm" type="number" min="1" max="100" [(ngModel)]="binanceConfig.use_funds_percent" />
-      </div>
-      <div class="form-group">
-        <label>Capital referencia (USDT)</label>
-        <input class="form-control form-control-sm" type="number" min="5" [(ngModel)]="binanceConfig.account_capital_usdt" />
-      </div>
-      <div class="form-group">
-        <label>Leverage</label>
-        <input class="form-control form-control-sm" type="number" min="1" max="25" [(ngModel)]="binanceConfig.default_leverage" />
-      </div>
-      <div class="form-group">
-        <label>Margin Type</label>
-        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.margin_type">
-          <option value="CROSSED">CROSSED</option>
-          <option value="ISOLATED">ISOLATED</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Order Type</label>
-        <select class="form-select form-select-sm" [(ngModel)]="binanceConfig.order_type">
-          <option value="MARKET">MARKET</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Max trades diarios</label>
-        <input class="form-control form-control-sm" type="number" min="1" max="20" [(ngModel)]="binanceConfig.max_daily_trades" />
-      </div>
-      <div class="form-group">
-        <label>Min confidence</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_confidence" />
-      </div>
-      <div class="form-group">
-        <label>Min quantum</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_quantum" />
-      </div>
-      <div class="form-group">
-        <label>Min timing</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" [(ngModel)]="binanceConfig.min_timing" />
-      </div>
-      <div class="form-group">
-        <label>Min context score</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="4" step="1" [(ngModel)]="binanceConfig.min_context_score" />
-      </div>
-      <div class="form-group">
-        <label>Min context quality</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="100" step="1" [(ngModel)]="binanceConfig.min_context_quality" />
-      </div>
-      <div class="form-group">
-        <label>Min R:R</label>
-        <input class="form-control form-control-sm" type="number" min="0.5" max="10" step="0.1" [(ngModel)]="binanceConfig.min_risk_reward" />
-      </div>
-      <div class="form-group">
-        <label>Min movimiento esperado %</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="10" step="0.1" [(ngModel)]="binanceConfig.min_expected_move_pct" />
-      </div>
-      <div class="form-group">
-        <label>Permitir todos los símbolos</label>
-        <div class="form-check mt-1">
-          <input class="form-check-input" type="checkbox" id="allowUnlistedSymbols" [(ngModel)]="binanceConfig.allow_unlisted_symbols" />
-          <label class="form-check-label small" for="allowUnlistedSymbols">Activar</label>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Sizing dinámico</label>
-        <div class="form-check mt-1">
-          <input class="form-check-input" type="checkbox" id="dynamicSizingEnabled" [(ngModel)]="binanceConfig.dynamic_sizing_enabled" />
-          <label class="form-check-label small" for="dynamicSizingEnabled">Activar</label>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Factor contexto bajo</label>
-        <input class="form-control form-control-sm" type="number" min="0.1" max="2" step="0.05" [(ngModel)]="binanceConfig.sizing_low_context_factor" />
-      </div>
-      <div class="form-group">
-        <label>Factor contexto alto</label>
-        <input class="form-control form-control-sm" type="number" min="0.1" max="3" step="0.05" [(ngModel)]="binanceConfig.sizing_high_context_factor" />
-      </div>
-      <div class="form-group">
-        <label>Símbolos permitidos (coma)</label>
-        <input class="form-control form-control-sm" type="text" [(ngModel)]="binanceConfig.symbols_allowlist_text" placeholder="BTCUSDT, ETHUSDT, XRPUSDT" [disabled]="binanceConfig.allow_unlisted_symbols" />
-      </div>
-      <div class="form-group">
-        <label>TP/SL automáticos</label>
-        <div class="form-check mt-1">
-          <input class="form-check-input" type="checkbox" id="tpSlEnabled" [(ngModel)]="binanceConfig.enable_tp_sl" />
-          <label class="form-check-label small" for="tpSlEnabled">Activar</label>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>TP buffer %</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="2" step="0.01" [(ngModel)]="binanceConfig.tp_buffer_pct" />
-      </div>
-      <div class="form-group">
-        <label>SL buffer %</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="2" step="0.01" [(ngModel)]="binanceConfig.sl_buffer_pct" />
-      </div>
-      <div class="form-group">
-        <label>Early-exit drawdown %</label>
-        <input class="form-control form-control-sm" type="number" min="0" max="5" step="0.01" [(ngModel)]="binanceConfig.early_exit_drawdown_pct" />
-        <div class="form-check mt-1">
-          <input class="form-check-input" type="checkbox" id="earlyExitEnabled" [(ngModel)]="binanceConfig.early_exit_enabled" />
-          <label class="form-check-label small" for="earlyExitEnabled">Activar early-exit</label>
-        </div>
-      </div>
-    </div>
-  </div>
-    </div>
-  </section>
-
-  <section class="mobile-section" [class.is-open]="isSectionOpen('highConviction')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('highConviction')">
-      <span>High Conviction</span>
-      <span>{{ isSectionOpen('highConviction') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('highConviction')">
-  <div class="high-conviction-panel mb-4">
-    <h3>Señales High Conviction</h3>
-    <p class="small text-muted panel-context-note">
-      Este bloque muestra registros de <code>high_conviction_signals</code>. No incluye todas las ejecuciones Binance.
-    </p>
-    <div class="hc-filters">
-      <div class="hc-filter-group">
-        <div class="hc-filter-group-title">Rango temporal</div>
-        <div class="hc-filter-item">
-          <label for="hcFilterSelect">Rango</label>
-          <select
-            id="hcFilterSelect"
-            class="form-select form-select-sm"
-            [(ngModel)]="highConvictionFilter"
-            (change)="onHighConvictionFilterChange()"
-          >
-            <option value="recent">Recientes</option>
-            <option value="7d">Últimos 7 días</option>
-            <option value="30d">Últimos 30 días</option>
-            <option value="custom">Personalizado</option>
-          </select>
-        </div>
-        <div class="hc-filter-item" *ngIf="highConvictionFilter === 'custom'">
-          <label for="hcFromDate">Desde</label>
-          <input id="hcFromDate" type="date" class="form-control form-control-sm" [(ngModel)]="highConvictionFrom" />
-        </div>
-        <div class="hc-filter-item" *ngIf="highConvictionFilter === 'custom'">
-          <label for="hcToDate">Hasta</label>
-          <input id="hcToDate" type="date" class="form-control form-control-sm" [(ngModel)]="highConvictionTo" />
-        </div>
-        <div class="hc-filter-item hc-filter-action" *ngIf="highConvictionFilter === 'custom'">
-          <button class="btn btn-sm btn-outline-secondary" (click)="applyCustomHighConvictionRange()">Aplicar</button>
-        </div>
-      </div>
-      <div class="hc-filter-group">
-        <div class="hc-filter-group-title">Estado</div>
-        <div class="hc-filter-item">
-          <label for="hcOutcomeFilter">Resultado</label>
-          <select
-            id="hcOutcomeFilter"
-            class="form-select form-select-sm"
-            [(ngModel)]="highConvictionOutcomeFilter"
-            (change)="onHighConvictionOutcomeFilterChange()"
-          >
-            <option value="all">Todos</option>
-            <option value="win">Solo WIN</option>
-            <option value="loss">Solo LOSS</option>
-            <option value="pendiente">Solo pendiente</option>
-            <option value="suprimida">Solo suprimida</option>
-            <option value="parcial">Solo parcial</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="hc-stats" *ngIf="highConvictionStats.total > 0">
-      <span class="hc-stat-pill">Total: <strong>{{ highConvictionStats.total }}</strong></span>
-      <span class="hc-stat-pill">WIN: <strong>{{ highConvictionStats.wins }}</strong></span>
-      <span class="hc-stat-pill">LOSS: <strong>{{ highConvictionStats.losses }}</strong></span>
-      <span class="hc-stat-pill">Abiertas: <strong>{{ highConvictionStats.open }}</strong></span>
-      <span class="hc-stat-pill">Suprimidas: <strong>{{ highConvictionStats.suppressed }}</strong></span>
-      <span class="hc-stat-pill">Pendientes: <strong>{{ highConvictionStats.pending }}</strong></span>
-      <span class="hc-stat-pill">Win rate (emitidas): <strong>{{ highConvictionStats.winRateEmitted | percent:'1.0-1' }}</strong></span>
-      <span class="hc-stat-pill">Win rate (suprimidas): <strong>{{ formatSuppressedRate(highConvictionStats.winRateSuppressed, highConvictionStats.suppressed) }}</strong></span>
-      <span class="hc-stat-pill">Win rate (global): <strong>{{ highConvictionStats.winRate | percent:'1.0-1' }}</strong></span>
-      <span class="hc-stat-pill">Conf. promedio: <strong>{{ highConvictionStats.avgConfidence | percent:'1.0-0' }}</strong></span>
-      <span class="hc-stat-pill">Estabilidad promedio: <strong>{{ highConvictionStats.avgStability | percent:'1.0-1' }}</strong></span>
-    </div>
-    <div class="hc-weekly-stats" *ngIf="weeklyStability.length">
-      <span class="hc-stat-pill hc-week-pill" *ngFor="let week of weeklyStability">
-        {{ week.weekLabel }}: <strong>{{ week.winRate | percent:'1.0-0' }}</strong> ({{ week.total }})
-      </span>
-    </div>
-
-    <ng-container *ngIf="highConvictionSignals$ | async as hcSignals">
-      <p *ngIf="!hcSignals.length" class="text-muted">
-        No hay señales High Conviction activas.
-      </p>
-
-      <div *ngIf="hcSignals.length" class="high-conviction-carousel">
-        <div class="high-conviction-card" *ngFor="let signal of hcSignals" (click)="toggleHighConvictionDetails(signal.id)">
+    <ng-container *ngIf="marketDetection$ | async as detections">
+      <p *ngIf="!detections.length" class="text-muted">Sin eventos de detección recientes.</p>
+      <div *ngIf="detections.length" class="high-conviction-carousel">
+        <div class="high-conviction-card" *ngFor="let item of detections; trackBy: trackById">
           <div class="high-conviction-compact">
             <div class="d-flex justify-content-between align-items-center">
-              <strong>{{ signal.symbol || 'N/A' }}</strong>
-              <span [class]="highConvictionStatusClass(signal)">{{ highConvictionOutcome(signal) }}</span>
+              <strong>{{ item.symbol }}</strong>
+              <span class="badge bg-info text-dark">{{ item.event_type }}</span>
             </div>
-            <div class="small text-muted">{{ formatFirestoreDate(signal.created_at || signal.timestamp) }}</div>
-            <div class="mt-2">
-              <strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}
-            </div>
-            <div class="mt-1">
-              <strong>Binance:</strong>
-              <span [class]="highConvictionBinanceStatusClass(signal)">{{ highConvictionBinanceStatus(signal) }}</span>
-            </div>
-            <div class="exec-badge-row" *ngIf="executionBadges(signal).length">
-              <span *ngFor="let badge of executionBadges(signal); trackBy: trackByBadge" [class]="badge.className">
-                {{ badge.label }}
-              </span>
-            </div>
-          </div>
-
-          <div *ngIf="isHighConvictionExpanded(signal.id)" class="high-conviction-details">
-            <div><strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}</div>
-            <div><strong>Quantum:</strong> {{ normalizePercent(signal.quantum_score) | percent:'1.0-0' }}</div>
-            <div><strong>Timing:</strong> {{ normalizePercent(signal.timing_score) | percent:'1.0-0' }}</div>
-            <hr />
-            <div>
-              <strong>Window start:</strong>
-              {{ highConvictionWindowLocal(signal, 'start') }} (local)
-              <span class="text-muted">· {{ highConvictionWindowValue(signal, 'start') }} UTC</span>
-            </div>
-            <div>
-              <strong>Window end:</strong>
-              {{ highConvictionWindowLocal(signal, 'end') }} (local)
-              <span class="text-muted">· {{ highConvictionWindowValue(signal, 'end') }} UTC</span>
-            </div>
-            <hr />
-            <div><strong>Precio spot:</strong> {{ resolvePrice(signal, 'spot') ?? '—' }}</div>
-            <div><strong>Precio esperado:</strong> {{ resolvePrice(signal, 'estimated') ?? '—' }}</div>
-            <div><strong>Precio real:</strong> {{ resolvePrice(signal, 'real') ?? '—' }}</div>
-            <div>
-              <strong>Binance ejecución:</strong>
-              <span [class]="highConvictionBinanceStatusClass(signal)">{{ highConvictionBinanceStatus(signal) }}</span>
-            </div>
-            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.order_id">
-              order_id: {{ highConvictionBinanceExecution(signal)?.order_id }}
-            </div>
-            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.exits?.tp_order_id">
-              tp_order_id: {{ highConvictionBinanceExecution(signal)?.exits?.tp_order_id }}
-            </div>
-            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.exits?.sl_order_id">
-              sl_order_id: {{ highConvictionBinanceExecution(signal)?.exits?.sl_order_id }}
-            </div>
-            <div class="small text-muted" *ngIf="highConvictionBinanceExecution(signal)?.reason">
-              motivo: {{ highConvictionBinanceExecution(signal)?.reason }}
-            </div>
-            <div class="small text-muted" *ngIf="highConvictionExecutionMeta(signal)?.execution_delay_ms != null">
-              delay ejecución: {{ highConvictionExecutionMeta(signal)?.execution_delay_ms | number:'1.0-0' }} ms
-            </div>
-            <div class="exec-badge-row" *ngIf="executionBadges(signal).length">
-              <span *ngFor="let badge of executionBadges(signal); trackBy: trackByBadge" [class]="badge.className">
-                {{ badge.label }}
-              </span>
-            </div>
-            <div>
-              <strong>verification_outcome:</strong>
-              {{
-                signal.verification_outcome ||
-                signal.verification?.verification_outcome ||
-                signal.verification?.outcome_label ||
-                signal.linkedPrediction?.verification?.verification_outcome ||
-                signal.linkedPrediction?.verification?.outcome_label ||
-                '—'
-              }}
-            </div>
-            <div><strong>remarks:</strong> {{ highConvictionRemarks(signal) }}</div>
+            <div class="small text-muted">{{ formatFirestoreDate(item.timestamp || item.created_at) }}</div>
+            <div class="mt-2 small">move1m: {{ item.move1m | number:'1.3-3' }}%</div>
+            <div class="small">move3m: {{ item.move3m | number:'1.3-3' }}%</div>
+            <div class="small">volumeRatio: {{ item.volumeRatio | number:'1.2-2' }}</div>
+            <div class="small">qualityScore: {{ item.qualityScore | number:'1.3-3' }}</div>
           </div>
         </div>
       </div>
     </ng-container>
-  </div>
-
-  <div class="high-conviction-panel mb-4 binance-execution-panel">
-    <h3>Últimas ejecuciones Binance</h3>
-    <p class="small text-muted panel-context-note">
-      Incluye ejecuciones y omisiones de <code>high_conviction</code>, <code>event_emitted</code> y <code>manual_prealert</code>.
-    </p>
-
-    <ng-container *ngIf="latestBinanceExecutions$ | async as latestExecutions">
-      <p *ngIf="!latestExecutions.length" class="text-muted">
-        No hay ejecuciones Binance recientes.
-      </p>
-
-      <div *ngIf="latestExecutions.length" class="high-conviction-carousel">
-        <div
-          class="high-conviction-card binance-execution-card"
-          *ngFor="let item of latestExecutions; trackBy: trackById"
-          (click)="toggleBinanceExecutionDetails(item.id)"
-        >
-            <div class="high-conviction-compact">
-              <div class="d-flex justify-content-between align-items-center gap-2">
-              <strong>{{ item.symbol || item.linkedPosition?.symbol || item.linkedPrediction?.simbolo || 'N/A' }}</strong>
-              <span [class]="binanceExecutionStatusClass(item)">{{ binanceExecutionStatusLabel(item) }}</span>
-            </div>
-            <div class="small text-muted">{{ formatFirestoreDate(item.linkedPosition?.closed_at || item.execution_audit?.closed_at || item.updated_at || item.created_at || item.opened_at || item.timestamp) }}</div>
-            <div class="exec-badge-row mt-2">
-              <span [class]="binanceExecutionSourceClass(item)">{{ binanceExecutionSourceLabel(item) }}</span>
-              <span [class]="binanceExecutionOutcomeClass(item)">{{ binanceExecutionOutcomeLabel(item) }}</span>
-            </div>
-            <div class="mt-2 small">
-              <strong>Delay:</strong>
-              {{ binanceExecutionDelayMs(item) != null ? (binanceExecutionDelayMs(item) | number:'1.0-0') + ' ms' : '—' }}
-            </div>
-          </div>
-
-          <div *ngIf="isBinanceExecutionExpanded(item.id)" class="high-conviction-details">
-            <div><strong>Origen:</strong> {{ binanceExecutionSourceLabel(item) }}</div>
-            <div><strong>Estado:</strong> {{ binanceExecutionStatusLabel(item) }}</div>
-            <div><strong>Resultado:</strong> {{ binanceExecutionOutcomeLabel(item) }}</div>
-            <div><strong>Prediction ID:</strong> {{ item.prediction_id || '—' }}</div>
-            <div><strong>Símbolo sistema:</strong> {{ item.linkedPrediction?.simbolo || '—' }}</div>
-            <div><strong>order_id:</strong> {{ item.exchange_response?.order?.orderId || item.order_id || '—' }}</div>
-            <div><strong>Razón / cierre:</strong> {{ binanceExecutionReason(item) }}</div>
-            <div>
-              <strong>Latency total:</strong>
-              {{ item.execution_trace_metrics?.total_latency_ms != null ? (item.execution_trace_metrics?.total_latency_ms | number:'1.0-0') + ' ms' : '—' }}
-            </div>
-            <div>
-              <strong>emit → intent:</strong>
-              {{ item.execution_trace_metrics?.emit_to_intent_ms != null ? (item.execution_trace_metrics?.emit_to_intent_ms | number:'1.0-0') + ' ms' : '—' }}
-            </div>
-            <div>
-              <strong>intent → process:</strong>
-              {{ item.execution_trace_metrics?.intent_to_process_ms != null ? (item.execution_trace_metrics?.intent_to_process_ms | number:'1.0-0') + ' ms' : '—' }}
-            </div>
-            <div *ngIf="item.linkedPosition?.close_pnl_pct != null">
-              <strong>PnL cierre:</strong> {{ item.linkedPosition?.close_pnl_pct | number:'1.3-3' }}%
-            </div>
-            <div *ngIf="item.linkedPosition?.close_reason">
-              <strong>Close reason:</strong> {{ item.linkedPosition?.close_reason }}
-            </div>
-          </div>
-        </div>
-      </div>
-    </ng-container>
-  </div>
-
-  <app-exploitation-panel></app-exploitation-panel>
-    </div>
   </section>
 
-  <section class="mobile-section" [class.is-open]="isSectionOpen('neutralSignals')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('neutralSignals')">
-      <span>Señales en observación</span>
-      <span>{{ isSectionOpen('neutralSignals') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('neutralSignals')">
-      <div class="high-conviction-panel mb-4">
-        <h3>Señales en observación</h3>
-        <p class="small text-muted panel-context-note">
-          Se registran solo para análisis. No se envían a Binance.
-        </p>
+  <section class="high-conviction-panel mb-4 binance-execution-panel">
+    <h3>Execution</h3>
+    <p class="small text-muted panel-context-note">Fuente: <code>binance_execution_intents</code></p>
+    <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.8rem;">
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">lev x{{ backendRuntimeRules.defaultLeverage }}</span>
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">TP {{ backendRuntimeRules.takeProfitPct | number:'1.1-1' }}%</span>
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">SL {{ backendRuntimeRules.stopLossPct | number:'1.1-1' }}%</span>
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">timeout {{ backendRuntimeRules.maxHoldSeconds }}s</span>
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">fee+friction {{ (backendRuntimeRules.roundTripFeePct + backendRuntimeRules.executionFrictionPct) | number:'1.2-2' }}%</span>
+      <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">min bruto {{ backendRuntimeRules.minExpectedMovePct | number:'1.2-2' }}%</span>
+    </div>
 
-        <ng-container *ngIf="neutralSignalCandidates$ | async as neutralSignals">
-          <p *ngIf="!neutralSignals.length" class="text-muted">
-            Sin señales neutral en observación.
-          </p>
-
-          <div *ngIf="neutralSignals.length" class="high-conviction-carousel">
-            <div class="high-conviction-card" *ngFor="let signal of neutralSignals">
-              <div class="high-conviction-compact">
-                <div class="d-flex justify-content-between align-items-center">
-                  <strong>{{ signal.symbol || 'N/A' }}</strong>
-                  <span class="badge bg-warning text-dark">OBSERVE</span>
-                </div>
-                <div class="small text-muted">{{ formatFirestoreDate(signal.created_at || signal.timestamp) }}</div>
-                <div class="mt-2">
-                  <strong>Confidence:</strong> {{ normalizePercent(signal.confidence) | percent:'1.0-0' }}
-                </div>
-                <div class="mt-1">
-                  <strong>Quantum:</strong> {{ normalizePercent(signal.quantum) | percent:'1.0-0' }}
-                </div>
-                <div class="mt-1">
-                  <strong>Timing:</strong> {{ normalizePercent(signal.timing) | percent:'1.0-0' }}
-                </div>
-                <div class="mt-1">
-                  <strong>Reason:</strong> {{ signal.reason || 'neutral_but_high_scores' }}
-                </div>
+    <ng-container *ngIf="execution$ | async as executions">
+      <p *ngIf="!executions.length" class="text-muted">Sin ejecuciones recientes.</p>
+      <div *ngIf="executions.length" class="high-conviction-carousel">
+        <div class="high-conviction-card" *ngFor="let item of executions; trackBy: trackById">
+          <div class="high-conviction-compact">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>{{ item.symbol }}</strong>
+              <span class="badge" [ngClass]="item.status_badge_class">{{ item.status }}</span>
+            </div>
+            <div class="small text-muted">{{ formatFirestoreDate(item.updated_at || item.created_at || item.timestamp) }}</div>
+            <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:.35rem;">
+              <span class="badge" [ngClass]="item.side_badge_class">{{ item.side }}</span>
+              <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">x{{ item.leverage }}</span>
+              <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">qty {{ item.quantity | number:'1.0-4' }}</span>
+            </div>
+            <div class="mt-2" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;">
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">stage</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.processing_stage }}</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">result</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.execution_result }}</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">reason</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.reason || 'N/A' }}</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">latency</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.latency_ms | number:'1.0-0' }} ms</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">entry delay</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.entry_delay_seconds | number:'1.0-3' }} s</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">late entry</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.is_late_entry ? 'YES' : 'NO' }}</strong></div>
+            </div>
+            <div *ngIf="hasExecutionNetEdge(item)" style="margin-top:.75rem;padding-top:.7rem;border-top:1px solid #e5e7eb;">
+              <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#475569;margin-bottom:.45rem;">Net Edge Gate</div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;">
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">expected</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.expected_move_pct | number:'1.2-3' }}%</strong></div>
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">cost</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.total_cost_pct | number:'1.2-3' }}%</strong></div>
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">net edge</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.net_edge_pct | number:'1.2-3' }}%</strong></div>
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">min req</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.min_required_pct | number:'1.2-3' }}%</strong></div>
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">move1m</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.move1m | number:'1.2-3' }}%</strong></div>
+                <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">move3m</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.move3m | number:'1.2-3' }}%</strong></div>
               </div>
             </div>
+            <div *ngIf="item.error_message" style="margin-top:.7rem;border:1px solid #fecaca;border-radius:.6rem;padding:.55rem .65rem;background:#fef2f2;color:#991b1b;font-size:.82rem;">
+              <strong>Error</strong>
+              <div>{{ item.error_message }}</div>
+            </div>
           </div>
-        </ng-container>
+        </div>
       </div>
-    </div>
+    </ng-container>
   </section>
 
-  <section class="mobile-section" [class.is-open]="isSectionOpen('historial')">
-    <button type="button" class="mobile-section-toggle" (click)="toggleSection('historial')">
-      <span>Historial</span>
-      <span>{{ isSectionOpen('historial') ? '−' : '+' }}</span>
-    </button>
-    <div class="mobile-section-body" *ngIf="shouldRenderSection('historial')">
-  <ng-container *ngIf="historialGroups$ | async as historyGroups">
-    <div class="history-filter-row" *ngIf="selectedHistorySymbol">
-      <span class="small text-muted">Filtrando historial por {{ selectedHistorySymbol }}</span>
-      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="toggleHistorySymbolFilter(selectedHistorySymbol)">
-        Limpiar filtro
-      </button>
-    </div>
-    <div class="history-group" *ngFor="let group of historyGroups; trackBy: trackByDateKey">
-      <div class="history-group-header">
-        <div>
-          <strong>{{ group.label }}</strong>
-          <span class="text-muted small">· {{ group.total }} registros</span>
-        </div>
-        <button
-          *ngIf="group.total > 5"
-          type="button"
-          class="btn btn-sm btn-outline-secondary"
-          (click)="toggleHistoryDate(group.dateKey)"
-        >
-          {{ isHistoryDateExpanded(group.dateKey) ? 'Ver menos' : 'Ver más' }}
-        </button>
-      </div>
-      <div class="cards-grid">
-    <div class="card mb-3" *ngFor="let pred of visibleHistoryItems(group); trackBy: trackById">
-      <div class="card-body">
-        <div class="prediction-header" (click)="togglePredictionDetails(pred.id)">
-          <div class="d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">
-              {{ pred.simbolo }}
-              <small *ngIf="pred.execution_mode !== 'event_driven'">({{ pred.timeframe }})</small>
-            </h5>
-            <span [ngClass]="statusClass(pred.status)" class="status-badge">{{ pred.status }}</span>
-          </div>
-        </div>
+  <section class="high-conviction-panel mb-4">
+    <h3>Results</h3>
+    <p class="small text-muted panel-context-note">Fuente: <code>active_impulse_trades</code></p>
 
-        <div *ngIf="isPredictionExpanded(pred.id)" class="prediction-details mt-3">
-          <p *ngIf="pred.execution_mode === 'event_driven'" class="mb-1 text-muted small">
-            Mode: Event-Driven · Micro-impulse execution (windows ≈20–60s)
-          </p>
-          <p *ngIf="pred.execution_mode !== 'event_driven'" class="mb-1">
-            Entry {{ formatLocalTime(pred.entry_time) }} – Exit {{ formatLocalTime(pred.exit_time) }}
-          </p>
-          <p *ngIf="pred.execution_mode !== 'event_driven'" class="mb-0 text-muted small">
-            {{ offsetLabel(pred.entry_time) }}
-          </p>
-          <p *ngIf="pred.execution_mode === 'event_driven'" class="mb-0 text-muted small">
-            {{ eventDrivenOffsetLabel(pred.entry_window?.start) }}
-          </p>
-          <p class="mb-0 text-muted">{{ pred.observaciones }}</p>
-
-          <p class="mb-1 mt-2">
-            <strong>Modo:</strong> {{ pred.execution_mode === 'event_driven' ? 'Event-driven' : 'Timeframe' }}
-          </p>
-          <p class="mb-1">
-            <strong>Precio spot:</strong> ${{ pred.spot_price | number:'1.2-2' }}
-            · Dirección: {{ pred.direction === 'down' ? 'Baja' : pred.direction === 'up' ? 'Alza' : 'Neutral' }}
-          </p>
-          <p class="mb-1 text-muted small">
-            Fuente spot: {{ spotPriceSourceLabel(pred.spot_price_source) }}
-          </p>
-          <p class="mb-1">
-            <strong>Delta esperado:</strong> {{ pred.expected_delta_pct | number:'1.2-2' }}%
-            · <strong>Impacto estimado:</strong> ${{ pred.model_price_estimate | number:'1.2-2' }}
-          </p>
-          <div class="trade-plan-card mb-3" *ngIf="pred.trade_plan">
-            <p class="trade-plan-title mb-1">Plan operativo sugerido</p>
-            <p class="mb-1">
-              <strong>Entrada:</strong> {{ pred.trade_plan.entry_price | number:'1.2-4' }}
-              · <strong>Stop Loss:</strong> {{ pred.trade_plan.stop_loss | number:'1.2-4' }}
-            </p>
-            <p class="mb-1">
-              <strong>Take Profit:</strong> {{ pred.trade_plan.take_profit | number:'1.2-4' }}
-              · <strong>Salida objetivo:</strong> {{ pred.trade_plan.target_exit_price | number:'1.2-4' }}
-            </p>
-            <p class="mb-0 text-muted small">
-              Riesgo/unidad: {{ pred.trade_plan.risk_per_unit | number:'1.2-4' }}
-              · Recompensa/unidad: {{ pred.trade_plan.reward_per_unit | number:'1.2-4' }}
-              · R:R {{ pred.trade_plan.risk_reward_ratio | number:'1.1-2' }}:1
-            </p>
-          </div>
-
-          <div *ngIf="pred.execution_mode === 'event_driven'" class="mb-3 border rounded p-3 bg-light">
-            <p class="mb-1">
-              <strong>{{ windowDayLabel(pred, 'entry') }}:</strong>
-              {{ formatUtcClockToLocal(pred.entry_window?.start, pred.entry_time) }} –
-              {{ formatUtcClockToLocal(pred.entry_window?.end, pred.entry_time) }} (Hora local)
-              <br />
-              <span class="text-muted small">{{ pred.entry_window?.start }} – {{ pred.entry_window?.end }} UTC</span>
-            </p>
-            <p class="mb-1">
-              <strong>Duración esperada:</strong>
-              {{ pred.expected_duration_seconds?.min }} – {{ pred.expected_duration_seconds?.max }} seg
-            </p>
-            <p class="mb-1">
-              <strong>{{ windowDayLabel(pred, 'exit') }}:</strong>
-              {{ formatUtcClockToLocal(pred.exit_window?.start, pred.exit_time) }} –
-              {{ formatUtcClockToLocal(pred.exit_window?.end, pred.exit_time) }} (Hora local)
-              <br />
-              <span class="text-muted small">{{ pred.exit_window?.start }} – {{ pred.exit_window?.end }} UTC</span>
-            </p>
-            <p class="mb-1">
-              <strong>Ventana de salida:</strong> {{ pred.exit_window_seconds?.min }} – {{ pred.exit_window_seconds?.max }} seg
-              · Tiempo máximo: {{ pred.max_time_seconds ?? pred.exit_window_seconds?.max }} seg
-            </p>
-            <p class="mb-0 text-muted small">{{ eventDrivenOffsetLabel(pred.entry_window?.start) }}</p>
-          </div>
-
-          <div *ngIf="pred.execution_mode === 'event_driven' && monto > 0" class="projection-card mb-3">
-            <p class="projection-label mb-1">Estimated impact based on expected micro-impulse</p>
-            <div class="projection-values">
-              <span>Favorable: {{ formatCurrency(projectionFor(pred).gain) }}</span>
-              <span>Adverse: {{ formatCurrency(projectionFor(pred).loss) }}</span>
+    <ng-container *ngIf="realResults$ | async as results">
+      <p *ngIf="!results.length" class="text-muted">Sin resultados reales aún.</p>
+      <div *ngIf="results.length" class="high-conviction-carousel">
+        <div class="high-conviction-card" *ngFor="let item of results; trackBy: trackById">
+          <div class="high-conviction-compact">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>{{ item.symbol }}</strong>
+              <span class="badge" [class.bg-success]="item.outcome==='WIN'" [class.bg-danger]="item.outcome==='LOSS'" [class.bg-secondary]="item.outcome==='BREAKEVEN'">
+                {{ item.outcome }}
+              </span>
             </div>
-            <p class="text-muted disclaimer mb-0">
-              This is an approximate delta projection. Not a guaranteed result or price target.
-            </p>
+            <div class="small text-muted">{{ formatFirestoreDate(item.closed_at || item.exit_time || item.created_at) }}</div>
+            <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:.35rem;">
+              <span class="badge" [ngClass]="item.side_badge_class">{{ item.side }}</span>
+              <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">x{{ item.leverage }}</span>
+              <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">qty {{ item.quantity | number:'1.0-4' }}</span>
+              <span style="border:1px solid #dbe4f0;border-radius:999px;padding:.18rem .5rem;background:#fff;color:#334155;font-size:.78rem;">{{ item.duration_seconds | number:'1.0-0' }}s</span>
+            </div>
+            <div class="mt-2" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;">
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">entry</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.entry_price | number:'1.2-6' }}</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">exit</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.exit_price | number:'1.2-6' }}</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">pnl</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.pnl | number:'1.3-3' }}%</strong></div>
+              <div style="display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">closed by</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.closed_by }}</strong></div>
+              <div style="grid-column:1/-1;display:flex;flex-direction:column;gap:.08rem;border:1px solid #e5e7eb;border-radius:.55rem;padding:.45rem .55rem;background:#fff;"><span class="text-muted">close reason</span><strong style="font-size:.86rem;color:#0f172a;">{{ item.close_reason }}</strong></div>
+            </div>
           </div>
+        </div>
+      </div>
+    </ng-container>
+  </section>
 
-          <p class="mb-1 text-muted small">
-            {{ pred.signal_emitted ? 'Se emitió señal (control de calidad superado).' : 'Se suprimió señal.' }}
-            <span *ngIf="!pred.signal_emitted && pred.suppression_reason">
-              Motivo: {{ pred.suppression_reason }}.
-            </span>
-          </p>
-          <div class="exec-badge-row" *ngIf="executionBadges(pred).length">
-            <span *ngFor="let badge of executionBadges(pred); trackBy: trackByBadge" [class]="badge.className">
-              {{ badge.label }}
-            </span>
+  <section class="mobile-section is-open">
+    <div class="mobile-section-body">
+      <div class="high-conviction-panel mb-4">
+        <h3>Binance Config</h3>
+        <p class="small text-muted panel-context-note">Configuración operativa real del bot.</p>
+
+        <div class="config-grid">
+          <div class="form-group">
+            <label>Mode</label>
+            <input class="form-control form-control-sm" type="text" [(ngModel)]="binanceConfig.mode" />
           </div>
-          <p *ngIf="pred.execution_meta?.execution_delay_ms != null" class="mb-1 text-muted small">
-            Delay ejecución: {{ pred.execution_meta.execution_delay_ms | number:'1.0-0' }} ms
-          </p>
-          <p *ngIf="pred.exit_window_seconds" class="mb-1 text-muted small">
-            Ventana de salida: {{ pred.exit_window_seconds.min }}-{{ pred.exit_window_seconds.max }} seg
-            · Tiempo máximo: {{ pred.max_time_seconds ?? pred.exit_window_seconds.max }} seg
-          </p>
-          <p class="mb-1">Confianza: {{ pred.confianza | percent:'1.0-0' }}</p>
-          <p class="mb-1 text-info small">
-            Quantum: {{ pred.quantum_model || 'n/a' }} · Score {{ (pred.quantum_score ?? 0) | percent:'1.0-0' }}
-          </p>
-          <p class="mb-1 text-muted small">Resultado: {{ verificationOutcomeLabel(pred) }}</p>
-          <p *ngIf="pred.verification" class="text-muted mb-1">
-            Verificación: {{ pred.verification.remarks }} · Precio real: ${{ pred.verification.final_price }}
-          </p>
-          <button
-            *ngIf="pred.status === 'pendiente'"
-            class="btn btn-sm btn-outline-secondary"
-            (click)="verificar(pred)"
-            [disabled]="verificandoId === pred.id || cargando"
-          >
-            {{ verificandoId === pred.id ? 'Verificando…' : 'Verificar ahora' }}
+          <div class="form-group">
+            <label>Use funds %</label>
+            <input class="form-control form-control-sm" type="number" min="0" max="100" step="0.1" [(ngModel)]="binanceConfig.use_funds_percent" />
+          </div>
+          <div class="form-group">
+            <label>Account capital USDT</label>
+            <input class="form-control form-control-sm" type="number" min="0" step="0.01" [(ngModel)]="binanceConfig.account_capital_usdt" />
+          </div>
+          <div class="form-group">
+            <label>Default leverage</label>
+            <input class="form-control form-control-sm" type="number" min="1" max="125" step="1" [(ngModel)]="binanceConfig.default_leverage" />
+          </div>
+          <div class="form-group">
+            <label>Max daily trades</label>
+            <input class="form-control form-control-sm" type="number" min="0" step="1" [(ngModel)]="binanceConfig.max_daily_trades" />
+          </div>
+          <div class="form-group">
+            <label>TP/SL enabled</label>
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" id="tpSlEnabledSimple" [(ngModel)]="binanceConfig.enable_tp_sl" />
+              <label class="form-check-label small" for="tpSlEnabledSimple">Activar</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <button class="btn btn-sm btn-primary" (click)="guardarBinanceConfig()" [disabled]="binanceConfigSaving">
+            {{ binanceConfigSaving ? 'Guardando...' : 'Guardar config' }}
           </button>
         </div>
       </div>
     </div>
-      </div>
-    </div>
-  </ng-container>
-    </div>
   </section>
-  </div>
 </div>

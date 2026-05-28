@@ -1,6 +1,7 @@
 const BINANCE_SPOT_KLINES_URL = 'https://api.binance.com/api/v3/klines';
 const BINANCE_SPOT_TICKER_URL = 'https://api.binance.com/api/v3/ticker/price';
 const BINANCE_FUTURES_KLINES_URL = 'https://fapi.binance.com/fapi/v1/klines';
+const BINANCE_FUTURES_MARK_PRICE_URL = 'https://fapi.binance.com/fapi/v1/premiumIndex';
 const BINANCE_FUTURES_TICKER_URL = 'https://fapi.binance.com/fapi/v1/ticker/price';
 const {
   addAbortListener,
@@ -123,6 +124,10 @@ function normalizeBinanceSymbol(symbol) {
 
 function resolveTimeoutMs(options = {}) {
   const override = Number(options?.timeoutMs);
+  if (options?.allowBelowGlobalTimeout === true && Number.isFinite(override) && override >= 250) {
+    const timeoutCeilingMs = Math.max(250, Number(options?.timeoutCeilingMs || 30000));
+    return Math.max(250, Math.min(override, timeoutCeilingMs));
+  }
   if (Number.isFinite(override) && override >= 250) {
     return Math.max(FETCH_TIMEOUT_MS, Math.min(override, BINANCE_HTTP_TIMEOUT_MS));
   }
@@ -425,7 +430,7 @@ async function fetchPriceFromMarket(baseUrl, symbol, options = {}) {
   const binanceSymbol = normalizeBinanceSymbol(symbol);
   const url = `${baseUrl}?symbol=${encodeURIComponent(binanceSymbol)}`;
   const data = await fetchJsonWithTimeout(url, options);
-  const price = Number.parseFloat(data?.price);
+  const price = Number.parseFloat(data?.markPrice ?? data?.price);
   if (!Number.isFinite(price) || price <= 0) {
     throw new Error('Binance price sin valor valido');
   }
@@ -484,6 +489,7 @@ async function fetchBinanceCandles(symbol, interval, options = {}) {
 async function fetchBinanceSpot(symbol, options = {}) {
   return tryMarkets(
     [
+      { name: 'futures_mark', tickerUrl: BINANCE_FUTURES_MARK_PRICE_URL },
       { name: 'futures', tickerUrl: BINANCE_FUTURES_TICKER_URL },
       { name: 'spot', tickerUrl: BINANCE_SPOT_TICKER_URL }
     ],

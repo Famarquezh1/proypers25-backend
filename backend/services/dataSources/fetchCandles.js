@@ -14,10 +14,24 @@ const {
 
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || null;
 const ENABLE_BINANCE = process.env.ENABLE_BINANCE === 'true';
+const MARKET_DATA_BINANCE_ENABLED =
+  String(process.env.MARKET_DATA_BINANCE_ENABLED || 'true').toLowerCase() !== 'false';
 const PROFILING_FETCH_ENABLED =
   String(process.env.PROFILING_FETCH_ENABLED || 'false').toLowerCase() === 'true';
 const YAHOO_SOURCE_TIMEOUT_MS = Math.max(5000, Number(process.env.YAHOO_FETCH_TIMEOUT_MS || 5000));
 const ALPHA_SOURCE_TIMEOUT_MS = Math.max(5000, Number(process.env.ALPHA_FETCH_TIMEOUT_MS || 5000));
+const BINANCE_PRIMARY_TIMEOUT_MS = Math.max(
+  1500,
+  Math.min(2000, Number(process.env.BINANCE_PRIMARY_TIMEOUT_MS || 1800))
+);
+const BINANCE_PRIMARY_RETRY_DELAY_MS = Math.max(
+  100,
+  Math.min(1000, Number(process.env.BINANCE_PRIMARY_RETRY_DELAY_MS || 300))
+);
+const BINANCE_PRIMARY_RETRIES = Math.max(
+  0,
+  Math.min(1, Number(process.env.BINANCE_PRIMARY_RETRIES || 1))
+);
 const FALLBACK_DECISION_BUDGET_MS = Math.max(
   YAHOO_SOURCE_TIMEOUT_MS,
   Number(process.env.FALLBACK_DECISION_BUDGET_MS || YAHOO_SOURCE_TIMEOUT_MS)
@@ -118,6 +132,14 @@ function publishFetchTiming(options, state) {
   }
 }
 
+function logDataSource(source, symbol, payload = {}) {
+  console.log('[DATA_SOURCE]', {
+    source,
+    symbol,
+    ...payload
+  });
+}
+
 function markFallbackStart(state) {
   if (state.fallback_started_at_ms == null) {
     state.fallback_started_at_ms = Date.now();
@@ -178,6 +200,12 @@ function logFallbackFail(source, symbol, timeframe, reason, durationMs = 0, time
     reason: reason || 'unknown',
     duration_ms: Number(durationMs) || 0,
     timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null
+  });
+  logDataSource(source, symbol, {
+    timeframe,
+    latency_ms: Number(durationMs) || 0,
+    status: 'fail',
+    reason: reason || 'unknown'
   });
 }
 
@@ -454,6 +482,19 @@ async function fetchYahooCandles(symbol, timeframe, options = {}) {
   return mapYahooChartRows(rows);
 }
 
+function isRateLimitError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.status === 429 || message.includes('too many requests') || message.includes('status 429');
+}
+
+function isRetryableBinanceError(error) {
+  return error?.code === 'BINANCE_TIMEOUT' || error?.status === 429;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchCandles(symbol, interval, options = {}) {
   throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
   const cacheKey = `${String(symbol || '').toUpperCase()}|${String(interval || '5m')}`;
@@ -484,53 +525,90 @@ async function fetchCandles(symbol, interval, options = {}) {
       logFetchWindowExceeded(symbol, interval, getFetchElapsedMs());
       return null;
     };
+    let lastPrimaryError = null;
 
     throwIfAborted(options?.signal, `Candles cancelled for ${symbol}`, 'OPERATION_ABORTED');
     if (getRemainingFetchWindowMs() <= 0) {
       return abortForFetchWindow();
     }
-    if (ENABLE_BINANCE) {
+    const useBinanceMarketData = MARKET_DATA_BINANCE_ENABLED || ENABLE_BINANCE;
+    if (useBinanceMarketData) {
       timing.binance_attempted = true;
       timing.fallback_chain.push('binance');
-      const binanceStartedAtMs = Date.now();
-      try {
-        const binanceTimeoutMs = Math.min(FETCH_TIMEOUT_MS, getRemainingFetchWindowMs());
-        if (binanceTimeoutMs <= 0) {
-          return abortForFetchWindow();
-        }
-        const rows = await fetchBinanceCandles(symbol, interval, {
-          timeoutMs: binanceTimeoutMs,
-          retryOnTimeout: false,
-          signal: options?.signal,
-          taskContext: options?.taskContext,
-          trace: {
-            symbol,
-            call_type: 'candles',
-            origin: options?.traceOrigin || 'candles_fetch',
-            trace_id: createBinanceTraceId(symbol, interval, options?.traceOrigin || 'candles_fetch')
+      const totalBinanceAttempts = 1 + BINANCE_PRIMARY_RETRIES;
+      for (let attempt = 1; attempt <= totalBinanceAttempts; attempt += 1) {
+        const binanceStartedAtMs = Date.now();
+        try {
+          const binanceTimeoutMs = Math.min(BINANCE_PRIMARY_TIMEOUT_MS, getRemainingFetchWindowMs());
+          if (binanceTimeoutMs <= 0) {
+            return abortForFetchWindow();
           }
-        });
-        timing.binance_latency_ms = elapsedMs(binanceStartedAtMs);
-        if (rows.length) {
-          timing.binance_success = true;
-          timing.source_used = 'binance';
-          console.log(`[BINANCE] candle fetch ok (${rows.length} velas)`);
-          candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
-          return rows;
+          const rows = await fetchBinanceCandles(symbol, interval, {
+            timeoutMs: binanceTimeoutMs,
+            retryOnTimeout: false,
+            allowBelowGlobalTimeout: true,
+            timeoutCeilingMs: 3000,
+            signal: options?.signal,
+            taskContext: options?.taskContext,
+            trace: {
+              symbol,
+              call_type: 'candles',
+              origin: options?.traceOrigin || 'candles_fetch',
+              trace_id: createBinanceTraceId(symbol, interval, options?.traceOrigin || 'candles_fetch'),
+              attempt_index: attempt
+            }
+          });
+          timing.binance_latency_ms = elapsedMs(binanceStartedAtMs);
+          if (rows.length) {
+            timing.binance_success = true;
+            timing.source_used = 'binance';
+            candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
+            logDataSource('binance', symbol, {
+              timeframe: interval,
+              latency_ms: timing.binance_latency_ms,
+              status: 'ok',
+              attempt,
+              rows: rows.length
+            });
+            return rows;
+          }
+          lastPrimaryError = new Error('empty_result');
+          logDataSource('binance', symbol, {
+            timeframe: interval,
+            latency_ms: timing.binance_latency_ms,
+            status: 'fail',
+            attempt,
+            reason: 'empty_result'
+          });
+        } catch (err) {
+          lastPrimaryError = err;
+          timing.binance_latency_ms = elapsedMs(binanceStartedAtMs);
+          logDataSource('binance', symbol, {
+            timeframe: interval,
+            latency_ms: timing.binance_latency_ms,
+            status: 'fail',
+            attempt,
+            reason: err?.status === 429 ? 'rate_limited' : (err?.message || 'fetch_error')
+          });
+          if (attempt < totalBinanceAttempts && isRetryableBinanceError(err)) {
+            await wait(BINANCE_PRIMARY_RETRY_DELAY_MS);
+            continue;
+          }
         }
-        console.warn('[BINANCE] no data, fallback triggered');
-        markFallbackStart(timing);
-      } catch (err) {
-        timing.binance_latency_ms = elapsedMs(binanceStartedAtMs);
-        if (err?.status === 429) {
+        break;
+      }
+      if (!timing.binance_success) {
+        if (lastPrimaryError?.status === 429) {
           console.warn('[BINANCE] fetch failed -> reason: rate_limited');
+        } else if (lastPrimaryError) {
+          console.warn(`[BINANCE] fetch failed -> reason: ${lastPrimaryError.message}`);
         } else {
-          console.warn(`[BINANCE] fetch failed -> reason: ${err.message}`);
+          console.warn('[BINANCE] no data, fallback triggered');
         }
         markFallbackStart(timing);
       }
     } else {
-      console.log('[BINANCE] disabled by ENABLE_BINANCE=false');
+      console.log('[BINANCE] market data disabled by MARKET_DATA_BINANCE_ENABLED=false');
       markFallbackStart(timing);
     }
 
@@ -557,6 +635,12 @@ async function fetchCandles(symbol, interval, options = {}) {
           timing.source_used = 'yahoo';
           logFallbackSuccess('yahoo', symbol, interval, timing.yahoo_fetch_ms, rows.length, YAHOO_SOURCE_TIMEOUT_MS);
           candleCache.set(cacheKey, { rows, fetchedAt: Date.now() });
+          logDataSource('yahoo', symbol, {
+            timeframe: interval,
+            latency_ms: timing.yahoo_fetch_ms,
+            status: 'ok',
+            rows: rows.length
+          });
           return rows;
         }
         logFallbackFail('yahoo', symbol, interval, 'empty_result', timing.yahoo_fetch_ms, YAHOO_SOURCE_TIMEOUT_MS);
@@ -580,6 +664,13 @@ async function fetchCandles(symbol, interval, options = {}) {
         symbol,
         interval,
         age_ms: staleAgeMs
+      });
+      logDataSource('stale_cache', symbol, {
+        timeframe: interval,
+        latency_ms: 0,
+        status: 'ok',
+        cache_age_ms: staleAgeMs,
+        reason: isRateLimitError(lastPrimaryError) ? 'binance_unavailable_after_retry' : 'fallback_exhausted'
       });
       return cached.rows;
     }

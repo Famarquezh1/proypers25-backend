@@ -56,6 +56,13 @@ export const routes: Routes = [
     ]
   },
 
+  // 🔍 Monitor de Trading (solo lectura, sin autenticación)
+  {
+    path: 'trading-monitor',
+    loadComponent: () => import('./components/trading-monitor/trading-monitor.component')
+      .then(m => m.TradingMonitorComponent)
+  },
+
   // 🌐 Ruta raíz redirige a login
   { path: '', redirectTo: 'login', pathMatch: 'full' },
 

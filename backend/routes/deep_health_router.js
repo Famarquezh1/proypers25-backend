@@ -14,6 +14,7 @@
 
 const express = require('express');
 const CriticalSafetyMonitor = require('../lib/critical_safety_monitor');
+const { getEntryQualityDistributionDiagnostic } = require('../lib/entryQualityDistributionDiagnostic');
 
 function createDeepHealthRouter(db) {
   const router = express.Router();
@@ -207,7 +208,28 @@ function createDeepHealthRouter(db) {
     }
   });
 
-  console.log('[DeepHealthRouter] Router configured with all 6 endpoints, returning...');
+  /**
+   * GET /api/diagnostico/entry-quality-distribution
+   *
+   * Returns entry quality score distribution for recent intents.
+   */
+  router.get('/diagnostico/entry-quality-distribution', async (req, res) => {
+    try {
+      const hours = Number(req.query.hours || 6);
+      const maxDocs = Number(req.query.maxDocs || 2000);
+      const report = await getEntryQualityDistributionDiagnostic(db, { hours, maxDocs });
+      res.json(report);
+    } catch (err) {
+      console.error('[DeepHealthRouter] Error getting entry quality distribution:', err.message);
+      res.status(500).json({
+        error: 'Failed to retrieve entry quality distribution',
+        message: err.message,
+        timestamp: new Date()
+      });
+    }
+  });
+
+  console.log('[DeepHealthRouter] Router configured with all endpoints, returning...');
   return router;
 }
 

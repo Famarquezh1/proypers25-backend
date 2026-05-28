@@ -139,7 +139,7 @@ Decision:
     → VIABLE: Scale to 0.5x position size
     → Continue monitoring
     → Scale further after next 20 trades if metrics hold
-  
+
   IF either criterion fails:
     → NOT VIABLE: HALT immediately
     → Set execution_enabled=false

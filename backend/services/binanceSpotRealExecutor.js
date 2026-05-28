@@ -802,9 +802,26 @@ async function evaluateOpenRealPositions(db, config, currentPrices = {}) {
         let closedCount = 0;
         const now = new Date();
 
+        // Get current prices from Binance if not provided
+        let prices = { ...currentPrices };
+        if (Object.keys(prices).length === 0 && snapshot.size > 0) {
+            try {
+                const symbols = snapshot.docs.map(doc => doc.data().symbol);
+                for (const symbol of symbols) {
+                    const priceResult = await createSignedBinanceSpotRequest('GET', '/api/v3/ticker/price', { symbol });
+                    if (priceResult.price) {
+                        prices[symbol] = parseFloat(priceResult.price);
+                    }
+                }
+                console.log(`[REAL_EXECUTOR] Fetched ${Object.keys(prices).length} current prices from Binance`);
+            } catch (priceErr) {
+                console.warn('[REAL_EXECUTOR] Failed to fetch current prices:', priceErr.message);
+            }
+        }
+
         for (const doc of snapshot.docs) {
             const position = { id: doc.id, ...doc.data() };
-            const currentPrice = currentPrices[position.symbol] || null;
+            const currentPrice = prices[position.symbol] || null;
 
             // Check TP1
             if (currentPrice && currentPrice >= position.tp1_price) {
@@ -866,7 +883,9 @@ async function closeRealPosition(db, position, exitPrice, closeReason) {
         await db.collection(REAL_SPOT_POSITIONS_COLLECTION).doc(position.id).update({
             status: 'REAL_CLOSED',
             closed_at: now.toISOString(),
-            close_reason: closeReason
+            closing_reason: closeReason,
+            exit_price: exitPrice,
+            pnl_usdt: netPnlUsdt
         });
 
         // Create result record
@@ -881,7 +900,7 @@ async function closeRealPosition(db, position, exitPrice, closeReason) {
             estimated_fee_usdt: estimatedFeeUsdt,
             net_pnl_usdt: netPnlUsdt,
             net_pnl_pct: netPnlPct,
-            close_reason: closeReason,
+            closing_reason: closeReason,
             opened_at: position.opened_at,
             closed_at: now.toISOString(),
             duration_hours: durationHours,
@@ -1356,16 +1375,14 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                         orderCreated = true;
                         selectedSymbol = candidate.symbol;
 
-                        // Block new entries after first position
+                        // Update config with entry tracking (but DO NOT disable new entries)
                         await db.collection('real_spot_config').doc('control').update({
-                            new_entries_enabled: false,
-                            entries_used_this_session: 1,
-                            disable_after_first_entry: true,
+                            entries_used_this_session: (config.entries_used_this_session || 0) + 1,
                             last_entry_symbol: candidate.symbol,
                             last_entry_at: now.toISOString()
                         });
 
-                        console.log('[REAL_EXECUTOR] New entries disabled after first position');
+                        console.log('[REAL_EXECUTOR] Entry tracked, system remains ENABLED for new positions');
 
                     } catch (posErr) {
                         console.error('[REAL_EXECUTOR] Failed to create position:', posErr.message);

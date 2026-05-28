@@ -23,6 +23,7 @@ export class NavbarComponent implements OnInit {
     { nombre: 'Entrenamientos', ruta: 'entrenamientos' },
     { nombre: 'Predicciones Velas', ruta: 'predicciones-velas' },
     { nombre: 'Historial Velas', ruta: 'historial-velas' },
+    { nombre: 'Monitor Spot', ruta: '/trading-monitor' },
   ];
 
   constructor(

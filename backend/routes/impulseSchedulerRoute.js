@@ -37,7 +37,7 @@ function checkSecret(req, res) {
 
 /**
  * Main impulse trading cycle (called every 15 minutes)
- * 
+ *
  * PHASE 2: Confirmation layer
  * - Detect impulses on cycle N
  * - Revalidate on cycle N+1
@@ -75,7 +75,7 @@ router.post('/internal/cron/impulse/cycle', async (req, res) => {
       // Check if impulses from last cycle are still valid
       if (cycleResult.impulses_detected > 0) {
         console.log('[IMPULSE_CRON] Detected impulses - awaiting confirmation in next cycle');
-        
+
         // Store for confirmation in next cycle
         cycleResult.detected_impulses.forEach(impulse => {
           const key = `${impulse.symbol}:${impulse.direction}`;
@@ -91,11 +91,11 @@ router.post('/internal/cron/impulse/cycle', async (req, res) => {
       // Check if any previously detected impulses are still valid (confirmation passed)
       const confirmedImpulses = [];
       const now = Date.now();
-      
+
       for (const [key, entry] of confirmationState.entries()) {
         const age = now - entry.detected_at;
         const cycleAge = Math.floor(age / 60000); // Convert to minute cycles (approximation)
-        
+
         if (cycleAge >= 1) {
           // At least 1 cycle has passed - this is a confirmed impulse
           confirmedImpulses.push(entry);

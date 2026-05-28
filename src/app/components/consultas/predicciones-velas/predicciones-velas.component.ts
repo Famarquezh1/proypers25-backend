@@ -3,12 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { combineLatest, Observable, of } from 'rxjs';
-import { finalize, map, shareReplay, switchMap } from 'rxjs/operators';
+import { finalize, map, shareReplay, switchMap, tap } from 'rxjs/operators';
 import { VelasService } from '../../../servicios/velas.service';
 import { FirestoreService } from '../../../servicios/firestore.service';
 import { environment } from '../../../../environments/environment';
 import { ColorType, CrosshairMode, createChart, IChartApi, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts';
-import { ExploitationPanelComponent } from '../../exploitation-panel/exploitation-panel.component';
 
 interface WeeklyStability {
   isoWeek: string;
@@ -108,11 +107,21 @@ interface EquityCurveTradePoint {
 @Component({
   selector: 'app-predicciones-velas',
   standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule, ExploitationPanelComponent],
+  imports: [CommonModule, FormsModule, HttpClientModule],
   templateUrl: './predicciones-velas.component.html',
   styleUrls: ['./predicciones-velas.component.css']
 })
 export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDestroy {
+  readonly backendRuntimeRules = {
+    defaultLeverage: 5,
+    takeProfitPct: 0.4,
+    stopLossPct: -0.6,
+    maxHoldSeconds: 120,
+    roundTripFeePct: 0.1,
+    executionFrictionPct: 0.05,
+    minNetEdgePct: 0.15,
+    minExpectedMovePct: 0.3
+  };
   private readonly defaultSymbols = [
     'BTC-USD',
     'ETH-USD',
@@ -142,6 +151,10 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
   ];
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   predicciones$: Observable<any[]> | undefined;
+  marketDetection$: Observable<any[]> | undefined;
+  execution$: Observable<any[]> | undefined;
+  realResults$: Observable<any[]> | undefined;
+  executionHealthSummary$: Observable<any> | undefined;
   historialGroups$: Observable<HistoryGroupItem[]> | undefined;
   symbolStatusChips$: Observable<SymbolChipItem[]> | undefined;
   oportunidades$: Observable<any[]> | undefined;
@@ -187,6 +200,13 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
     initialCapitalSource: '',
     currentCapitalSource: ''
   };
+  // Impulse cycle counters
+  impulseStats = {
+    cycles: 0,
+    detected: 0,
+    executed: 0
+  };
+
   symbols: string[] = [];
   timeframes: string[] = [];
   candidatoSymbol = '';
@@ -488,30 +508,12 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
     this.refreshTimer = setInterval(() => {
       this.nowTs = Date.now();
     }, 1000);
-
-    this.velasService.getDisponibles().subscribe((disponibles) => {
-      const apiSymbols = Array.isArray(disponibles?.symbols) ? disponibles.symbols : [];
-      this.symbols = Array.from(new Set([...apiSymbols, ...this.defaultSymbols]));
-      this.timeframes = disponibles.timeframes || [];
-      if (!this.candidatoSymbol && this.symbols.length) {
-        this.candidatoSymbol = this.symbols[0];
-      }
-      this.cargarPredicciones();
-    });
-    this.cargarHighConvictionSignals();
-    this.cargarNeutralSignalCandidates();
-    this.cargarLatestBinanceExecutions();
-    this.cargarTelegramNotifications();
-    this.cargarMonitoringSnapshots();
+    this.cargarMarketDetection();
+    this.cargarExecution();
+    this.cargarResults();
+    this.cargarExecutionHealthSummary();
     this.cargarBinanceConfig();
-    this.deferredEquityLoadTimer = setTimeout(() => {
-      this.cargarEquityCurve();
-      this.deferredEquityLoadTimer = null;
-    }, 1200);
-    this.deferredSignalIntelLoadTimer = setTimeout(() => {
-      this.cargarSignalIntelligence();
-      this.deferredSignalIntelLoadTimer = null;
-    }, 3200);
+    this.cargarImpulseStats();
   }
 
   ngAfterViewInit(): void {
@@ -640,21 +642,183 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
     );
   }
 
-  cargarPredicciones(): void {
-    const source$ = this.velasService.obtenerPrediccionesVelas().pipe(
-      map((list) =>
-        [...list].sort((a, b) => {
-          const fechaA = new Date(a.created_at || a.timestamp).getTime();
-          const fechaB = new Date(b.created_at || b.timestamp).getTime();
-          return fechaB - fechaA;
-        })
+  cargarMarketDetection(): void {
+    this.marketDetection$ = this.firestoreService.getImpulseLogs<any>(50).pipe(
+      map((items) =>
+        (items || [])
+          .filter((item) => ['IMPULSE_DETECTED', 'IMPULSE_NOT_ACCEPTED', 'IMPULSE_ACCEPTED'].includes(item?.event_type))
+          .map((item) => ({
+            ...item,
+            symbol: item?.symbol || 'N/A',
+            move1m: Number(item?.move1m || 0),
+            move3m: Number(item?.move3m || 0),
+            volumeRatio: Number(item?.volumeRatio || 0),
+            qualityScore: Number(item?.qualityScore || 0),
+            event_type: item?.event_type || 'UNKNOWN'
+          }))
       ),
-      map((list) => {
-        this.latestPredictionsCache = list;
-        return list;
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+      shareReplay(1)
+    );
+  }
+
+  cargarExecution(): void {
+    this.execution$ = this.firestoreService.getBinanceExecutionIntents<any>(50).pipe(
+      map((items) =>
+        (items || []).map((item) => ({
+          ...item,
+          symbol: item?.symbol || 'N/A',
+          side: item?.side || item?.direction || item?.intent?.side || 'N/A',
+          status: item?.status || item?.state || 'UNKNOWN',
+          processing_stage: item?.processing_stage || 'N/A',
+          reason: item?.reason || item?.validation?.reason || item?.execution_audit?.reason || null,
+          execution_result: item?.result || item?.execution_result || item?.execution_audit?.result || 'N/A',
+          leverage: Number(item?.leverage ?? item?.intent?.leverage ?? 0) || this.backendRuntimeRules.defaultLeverage,
+          quantity: Number(item?.quantity ?? item?.intent?.quantity ?? item?.requested_quantity ?? 0),
+          move1m: Number(item?.move1m ?? item?.signal_snapshot?.move1m ?? 0),
+          move3m: Number(item?.move3m ?? item?.signal_snapshot?.move3m ?? 0),
+          expected_move_pct: Number(
+            item?.expected_move_percent ??
+              item?.expected_move_pct ??
+              item?.validation?.details?.expected_move_pct ??
+              0
+          ),
+          total_cost_pct: Number(
+            item?.validation?.details?.total_cost_pct ??
+              item?.net_edge?.total_cost_pct ??
+              this.backendRuntimeRules.roundTripFeePct + this.backendRuntimeRules.executionFrictionPct
+          ),
+          net_edge_pct: Number(
+            item?.validation?.details?.net_edge_pct ??
+              item?.net_edge?.net_edge_pct ??
+              0
+          ),
+          min_required_pct: Number(
+            item?.validation?.details?.min_required_pct ??
+              item?.net_edge?.min_required_pct ??
+              this.backendRuntimeRules.minExpectedMovePct
+          ),
+          entry_delay_seconds: Number(
+            item?.execution_audit?.delay_seconds ??
+              item?.execution_trace_metrics?.delay_seconds ??
+              0
+          ),
+          is_late_entry: Boolean(item?.execution_audit?.is_late_entry),
+          window_remaining_seconds: Number(item?.execution_audit?.window_remaining_seconds_at_execution ?? 0),
+          error_message:
+            item?.error_message ||
+            item?.last_error ||
+            item?.execution_audit?.error_message ||
+            item?.error ||
+            null,
+          latency_ms: Number(
+            item?.execution_trace_metrics?.total_latency_ms ??
+              item?.execution_delay_ms ??
+              item?.execution_meta?.execution_delay_ms ??
+              0
+          ),
+          status_badge_class: this.getExecutionBadgeClass(item?.status || item?.state || 'UNKNOWN'),
+          side_badge_class: this.getSideBadgeClass(item?.side || item?.direction || item?.intent?.side || 'N/A')
+        }))
+      ),
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+      shareReplay(1)
+    );
+  }
+
+  cargarResults(): void {
+    this.realResults$ = this.firestoreService.getActiveImpulseTrades<any>(50).pipe(
+      map((items) =>
+        (items || []).map((item) => ({
+          ...item,
+          symbol: item?.symbol || 'N/A',
+          side: item?.side || item?.direction || item?.position_side || 'N/A',
+          leverage: Number(item?.leverage ?? item?.execution_audit?.leverage ?? 0) || this.backendRuntimeRules.defaultLeverage,
+          quantity: Number(item?.quantity ?? item?.position_size ?? item?.executed_quantity ?? 0),
+          entry_price: Number(item?.entryPrice ?? item?.entry_price ?? item?.execution_audit?.entry_price ?? 0),
+          exit_price: Number(item?.exitPrice ?? item?.exit_price ?? item?.execution_audit?.exit_price ?? 0),
+          duration_seconds: Number(
+            item?.duration_seconds ??
+              item?.execution_audit?.duration_seconds ??
+              item?.holding_time_seconds ??
+              0
+          ),
+          pnl: Number(item?.pnl_pct ?? item?.pnl ?? 0),
+          outcome:
+            Number(item?.pnl_pct ?? item?.pnl ?? 0) > 0
+              ? 'WIN'
+              : Number(item?.pnl_pct ?? item?.pnl ?? 0) < 0
+                ? 'LOSS'
+                : 'BREAKEVEN',
+          close_reason: item?.reason_exit || item?.close_reason || 'N/A',
+          closed_by: item?.closed_by || item?.execution_audit?.closed_by || 'bot/API',
+          side_badge_class: this.getSideBadgeClass(item?.side || item?.direction || item?.position_side || 'N/A')
+        }))
+      ),
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+      shareReplay(1)
+    );
+  }
+
+  cargarExecutionHealthSummary(): void {
+    if (!this.execution$ || !this.realResults$) {
+      this.executionHealthSummary$ = of(null);
+      return;
+    }
+
+    this.executionHealthSummary$ = combineLatest([this.execution$, this.realResults$]).pipe(
+      map(([executions, results]) => {
+        const intents = executions || [];
+        const trades = results || [];
+
+        const byReason = (reason: string) =>
+          intents.filter((item) => String(item?.reason || '').toLowerCase() === reason.toLowerCase()).length;
+        const byStatus = (statuses: string[]) =>
+          intents.filter((item) => statuses.includes(String(item?.status || '').toLowerCase())).length;
+        const byCloseReason = (reason: string) =>
+          trades.filter((item) => String(item?.close_reason || '').toUpperCase() === reason.toUpperCase()).length;
+
+        return {
+          intents_total: intents.length,
+          executed_count: byStatus(['executed', 'filled', 'success', 'completed']),
+          blocked_count: byStatus(['blocked', 'rejected', 'skipped']),
+          net_edge_rejected_count: byReason('net_edge_rejected'),
+          orphan_blocked_count: byReason('orphan_intent_blocked'),
+          failed_count: byStatus(['failed', 'error', 'cancelled']),
+          results_total: trades.length,
+          timeout_exit_count: byCloseReason('FORCE_CLOSE_TIMEOUT'),
+          take_profit_count: byCloseReason('TAKE_PROFIT'),
+          stop_loss_count: byCloseReason('STOP_LOSS'),
+          win_count: trades.filter((item) => item?.outcome === 'WIN').length,
+          loss_count: trades.filter((item) => item?.outcome === 'LOSS').length
+        };
       }),
       shareReplay(1)
     );
+  }
+
+  getExecutionBadgeClass(status: string | null | undefined): string {
+    const value = String(status || '').toLowerCase();
+    if (['executed', 'filled', 'success', 'completed'].includes(value)) return 'bg-success';
+    if (['blocked', 'rejected', 'skipped'].includes(value)) return 'bg-warning text-dark';
+    if (['failed', 'error', 'cancelled'].includes(value)) return 'bg-danger';
+    if (['pending', 'created', 'queued'].includes(value)) return 'bg-info text-dark';
+    return 'bg-secondary';
+  }
+
+  getSideBadgeClass(side: string | null | undefined): string {
+    const value = String(side || '').toUpperCase();
+    if (['BUY', 'LONG', 'UP'].includes(value)) return 'bg-success-subtle text-success-emphasis';
+    if (['SELL', 'SHORT', 'DOWN'].includes(value)) return 'bg-danger-subtle text-danger-emphasis';
+    return 'bg-light text-dark';
+  }
+
+  hasExecutionNetEdge(item: any): boolean {
+    return Number.isFinite(Number(item?.expected_move_pct)) && Number(item?.expected_move_pct) > 0;
+  }
+
+  cargarPredicciones(): void {
+    const source$ = of([] as any[]).pipe(shareReplay(1));
     this.predicciones$ = source$;
     this.historialGroups$ = source$.pipe(
       map((list) => this.groupPredictionsByDate(this.applyHistorySymbolFilter(list)))
@@ -662,8 +826,21 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
     this.symbolStatusChips$ = source$.pipe(
       map((list) => this.buildSymbolStatusChips(list))
     );
-    this.oportunidades$ = source$.pipe(
-      map((list) => this.computeManualOpportunities(list))
+    this.oportunidades$ = this.firestoreService.getHighConvictionImpulseSignals<any>(20).pipe(
+      map((items) =>
+        (items || []).map((item) => ({
+          ...item,
+          simbolo: item?.symbol || item?.simbolo || 'N/A',
+          status: item?.status || 'PENDING_EXECUTION',
+          move1m: Number(item?.move1m || 0),
+          move3m: Number(item?.move3m || 0),
+          volumeRatio: Number(item?.volumeRatio || 0),
+          qualityScore: Number(item?.qualityScore || 0)
+        }))
+      ),
+      map((items) => items.slice(0, 6)),
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+      shareReplay(1)
     );
   }
 
@@ -1055,69 +1232,60 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
   }
 
   cargarHighConvictionSignals(): void {
-    let source$: Observable<any[]>;
-    if (this.highConvictionFilter === '7d') {
-      source$ = this.firestoreService.getHighConvictionSignalsByDateRange({ days: 7, max: 60 });
-    } else if (this.highConvictionFilter === '30d') {
-      source$ = this.firestoreService.getHighConvictionSignalsByDateRange({ days: 30, max: 120 });
-    } else if (this.highConvictionFilter === 'custom' && this.highConvictionFrom && this.highConvictionTo) {
-      const from = new Date(`${this.highConvictionFrom}T00:00:00`);
-      const to = new Date(`${this.highConvictionTo}T23:59:59`);
-      source$ = this.firestoreService.getHighConvictionSignalsByDateRange({
-        from,
-        to,
-        max: 120
-      });
-    } else {
-      source$ = this.firestoreService.getHighConvictionSignals(20);
-    }
-
-    this.highConvictionSignals$ = source$.pipe(
-      switchMap((signals) => this.enrichHighConvictionSignals(signals)),
-      map((signals) => this.applyHighConvictionOutcomeFilter(signals)),
-      map((signals) => {
-        this.highConvictionStats = this.computeHighConvictionStats(signals);
-        this.weeklyStability = this.computeWeeklyStability(signals);
-        return signals;
-      })
+    this.highConvictionSignals$ = this.firestoreService.getHighConvictionImpulseSignals<any>(20).pipe(
+      map((signals) =>
+        (signals || []).map((signal) => ({
+          ...signal,
+          status: signal?.status || 'PENDING_EXECUTION',
+          move1m: Number(signal?.move1m || 0),
+          move3m: Number(signal?.move3m || 0),
+          volumeRatio: Number(signal?.volumeRatio || 0),
+          qualityScore: Number(signal?.qualityScore || 0)
+        }))
+      ),
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+      shareReplay(1)
     );
   }
 
   cargarLatestBinanceExecutions(): void {
     this.latestBinanceExecutions$ = this.firestoreService.getBinanceExecutionIntents<any>(60).pipe(
-      switchMap((items) => this.enrichBinanceExecutionIntents(items)),
       map((items) => (items || []).slice(0, 20)),
+      tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
       shareReplay(1)
     );
   }
 
   cargarNeutralSignalCandidates(): void {
     this.neutralSignalCandidates$ = this.firestoreService
-      .getNeutralSignalCandidates<any>(20)
-      .pipe(shareReplay(1));
+      .getImpulseLogs<any>(20)
+      .pipe(
+        map((items) =>
+          (items || [])
+            .filter((item) => ['IMPULSE_DETECTED', 'IMPULSE_NOT_ACCEPTED', 'IMPULSE_ACCEPTED'].includes(item?.event_type))
+            .map((item) => ({
+              symbol: item?.symbol || 'N/A',
+              created_at: item?.timestamp || item?.created_at,
+              status: item?.event_type || 'UNKNOWN',
+              move1m: Number(item?.move1m || 0),
+              move3m: Number(item?.move3m || 0),
+              volumeRatio: Number(item?.volumeRatio || 0),
+              qualityScore: Number(item?.qualityScore || 0),
+              reason: item?.reason || item?.event_type || 'impulse_log',
+              event_type: item?.event_type
+            }))
+        ),
+        tap((data) => console.log('FRONT_IMPULSE_DATA', data)),
+        shareReplay(1)
+      );
   }
 
   cargarTelegramNotifications(): void {
-    const source$ = this.firestoreService.getTelegramNotifications(20).pipe(
-      map((items) =>
-        (items || [])
-          .filter((item) => item?.['type'] === 'manual_prealert' && item?.['sent'] !== false)
-          .sort((a, b) => this.resolveNotificationDate(b).getTime() - this.resolveNotificationDate(a).getTime())
-      ),
-      switchMap((alerts) => this.enrichTelegramNotifications(alerts)),
-      shareReplay(1)
-    );
-
+    const source$ = of([] as any[]).pipe(shareReplay(1));
     this.telegramNotifications$ = source$;
-    this.latestTelegramAlert$ = source$.pipe(map((alerts) => alerts[0] ?? null));
-    this.telegramWinNotifications$ = source$.pipe(
-      map((alerts) => (alerts || []).filter((alert) => this.telegramAlertOutcome(alert) === 'WIN'))
-    );
-    this.telegramPendingNotifications$ = source$.pipe(
-      map((alerts) =>
-        (alerts || []).filter((alert) => this.telegramAlertOutcome(alert) !== 'WIN')
-      )
-    );
+    this.latestTelegramAlert$ = of(null);
+    this.telegramWinNotifications$ = source$;
+    this.telegramPendingNotifications$ = source$;
   }
 
   cargarMonitoringSnapshots(): void {
@@ -2314,148 +2482,11 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
   }
 
   private enrichHighConvictionSignals(signals: any[]): Observable<any[]> {
-    const predictionIds = Array.from(
-      new Set(
-        (signals || [])
-          .map((s) => s?.prediction_id)
-          .filter((id) => !!id)
-      )
-    ) as string[];
-
-    if (!predictionIds.length) {
-      return of(signals || []);
-    }
-
-    const intentIds = predictionIds.map((id) => this.buildIntentDocId(id, 'high_conviction')).filter(Boolean) as string[];
-    return combineLatest([
-      this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds),
-      this.firestoreService.getCollectionByIds<any>('binance_execution_intents', intentIds)
-    ]).pipe(
-      switchMap(([predictions, intents]) => {
-        const linkedPositionIds = Array.from(
-          new Set(
-            (intents || [])
-              .map((item) => item?.linked_position_id)
-              .filter((id) => !!id)
-          )
-        ) as string[];
-
-        return combineLatest([
-          of(predictions),
-          of(intents),
-          this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds),
-          linkedPositionIds.length
-            ? this.firestoreService.getCollectionByIds<any>('binance_open_positions', linkedPositionIds)
-            : of([] as any[])
-        ]);
-      }),
-      map(([predictions, intents, positionsByPrediction, positionsById]) => {
-        const byId = new Map<string, any>();
-        predictions.forEach((p) => byId.set(p.id, p));
-        const intentMap = new Map<string, any>();
-        (intents || []).forEach((item) => {
-          if (item?.prediction_id) {
-            intentMap.set(item.prediction_id, item);
-          }
-        });
-        const positionByIdMap = new Map<string, any>();
-        (positionsById || []).forEach((position) => positionByIdMap.set(position.id, position));
-        const positionByPredictionMap = new Map<string, any>();
-        (positionsByPrediction || []).forEach((position: any) => {
-          const key = `${position?.prediction_id || 'none'}__${position?.source_profile || position?.source || 'unknown'}`;
-          const current = positionByPredictionMap.get(key);
-          const currentTs = this.resolveBinanceExecutionDate(current).getTime();
-          const nextTs = this.resolveBinanceExecutionDate(position).getTime();
-          if (!current || nextTs >= currentTs) {
-            positionByPredictionMap.set(key, position);
-          }
-        });
-        return (signals || []).map((signal) => {
-          const linkedPrediction = signal?.prediction_id ? byId.get(signal.prediction_id) : null;
-          const linkedIntent = signal?.prediction_id ? intentMap.get(signal.prediction_id) : null;
-          const linkedPosition =
-            linkedIntent?.linked_position_id
-              ? positionByIdMap.get(linkedIntent.linked_position_id) || null
-              : (signal?.prediction_id
-                  ? positionByPredictionMap.get(`${signal.prediction_id}__high_conviction`) || null
-                  : null);
-          return {
-            ...signal,
-            linkedPrediction,
-            linkedIntent,
-            linkedPosition
-          };
-        });
-      })
-    );
+    return of(signals || []);
   }
 
   private enrichBinanceExecutionIntents(items: any[]): Observable<any[]> {
-    const predictionIds = Array.from(
-      new Set(
-        (items || [])
-          .map((item) => item?.prediction_id)
-          .filter((id) => !!id)
-      )
-    ) as string[];
-
-    if (!predictionIds.length) {
-      return of(items || []);
-    }
-
-    const linkedPositionIds = Array.from(
-      new Set(
-        (items || [])
-          .map((item) => item?.linked_position_id)
-          .filter((id) => !!id)
-      )
-    ) as string[];
-
-    return combineLatest([
-      this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds),
-      this.firestoreService.getCollectionByFieldIn<any>('binance_open_positions', 'prediction_id', predictionIds),
-      linkedPositionIds.length
-        ? this.firestoreService.getCollectionByIds<any>('binance_open_positions', linkedPositionIds)
-        : of([] as any[])
-    ]).pipe(
-      map(([predictions, positions, positionsById]) => {
-        const predictionMap = new Map<string, any>();
-        predictions.forEach((item: any) => predictionMap.set(item.id, item));
-
-        const positionMap = new Map<string, any>();
-        (positions || []).forEach((position: any) => {
-          const key = `${position?.prediction_id || 'none'}__${position?.source_profile || position?.source || 'unknown'}`;
-          const current = positionMap.get(key);
-          const currentTs = this.resolveBinanceExecutionDate(current).getTime();
-          const nextTs = this.resolveBinanceExecutionDate(position).getTime();
-          if (!current || nextTs >= currentTs) {
-            positionMap.set(key, position);
-          }
-        });
-        const linkedPositionMap = new Map<string, any>();
-        (positionsById || []).forEach((position: any) => {
-          linkedPositionMap.set(position.id, position);
-        });
-
-        return (items || [])
-          .map((item) => {
-          const predictionId = item?.prediction_id || null;
-          const sourceProfile = item?.source_profile || item?.source || 'unknown';
-          const linkedPrediction = predictionId ? predictionMap.get(predictionId) : null;
-          const linkedPosition = item?.linked_position_id
-            ? linkedPositionMap.get(item.linked_position_id) || null
-            : predictionId
-              ? positionMap.get(`${predictionId}__${sourceProfile}`) || null
-              : null;
-          return {
-            ...item,
-            linkedPrediction,
-            linkedPosition
-          };
-        })
-          .sort((a, b) => this.resolveBinanceExecutionActivityDate(b).getTime() - this.resolveBinanceExecutionActivityDate(a).getTime());
-      })
-    );
+    return of(items || []);
   }
 
   private applyHighConvictionOutcomeFilter(signals: any[]): any[] {
@@ -2791,28 +2822,44 @@ export class PrediccionesVelasComponent implements OnInit, AfterViewInit, OnDest
   }
 
   private enrichTelegramNotifications(alerts: any[]): Observable<any[]> {
-    const predictionIds = Array.from(
-      new Set(
-        (alerts || [])
-          .map((item) => item?.prediction_id)
-          .filter((id) => !!id)
+    return of(alerts || []);
+  }
+
+  cargarImpulseStats(): void {
+    // Load cycle count from monitoring snapshots
+    this.firestoreService
+      .getMonitoringSnapshots<any>(1)
+      .pipe(
+        map((items) => {
+          if (!items || items.length === 0) return 0;
+          const latest = items[0];
+          const cycle = latest?.prediction_cycle || latest;
+          return Number(cycle?.cycle_number || 0);
+        })
       )
-    ) as string[];
+      .subscribe((cycles) => {
+        this.impulseStats.cycles = cycles;
+      });
 
-    if (!predictionIds.length) {
-      return of(alerts || []);
-    }
+    // Load detection count from high conviction signals
+    this.firestoreService
+      .getHighConvictionImpulseSignals<any>(1000)
+      .pipe(
+        map((items) => (items || []).length)
+      )
+      .subscribe((count) => {
+        this.impulseStats.detected = count;
+      });
 
-    return this.firestoreService.getCollectionByIds<any>('velas_predicciones', predictionIds).pipe(
-      map((predictions) => {
-        const byId = new Map<string, any>();
-        predictions.forEach((prediction) => byId.set(prediction.id, prediction));
-        return (alerts || []).map((alert) => ({
-          ...alert,
-          linkedPrediction: alert?.prediction_id ? byId.get(alert.prediction_id) : null
-        }));
-      })
-    );
+    // Load execution count from binance execution intents
+    this.firestoreService
+      .getBinanceExecutionIntents<any>(1000)
+      .pipe(
+        map((items) => (items || []).length)
+      )
+      .subscribe((count) => {
+        this.impulseStats.executed = count;
+      });
   }
 
   private resolveNotificationDate(alert: any): Date {

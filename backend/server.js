@@ -26,6 +26,7 @@ const validacionRoute = require('./routes/validacion.route');
 
 const velasRoutes = require('./routes/velas');
 const { createDeepHealthRouter } = require('./routes/deep_health_router');
+const adminRoute = require('./routes/admin.route');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -70,6 +71,7 @@ app.use('/api', createDeepHealthRouter(db));
 console.log('[Server] Deep health router registered');
 app.use('/', velasCronRoutes);
 app.use('/', impulseSchedulerRoute);
+app.use('/', adminRoute);
 
 // 404 handler for debugging
 app.use((req, res) => {

@@ -17,7 +17,8 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     numpy \
     pandas \
     scikit-learn \
-    joblib
+    joblib \
+    tensorflow==2.13.0
 
 ENV PYTHON_BIN=/usr/bin/python3
 

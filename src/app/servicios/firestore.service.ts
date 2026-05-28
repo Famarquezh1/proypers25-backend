@@ -32,26 +32,8 @@ export class FirestoreService {
     return collectionData(ref, { idField: 'id' }) as Observable<T[]>;
   }
 
-  getHighConvictionSignals<T extends DocumentData>(max = 5): Observable<T[]> {
-    const ref = collection(this.firestore, 'high_conviction_signals');
-    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
-    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
-  }
-
-  getNeutralSignalCandidates<T extends DocumentData>(max = 10): Observable<T[]> {
-    const ref = collection(this.firestore, 'neutral_signal_candidates');
-    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
-    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
-  }
-
   getBinanceExecutionIntents<T extends DocumentData>(max = 20): Observable<T[]> {
     const ref = collection(this.firestore, 'binance_execution_intents');
-    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
-    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
-  }
-
-  getTelegramNotifications<T extends DocumentData>(max = 10): Observable<T[]> {
-    const ref = collection(this.firestore, 'telegram_notifications');
     const q = query(ref, orderBy('created_at', 'desc'), limit(max));
     return collectionData(q, { idField: 'id' }) as Observable<T[]>;
   }
@@ -62,27 +44,21 @@ export class FirestoreService {
     return collectionData(q, { idField: 'id' }) as Observable<T[]>;
   }
 
-  getHighConvictionSignalsByDateRange<T extends DocumentData>(
-    options: { days?: number; from?: Date; to?: Date; max?: number } = {}
-  ): Observable<T[]> {
-    const ref = collection(this.firestore, 'high_conviction_signals');
-    const max = options.max ?? 50;
-    const constraints: any[] = [];
+  getImpulseLogs<T extends DocumentData>(max = 20): Observable<T[]> {
+    const ref = collection(this.firestore, 'impulse_logs');
+    const q = query(ref, orderBy('timestamp', 'desc'), limit(max));
+    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
+  }
 
-    if (typeof options.days === 'number' && options.days > 0) {
-      const from = new Date();
-      from.setDate(from.getDate() - options.days);
-      constraints.push(where('created_at', '>=', from));
-    } else {
-      if (options.from) {
-        constraints.push(where('created_at', '>=', options.from));
-      }
-      if (options.to) {
-        constraints.push(where('created_at', '<=', options.to));
-      }
-    }
+  getHighConvictionImpulseSignals<T extends DocumentData>(max = 20): Observable<T[]> {
+    const ref = collection(this.firestore, 'high_conviction_impulse_signals');
+    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
+    return collectionData(q, { idField: 'id' }) as Observable<T[]>;
+  }
 
-    const q = query(ref, ...constraints, orderBy('created_at', 'desc'), limit(max));
+  getActiveImpulseTrades<T extends DocumentData>(max = 20): Observable<T[]> {
+    const ref = collection(this.firestore, 'active_impulse_trades');
+    const q = query(ref, orderBy('created_at', 'desc'), limit(max));
     return collectionData(q, { idField: 'id' }) as Observable<T[]>;
   }
 
@@ -165,4 +141,3 @@ export class FirestoreService {
     return deleteDoc(ref);
   }
 }
-

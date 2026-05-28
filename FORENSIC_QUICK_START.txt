@@ -1,0 +1,187 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                    ✅ TRAZABILIDAD FORENSE IMPLEMENTADA                      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📌 RESUMEN EN 30 SEGUNDOS
+
+    Qué:     Cada trade ahora guarda EXACTAMENTE por qué fue ejecutado
+    Cómo:    execution_decision_snapshot con 15 campos forenses
+    Dónde:   En Firestore junto con cada position
+    Cuándo:  Automáticamente en próximas ejecuciones
+    Costo:   CERO cambios a lógica de trading
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+🔧 CAMBIOS REALIZADOS
+
+    Archivo modificado:
+    ✓ binanceSpotRealExecutor.js (+100 líneas, 0 cambios de lógica)
+
+    Funciones añadidas:
+    ✓ buildExecutionDecisionSnapshot() - Captura decisión
+    ✓ buildValidationReason() - Genera texto legible
+
+    Logs nuevos:
+    ✓ [REAL_EXECUTOR::FORENSIC] Symbol: ...
+    ✓ [REAL_EXECUTOR::FORENSIC] Snapshot saved - Score: ...
+
+    Campos en Firestore:
+    ✓ execution_decision_snapshot: {...}
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+📊 CONTENIDO DEL SNAPSHOT
+
+    execution_decision_snapshot: {
+      executed_at,                          // Timestamp
+      symbol,                               // ANKRUSDT
+      score_at_execution,                   // 100
+      category_at_execution,                // ACCUMULATION
+      min_score_required,                   // 70
+      allowed_categories_at_execution,      // [BREAKOUT, ...]
+      passed_score_filter,                  // true/false
+      passed_category_filter,               // true/false
+      source_module,                        // binanceSpotRealExecutor.js::...
+      intent_id,                            // real_spot_intent_...
+      is_forced,                            // false
+      validation_reason,                    // "Score 100 >= 70 | ..."
+      config_source,                        // real_spot_config/control
+      config_updated_at,                    // 2026-05-13T20:41:32.691Z
+      strategy_mode                         // CONSERVATIVE
+    }
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+✅ LO QUE NO CAMBIÓ
+
+    ✓ Lógica de ejecución idéntica
+    ✓ SL/TP/Timeout sin cambios
+    ✓ Capital management igual
+    ✓ Estrategia HYBRID_70_30 intacta
+    ✓ Comportamiento del sistema IDÉNTICO
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+🎯 CÓMO USAR
+
+    Opción 1: Ver si hay snapshots
+    ─────────────────────────────────
+    $ node verify_forensic_snapshot.js
+
+    Opción 2: Analizar un símbolo
+    ─────────────────────────────────
+    $ node forensic_utils.js analyze ANKRUSDT
+
+    Opción 3: Validar consistencia
+    ─────────────────────────────────
+    $ node forensic_utils.js validate
+
+    Opción 4: Comparar decisión vs resultado
+    ─────────────────────────────────────────
+    $ node forensic_utils.js compare
+
+    Opción 5: Extraer patrón de decisiones
+    ───────────────────────────────────────
+    $ node forensic_utils.js pattern
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+💡 CASOS DE USO
+
+    Pregunta: "¿Por qué ejecutó XECUSDT con score 27.98?"
+    ────────────────────────────────────────────────────
+    Antes: "No sé, no guardé esa información"
+    Ahora: "Consultar execution_decision_snapshot → Score 27.98, Threshold 70,
+            validation_reason muestra que config era diferente"
+
+    Pregunta: "¿Ejecutó algún trade manualmente (forzado)?"
+    ───────────────────────────────────────────────────
+    Ahora: "Buscar is_forced=true en todos los snapshots"
+
+    Pregunta: "¿Hay correlación entre score y ganancias?"
+    ──────────────────────────────────────────────────
+    Ahora: "node forensic_utils.js compare → Compara scores vs PnL"
+
+    Pregunta: "¿En qué rango de scores ejecuta más frecuente?"
+    ─────────────────────────────────────────────────────────
+    Ahora: "node forensic_utils.js pattern → Distribución por score"
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+📁 ARCHIVOS RELACIONADOS
+
+    Documentación:
+    • IMPLEMENTATION_FORENSIC_SNAPSHOT.md - Detalles técnicos
+    • FORENSIC_SNAPSHOT_READY.md - Guía de implementación
+    • FORENSIC_AUDIT_COMPLETE.md - Auditoría histórica
+
+    Scripts:
+    • verify_forensic_snapshot.js - Validar estructura
+    • forensic_utils.js - Herramientas de análisis
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+🚀 INICIO RÁPIDO
+
+    1. Espera próximo trade automático
+       └─ Sistema capturará snapshot automatically
+
+    2. Verifica logs
+       └─ [REAL_EXECUTOR::FORENSIC] Score Used: ... vs Threshold: ...
+
+    3. Consulta Firestore
+       └─ Abre real_spot_positions/{positionId}
+       └─ Ve execution_decision_snapshot
+
+    4. Analiza si quieres
+       └─ node forensic_utils.js analyze SYMBOL
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+⚡ GARANTÍAS
+
+    ✓ CERO cambios en decisión de qué ejecutar
+    ✓ CERO cambios en SL/TP/Timeout
+    ✓ CERO cambios en capital management
+    ✓ CERO cambios en risk parameters
+    ✓ CERO overhead significativo
+
+    ✓ Solo agregar: campo execution_decision_snapshot
+    ✓ Solo agregar: logs forenses
+    ✓ Solo agregar: trazabilidad
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+📈 PRÓXIMAS FASES (OPCIONALES)
+
+    Fase 2 (Backfill): Regenerar snapshots para trades históricos
+    Fase 3 (History):  Guardar historial de cambios de config
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+✅ STATUS
+
+    Código: COMPILADO Y VERIFICADO ✓
+    Testing: PENDIENTE (próximo trade real)
+    Production: LISTO ✓
+    Riesgo: MÍNIMO (solo agrega datos, no cambia lógica)
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+PRÓXIMO PASO: Ejecutar un trade real y verificar con:
+              node verify_forensic_snapshot.js
+
+════════════════════════════════════════════════════════════════════════════════

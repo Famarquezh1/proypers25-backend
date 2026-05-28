@@ -1,5 +1,12 @@
 const { normalizeToBinance } = require('../utils/symbolNormalizer');
 
+const ENTRY_QUALITY_DEFICIT_MULTIPLIERS = {
+  direction: 0.7,
+  context: 0.7,
+  impulse: 0.8,
+  volatility: 1
+};
+
 function clamp(value, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return min;
@@ -9,6 +16,12 @@ function clamp(value, min, max) {
 function toFinite(value, fallback = null) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function softenComponentScore(score, multiplier) {
+  const normalizedScore = clamp(Number(score), 0, 100);
+  const normalizedMultiplier = clamp(Number(multiplier), 0, 1);
+  return 100 - ((100 - normalizedScore) * normalizedMultiplier);
 }
 
 function parseDateLike(value) {
@@ -43,7 +56,7 @@ function resolveExecutionGuardConfig(botConfig = {}) {
     95
   );
   const mediumQualityScore = clamp(
-    Number(raw.medium_quality_score ?? process.env.EXECUTION_GUARD_MEDIUM_QUALITY_SCORE ?? 40),
+    Number(raw.medium_quality_score ?? process.env.EXECUTION_GUARD_MEDIUM_QUALITY_SCORE ?? 38),
     20,
     highQualityScore - 5
   );
@@ -397,23 +410,53 @@ function computeEntryQuality({
     expansion: 92,
     deterioration: 12
   }[entryLifecycleState] ?? 55;
+  const adjustedDeviationScore = softenComponentScore(
+    deviationScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.volatility
+  );
+  const adjustedVelocityScore = softenComponentScore(
+    velocityScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.direction
+  );
+  const adjustedAccelerationScore = softenComponentScore(
+    accelerationScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.impulse
+  );
+  const adjustedImbalanceScore = softenComponentScore(
+    imbalanceScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.direction
+  );
+  const adjustedFreshnessScore = softenComponentScore(
+    freshnessScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.context
+  );
+  const adjustedLifecycleScore = softenComponentScore(
+    lifecycleScore,
+    ENTRY_QUALITY_DEFICIT_MULTIPLIERS.context
+  );
 
   let score =
-    deviationScore * 0.24 +
-    velocityScore * 0.2 +
-    accelerationScore * 0.14 +
-    imbalanceScore * 0.18 +
-    freshnessScore * 0.14 +
-    lifecycleScore * 0.1;
+    adjustedDeviationScore * 0.24 +
+    adjustedVelocityScore * 0.2 +
+    adjustedAccelerationScore * 0.14 +
+    adjustedImbalanceScore * 0.18 +
+    adjustedFreshnessScore * 0.14 +
+    adjustedLifecycleScore * 0.1;
 
   const penalties = [];
   if (!snapshotFresh) {
-    score -= config.stale_snapshot_penalty_points;
-    penalties.push({ type: 'stale_snapshot', points: config.stale_snapshot_penalty_points });
+    const penalty = Number(
+      (config.stale_snapshot_penalty_points * ENTRY_QUALITY_DEFICIT_MULTIPLIERS.context).toFixed(2)
+    );
+    score -= penalty;
+    penalties.push({ type: 'stale_snapshot', points: penalty });
   }
   if (recentTradesWindow <= 0) {
-    score -= config.weak_snapshot_penalty_points;
-    penalties.push({ type: 'weak_snapshot', points: config.weak_snapshot_penalty_points });
+    const penalty = Number(
+      (config.weak_snapshot_penalty_points * ENTRY_QUALITY_DEFICIT_MULTIPLIERS.context).toFixed(2)
+    );
+    score -= penalty;
+    penalties.push({ type: 'weak_snapshot', points: penalty });
   }
   if (Number.isFinite(estimatedSlippagePct) && estimatedSlippagePct > config.max_estimated_slippage_pct) {
     const penalty = Math.min(

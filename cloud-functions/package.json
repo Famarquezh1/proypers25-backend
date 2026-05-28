@@ -1,0 +1,15 @@
+{
+  "name": "generate-spot-scans",
+  "version": "1.0.0",
+  "description": "Cloud Function to generate fresh spot opportunity scans",
+  "main": "generateSpotScans.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "engines": {
+    "node": "20"
+  }
+}
+
+
+
