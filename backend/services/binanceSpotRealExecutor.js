@@ -888,6 +888,20 @@ async function closeRealPosition(db, position, exitPrice, closeReason) {
             pnl_usdt: netPnlUsdt
         });
 
+        // Update balance: return capital from position back to available (add pnl if positive)
+        const balanceRef = db.collection('real_spot_config').doc('balance');
+        const currentBalance = await balanceRef.get();
+        const balData = currentBalance.data() || {};
+        const positionCapital = position.capital_usdt || 0;
+        const returnedCapital = positionCapital + netPnlUsdt;
+        
+        await balanceRef.update({
+            available_usdt: (balData.available_usdt || 0) + returnedCapital,
+            in_positions_usdt: Math.max(0, (balData.in_positions_usdt || 0) - positionCapital),
+            total_usdt: (balData.total_usdt || 561.47) + (netPnlUsdt > 0 ? netPnlUsdt : 0)
+        });
+        console.log(`[REAL_EXECUTOR] Capital returned: ${returnedCapital.toFixed(2)} USDT (original: ${positionCapital}, pnl: ${netPnlUsdt.toFixed(2)})`)
+
         // Create result record
         await db.collection(REAL_SPOT_RESULTS_COLLECTION).doc(resultId).set({
             id: resultId,
@@ -1335,7 +1349,7 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                             client_order_id: orderResult.clientOrderId || null,
                             status: 'REAL_OPEN',
                             entry_price: entryPrice,
-                            executed_quantity: orderResult.executedQty || 0,
+                            quantity: orderResult.executedQty || 0,
                             capital_usdt: config.max_position_usdt || 10,
                             take_profit_1_pct: Number(config.take_profit_1_pct || 5),
                             take_profit_2_pct: Number(config.take_profit_2_pct || 10),
@@ -1370,6 +1384,18 @@ async function runRealSpotExecutionCycle(db, options = {}) {
 
                         console.log(`[REAL_EXECUTOR] Position created: ${positionId}`);
                         console.log(`[REAL_EXECUTOR::FORENSIC] Snapshot saved - Score: ${positionData.execution_decision_snapshot?.score_at_execution || 'N/A'}, Threshold: ${positionData.execution_decision_snapshot?.min_score_required || 'N/A'}`);
+
+                        // Update balance: move capital from available to in_positions
+                        const balanceRef = db.collection('real_spot_config').doc('balance');
+                        const currentBalance = await balanceRef.get();
+                        const balData = currentBalance.data() || {};
+                        const positionCapital = config.max_position_usdt || 10;
+                        
+                        await balanceRef.update({
+                            available_usdt: Math.max(0, (balData.available_usdt || 0) - positionCapital),
+                            in_positions_usdt: (balData.in_positions_usdt || 0) + positionCapital
+                        });
+                        console.log(`[REAL_EXECUTOR] Capital tracked: ${positionCapital} USDT moved to position`);
 
                         openedCount = 1;
                         orderCreated = true;
