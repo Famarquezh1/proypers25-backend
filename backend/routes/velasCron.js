@@ -417,4 +417,34 @@ router.post('/cron/binance/spot-real-preflight', (req, res) => {
     })();
 });
 
+// DIAGNOSTIC ENDPOINT - No authentication required
+router.post('/internal/cron/binance/spot-real-execution-diagnostic', async(req, res) => {
+    const timestamp = new Date();
+    console.log(`[DIAGNOSTIC] Cloud Scheduler execution detected at ${timestamp.toISOString()}`);
+    
+    try {
+        // Log to Firestore
+        await db.collection('cron_diagnostic_logs').add({
+            timestamp: timestamp,
+            endpoint: '/internal/cron/binance/spot-real-execution-diagnostic',
+            headers: req.headers,
+            status: 'RECEIVED'
+        });
+        
+        res.json({
+            ok: true,
+            message: 'Cloud Scheduler is executing!',
+            timestamp: timestamp.toISOString(),
+            cron_secret_configured: !!process.env.CRON_SECRET,
+            current_secret: process.env.CRON_SECRET || 'RANDOM_GENERATED'
+        });
+    } catch (error) {
+        console.error('[DIAGNOSTIC] Error:', error.message);
+        res.status(500).json({
+            ok: false,
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
