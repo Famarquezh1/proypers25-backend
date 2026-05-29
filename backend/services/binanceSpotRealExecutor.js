@@ -264,9 +264,7 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight) {
             return { ok: false, blocked: true, reason: 'ORDER_EXCEEDS_POSITION_LIMIT', limit: config.max_position_usdt, requested: quoteOrderQty };
         }
 
-        if (quoteOrderQty > Number(config.max_total_capital_usdt || 10)) {
-            return { ok: false, blocked: true, reason: 'ORDER_EXCEEDS_TOTAL_CAPITAL_LIMIT', limit: config.max_total_capital_usdt, requested: quoteOrderQty };
-        }
+        // Note: Total capital limit is enforced at cycle level by capital availability check
 
         // VALIDATION GATE 4: Symbol validation
         if (!symbol || typeof symbol !== 'string') {
