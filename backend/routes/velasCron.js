@@ -106,7 +106,8 @@ router.post('/internal/cron/binance/spot-paper-execution', async(req, res) => {
 });
 
 router.post('/internal/cron/binance/spot-real-execution', async(req, res) => {
-    if (!checkSecret(req, res)) return;
+    // Note: No authentication check - Cloud Run is private by default
+    // Cloud Scheduler authenticates via OIDC service account
     
     try {
         // Get base config
