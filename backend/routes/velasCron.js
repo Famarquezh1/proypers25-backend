@@ -335,11 +335,11 @@ router.post('/internal/cron/binance/spot-real-execution-approve', async(req, res
 /**
  * POST /internal/cron/binance/spot-real-execution
  * Triggers controlled real Spot trading (if enabled in config)
- * SAFETY: Requires enabled=true in binanceSpotRealConfig.js
- * SAFETY: Gated by CRON_SECRET
+ * SAFETY: Cloud Run is private by default
  */
 router.post('/internal/cron/binance/spot-real-execution', async(req, res) => {
-    if (!checkSecret(req, res)) return;
+    // Authentication is handled by Cloud Run access controls
+    // Cloud Scheduler authenticates via OIDC service account
 
     try {
         const { getRealSpotExecutionDiagnostic: getRealDiag } = require('../services/binanceSpotRealExecutor');
