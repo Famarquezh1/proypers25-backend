@@ -1075,50 +1075,20 @@ async function findBestRealSpotCandidate(db, config) {
     }
 
     try {
-        // Get latest scan
-        const latestScanSnapshot = await db.collection(PAPER_SCANS_COLLECTION)
-            .orderBy('created_at', 'desc')
-            .limit(1)
-            .get();
-
-        if (latestScanSnapshot.empty) {
-            diagnostic.rejected_reasons.push('NO_SCAN_AVAILABLE');
-            return { candidate: null, diagnostic };
-        }
-
-        const latestScanDoc = latestScanSnapshot.docs[0];
-        const latestScan = latestScanDoc.data() || {};
-        const latestScanId = latestScan.scan_id || latestScanDoc.id;
-        const scanCreatedAt = parseDateLike(latestScan.created_at || latestScan.createdAt);
-        const scanAgeMinutes = scanCreatedAt ?
-            (Date.now() - scanCreatedAt.getTime()) / (60 * 1000) :
-            null;
-
-        diagnostic.latest_scan_id = latestScanId;
-        diagnostic.latest_scan_age_minutes = Number.isFinite(scanAgeMinutes) ?
-            Number(scanAgeMinutes.toFixed(2)) :
-            null;
-
-        // Check scan recency
-        diagnostic.recent_scan_ok = config.require_recent_scan === true ?
-            Number.isFinite(scanAgeMinutes) && scanAgeMinutes <= Number(config.max_scan_age_minutes || 0) :
-            true;
-
-        if (diagnostic.recent_scan_ok === false) {
-            diagnostic.rejected_reasons.push('SCAN_TOO_OLD');
-            return { candidate: null, diagnostic };
-        }
-
-        // Get candidates from latest scan
-        const candidateSnapshot = await db.collection(PAPER_CANDIDATES_COLLECTION)
-            .where('scan_id', '==', latestScanId)
+        // Get candidates from spot_opportunity_candidates (real-time collection)
+        const candidateSnapshot = await db.collection('spot_opportunity_candidates')
+            .orderBy('opportunityScore', 'desc')
+            .limit(100)
             .get();
 
         const candidates = candidateSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        
+        diagnostic.latest_scan_id = 'REAL_TIME_SPOT_SCAN';
+        diagnostic.latest_scan_age_minutes = 0;
 
         if (!candidates.length) {
             diagnostic.candidates_seen = 0;
-            diagnostic.rejected_reasons.push('NO_CANDIDATES_IN_LATEST_SCAN');
+            diagnostic.rejected_reasons.push('NO_CANDIDATES_AVAILABLE');
             return { candidate: null, diagnostic };
         }
 
@@ -1144,19 +1114,25 @@ async function findBestRealSpotCandidate(db, config) {
 
         diagnostic.candidates_after_score_filter = scoreFiltered.length;
 
-        // Filter by category
-        const categoryFiltered = scoreFiltered.filter((candidate) =>
-            Array.isArray(config.allowed_categories) && config.allowed_categories.includes(candidate.category)
-        );
+        // Filter by category (only if allowed_categories is configured)
+        let categoryFiltered = scoreFiltered;
+        if (Array.isArray(config.allowed_categories) && config.allowed_categories.length > 0) {
+            categoryFiltered = scoreFiltered.filter((candidate) =>
+                config.allowed_categories.includes(candidate.category)
+            );
+            
+            if (!categoryFiltered.length) {
+                diagnostic.candidates_after_category_filter = 0;
+                diagnostic.rejected_reasons.push('NO_CANDIDATES_MEET_CATEGORY');
 
-        if (!categoryFiltered.length) {
-            diagnostic.candidates_after_category_filter = 0;
-            diagnostic.rejected_reasons.push('NO_CANDIDATES_MEET_CATEGORY');
+                // Log near-miss opportunities for audit
+                await logNearMissOpportunities(db, scoreFiltered, config, 'NO_CANDIDATES_MEET_CATEGORY');
 
-            // Log near-miss opportunities for audit
-            await logNearMissOpportunities(db, scoreFiltered, config, 'NO_CANDIDATES_MEET_CATEGORY');
-
-            return { candidate: null, diagnostic };
+                return { candidate: null, diagnostic };
+            }
+        } else {
+            // No category filter configured, use all score-filtered candidates
+            categoryFiltered = scoreFiltered;
         }
 
         diagnostic.candidates_after_category_filter = categoryFiltered.length;
@@ -1209,7 +1185,7 @@ async function findBestRealSpotCandidate(db, config) {
             symbol: String(selected.symbol || '').toUpperCase(),
             score: Number(selected.opportunityScore || 0),
             category: selected.category || null,
-            scan_id: selected.scan_id || latestScanId,
+            scan_id: selected.scan_id || 'REAL_TIME_SPOT_SCAN',
             id: selected.id || null
         };
 
