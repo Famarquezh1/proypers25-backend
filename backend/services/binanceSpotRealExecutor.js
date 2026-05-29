@@ -1139,7 +1139,14 @@ async function findBestRealSpotCandidate(db, config) {
 
         // Filter by capital and position limits
         const exposure = await getRealSpotCapitalExposure(db);
-        const availableCapital = Math.max(0, Number(config.max_total_capital_usdt || 0) - Number(exposure.total || 0));
+        
+        // Get actual available capital from balance document
+        const balanceSnapshot = await db.collection('real_spot_config').doc('balance').get();
+        const balanceData = balanceSnapshot.data() || {};
+        const actualAvailableCapital = Number(balanceData.available_usdt || 0);
+        
+        // Use actual available capital, not the config limit
+        const availableCapital = actualAvailableCapital;
 
         // Check position limit
         const openSnapshot = await db.collection(REAL_SPOT_POSITIONS_COLLECTION)
@@ -1159,14 +1166,16 @@ async function findBestRealSpotCandidate(db, config) {
             return { candidate: null, diagnostic };
         }
 
+        // Get all open positions ONCE to check for symbol uniqueness
+        const openPosSnapshot = await db.collection(REAL_SPOT_POSITIONS_COLLECTION)
+            .where('status', '==', 'REAL_OPEN')
+            .get();
+        const openSymbols = new Set(openPosSnapshot.docs.map(doc => doc.data().symbol));
+
         // Filter candidates by symbol uniqueness (no open position for same symbol)
-        const capitalFiltered = [];
-        for (const candidate of categoryFiltered) {
-            const hasOpen = await hasOpenRealPosition(db, candidate.symbol);
-            if (!hasOpen) {
-                capitalFiltered.push(candidate);
-            }
-        }
+        const capitalFiltered = categoryFiltered.filter(candidate => 
+            !openSymbols.has(candidate.symbol)
+        );
 
         diagnostic.candidates_after_capital_filter = capitalFiltered.length;
 
