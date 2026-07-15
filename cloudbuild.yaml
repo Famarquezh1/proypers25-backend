@@ -29,7 +29,6 @@ steps:
           test -f /usr/src/app/routes/investmentsSummary.route.js
           test -f /usr/src/app/routes/admin.route.js
           grep -q "investments-dashboard" /usr/src/app/routes/investmentsSummary.route.js
-          grep -q "investments-dashboard" /usr/src/app/routes/admin.route.js
           grep -q "investmentsSummaryRoute" /usr/src/app/server.js
         '
 
@@ -61,6 +60,22 @@ steps:
       - 'server.js'
       - '--set-env-vars'
       - 'APP_COMMIT_SHA=${_IMAGE_TAG}'
+
+  - id: route-traffic-to-latest
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'update-traffic'
+      - 'proypers25-backend'
+      - '--project'
+      - '$PROJECT_ID'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--to-latest'
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
