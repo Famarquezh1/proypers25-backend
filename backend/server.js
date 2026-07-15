@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const cron = require("node-cron");
+const crypto = require("crypto");
 
 const consultaRoute = require("./routes/consulta.route");
 const proyeccionRoute = require("./routes/proyeccion.route");
@@ -43,18 +44,55 @@ const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(
 // 🔁 Firestore config
 const db = require('./firebase-admin-config');
 
-
 app.use(cors());
 app.use(bodyParser.json());
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Cron-Secret, X-Investments-Secret');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
   next();
+});
+
+function safeSecretEquals(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string' || !left || !right) return false;
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Security boundary for routes capable of touching the real Binance account.
+// This runs before all routers, including legacy duplicate route declarations.
+app.use((req, res, next) => {
+  const sensitivePaths = new Set([
+    '/internal/cron/binance/spot-real-execution',
+    '/internal/cron/binance/spot-real-execution-dryrun',
+    '/internal/cron/binance/spot-real-execution-approve',
+    '/cron/binance/spot-real-preflight'
+  ]);
+
+  if (req.path === '/internal/cron/binance/spot-real-execution-diagnostic') {
+    return res.status(410).json({
+      ok: false,
+      error: 'Diagnostic endpoint disabled for security'
+    });
+  }
+
+  if (!sensitivePaths.has(req.path)) return next();
+
+  if (!CRON_SECRET) {
+    return res.status(503).json({ ok: false, error: 'CRON_SECRET not configured' });
+  }
+
+  const supplied = req.header('x-cron-secret');
+  if (!safeSecretEquals(supplied, CRON_SECRET)) {
+    return res.status(403).json({ ok: false, error: 'Forbidden' });
+  }
+
+  return next();
 });
 
 app.use("/api/consultar", consultaRoute);
@@ -178,6 +216,3 @@ console.log('📡 Escuchando en el puerto', PORT);
 app.listen(PORT, () => {
   console.log(`✅ API iniciada en http://localhost:${PORT}`);
 });
-
-
-
