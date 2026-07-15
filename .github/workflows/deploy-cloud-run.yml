@@ -44,6 +44,14 @@ jobs:
             --substitutions=_IMAGE_TAG=${GITHUB_SHA} \
             .
 
+      - name: Inspect deployed Cloud Run revision
+        run: |
+          gcloud run services describe proypers25-backend \
+            --project=proypers2025 \
+            --region=southamerica-west1 \
+            --platform=managed \
+            --format='yaml(status.url,status.latestReadyRevisionName,status.traffic,spec.template.spec.containers[0].image,spec.template.spec.containers[0].command,spec.template.spec.containers[0].args,spec.template.spec.containers[0].env)'
+
       - name: Verify Cloud Run service
         run: |
           URL=$(gcloud run services describe proypers25-backend \
@@ -52,4 +60,10 @@ jobs:
             --platform=managed \
             --format="value(status.url)")
           echo "Cloud Run URL: ${URL}"
-          curl --fail --retry 8 --retry-delay 10 "${URL}/investments-dashboard" >/dev/null
+          echo "--- /__version ---"
+          curl --silent --show-error --location --retry 8 --retry-delay 10 --write-out "\nHTTP %{http_code}\n" "${URL}/__version"
+          echo "--- /investments-dashboard ---"
+          curl --silent --show-error --location --retry 8 --retry-delay 10 --write-out "\nHTTP %{http_code}\n" "${URL}/investments-dashboard" -o /tmp/dashboard.html
+          head -c 300 /tmp/dashboard.html || true
+          echo
+          grep -q "Proypers25" /tmp/dashboard.html
