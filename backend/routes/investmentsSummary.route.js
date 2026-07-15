@@ -6,9 +6,8 @@ const { getBinanceSpotCredentials } = require('../lib/secretManager');
 
 const router = express.Router();
 
-function validateSummarySecret(req, res, next) {
-  const supplied = req.headers['x-investments-secret'] || req.headers['x-cron-secret'];
-  const expected = process.env.INVESTMENTS_SUMMARY_SECRET || process.env.CRON_SECRET;
+const OPEN_POSITIONS_COLLECTION = 'real_spot_positions';
+const RESULTS_COLLECTION = 'real_spot_execution_results';
 
-  if (!expected) {
-    return res.status(503).json
+function validateSummarySecret(req, res, next) {
+  const supplied = req.headers['x-investments-secret'] || req.headers['x-cron
