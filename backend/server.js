@@ -11,6 +11,7 @@ const proyeccionRoute = require("./routes/proyeccion.route");
 const quantumRoutes = require('./routes/quantum.route');
 const inversionRoute = require('./routes/inversion.route');
 const cronRoute = require('./routes/cron.route');
+const controlledRealSpotRoute = require('./routes/controlledRealSpot.route');
 const velasCronRoutes = require('./routes/velasCron');
 const impulseSchedulerRoute = require('./routes/impulseSchedulerRoute');
 const { warmExchangeInfoCache } = require('./lib/binanceFuturesExecutor');
@@ -41,7 +42,6 @@ const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(
   Number(process.env.EXCHANGE_INFO_WARMUP_INTERVAL_MS || 15 * 60 * 1000)
 );
 
-// 🔁 Firestore config
 const db = require('./firebase-admin-config');
 
 app.use(cors());
@@ -51,9 +51,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Cron-Secret, X-Investments-Secret');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
@@ -64,34 +62,23 @@ function safeSecretEquals(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// Security boundary for routes capable of touching the real Binance account.
-// This runs before all routers, including legacy duplicate route declarations.
 app.use((req, res, next) => {
   const sensitivePaths = new Set([
     '/internal/cron/binance/spot-real-execution',
+    '/internal/cron/binance/spot-real-exit-preview',
     '/internal/cron/binance/spot-real-execution-dryrun',
     '/internal/cron/binance/spot-real-execution-approve',
     '/cron/binance/spot-real-preflight'
   ]);
 
   if (req.path === '/internal/cron/binance/spot-real-execution-diagnostic') {
-    return res.status(410).json({
-      ok: false,
-      error: 'Diagnostic endpoint disabled for security'
-    });
+    return res.status(410).json({ ok: false, error: 'Diagnostic endpoint disabled for security' });
   }
-
   if (!sensitivePaths.has(req.path)) return next();
-
-  if (!CRON_SECRET) {
-    return res.status(503).json({ ok: false, error: 'CRON_SECRET not configured' });
-  }
-
-  const supplied = req.header('x-cron-secret');
-  if (!safeSecretEquals(supplied, CRON_SECRET)) {
+  if (!CRON_SECRET) return res.status(503).json({ ok: false, error: 'CRON_SECRET not configured' });
+  if (!safeSecretEquals(req.header('x-cron-secret'), CRON_SECRET)) {
     return res.status(403).json({ ok: false, error: 'Forbidden' });
   }
-
   return next();
 });
 
@@ -107,19 +94,16 @@ app.use('/api/validacion', validacionRoute);
 console.log('[Server] Registering deep health router...');
 app.use('/api', createDeepHealthRouter(db));
 console.log('[Server] Deep health router registered');
+// Mounted before the legacy cron router so the controlled implementation
+// owns the real execution path and the duplicate legacy handlers are bypassed.
+app.use('/', controlledRealSpotRoute);
 app.use('/', velasCronRoutes);
 app.use('/', impulseSchedulerRoute);
 app.use('/', adminRoute);
 
-// 404 handler for debugging
 app.use((req, res) => {
   console.error('[404] Unhandled route:', req.method, req.path);
-  res.status(404).json({
-    error: 'Route not found',
-    method: req.method,
-    path: req.path,
-    timestamp: new Date()
-  });
+  res.status(404).json({ error: 'Route not found', method: req.method, path: req.path, timestamp: new Date() });
 });
 
 if (EXCHANGE_INFO_WARMUP_ENABLED) {
@@ -135,29 +119,22 @@ if (EXCHANGE_INFO_WARMUP_ENABLED) {
   setInterval(() => warmup('interval'), EXCHANGE_INFO_WARMUP_INTERVAL_MS);
 }
 
-// 📅 Verificador de horario hábil (mercado NY)
 function esHorarioHabil() {
   const ahoraUTC = new Date();
   const ahoraNY = new Date(ahoraUTC.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-
-  const dia = ahoraNY.getDay(); // 0 = domingo, 6 = sábado
+  const dia = ahoraNY.getDay();
   const hora = ahoraNY.getHours();
   const minutos = ahoraNY.getMinutes();
-
   const dentroDeHorario = (hora > 9 || (hora === 9 && minutos >= 30)) && (hora < 16);
-
   return dia >= 1 && dia <= 5 && dentroDeHorario;
 }
 
-// 🧠 Validación de autonómas (una vez al día)
 (async () => {
   try {
     const docRef = db.collection('configuracion').doc('ultimaValidacionAutonoma');
     const doc = await docRef.get();
-
     const hoy = new Date().toISOString().split('T')[0];
     const ultimaFecha = doc.exists ? doc.data().fecha : null;
-
     if (ultimaFecha !== hoy) {
       console.log("🧠 Ejecutando validación de autonómas (no se ha ejecutado hoy)");
       await validarAutonomas();
@@ -170,29 +147,25 @@ function esHorarioHabil() {
   }
 })();
 
-// 🧠 Entrenamiento automático cada hora (solo si mercado abierto)
 cron.schedule('0 * * * *', async () => {
   if (!esHorarioHabil()) {
     console.log('⏳ Entrenamiento LSTM saltado: fuera de horario hábil.');
     return;
   }
-
   console.log('🔁 Ejecutando entrenamiento y autoaprendizaje...');
   try {
-    await entrenarLSTM('MSFT', 50); // Puedes cambiar o parametrizar el símbolo
+    await entrenarLSTM('MSFT', 50);
     await ejecutarAutoaprendizaje();
   } catch (error) {
     console.error('❌ Error durante entrenamiento/autoaprendizaje:', error);
   }
 });
 
-// 🧠 Entrenamiento múltiple por símbolo cada hora (si mercado abierto)
 cron.schedule('15 * * * *', async () => {
   if (!esHorarioHabil()) {
     console.log('⏳ Entrenamiento múltiple saltado: fuera de horario hábil.');
     return;
   }
-
   console.log('🧠 Entrenamiento múltiple iniciado...');
   try {
     await entrenamientoMultiple();
@@ -212,7 +185,4 @@ cron.schedule('0 5 * * *', async () => {
 });
 
 console.log('📡 Escuchando en el puerto', PORT);
-
-app.listen(PORT, () => {
-  console.log(`✅ API iniciada en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ API iniciada en http://localhost:${PORT}`));
