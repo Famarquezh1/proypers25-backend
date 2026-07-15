@@ -41,14 +41,15 @@ jobs:
           gcloud builds submit \
             --project=proypers2025 \
             --config=cloudbuild.yaml \
+            --substitutions=_IMAGE_TAG=${GITHUB_SHA} \
             .
 
       - name: Verify Cloud Run service
         run: |
-          gcloud run services describe proypers25-backend \
+          URL=$(gcloud run services describe proypers25-backend \
             --project=proypers2025 \
             --region=southamerica-west1 \
             --platform=managed \
-            --format="value(status.url)"
-
-          
+            --format="value(status.url)")
+          echo "Cloud Run URL: ${URL}"
+          curl --fail --retry 8 --retry-delay 10 "${URL}/investments-dashboard" >/dev/null
