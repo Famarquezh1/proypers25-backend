@@ -1,0 +1,80 @@
+name: Cleanup Artifact Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: "Borrar realmente imágenes antiguas (false = simulación)"
+        required: true
+        default: false
+        type: boolean
+      keep:
+        description: "Cantidad de imágenes más recientes que se conservarán"
+        required: true
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Keep latest backend images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: proypers2025
+
+      - name: List and optionally delete old images
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          KEEP: ${{ inputs.keep }}
+          IMAGE: southamerica-west1-docker.pkg.dev/proypers2025/backend-repo/backend-image
+        run: |
+          set -euo pipefail
+          if ! [[ "$KEEP" =~ ^[0-9]+$ ]] || [ "$KEEP" -lt 2 ]; then
+            echo "KEEP debe ser un número igual o superior a 2."
+            exit 1
+          fi
+
+          gcloud artifacts docker images list "$IMAGE" \
+            --project=proypers2025 \
+            --include-tags \
+            --format=json > /tmp/images.json
+
+          jq -r 'sort_by(.updateTime) | reverse | .[] | [.updateTime,.version,(.tags // [] | join(","))] | @tsv' /tmp/images.json
+
+          mapfile -t DIGESTS < <(jq -r 'sort_by(.updateTime) | reverse | .[].version' /tmp/images.json)
+          TOTAL=${#DIGESTS[@]}
+          echo "Total de versiones: $TOTAL"
+          echo "Se conservarán las $KEEP más recientes."
+
+          if [ "$TOTAL" -le "$KEEP" ]; then
+            echo "No hay versiones antiguas para eliminar."
+            exit 0
+          fi
+
+          for ((i=KEEP; i<TOTAL; i++)); do
+            DIGEST="${DIGESTS[$i]}"
+            TARGET="${IMAGE}@${DIGEST}"
+            if [ "$EXECUTE" = "true" ]; then
+              echo "Eliminando $TARGET"
+              gcloud artifacts docker images delete "$TARGET" \
+                --project=proypers2025 \
+                --delete-tags \
+                --quiet
+            else
+              echo "SIMULACIÓN: se eliminaría $TARGET"
+            fi
+          done
+
+          if [ "$EXECUTE" != "true" ]; then
+            echo "Simulación terminada. Ejecuta nuevamente con execute=true para borrar."
+          fi
