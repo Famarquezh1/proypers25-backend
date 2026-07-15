@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const db = require('../firebase-admin-config');
 const { getRealSpotConfig, runRealSpotExecutionCycle } = require('../services/binanceSpotRealExecutor');
 const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/controlledSpotExitExecutor');
+const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 
 const router = express.Router();
 
@@ -26,17 +27,29 @@ function requireCronSecret(req, res, next) {
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAt = Date.now();
   try {
-    const config = await getRealSpotConfig(db);
+    // Exits are evaluated first using the current configuration so an open
+    // position can still be protected even when new entries are later halted.
+    let config = await getRealSpotConfig(db);
     const exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
 
     const openAfterExit = await db.collection('real_spot_positions')
       .where('status', '==', 'REAL_OPEN')
       .get();
 
+    // Recalculate autonomous risk only before considering another BUY.
+    // This controller keeps the initial rollout at one Spot position and
+    // US$10, and automatically activates the kill switch after a bad streak.
+    const autonomy = await enforceAutonomousSafety(db, config);
+    config = await getRealSpotConfig(db);
+
     let entries = {
       ok: true,
       skipped: true,
-      reason: openAfterExit.size > 0 ? 'OPEN_POSITION_REMAINS' : 'ENTRY_NOT_REQUESTED'
+      reason: openAfterExit.size > 0
+        ? 'OPEN_POSITION_REMAINS'
+        : autonomy.should_halt
+          ? autonomy.halt_reason
+          : 'ENTRY_NOT_REQUESTED'
     };
 
     // The legacy cycle is only allowed to run when there are no open positions.
@@ -46,13 +59,18 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     if (
       openAfterExit.size === 0 &&
       exitFailures === 0 &&
+      autonomy.should_halt !== true &&
       config.enabled === true &&
       config.kill_switch !== true &&
-      config.new_entries_enabled === true
+      config.new_entries_enabled === true &&
+      config.auto_order_execution === true &&
+      config.real_sells_enabled === true &&
+      config.spot_only === true
     ) {
       entries = await runRealSpotExecutionCycle(db, {
         ...req.body,
-        controlled_exit_completed: true
+        controlled_exit_completed: true,
+        autonomy_snapshot: autonomy
       });
     }
 
@@ -63,6 +81,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       futures: false,
       margin: false,
       leverage: false,
+      autonomy,
       exits,
       entries,
       open_positions_after_cycle: openAfterExit.size,
