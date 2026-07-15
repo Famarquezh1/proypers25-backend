@@ -1,48 +1,69 @@
 substitutions:
   _IMAGE_TAG: manual
+  _REGION: southamerica-west1
+  _REPOSITORY: backend-repo
+  _IMAGE: backend-image
 
 steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      [
-        'build',
-        '--pull',
-        '--no-cache',
-        '-t',
-        'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}',
-        '.'
-      ]
+  - id: build-backend-image
+    name: 'gcr.io/cloud-builders/docker'
     dir: backend
+    args:
+      - 'build'
+      - '--pull'
+      - '--no-cache'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
+      - '.'
 
-  - name: 'gcr.io/cloud-builders/docker'
+  - id: validate-image-contents
+    name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        docker run --rm \
-          southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG} \
-          sh -c "test -f /usr/src/app/server.js && test -f /usr/src/app/routes/investmentsSummary.route.js && grep -q 'investments-dashboard' /usr/src/app/server.js && grep -q 'investments-dashboard' /usr/src/app/routes/investmentsSummary.route.js"
+        set -eu
+        IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}"
+        docker run --rm --entrypoint sh "$IMAGE" -c '
+          test -f /usr/src/app/server.js
+          test -f /usr/src/app/routes/investmentsSummary.route.js
+          test -f /usr/src/app/routes/admin.route.js
+          grep -q "investments-dashboard" /usr/src/app/routes/investmentsSummary.route.js
+          grep -q "investments-dashboard" /usr/src/app/routes/admin.route.js
+          grep -q "investmentsSummaryRoute" /usr/src/app/server.js
+        '
 
-  - name: 'gcr.io/cloud-builders/docker'
+  - id: push-backend-image
+    name: 'gcr.io/cloud-builders/docker'
     args:
-      ['push', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}']
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - id: deploy-cloud-run
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
-      [
-        'run', 'deploy', 'proypers25-backend',
-        '--image', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}',
-        '--platform', 'managed',
-        '--region', 'southamerica-west1',
-        '--allow-unauthenticated',
-        '--command', 'node',
-        '--args', 'server.js',
-        '--set-env-vars', 'APP_COMMIT_SHA=${_IMAGE_TAG}'
-      ]
+      - 'run'
+      - 'deploy'
+      - 'proypers25-backend'
+      - '--project'
+      - '$PROJECT_ID'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - '${_REGION}'
+      - '--allow-unauthenticated'
+      - '--command'
+      - 'node'
+      - '--args'
+      - 'server.js'
+      - '--set-env-vars'
+      - 'APP_COMMIT_SHA=${_IMAGE_TAG}'
 
 images:
-  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
 
 options:
   logging: CLOUD_LOGGING_ONLY
