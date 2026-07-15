@@ -15,6 +15,15 @@ steps:
     dir: backend
 
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        docker run --rm \
+          southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG} \
+          sh -c "test -f /usr/src/app/server.js && test -f /usr/src/app/routes/investmentsSummary.route.js && grep -q 'investments-dashboard' /usr/src/app/server.js && grep -q 'investments-dashboard' /usr/src/app/routes/investmentsSummary.route.js"
+
+  - name: 'gcr.io/cloud-builders/docker'
     args:
       ['push', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}']
 
