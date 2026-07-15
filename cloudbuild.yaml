@@ -1,40 +1,37 @@
+substitutions:
+  _IMAGE_TAG: manual
+
 steps:
-  # Paso 1: Construir imagen Docker y etiquetarla para Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
         'build',
+        '--pull',
+        '--no-cache',
         '-t',
-        'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest',
+        'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}',
         '.'
       ]
     dir: backend
 
-  # Paso 2: Subir imagen a Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
-      ['push', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest']
+      ['push', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}']
 
-  # Paso 3: Desplegar a Cloud Run desde Artifact Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       [
         'run', 'deploy', 'proypers25-backend',
-        '--image', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest',
+        '--image', 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}',
         '--platform', 'managed',
         '--region', 'southamerica-west1',
-        '--allow-unauthenticated'
+        '--allow-unauthenticated',
+        '--set-env-vars', 'APP_COMMIT_SHA=${_IMAGE_TAG}'
       ]
 
 images:
-  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:latest'
+  - 'southamerica-west1-docker.pkg.dev/$PROJECT_ID/backend-repo/backend-image:${_IMAGE_TAG}'
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
-
-
-
-
-
