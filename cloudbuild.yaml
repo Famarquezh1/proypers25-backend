@@ -27,6 +27,8 @@ steps:
         '--platform', 'managed',
         '--region', 'southamerica-west1',
         '--allow-unauthenticated',
+        '--command', 'node',
+        '--args', 'server.js',
         '--set-env-vars', 'APP_COMMIT_SHA=${_IMAGE_TAG}'
       ]
 
