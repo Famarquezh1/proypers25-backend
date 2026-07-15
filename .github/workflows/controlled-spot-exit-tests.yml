@@ -1,0 +1,49 @@
+name: Controlled Spot Exit Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/routes/controlledRealSpot.route.js"
+      - "backend/tests/controlledSpotExitExecutor.test.js"
+      - "backend/server.js"
+      - ".github/workflows/controlled-spot-exit-tests.yml"
+  push:
+    branches:
+      - feat/controlled-real-spot-exits
+    paths:
+      - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/routes/controlledRealSpot.route.js"
+      - "backend/tests/controlledSpotExitExecutor.test.js"
+      - "backend/server.js"
+      - ".github/workflows/controlled-spot-exit-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Syntax checks
+        run: |
+          node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/routes/controlledRealSpot.route.js
+          node --check backend/server.js
+
+      - name: Controlled Spot exit unit tests
+        run: node backend/tests/controlledSpotExitExecutor.test.js
