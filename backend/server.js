@@ -12,6 +12,7 @@ const quantumRoutes = require('./routes/quantum.route');
 const inversionRoute = require('./routes/inversion.route');
 const cronRoute = require('./routes/cron.route');
 const controlledRealSpotRoute = require('./routes/controlledRealSpot.route');
+const investmentsSummaryRoute = require('./routes/investmentsSummary.route');
 const velasCronRoutes = require('./routes/velasCron');
 const impulseSchedulerRoute = require('./routes/impulseSchedulerRoute');
 const { warmExchangeInfoCache } = require('./lib/binanceFuturesExecutor');
@@ -94,8 +95,7 @@ app.use('/api/validacion', validacionRoute);
 console.log('[Server] Registering deep health router...');
 app.use('/api', createDeepHealthRouter(db));
 console.log('[Server] Deep health router registered');
-// Mounted before the legacy cron router so the controlled implementation
-// owns the real execution path and the duplicate legacy handlers are bypassed.
+app.use('/', investmentsSummaryRoute);
 app.use('/', controlledRealSpotRoute);
 app.use('/', velasCronRoutes);
 app.use('/', impulseSchedulerRoute);
