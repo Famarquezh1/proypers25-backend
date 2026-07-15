@@ -24,7 +24,7 @@ steps:
       - |
         set -eu
         IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}"
-        docker run --rm --entrypoint sh "$IMAGE" -c '
+        docker run --rm --entrypoint sh "$$IMAGE" -c '
           test -f /usr/src/app/server.js
           test -f /usr/src/app/routes/investmentsSummary.route.js
           test -f /usr/src/app/routes/admin.route.js
