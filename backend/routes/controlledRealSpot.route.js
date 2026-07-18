@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const db = require('../firebase-admin-config');
 const { getRealSpotConfig, runRealSpotExecutionCycle } = require('../services/binanceSpotRealExecutor');
 const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/controlledSpotExitExecutor');
+const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 
 const router = express.Router();
@@ -27,8 +28,11 @@ function requireCronSecret(req, res, next) {
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAt = Date.now();
   try {
-    // Exits are evaluated first using the current configuration so an open
-    // position can still be protected even when new entries are later halted.
+    // Binance is the source of truth. Reconcile manual conversions and balances
+    // before any automatic SELL or BUY is considered.
+    const reconciliation = await reconcileRealSpotAccount(db);
+
+    // Exits are evaluated before entries so TP, SL and timeout remain protective.
     let config = await getRealSpotConfig(db);
     const exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
 
@@ -37,26 +41,31 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       .get();
 
     // Recalculate autonomous risk only before considering another BUY.
-    // This controller keeps the initial rollout at one Spot position and
-    // US$10, and automatically activates the kill switch after a bad streak.
     const autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
+
+    const reconciliationBlocksEntry = reconciliation.account_consistent !== true ||
+      reconciliation.entries_blocked === true ||
+      config.reconciliation_required === true ||
+      config.account_consistent === false;
 
     let entries = {
       ok: true,
       skipped: true,
-      reason: openAfterExit.size > 0
-        ? 'OPEN_POSITION_REMAINS'
-        : autonomy.should_halt
-          ? autonomy.halt_reason
-          : 'ENTRY_NOT_REQUESTED'
+      reason: reconciliationBlocksEntry
+        ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED'
+        : openAfterExit.size > 0
+          ? 'OPEN_POSITION_REMAINS'
+          : autonomy.should_halt
+            ? autonomy.halt_reason
+            : 'ENTRY_NOT_REQUESTED'
     };
 
-    // The legacy cycle is only allowed to run when there are no open positions.
-    // This prevents its old placeholder exit code from closing Firestore positions
-    // without a confirmed Binance SELL order.
+    // The legacy cycle may create a BUY only after the controlled exit executor
+    // and reconciliation both completed successfully. It never handles exits here.
     const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
     if (
+      reconciliationBlocksEntry === false &&
       openAfterExit.size === 0 &&
       exitFailures === 0 &&
       autonomy.should_halt !== true &&
@@ -65,22 +74,29 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       config.new_entries_enabled === true &&
       config.auto_order_execution === true &&
       config.real_sells_enabled === true &&
-      config.spot_only === true
+      config.spot_only === true &&
+      config.futures_allowed !== true &&
+      config.margin_allowed !== true &&
+      config.leverage_allowed !== true &&
+      config.withdrawals_allowed === false
     ) {
       entries = await runRealSpotExecutionCycle(db, {
         ...req.body,
         controlled_exit_completed: true,
+        reconciliation_completed: true,
         autonomy_snapshot: autonomy
       });
     }
 
     return res.json({
-      ok: exits.ok !== false && entries.ok !== false,
+      ok: reconciliation.ok !== false && exits.ok !== false && entries.ok !== false,
       real_mode: true,
       spot_only: true,
       futures: false,
       margin: false,
       leverage: false,
+      withdrawals: false,
+      reconciliation,
       autonomy,
       exits,
       entries,
@@ -95,6 +111,21 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       details: error.message,
       duration_ms: Date.now() - startedAt
     });
+  }
+});
+
+router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, async (req, res) => {
+  try {
+    const reconciliation = await reconcileRealSpotAccount(db);
+    return res.json({
+      ok: reconciliation.ok !== false,
+      real_mode: true,
+      spot_only: true,
+      no_order_created: true,
+      reconciliation
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'SPOT_RECONCILIATION_FAILED', details: error.message });
   }
 });
 
