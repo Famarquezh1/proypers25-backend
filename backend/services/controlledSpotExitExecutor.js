@@ -7,13 +7,18 @@ const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
 const BALANCE_DOC = 'real_spot_config/balance';
-const SAFETY_VERSION = 'controlled_real_spot_exit_v2';
+const SAFETY_VERSION = 'controlled_real_spot_exit_v3_adaptive';
 
 function parseDate(value) {
   if (!value) return null;
   if (typeof value.toDate === 'function') return value.toDate();
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function clamp(value, min, max) {
+  const numeric = Number(value);
+  return Math.min(max, Math.max(min, Number.isFinite(numeric) ? numeric : min));
 }
 
 function assertExitConfig(config) {
@@ -101,14 +106,108 @@ async function getSellableQuantity(symbol, requestedQuantity) {
   return quantity;
 }
 
+function trueRange(previousClose, candle) {
+  return Math.max(
+    Number(candle.high) - Number(candle.low),
+    Math.abs(Number(candle.high) - Number(previousClose)),
+    Math.abs(Number(candle.low) - Number(previousClose))
+  );
+}
+
+function calculateAtrPct(rows, period = 14) {
+  if (!Array.isArray(rows) || rows.length <= period) return null;
+  const ranges = [];
+  for (let index = rows.length - period; index < rows.length; index += 1) {
+    ranges.push(trueRange(rows[index - 1].close, rows[index]));
+  }
+  const atr = ranges.reduce((sum, value) => sum + value, 0) / ranges.length;
+  const close = Number(rows[rows.length - 1].close);
+  return close > 0 ? atr / close : null;
+}
+
+async function fetchRecentKlines(symbol) {
+  const rows = await publicGet('/api/v3/klines', { symbol, interval: '5m', limit: 50 });
+  return (rows || []).map((row) => ({
+    open: Number(row[1]),
+    high: Number(row[2]),
+    low: Number(row[3]),
+    close: Number(row[4])
+  })).filter((row) => row.close > 0 && row.high > 0 && row.low > 0);
+}
+
+function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Date()) {
+  const entry = Number(position.entry_price || 0);
+  if (!(entry > 0) || !(currentPrice > 0)) return null;
+
+  const normalizedAtr = clamp(atrPct || Number(position.entry_atr_pct || 0.01), 0.003, 0.05);
+  const gainPct = (currentPrice / entry) - 1;
+  const highest = Math.max(Number(position.highest_price || entry), currentPrice);
+  const originalSl = Number(position.sl_price || entry * (1 - clamp(normalizedAtr, 0.005, 0.03)));
+  const originalTp = Number(position.tp1_price || entry * (1 + clamp(normalizedAtr * 2, 0.008, 0.06)));
+
+  const breakEvenTrigger = clamp(normalizedAtr * 1.2, 0.006, 0.025);
+  const trailingTrigger = clamp(normalizedAtr * 1.8, 0.01, 0.04);
+  const trailingDistance = clamp(normalizedAtr * 1.1, 0.006, 0.03);
+
+  let effectiveSl = originalSl;
+  let mode = 'BASE';
+  if (gainPct >= breakEvenTrigger) {
+    effectiveSl = Math.max(effectiveSl, entry * 1.0015);
+    mode = 'BREAK_EVEN';
+  }
+  if (gainPct >= trailingTrigger) {
+    effectiveSl = Math.max(effectiveSl, highest * (1 - trailingDistance));
+    mode = 'TRAILING';
+  }
+
+  const openedAt = parseDate(position.opened_at) || now;
+  const ageMinutes = Math.max(0, (now.getTime() - openedAt.getTime()) / 60000);
+  const timeoutMinutes = clamp(Math.round(180 + (normalizedAtr * 10000)), 180, 720);
+  const adaptiveTimeoutAt = new Date(openedAt.getTime() + timeoutMinutes * 60000);
+  const existingTimeout = parseDate(position.timeout_at);
+  const effectiveTimeoutAt = existingTimeout && existingTimeout < adaptiveTimeoutAt ? existingTimeout : adaptiveTimeoutAt;
+
+  return {
+    highest_price: highest,
+    atr_pct: normalizedAtr,
+    effective_sl_price: effectiveSl,
+    effective_tp_price: originalTp,
+    effective_timeout_at: effectiveTimeoutAt.toISOString(),
+    protection_mode: mode,
+    gain_pct: gainPct,
+    age_minutes: ageMinutes,
+    break_even_trigger_pct: breakEvenTrigger,
+    trailing_trigger_pct: trailingTrigger,
+    trailing_distance_pct: trailingDistance
+  };
+}
+
 function determineExit(position, currentPrice, now = new Date()) {
-  const tp = Number(position.tp1_price || 0);
-  const sl = Number(position.sl_price || 0);
-  const timeoutAt = parseDate(position.timeout_at);
+  const tp = Number(position.effective_tp_price || position.tp1_price || 0);
+  const sl = Number(position.effective_sl_price || position.sl_price || 0);
+  const timeoutAt = parseDate(position.effective_timeout_at || position.timeout_at);
+  if (currentPrice > 0 && sl > 0 && currentPrice <= sl) {
+    if (position.protection_mode === 'TRAILING') return 'TRAILING_STOP';
+    if (position.protection_mode === 'BREAK_EVEN') return 'BREAK_EVEN_STOP';
+    return 'STOP_LOSS';
+  }
   if (currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
-  if (currentPrice > 0 && sl > 0 && currentPrice <= sl) return 'STOP_LOSS';
   if (timeoutAt && timeoutAt.getTime() <= now.getTime()) return 'TIMEOUT';
   return null;
+}
+
+async function persistAdaptiveProtection(ref, adaptive) {
+  if (!adaptive) return;
+  await ref.set({
+    highest_price: adaptive.highest_price,
+    atr_pct_runtime: adaptive.atr_pct,
+    effective_sl_price: adaptive.effective_sl_price,
+    effective_tp_price: adaptive.effective_tp_price,
+    effective_timeout_at: adaptive.effective_timeout_at,
+    protection_mode: adaptive.protection_mode,
+    adaptive_exit_updated_at: new Date().toISOString(),
+    exit_safety_version: SAFETY_VERSION
+  }, { merge: true });
 }
 
 async function claimPosition(db, ref, reason, price) {
@@ -143,13 +242,8 @@ async function releaseClaim(ref, claimId, error) {
 
 async function findExistingSellOrder(symbol, clientOrderId) {
   try {
-    const order = await privateRequest('GET', '/api/v3/order', {
-      symbol,
-      origClientOrderId: clientOrderId
-    });
-    if (String(order.side || '').toUpperCase() !== 'SELL') {
-      throw new Error('EXISTING_ORDER_IS_NOT_SELL');
-    }
+    const order = await privateRequest('GET', '/api/v3/order', { symbol, origClientOrderId: clientOrderId });
+    if (String(order.side || '').toUpperCase() !== 'SELL') throw new Error('EXISTING_ORDER_IS_NOT_SELL');
     return order;
   } catch (error) {
     if (Number(error.code) === -2013) return null;
@@ -170,8 +264,6 @@ async function executeMarketSell(symbol, quantity, clientOrderId) {
       newOrderRespType: 'FULL'
     });
   } catch (error) {
-    // A network/API timeout can happen after Binance accepted the order. Querying
-    // by the deterministic client id prevents a second sell on the next cycle.
     const recovered = await findExistingSellOrder(symbol, clientOrderId);
     if (recovered) return recovered;
     throw error;
@@ -276,16 +368,30 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
   const snapshot = await db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get();
   const outcomes = [];
   for (const doc of snapshot.docs) {
-    const position = { id: doc.id, ...doc.data() };
+    let position = { id: doc.id, ...doc.data() };
     const symbol = String(position.symbol || '').toUpperCase();
     try {
       const ticker = options.currentPrices?.[symbol]
         ? { price: options.currentPrices[symbol] }
         : await publicGet('/api/v3/ticker/price', { symbol });
       const currentPrice = Number(ticker.price || 0);
+      const klines = options.klines?.[symbol] || await fetchRecentKlines(symbol);
+      const atrPct = calculateAtrPct(klines);
+      const adaptive = resolveAdaptiveProtection(position, currentPrice, atrPct);
+      await persistAdaptiveProtection(doc.ref, adaptive);
+      position = { ...position, ...(adaptive || {}) };
+
       const reason = determineExit(position, currentPrice);
       if (!reason) {
-        outcomes.push({ symbol, action: 'HOLD', current_price: currentPrice });
+        outcomes.push({
+          symbol,
+          action: 'HOLD',
+          current_price: currentPrice,
+          protection_mode: adaptive?.protection_mode || 'BASE',
+          effective_sl_price: adaptive?.effective_sl_price || position.sl_price || null,
+          effective_tp_price: adaptive?.effective_tp_price || position.tp1_price || null,
+          effective_timeout_at: adaptive?.effective_timeout_at || position.timeout_at || null
+        });
         continue;
       }
       const claimed = await claimPosition(db, doc.ref, reason, currentPrice);
@@ -313,15 +419,18 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
     }
   }
 
+  const failures = outcomes.filter((item) => item.action.endsWith('FAILED'));
   return {
-    ok: true,
+    ok: failures.length === 0,
     blocked: false,
+    exit_engine_healthy: failures.length === 0,
     evaluated: snapshot.size,
     sold: outcomes.filter((item) => item.action === 'SELL').length,
     held: outcomes.filter((item) => item.action === 'HOLD').length,
-    failures: outcomes.filter((item) => item.action.endsWith('FAILED')),
+    failures,
     outcomes,
-    duration_ms: Date.now() - startedAt
+    duration_ms: Date.now() - startedAt,
+    safety_version: SAFETY_VERSION
   };
 }
 
@@ -329,6 +438,8 @@ module.exports = {
   SAFETY_VERSION,
   assertExitConfig,
   buildExitClientOrderId,
+  calculateAtrPct,
+  resolveAdaptiveProtection,
   determineExit,
   floorToStep,
   evaluateAndExecuteRealSpotExits
