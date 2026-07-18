@@ -25,12 +25,28 @@ function requireCronSecret(req, res, next) {
   return next();
 }
 
+async function releaseReconciliationEntryGateWhenSafe(reconciliation) {
+  if (reconciliation.account_consistent !== true || reconciliation.inconsistencies !== 0) return;
+  const controlRef = db.doc('real_spot_config/control');
+  const snap = await controlRef.get();
+  const control = snap.exists ? snap.data() : {};
+  if (control.entry_block_reason !== 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED') return;
+  await controlRef.set({
+    reconciliation_required: false,
+    account_consistent: true,
+    entry_block_reason: null,
+    new_entries_enabled: control.kill_switch !== true && control.enabled === true,
+    reconciliation_gate_released_at: new Date().toISOString()
+  }, { merge: true });
+}
+
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAt = Date.now();
   try {
     // Binance is the source of truth. Reconcile manual conversions and balances
     // before any automatic SELL or BUY is considered.
     const reconciliation = await reconcileRealSpotAccount(db);
+    await releaseReconciliationEntryGateWhenSafe(reconciliation);
 
     // Exits are evaluated before entries so TP, SL and timeout remain protective.
     let config = await getRealSpotConfig(db);
@@ -117,6 +133,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
 router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, async (req, res) => {
   try {
     const reconciliation = await reconcileRealSpotAccount(db);
+    await releaseReconciliationEntryGateWhenSafe(reconciliation);
     return res.json({
       ok: reconciliation.ok !== false,
       real_mode: true,
