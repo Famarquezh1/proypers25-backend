@@ -1,5 +1,7 @@
 'use strict';
 
+const { evaluateSpotTechnicalConfirmation } = require('./spotTechnicalConfirmation');
+
 const SCANS = 'spot_opportunity_scans';
 const CANDIDATES = 'spot_opportunity_candidates';
 const VALIDATIONS = 'spot_opportunity_validations';
@@ -50,10 +52,26 @@ async function saveDecision(db, decision) {
   }
 }
 
+function uniqueLatestCandidates(candidates, latestScanId) {
+  const bySymbol = new Map();
+  for (const candidate of candidates) {
+    if (String(candidate.scan_id || '') !== String(latestScanId || '')) continue;
+    const symbol = String(candidate.symbol || '').toUpperCase();
+    if (!symbol || isRejected(candidate)) continue;
+    const current = bySymbol.get(symbol);
+    if (!current || candidateScore(candidate) > candidateScore(current)) bySymbol.set(symbol, candidate);
+  }
+  return [...bySymbol.values()].sort((left, right) => {
+    const scoreDifference = candidateScore(right) - candidateScore(left);
+    if (Math.abs(scoreDifference) > 0.000001) return scoreDifference;
+    return candidateVolume(right) - candidateVolume(left);
+  });
+}
+
 /**
- * Predicts the same first candidate used by the legacy real executor, then
- * requires current Paper evidence before allowing that executor to run.
- * It creates no order and never changes exposure limits.
+ * Requires fresh Paper evidence plus independent multi-timeframe market
+ * confirmation before the legacy real executor may create a Spot BUY.
+ * This gate never creates an order and never changes exposure limits.
  */
 async function evaluatePaperToRealEntryGate(db, config = {}) {
   const now = Date.now();
@@ -65,7 +83,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
 
   const [latestScanSnapshot, candidateSnapshot] = await Promise.all([
     db.collection(SCANS).orderBy('created_at', 'desc').limit(1).get(),
-    db.collection(CANDIDATES).orderBy('opportunityScore', 'desc').limit(100).get()
+    db.collection(CANDIDATES).orderBy('opportunityScore', 'desc').limit(250).get()
   ]);
 
   if (latestScanSnapshot.empty) reasons.push('NO_PAPER_SCAN');
@@ -83,9 +101,8 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   }
 
   const candidates = candidateSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const scoreFiltered = candidates.filter((candidate) =>
-    !isRejected(candidate) && candidateScore(candidate) >= asNumber(config.min_opportunity_score, 0)
-  );
+  const latestUnique = uniqueLatestCandidates(candidates, latestScan?.id);
+  const scoreFiltered = latestUnique.filter((candidate) => candidateScore(candidate) >= asNumber(config.min_opportunity_score, 0));
   const categoryFiltered = Array.isArray(config.allowed_categories) && config.allowed_categories.length
     ? scoreFiltered.filter((candidate) => config.allowed_categories.includes(candidate.category))
     : scoreFiltered;
@@ -97,29 +114,22 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   const score = candidateScore(predicted || {});
   const volume = candidateVolume(predicted || {});
 
-  if (predicted && latestScan && String(predicted.scan_id || '') !== String(latestScan.id)) {
-    reasons.push('EXECUTOR_CANDIDATE_NOT_FROM_LATEST_SCAN');
-  }
   if (predicted && score < minimumScore) reasons.push('PAPER_SCORE_BELOW_REAL_THRESHOLD');
   if (predicted && volume < minimumVolume) reasons.push('INSUFFICIENT_24H_QUOTE_VOLUME');
 
-  const sameSymbolInLatestScan = latestScan
+  const duplicatesInLatestScan = latestScan
     ? candidates.filter((candidate) =>
       String(candidate.scan_id || '') === String(latestScan.id) &&
       String(candidate.symbol || '').toUpperCase() === symbol &&
       !isRejected(candidate)
     )
     : [];
-  if (predicted && sameSymbolInLatestScan.length !== 1) reasons.push('DUPLICATE_SYMBOL_IN_LATEST_RANKING');
+  if (predicted && duplicatesInLatestScan.length > 1) reasons.push('DUPLICATE_SYMBOL_IN_LATEST_RANKING');
 
-  const topScoreCount = latestScan
-    ? candidates.filter((candidate) =>
-      String(candidate.scan_id || '') === String(latestScan.id) &&
-      !isRejected(candidate) &&
-      Math.abs(candidateScore(candidate) - score) < 0.000001
-    ).length
-    : 0;
-  if (predicted && topScoreCount > 1) reasons.push('AMBIGUOUS_TOP_SCORE');
+  const runnerUp = categoryFiltered[1] || null;
+  const scoreSeparation = predicted && runnerUp ? score - candidateScore(runnerUp) : null;
+  const minimumSeparation = Math.max(0, asNumber(config.paper_real_min_score_separation, 0.5));
+  if (predicted && runnerUp && scoreSeparation < minimumSeparation) reasons.push('AMBIGUOUS_TOP_SCORE');
 
   let validation = null;
   if (predicted && latestScan) {
@@ -141,15 +151,28 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   );
   if (validation && validationSamples < minimumValidationSamples) reasons.push('PAPER_VALIDATION_SAMPLE_TOO_SMALL');
 
+  let technical = null;
+  if (predicted && reasons.every((reason) => ![
+    'PAPER_SCAN_STALE',
+    'DUPLICATE_SYMBOL_IN_LATEST_RANKING',
+    'AMBIGUOUS_TOP_SCORE'
+  ].includes(reason))) {
+    technical = await evaluateSpotTechnicalConfirmation(symbol, config);
+    if (technical.allowed !== true) reasons.push(...technical.reasons.map((reason) => `TECHNICAL_${reason}`));
+  } else if (predicted) {
+    reasons.push('TECHNICAL_CONFIRMATION_SKIPPED');
+  }
+
   const decision = {
     created_at: new Date(now).toISOString(),
     allowed: reasons.length === 0,
-    reasons,
+    reasons: [...new Set(reasons)],
     candidate: predicted ? {
       id: predicted.id,
       symbol,
       scan_id: predicted.scan_id || null,
       score,
+      score_separation: scoreSeparation,
       category: predicted.category || null,
       quote_volume_24h: volume
     } : null,
@@ -159,19 +182,24 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
       status: validation.status || validation.result || null,
       sample_size: validationSamples
     } : null,
+    technical_confirmation: technical,
     latest_scan_id: latestScan?.id || null,
     latest_scan_age_minutes: scanAgeMinutes === null ? null : Number(scanAgeMinutes.toFixed(3)),
+    unique_candidates_in_latest_scan: latestUnique.length,
     thresholds: {
       minimum_score: minimumScore,
+      minimum_score_separation: minimumSeparation,
       minimum_quote_volume_usdt: minimumVolume,
       maximum_scan_age_minutes: maxScanAgeMinutes,
-      minimum_validation_samples: minimumValidationSamples
+      minimum_validation_samples: minimumValidationSamples,
+      minimum_technical_score: asNumber(config.paper_real_min_technical_score, 65),
+      minimum_timeframe_confirmations: asNumber(config.paper_real_min_timeframe_confirmations, 2)
     },
     real_mode: true,
     paper_evidence_only: true,
     spot_only: true,
     no_order_created: true,
-    version: 'paper_to_real_entry_gate_v1'
+    version: 'paper_to_real_entry_gate_v2'
   };
 
   await saveDecision(db, decision);
@@ -182,5 +210,6 @@ module.exports = {
   evaluatePaperToRealEntryGate,
   candidateScore,
   candidateVolume,
-  isValidationPositive
+  isValidationPositive,
+  uniqueLatestCandidates
 };
