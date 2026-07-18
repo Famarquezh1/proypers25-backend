@@ -1,0 +1,59 @@
+name: Spot research scheduler
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Task to run
+        required: true
+        default: discovery
+        type: choice
+        options:
+          - discovery
+          - quant
+          - both
+  schedule:
+    - cron: '*/15 * * * *'
+    - cron: '7 */2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-research-${{ github.event.schedule || inputs.task || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  discovery:
+    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'discovery' || inputs.task == 'both')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run new Spot asset discovery
+        env:
+          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --retry 2 --max-time 480 \
+            -X POST "$BACKEND_URL/internal/cron/binance/spot-new-assets-discovery" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            --data '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
+
+  quant:
+    if: github.event_name == 'schedule' && github.event.schedule == '7 */2 * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'quant' || inputs.task == 'both')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run quantitative Spot laboratory
+        env:
+          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --retry 2 --max-time 780 \
+            -X POST "$BACKEND_URL/internal/cron/binance/spot-quant-research" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            --data '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
