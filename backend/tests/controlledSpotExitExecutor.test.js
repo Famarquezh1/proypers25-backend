@@ -4,7 +4,9 @@ const assert = require('assert');
 const {
   determineExit,
   floorToStep,
-  assertExitConfig
+  assertExitConfig,
+  calculateAtrPct,
+  resolveAdaptiveProtection
 } = require('../services/controlledSpotExitExecutor');
 const {
   assetFromSymbol,
@@ -23,6 +25,43 @@ assert.strictEqual(
   determineExit({ tp1_price: 105, sl_price: 95, timeout_at: '2026-07-15T13:00:00.000Z' }, 100, now),
   null
 );
+assert.strictEqual(
+  determineExit({ effective_sl_price: 101, protection_mode: 'BREAK_EVEN' }, 100.9, now),
+  'BREAK_EVEN_STOP'
+);
+assert.strictEqual(
+  determineExit({ effective_sl_price: 108, protection_mode: 'TRAILING' }, 107.9, now),
+  'TRAILING_STOP'
+);
+
+const candles = Array.from({ length: 20 }, (_, index) => ({
+  high: 101 + index,
+  low: 99 + index,
+  close: 100 + index
+}));
+const atrPct = calculateAtrPct(candles, 14);
+assert.ok(atrPct > 0);
+
+const breakEven = resolveAdaptiveProtection({
+  entry_price: 100,
+  sl_price: 96,
+  tp1_price: 110,
+  highest_price: 103,
+  opened_at: '2026-07-15T10:00:00.000Z'
+}, 102, 0.01, now);
+assert.strictEqual(breakEven.protection_mode, 'BREAK_EVEN');
+assert.ok(breakEven.effective_sl_price > 100);
+
+const trailing = resolveAdaptiveProtection({
+  entry_price: 100,
+  sl_price: 96,
+  tp1_price: 115,
+  highest_price: 110,
+  opened_at: '2026-07-15T10:00:00.000Z'
+}, 109, 0.01, now);
+assert.strictEqual(trailing.protection_mode, 'TRAILING');
+assert.ok(trailing.effective_sl_price > 107);
+assert.ok(trailing.effective_sl_price < trailing.highest_price);
 
 assert.strictEqual(floorToStep(12.34567, '0.00100000'), 12.345);
 assert.strictEqual(floorToStep(40001215.74, '1.00000000'), 40001215);
@@ -67,4 +106,4 @@ assert.throws(() => assertExitConfig({
   withdrawals_allowed: false
 }), /REAL_SELLS_NOT_ENABLED/);
 
-console.log('controlled Spot exit and reconciliation tests passed');
+console.log('controlled Spot adaptive exit and reconciliation tests passed');
