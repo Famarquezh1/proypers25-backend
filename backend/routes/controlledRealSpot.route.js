@@ -8,7 +8,10 @@ const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/
 const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
-const { getAdaptiveEntryGate } = require('../services/adaptiveSpotStrategyController');
+const {
+  getAdaptiveEntryGate,
+  runAdaptiveSpotStrategyController
+} = require('../services/adaptiveSpotStrategyController');
 
 const router = express.Router();
 
@@ -41,6 +44,22 @@ async function releaseReconciliationEntryGateWhenSafe(reconciliation) {
     reconciliation_gate_released_at: new Date().toISOString()
   }, { merge: true });
 }
+
+router.post('/internal/cron/binance/spot-adaptive-strategy', requireCronSecret, async (_req, res) => {
+  try {
+    return res.json({ ok: true, ...(await runAdaptiveSpotStrategyController(db)) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'ADAPTIVE_STRATEGY_FAILED', details: error.message });
+  }
+});
+
+router.get('/spot-adaptive-strategy/status', async (_req, res) => {
+  try {
+    return res.json({ ok: true, ...(await getAdaptiveEntryGate(db)) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
 
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAt = Date.now();
