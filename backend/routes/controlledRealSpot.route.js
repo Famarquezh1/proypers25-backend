@@ -44,12 +44,9 @@ async function releaseReconciliationEntryGateWhenSafe(reconciliation) {
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAt = Date.now();
   try {
-    // Binance is the source of truth. Reconcile manual conversions and balances
-    // before any automatic SELL or BUY is considered.
     const reconciliation = await reconcileRealSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
 
-    // Exits are evaluated before entries so TP, SL and timeout remain protective.
     let config = await getRealSpotConfig(db);
     const exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
 
@@ -57,7 +54,6 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       .where('status', '==', 'REAL_OPEN')
       .get();
 
-    // Recalculate autonomous risk only before considering another BUY.
     const autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
 
@@ -65,6 +61,10 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       reconciliation.entries_blocked === true ||
       config.reconciliation_required === true ||
       config.account_consistent === false;
+
+    const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
+    const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false ||
+      exits.exit_engine_healthy === false || exitFailures > 0;
 
     let paperGate = {
       allowed: false,
@@ -79,18 +79,19 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       skipped: true,
       reason: reconciliationBlocksEntry
         ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED'
-        : openAfterExit.size > 0
-          ? 'OPEN_POSITION_REMAINS'
-          : autonomy.should_halt
-            ? autonomy.halt_reason
-            : 'PAPER_REAL_GATE_NOT_EVALUATED'
+        : exitEngineBlocksEntry
+          ? 'EXIT_ENGINE_NOT_HEALTHY'
+          : openAfterExit.size > 0
+            ? 'OPEN_POSITION_REMAINS'
+            : autonomy.should_halt
+              ? autonomy.halt_reason
+              : 'PAPER_REAL_GATE_NOT_EVALUATED'
     };
 
-    const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
     const baseEntryConditionsMet =
       reconciliationBlocksEntry === false &&
+      exitEngineBlocksEntry === false &&
       openAfterExit.size === 0 &&
-      exitFailures === 0 &&
       autonomy.should_halt !== true &&
       config.enabled === true &&
       config.kill_switch !== true &&
@@ -104,15 +105,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       config.withdrawals_allowed === false;
 
     if (baseEntryConditionsMet) {
-      // Paper becomes evidence for real execution, never an order source by itself.
-      // The gate predicts the exact candidate the legacy executor would select and
-      // blocks the BUY unless that candidate has fresh, unique and positive evidence.
       paperGate = await evaluatePaperToRealEntryGate(db, config);
 
       if (paperGate.allowed === true) {
         entries = await runRealSpotExecutionCycle(db, {
           ...req.body,
           controlled_exit_completed: true,
+          exit_engine_healthy: true,
           reconciliation_completed: true,
           paper_real_gate_completed: true,
           paper_real_gate_snapshot: paperGate,
@@ -140,6 +139,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       reconciliation,
       autonomy,
       exits,
+      exit_engine_blocks_entry: exitEngineBlocksEntry,
       paper_entry_gate: paperGate,
       entries,
       open_positions_after_cycle: openAfterExit.size,
@@ -189,7 +189,11 @@ router.post('/internal/cron/binance/spot-real-exit-preview', requireCronSecret, 
         exit_reason: currentPrice > 0 ? determineExit(position, currentPrice, now) : null,
         tp1_price: position.tp1_price || null,
         sl_price: position.sl_price || null,
+        effective_tp_price: position.effective_tp_price || null,
+        effective_sl_price: position.effective_sl_price || null,
+        protection_mode: position.protection_mode || 'BASE',
         timeout_at: position.timeout_at || null,
+        effective_timeout_at: position.effective_timeout_at || null,
         no_order_created: true
       };
     });
