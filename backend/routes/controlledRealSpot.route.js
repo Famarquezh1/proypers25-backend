@@ -8,6 +8,7 @@ const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/
 const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
+const { getAdaptiveEntryGate } = require('../services/adaptiveSpotStrategyController');
 
 const router = express.Router();
 
@@ -49,22 +50,18 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
 
     let config = await getRealSpotConfig(db);
     const exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
-
-    const openAfterExit = await db.collection('real_spot_positions')
-      .where('status', '==', 'REAL_OPEN')
-      .get();
-
+    const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     const autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
+    const adaptiveGate = await getAdaptiveEntryGate(db);
 
     const reconciliationBlocksEntry = reconciliation.account_consistent !== true ||
-      reconciliation.entries_blocked === true ||
-      config.reconciliation_required === true ||
+      reconciliation.entries_blocked === true || config.reconciliation_required === true ||
       config.account_consistent === false;
-
     const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
     const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false ||
       exits.exit_engine_healthy === false || exitFailures > 0;
+    const adaptiveBlocksEntry = adaptiveGate.allowed === false;
 
     let paperGate = {
       allowed: false,
@@ -77,42 +74,30 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     let entries = {
       ok: true,
       skipped: true,
-      reason: reconciliationBlocksEntry
-        ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED'
-        : exitEngineBlocksEntry
-          ? 'EXIT_ENGINE_NOT_HEALTHY'
-          : openAfterExit.size > 0
-            ? 'OPEN_POSITION_REMAINS'
-            : autonomy.should_halt
-              ? autonomy.halt_reason
-              : 'PAPER_REAL_GATE_NOT_EVALUATED'
+      reason: reconciliationBlocksEntry ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED' :
+        exitEngineBlocksEntry ? 'EXIT_ENGINE_NOT_HEALTHY' :
+          adaptiveBlocksEntry ? 'ADAPTIVE_STRATEGY_DEGRADED' :
+            openAfterExit.size > 0 ? 'OPEN_POSITION_REMAINS' :
+              autonomy.should_halt ? autonomy.halt_reason : 'PAPER_REAL_GATE_NOT_EVALUATED'
     };
 
-    const baseEntryConditionsMet =
-      reconciliationBlocksEntry === false &&
-      exitEngineBlocksEntry === false &&
-      openAfterExit.size === 0 &&
-      autonomy.should_halt !== true &&
-      config.enabled === true &&
-      config.kill_switch !== true &&
-      config.new_entries_enabled === true &&
-      config.auto_order_execution === true &&
-      config.real_sells_enabled === true &&
-      config.spot_only === true &&
-      config.futures_allowed !== true &&
-      config.margin_allowed !== true &&
-      config.leverage_allowed !== true &&
-      config.withdrawals_allowed === false;
+    const baseEntryConditionsMet = !reconciliationBlocksEntry && !exitEngineBlocksEntry &&
+      !adaptiveBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
+      config.enabled === true && config.kill_switch !== true && config.new_entries_enabled === true &&
+      config.auto_order_execution === true && config.real_sells_enabled === true &&
+      config.spot_only === true && config.futures_allowed !== true && config.margin_allowed !== true &&
+      config.leverage_allowed !== true && config.withdrawals_allowed === false;
 
     if (baseEntryConditionsMet) {
       paperGate = await evaluatePaperToRealEntryGate(db, config);
-
       if (paperGate.allowed === true) {
         entries = await runRealSpotExecutionCycle(db, {
           ...req.body,
           controlled_exit_completed: true,
           exit_engine_healthy: true,
           reconciliation_completed: true,
+          adaptive_strategy_gate_completed: true,
+          adaptive_strategy_snapshot: adaptiveGate,
           paper_real_gate_completed: true,
           paper_real_gate_snapshot: paperGate,
           autonomy_snapshot: autonomy
@@ -140,6 +125,8 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       autonomy,
       exits,
       exit_engine_blocks_entry: exitEngineBlocksEntry,
+      adaptive_strategy_gate: adaptiveGate,
+      adaptive_strategy_blocks_entry: adaptiveBlocksEntry,
       paper_entry_gate: paperGate,
       entries,
       open_positions_after_cycle: openAfterExit.size,
@@ -156,17 +143,11 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
   }
 });
 
-router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, async (req, res) => {
+router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, async (_req, res) => {
   try {
     const reconciliation = await reconcileRealSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
-    return res.json({
-      ok: reconciliation.ok !== false,
-      real_mode: true,
-      spot_only: true,
-      no_order_created: true,
-      reconciliation
-    });
+    return res.json({ ok: reconciliation.ok !== false, real_mode: true, spot_only: true, no_order_created: true, reconciliation });
   } catch (error) {
     return res.status(500).json({ ok: false, error: 'SPOT_RECONCILIATION_FAILED', details: error.message });
   }
@@ -174,9 +155,7 @@ router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, asy
 
 router.post('/internal/cron/binance/spot-real-exit-preview', requireCronSecret, async (req, res) => {
   try {
-    const snapshot = await db.collection('real_spot_positions')
-      .where('status', '==', 'REAL_OPEN')
-      .get();
+    const snapshot = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     const now = new Date();
     const prices = req.body?.currentPrices || {};
     const positions = snapshot.docs.map((doc) => {
