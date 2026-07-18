@@ -6,74 +6,89 @@ on:
       task:
         description: Task to run
         required: true
-        default: discovery
+        default: all
         type: choice
         options:
           - discovery
           - quant
           - adaptive
-          - both
+          - governance
           - all
   schedule:
-    - cron: '*/15 * * * *'
-    - cron: '7 */2 * * *'
-    - cron: '23 * * * *'
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: spot-research-${{ github.event.schedule || inputs.task || 'manual' }}
+  group: spot-research-consolidated
   cancel-in-progress: false
 
 jobs:
-  discovery:
-    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'discovery' || inputs.task == 'both' || inputs.task == 'all')
+  research:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Run new Spot asset discovery
+      - name: Run cost-aware Spot research cycle
         env:
           BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MANUAL_TASK: ${{ inputs.task || 'scheduled' }}
         run: |
+          set -euo pipefail
           test -n "$CRON_SECRET"
-          curl --fail-with-body --retry 2 --max-time 480 \
-            -X POST "$BACKEND_URL/internal/cron/binance/spot-new-assets-discovery" \
-            -H "Content-Type: application/json" \
-            -H "x-cron-secret: $CRON_SECRET" \
-            --data '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
 
-  quant:
-    if: github.event_name == 'schedule' && github.event.schedule == '7 */2 * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'quant' || inputs.task == 'both' || inputs.task == 'all')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Run quantitative Spot laboratory
-        env:
-          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          test -n "$CRON_SECRET"
-          curl --fail-with-body --retry 2 --max-time 780 \
-            -X POST "$BACKEND_URL/internal/cron/binance/spot-quant-research" \
-            -H "Content-Type: application/json" \
-            -H "x-cron-secret: $CRON_SECRET" \
-            --data '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+          call_endpoint() {
+            local endpoint="$1"
+            local body="$2"
+            curl --fail-with-body --retry 2 --max-time 780 \
+              -X POST "$BACKEND_URL$endpoint" \
+              -H "Content-Type: application/json" \
+              -H "x-cron-secret: $CRON_SECRET" \
+              --data "$body"
+          }
 
-  adaptive:
-    if: github.event_name == 'schedule' && github.event.schedule == '23 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'adaptive' || inputs.task == 'all')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Refresh adaptive Spot strategy state
-        env:
-          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          test -n "$CRON_SECRET"
-          curl --fail-with-body --retry 2 --max-time 480 \
-            -X POST "$BACKEND_URL/internal/cron/binance/spot-adaptive-strategy" \
-            -H "Content-Type: application/json" \
-            -H "x-cron-secret: $CRON_SECRET" \
-            --data '{}'
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            case "$MANUAL_TASK" in
+              governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
+              discovery) call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}' ;;
+              adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
+              quant) call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}' ;;
+              all)
+                call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
+                call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
+                call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
+                call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+                ;;
+            esac
+            exit 0
+          fi
+
+          MINUTE=$(date -u +%M)
+          HOUR=$(date -u +%H)
+
+          # Discovery stays frequent enough to detect listings early, but one
+          # consolidated runner avoids three separate rounded GitHub minutes.
+          call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
+
+          if [ "$MINUTE" = "00" ]; then
+            call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
+          fi
+
+          # Refresh economics every six hours and use the persisted mode to
+          # reduce heavy research when infrastructure is not productive.
+          if [ "$MINUTE" = "00" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
+            call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
+          fi
+
+          if [ "$MINUTE" = "00" ]; then
+            STATUS=$(curl --fail-with-body --retry 2 --max-time 60 \
+              -H "x-cron-secret: $CRON_SECRET" \
+              "$BACKEND_URL/internal/spot-cost-governance/status" || echo '{}')
+            MODE=$(printf '%s' "$STATUS" | jq -r '.config.current_mode // "NORMAL"')
+            MULTIPLIER=$(printf '%s' "$STATUS" | jq -r '.config.research_frequency_multiplier // 1')
+            PERIOD=$((2 * MULTIPLIER))
+            if [ "$MODE" != "PAUSED" ] && [ $((10#$HOUR % PERIOD)) -eq 0 ]; then
+              call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+            fi
+          fi
