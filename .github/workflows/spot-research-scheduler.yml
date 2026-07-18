@@ -11,10 +11,13 @@ on:
         options:
           - discovery
           - quant
+          - adaptive
           - both
+          - all
   schedule:
     - cron: '*/15 * * * *'
     - cron: '7 */2 * * *'
+    - cron: '23 * * * *'
 
 permissions:
   contents: read
@@ -25,7 +28,7 @@ concurrency:
 
 jobs:
   discovery:
-    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'discovery' || inputs.task == 'both')
+    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'discovery' || inputs.task == 'both' || inputs.task == 'all')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,7 +45,7 @@ jobs:
             --data '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
 
   quant:
-    if: github.event_name == 'schedule' && github.event.schedule == '7 */2 * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'quant' || inputs.task == 'both')
+    if: github.event_name == 'schedule' && github.event.schedule == '7 */2 * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'quant' || inputs.task == 'both' || inputs.task == 'all')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -57,3 +60,20 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: $CRON_SECRET" \
             --data '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+
+  adaptive:
+    if: github.event_name == 'schedule' && github.event.schedule == '23 * * * *' || github.event_name == 'workflow_dispatch' && (inputs.task == 'adaptive' || inputs.task == 'all')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refresh adaptive Spot strategy state
+        env:
+          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --retry 2 --max-time 480 \
+            -X POST "$BACKEND_URL/internal/cron/binance/spot-adaptive-strategy" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            --data '{}'
