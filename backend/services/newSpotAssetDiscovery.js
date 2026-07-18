@@ -1,12 +1,14 @@
 'use strict';
 
 const axios = require('axios');
+const { runQuantResearchLab } = require('./spotQuantResearchLab');
 
 const BINANCE_API = 'https://api.binance.com';
 const COINGECKO_API = 'https://api.coingecko.com/api/v3';
 const REGISTRY = 'spot_symbol_registry';
 const DISCOVERIES = 'spot_new_asset_discoveries';
 const RUNS = 'spot_new_asset_discovery_runs';
+const VALIDATIONS = 'spot_new_asset_quant_validations';
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -48,15 +50,13 @@ async function fetchBinanceUniverse() {
     getJson(`${BINANCE_API}/api/v3/ticker/24hr`)
   ]);
   const tickerMap = new Map((tickers || []).map((ticker) => [ticker.symbol, ticker]));
-  return (exchangeInfo.symbols || [])
-    .filter(isTradableSpotUsdt)
-    .map((symbol) => ({
-      symbol: symbol.symbol,
-      base_asset: symbol.baseAsset,
-      quote_asset: symbol.quoteAsset,
-      status: symbol.status,
-      ticker: tickerMap.get(symbol.symbol) || null
-    }));
+  return (exchangeInfo.symbols || []).filter(isTradableSpotUsdt).map((symbol) => ({
+    symbol: symbol.symbol,
+    base_asset: symbol.baseAsset,
+    quote_asset: symbol.quoteAsset,
+    status: symbol.status,
+    ticker: tickerMap.get(symbol.symbol) || null
+  }));
 }
 
 async function findCoinGeckoEvidence(baseAsset) {
@@ -134,9 +134,9 @@ function scoreDiscovery(asset, evidence, ageHours) {
   if (!evidence.found) risks.push('PROJECT_EVIDENCE_NOT_FOUND');
   if ((evidence.ambiguity || 0) > 2) risks.push('SYMBOL_IDENTITY_AMBIGUOUS');
 
-  const researchEligible = score >= 65 && quoteVolume >= 1000000 &&
-    evidence.found === true && Boolean(evidence.homepage) &&
-    !risks.includes('EXTREME_24H_MOVE') && !risks.includes('SYMBOL_IDENTITY_AMBIGUOUS');
+  const researchEligible = score >= 65 && quoteVolume >= 1000000 && evidence.found === true &&
+    Boolean(evidence.homepage) && !risks.includes('EXTREME_24H_MOVE') &&
+    !risks.includes('SYMBOL_IDENTITY_AMBIGUOUS');
 
   return {
     score: clamp(score),
@@ -149,6 +149,60 @@ function scoreDiscovery(asset, evidence, ageHours) {
     requires_paper_validation: true,
     requires_runtime_gate: true
   };
+}
+
+function nextValidationState(previous = {}, positive = false, runId = null) {
+  const totalRuns = n(previous.total_runs, 0) + 1;
+  const positiveRuns = n(previous.positive_runs, 0) + (positive ? 1 : 0);
+  const consecutivePositive = positive ? n(previous.consecutive_positive, 0) + 1 : 0;
+  const required = Math.max(3, n(process.env.NEW_ASSET_REQUIRED_POSITIVE_RUNS, 3));
+  return {
+    total_runs: totalRuns,
+    positive_runs: positiveRuns,
+    consecutive_positive: consecutivePositive,
+    required_positive_runs: required,
+    quant_ready: consecutivePositive >= required,
+    last_positive: positive,
+    last_run_id: runId,
+    updated_at: new Date().toISOString(),
+    approved_for_real: false,
+    requires_paper_validation: true,
+    requires_runtime_gate: true,
+    no_order_created: true
+  };
+}
+
+async function researchEligibleDiscoveries(db, discoveries, options = {}) {
+  const eligible = discoveries.filter((item) => item.assessment?.research_eligible).slice(0, 3);
+  if (!eligible.length) return [];
+  const symbols = eligible.map((item) => item.symbol);
+  const quant = await runQuantResearchLab(db, {
+    symbols,
+    interval: options.interval || '5m',
+    limit: Math.max(300, Math.min(1000, n(options.quantLimit, 1000))),
+    feeRate: n(options.feeRate, 0.001)
+  });
+  const bySymbol = new Map((quant.results || []).map((result) => [result.symbol, result]));
+  const validations = [];
+
+  for (const discovery of eligible) {
+    const result = bySymbol.get(discovery.symbol);
+    const positive = Boolean(result?.promotion_eligible);
+    const ref = db.collection(VALIDATIONS).doc(discovery.symbol);
+    const previousSnapshot = await ref.get();
+    const state = nextValidationState(previousSnapshot.exists ? previousSnapshot.data() : {}, positive, quant.id);
+    await ref.set({ symbol: discovery.symbol, ...state }, { merge: true });
+    await db.collection(DISCOVERIES).doc(discovery.symbol).set({
+      quant_validation: state,
+      assessment: {
+        ...discovery.assessment,
+        quant_ready: state.quant_ready,
+        real_entry_approved: false
+      }
+    }, { merge: true });
+    validations.push({ symbol: discovery.symbol, positive, ...state });
+  }
+  return validations;
 }
 
 async function runNewSpotAssetDiscovery(db, options = {}) {
@@ -164,7 +218,6 @@ async function runNewSpotAssetDiscovery(db, options = {}) {
   for (const asset of newAssets.slice(0, maxResearch)) {
     const evidence = baseline ? { found: false, baseline_only: true, ambiguity: 0 } :
       await findCoinGeckoEvidence(asset.base_asset);
-    const ageHours = 0;
     const assessment = baseline ? {
       score: 0,
       reasons: ['INITIAL_BASELINE'],
@@ -175,7 +228,7 @@ async function runNewSpotAssetDiscovery(db, options = {}) {
       requires_backtest: true,
       requires_paper_validation: true,
       requires_runtime_gate: true
-    } : scoreDiscovery(asset, evidence, ageHours);
+    } : scoreDiscovery(asset, evidence, 0);
 
     const record = {
       symbol: asset.symbol,
@@ -189,7 +242,7 @@ async function runNewSpotAssetDiscovery(db, options = {}) {
       assessment,
       spot_only: true,
       no_order_created: true,
-      version: 'new_spot_asset_discovery_v1'
+      version: 'new_spot_asset_discovery_v2'
     };
     await db.collection(DISCOVERIES).doc(asset.symbol).set(record, { merge: true });
     discoveries.push(record);
@@ -210,6 +263,15 @@ async function runNewSpotAssetDiscovery(db, options = {}) {
   }
   await batch.commit();
 
+  let quantValidations = [];
+  if (!baseline && options.runQuant !== false) {
+    try {
+      quantValidations = await researchEligibleDiscoveries(db, discoveries, options);
+    } catch (error) {
+      quantValidations = [{ error: error.message }];
+    }
+  }
+
   const run = {
     id: `new_assets_${now}`,
     created_at: new Date(now).toISOString(),
@@ -218,9 +280,10 @@ async function runNewSpotAssetDiscovery(db, options = {}) {
     new_assets_detected: newAssets.length,
     researched: discoveries.length,
     discoveries,
+    quant_validations: quantValidations,
     no_order_created: true,
     spot_only: true,
-    version: 'new_spot_asset_discovery_v1'
+    version: 'new_spot_asset_discovery_v2'
   };
   await db.collection(RUNS).doc(run.id).set(run);
   return run;
@@ -230,5 +293,7 @@ module.exports = {
   runNewSpotAssetDiscovery,
   scoreDiscovery,
   isTradableSpotUsdt,
-  findCoinGeckoEvidence
+  findCoinGeckoEvidence,
+  nextValidationState,
+  researchEligibleDiscoveries
 };
