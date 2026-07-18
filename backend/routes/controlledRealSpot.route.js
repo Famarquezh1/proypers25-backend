@@ -7,6 +7,7 @@ const { getRealSpotConfig, runRealSpotExecutionCycle } = require('../services/bi
 const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/controlledSpotExitExecutor');
 const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
+const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
 
 const router = express.Router();
 
@@ -65,6 +66,14 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       config.reconciliation_required === true ||
       config.account_consistent === false;
 
+    let paperGate = {
+      allowed: false,
+      skipped: true,
+      reasons: ['ENTRY_PRECONDITIONS_NOT_MET'],
+      no_order_created: true,
+      version: 'paper_to_real_entry_gate_v1'
+    };
+
     let entries = {
       ok: true,
       skipped: true,
@@ -74,13 +83,11 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
           ? 'OPEN_POSITION_REMAINS'
           : autonomy.should_halt
             ? autonomy.halt_reason
-            : 'ENTRY_NOT_REQUESTED'
+            : 'PAPER_REAL_GATE_NOT_EVALUATED'
     };
 
-    // The legacy cycle may create a BUY only after the controlled exit executor
-    // and reconciliation both completed successfully. It never handles exits here.
     const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
-    if (
+    const baseEntryConditionsMet =
       reconciliationBlocksEntry === false &&
       openAfterExit.size === 0 &&
       exitFailures === 0 &&
@@ -94,14 +101,32 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       config.futures_allowed !== true &&
       config.margin_allowed !== true &&
       config.leverage_allowed !== true &&
-      config.withdrawals_allowed === false
-    ) {
-      entries = await runRealSpotExecutionCycle(db, {
-        ...req.body,
-        controlled_exit_completed: true,
-        reconciliation_completed: true,
-        autonomy_snapshot: autonomy
-      });
+      config.withdrawals_allowed === false;
+
+    if (baseEntryConditionsMet) {
+      // Paper becomes evidence for real execution, never an order source by itself.
+      // The gate predicts the exact candidate the legacy executor would select and
+      // blocks the BUY unless that candidate has fresh, unique and positive evidence.
+      paperGate = await evaluatePaperToRealEntryGate(db, config);
+
+      if (paperGate.allowed === true) {
+        entries = await runRealSpotExecutionCycle(db, {
+          ...req.body,
+          controlled_exit_completed: true,
+          reconciliation_completed: true,
+          paper_real_gate_completed: true,
+          paper_real_gate_snapshot: paperGate,
+          autonomy_snapshot: autonomy
+        });
+      } else {
+        entries = {
+          ok: true,
+          skipped: true,
+          reason: 'PAPER_REAL_ENTRY_GATE_BLOCKED',
+          candidate: paperGate.candidate || null,
+          gate_reasons: paperGate.reasons || []
+        };
+      }
     }
 
     return res.json({
@@ -115,6 +140,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       reconciliation,
       autonomy,
       exits,
+      paper_entry_gate: paperGate,
       entries,
       open_positions_after_cycle: openAfterExit.size,
       duration_ms: Date.now() - startedAt
