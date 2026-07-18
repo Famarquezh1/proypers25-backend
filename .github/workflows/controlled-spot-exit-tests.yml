@@ -6,15 +6,18 @@ on:
       - main
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/spotAccountReconciliation.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
   push:
     branches:
+      - main
       - feat/controlled-real-spot-exits
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/spotAccountReconciliation.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/server.js"
@@ -42,6 +45,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/services/spotAccountReconciliation.js
           node --check backend/routes/controlledRealSpot.route.js
           node --check backend/server.js
 
