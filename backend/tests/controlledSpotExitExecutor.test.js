@@ -42,13 +42,15 @@ const candles = Array.from({ length: 20 }, (_, index) => ({
 const atrPct = calculateAtrPct(candles, 14);
 assert.ok(atrPct > 0);
 
+// With ATR at 1%, break-even starts at +1.2% and trailing starts at +1.8%.
+// Use +1.5% so this test exercises only the break-even zone.
 const breakEven = resolveAdaptiveProtection({
   entry_price: 100,
   sl_price: 96,
   tp1_price: 110,
   highest_price: 103,
   opened_at: '2026-07-15T10:00:00.000Z'
-}, 102, 0.01, now);
+}, 101.5, 0.01, now);
 assert.strictEqual(breakEven.protection_mode, 'BREAK_EVEN');
 assert.ok(breakEven.effective_sl_price > 100);
 
