@@ -7,7 +7,11 @@ on:
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
       - "backend/services/spotAccountReconciliation.js"
+      - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/routes/controlledRealSpot.route.js"
+      - "backend/routes/adaptiveSpotStrategy.route.js"
+      - "backend/routes/systemHealth.route.js"
+      - "backend/routes/spotCostGovernance.route.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
@@ -18,7 +22,11 @@ on:
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
       - "backend/services/spotAccountReconciliation.js"
+      - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/routes/controlledRealSpot.route.js"
+      - "backend/routes/adaptiveSpotStrategy.route.js"
+      - "backend/routes/systemHealth.route.js"
+      - "backend/routes/spotCostGovernance.route.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
@@ -46,7 +54,11 @@ jobs:
         run: |
           node --check backend/services/controlledSpotExitExecutor.js
           node --check backend/services/spotAccountReconciliation.js
+          node --check backend/services/adaptiveSpotStrategyController.js
           node --check backend/routes/controlledRealSpot.route.js
+          node --check backend/routes/adaptiveSpotStrategy.route.js
+          node --check backend/routes/systemHealth.route.js
+          node --check backend/routes/spotCostGovernance.route.js
           node --check backend/server.js
 
       - name: Controlled Spot exit unit tests
