@@ -6,6 +6,10 @@ const {
   floorToStep,
   assertExitConfig
 } = require('../services/controlledSpotExitExecutor');
+const {
+  assetFromSymbol,
+  calculateReconciliation
+} = require('../services/spotAccountReconciliation');
 
 const now = new Date('2026-07-15T12:00:00.000Z');
 
@@ -23,6 +27,21 @@ assert.strictEqual(
 assert.strictEqual(floorToStep(12.34567, '0.00100000'), 12.345);
 assert.strictEqual(floorToStep(40001215.74, '1.00000000'), 40001215);
 assert.strictEqual(floorToStep(0.009, '0.01000000'), 0);
+
+assert.strictEqual(assetFromSymbol('XECUSDT'), 'XEC');
+assert.strictEqual(assetFromSymbol('BTCUSDT'), 'BTC');
+assert.strictEqual(assetFromSymbol('BTCUSDC'), null);
+
+const partial = calculateReconciliation({ quantity: 40000000, capital_usdt: 200 }, 25000000);
+assert.strictEqual(partial.deficit, 15000000);
+assert.strictEqual(partial.actualQuantity, 25000000);
+assert.strictEqual(partial.remainingCapital, 125);
+assert.strictEqual(partial.fullyExternalClosed, false);
+
+const full = calculateReconciliation({ quantity: 40000000, capital_usdt: 200 }, 0);
+assert.strictEqual(full.deficit, 40000000);
+assert.strictEqual(full.remainingCapital, 0);
+assert.strictEqual(full.fullyExternalClosed, true);
 
 assert.doesNotThrow(() => assertExitConfig({
   enabled: true,
@@ -48,4 +67,4 @@ assert.throws(() => assertExitConfig({
   withdrawals_allowed: false
 }), /REAL_SELLS_NOT_ENABLED/);
 
-console.log('controlledSpotExitExecutor tests passed');
+console.log('controlled Spot exit and reconciliation tests passed');
