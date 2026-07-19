@@ -12,6 +12,7 @@ const {
   getAdaptiveEntryGate,
   runAdaptiveSpotStrategyController
 } = require('../services/adaptiveSpotStrategyController');
+const { getStrategyPromotionGate } = require('../services/spotStrategyPromotionController');
 
 const router = express.Router();
 
@@ -72,7 +73,10 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     const autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
-    const adaptiveGate = await getAdaptiveEntryGate(db);
+    const [adaptiveGate, promotionGate] = await Promise.all([
+      getAdaptiveEntryGate(db),
+      getStrategyPromotionGate(db)
+    ]);
 
     const reconciliationBlocksEntry = reconciliation.account_consistent !== true ||
       reconciliation.entries_blocked === true || config.reconciliation_required === true ||
@@ -81,6 +85,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false ||
       exits.exit_engine_healthy === false || exitFailures > 0;
     const adaptiveBlocksEntry = adaptiveGate.allowed === false;
+    const promotionBlocksEntry = promotionGate.allowed !== true;
 
     let paperGate = {
       allowed: false,
@@ -96,12 +101,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       reason: reconciliationBlocksEntry ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED' :
         exitEngineBlocksEntry ? 'EXIT_ENGINE_NOT_HEALTHY' :
           adaptiveBlocksEntry ? 'ADAPTIVE_STRATEGY_DEGRADED' :
-            openAfterExit.size > 0 ? 'OPEN_POSITION_REMAINS' :
-              autonomy.should_halt ? autonomy.halt_reason : 'PAPER_REAL_GATE_NOT_EVALUATED'
+            promotionBlocksEntry ? 'STRATEGY_NOT_PROMOTED' :
+              openAfterExit.size > 0 ? 'OPEN_POSITION_REMAINS' :
+                autonomy.should_halt ? autonomy.halt_reason : 'PAPER_REAL_GATE_NOT_EVALUATED'
     };
 
     const baseEntryConditionsMet = !reconciliationBlocksEntry && !exitEngineBlocksEntry &&
-      !adaptiveBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
+      !adaptiveBlocksEntry && !promotionBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
       config.enabled === true && config.kill_switch !== true && config.new_entries_enabled === true &&
       config.auto_order_execution === true && config.real_sells_enabled === true &&
       config.spot_only === true && config.futures_allowed !== true && config.margin_allowed !== true &&
@@ -109,7 +115,9 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
 
     if (baseEntryConditionsMet) {
       paperGate = await evaluatePaperToRealEntryGate(db, config);
-      if (paperGate.allowed === true) {
+      const promotedSymbolMatches = !promotionGate.symbol ||
+        String(paperGate.candidate?.symbol || '').toUpperCase() === String(promotionGate.symbol).toUpperCase();
+      if (paperGate.allowed === true && promotedSymbolMatches) {
         entries = await runRealSpotExecutionCycle(db, {
           ...req.body,
           controlled_exit_completed: true,
@@ -117,6 +125,8 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
           reconciliation_completed: true,
           adaptive_strategy_gate_completed: true,
           adaptive_strategy_snapshot: adaptiveGate,
+          strategy_promotion_gate_completed: true,
+          strategy_promotion_snapshot: promotionGate,
           paper_real_gate_completed: true,
           paper_real_gate_snapshot: paperGate,
           autonomy_snapshot: autonomy
@@ -125,9 +135,10 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
         entries = {
           ok: true,
           skipped: true,
-          reason: 'PAPER_REAL_ENTRY_GATE_BLOCKED',
+          reason: paperGate.allowed !== true ? 'PAPER_REAL_ENTRY_GATE_BLOCKED' : 'PROMOTED_SYMBOL_MISMATCH',
           candidate: paperGate.candidate || null,
-          gate_reasons: paperGate.reasons || []
+          promoted_symbol: promotionGate.symbol || null,
+          gate_reasons: paperGate.allowed !== true ? (paperGate.reasons || []) : ['PROMOTED_SYMBOL_MISMATCH']
         };
       }
     }
@@ -146,6 +157,8 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       exit_engine_blocks_entry: exitEngineBlocksEntry,
       adaptive_strategy_gate: adaptiveGate,
       adaptive_strategy_blocks_entry: adaptiveBlocksEntry,
+      strategy_promotion_gate: promotionGate,
+      strategy_promotion_blocks_entry: promotionBlocksEntry,
       paper_entry_gate: paperGate,
       entries,
       open_positions_after_cycle: openAfterExit.size,
