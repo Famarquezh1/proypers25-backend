@@ -12,6 +12,7 @@ on:
           - discovery
           - quant
           - adaptive
+          - promotion
           - governance
           - all
   schedule:
@@ -48,17 +49,23 @@ jobs:
               --data "$body"
           }
 
+          run_quant_and_promotion() {
+            call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+            call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}'
+          }
+
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             case "$MANUAL_TASK" in
               governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
               discovery) call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}' ;;
               adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
-              quant) call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}' ;;
+              promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' ;;
+              quant) run_quant_and_promotion ;;
               all)
                 call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
                 call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
                 call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
-                call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+                run_quant_and_promotion
                 ;;
             esac
             exit 0
@@ -67,16 +74,13 @@ jobs:
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
 
-          # Discovery stays frequent enough to detect listings early, but one
-          # consolidated runner avoids three separate rounded GitHub minutes.
           call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
 
           if [ "$MINUTE" = "00" ]; then
             call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
+            call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}'
           fi
 
-          # Refresh economics every six hours and use the persisted mode to
-          # reduce heavy research when infrastructure is not productive.
           if [ "$MINUTE" = "00" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
             call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
           fi
@@ -89,6 +93,6 @@ jobs:
             MULTIPLIER=$(printf '%s' "$STATUS" | jq -r '.config.research_frequency_multiplier // 1')
             PERIOD=$((2 * MULTIPLIER))
             if [ "$MODE" != "PAUSED" ] && [ $((10#$HOUR % PERIOD)) -eq 0 ]; then
-              call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
+              run_quant_and_promotion
             fi
           fi
