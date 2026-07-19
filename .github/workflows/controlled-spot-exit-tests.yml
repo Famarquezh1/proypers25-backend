@@ -9,6 +9,7 @@ on:
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
+      - "backend/services/spotCycleObservability.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -17,6 +18,7 @@ on:
       - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
+      - "backend/tests/spotCycleObservability.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
   push:
@@ -28,6 +30,7 @@ on:
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
+      - "backend/services/spotCycleObservability.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -36,6 +39,7 @@ on:
       - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
+      - "backend/tests/spotCycleObservability.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
 
@@ -64,6 +68,7 @@ jobs:
           node --check backend/services/spotAccountReconciliation.js
           node --check backend/services/adaptiveSpotStrategyController.js
           node --check backend/services/spotStrategyPromotionController.js
+          node --check backend/services/spotCycleObservability.js
           node --check backend/routes/controlledRealSpot.route.js
           node --check backend/routes/adaptiveSpotStrategy.route.js
           node --check backend/routes/spotStrategyPromotion.route.js
@@ -83,3 +88,6 @@ jobs:
 
       - name: Controlled strategy promotion unit tests
         run: node backend/tests/spotStrategyPromotion.test.js
+
+      - name: Spot cycle observability unit tests
+        run: node backend/tests/spotCycleObservability.test.js
