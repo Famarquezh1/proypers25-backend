@@ -14,6 +14,7 @@ on:
       - "backend/routes/spotStrategyPromotion.route.js"
       - "backend/routes/systemHealth.route.js"
       - "backend/routes/spotCostGovernance.route.js"
+      - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/server.js"
@@ -32,6 +33,7 @@ on:
       - "backend/routes/spotStrategyPromotion.route.js"
       - "backend/routes/systemHealth.route.js"
       - "backend/routes/spotCostGovernance.route.js"
+      - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/server.js"
@@ -67,7 +69,14 @@ jobs:
           node --check backend/routes/spotStrategyPromotion.route.js
           node --check backend/routes/systemHealth.route.js
           node --check backend/routes/spotCostGovernance.route.js
+          node --check backend/routes/velasCron.js
           node --check backend/server.js
+
+      - name: Verify one real execution route
+        run: |
+          count=$(grep -R "router.post('/internal/cron/binance/spot-real-execution'" backend/routes --include='*.js' | wc -l)
+          echo "Real execution route definitions: $count"
+          test "$count" -eq 1
 
       - name: Controlled Spot exit unit tests
         run: node backend/tests/controlledSpotExitExecutor.test.js
