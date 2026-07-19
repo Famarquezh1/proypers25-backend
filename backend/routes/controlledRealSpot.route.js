@@ -13,6 +13,7 @@ const {
   runAdaptiveSpotStrategyController
 } = require('../services/adaptiveSpotStrategyController');
 const { getStrategyPromotionGate } = require('../services/spotStrategyPromotionController');
+const { buildSpotCycleDecisionLog, logSpotCycleDecision } = require('../services/spotCycleObservability');
 
 const router = express.Router();
 
@@ -143,6 +144,21 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       }
     }
 
+    const durationMs = Date.now() - startedAt;
+    const decisionLog = buildSpotCycleDecisionLog({
+      reconciliation,
+      exits,
+      autonomy,
+      adaptiveGate,
+      promotionGate,
+      paperGate,
+      entries,
+      openPositionsAfterCycle: openAfterExit.size,
+      durationMs,
+      config
+    });
+    logSpotCycleDecision(decisionLog);
+
     return res.json({
       ok: reconciliation.ok !== false && exits.ok !== false && entries.ok !== false,
       real_mode: true,
@@ -161,16 +177,26 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       strategy_promotion_blocks_entry: promotionBlocksEntry,
       paper_entry_gate: paperGate,
       entries,
+      decision_summary: decisionLog,
       open_positions_after_cycle: openAfterExit.size,
-      duration_ms: Date.now() - startedAt
+      duration_ms: durationMs
     });
   } catch (error) {
-    console.error('[CONTROLLED_REAL_SPOT] Cycle failed:', error.message);
+    const durationMs = Date.now() - startedAt;
+    console.error(JSON.stringify({
+      event: 'SPOT_REAL_CYCLE_DECISION',
+      timestamp: new Date().toISOString(),
+      action: 'ERROR',
+      decision: 'FAILED',
+      reason: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED',
+      error: error.message,
+      duration_ms: durationMs
+    }));
     return res.status(500).json({
       ok: false,
       error: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED',
       details: error.message,
-      duration_ms: Date.now() - startedAt
+      duration_ms: durationMs
     });
   }
 });
