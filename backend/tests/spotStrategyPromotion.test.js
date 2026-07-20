@@ -21,12 +21,20 @@ const champion = {
 };
 
 const paper = summarizePaper([
-  { symbol: 'BTCUSDT', status: 'POSITIVE', sample_size: 8 },
-  { symbol: 'BTCUSDT', status: 'PASSED', sample_size: 8 },
-  { symbol: 'BTCUSDT', positive: true, sample_size: 8 }
-], 'BTCUSDT');
+  { symbol: 'BTCUSDT', status: 'POSITIVE', sample_size: 6 },
+  { symbol: 'BTCUSDT', status: 'PASSED', sample_size: 6 },
+  { symbol: 'BTCUSDT', positive: true, sample_size: 6 }
+], 'BTCUSDT', [
+  { symbol: 'BTCUSDT', estimated_net_pnl_pct: 1.2, estimated_net_pnl_usdt: 0.12 },
+  { symbol: 'BTCUSDT', estimated_net_pnl_pct: -0.4, estimated_net_pnl_usdt: -0.04 },
+  { symbol: 'ETHUSDT', estimated_net_pnl_pct: 2.0, estimated_net_pnl_usdt: 0.2 }
+]);
 assert.strictEqual(paper.validations, 3);
-assert.strictEqual(paper.sample_size, 24);
+assert.strictEqual(paper.paper_trades, 2);
+assert.strictEqual(paper.winning_paper_trades, 1);
+assert.strictEqual(paper.sample_size, 20);
+assert.ok(paper.paper_expectancy > 0);
+assert.ok(paper.paper_profit_factor > 1);
 
 const real = summarizeReal([
   { symbol: 'BTCUSDT', net_pnl_pct: 1.1, net_pnl_usdt: 0.11 },
