@@ -3,7 +3,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../firebase-admin-config');
-const { runQuantResearchLab } = require('../services/spotQuantResearchLab');
+const { runQuantResearchLab } = require('../services/spotQuantAdvancedResearchLab');
 
 const router = express.Router();
 
@@ -28,11 +28,17 @@ router.post('/internal/cron/binance/spot-quant-research', requireCronSecret, asy
     const result = await runQuantResearchLab(db, {
       symbols: req.body?.symbols,
       interval: req.body?.interval || '5m',
-      limit: req.body?.limit || 3000,
-      feeRate: req.body?.feeRate ?? req.body?.fee_rate
+      limit: req.body?.limit || 4000,
+      feeRate: req.body?.feeRate ?? req.body?.fee_rate,
+      slippageRate: req.body?.slippageRate ?? req.body?.slippage_rate
     });
     return res.json({ ok: true, duration_ms: Date.now() - startedAt, ...result });
   } catch (error) {
+    console.error(JSON.stringify({
+      event: 'SPOT_QUANT_RESEARCH_FAILED',
+      error: error.message,
+      duration_ms: Date.now() - startedAt
+    }));
     return res.status(500).json({
       ok: false,
       error: 'SPOT_QUANT_RESEARCH_FAILED',
