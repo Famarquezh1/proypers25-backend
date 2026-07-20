@@ -269,6 +269,22 @@ function promotionEligible(champion) {
     test.maxDrawdown <= 0.12;
 }
 
+function selectGlobalChampion(results = []) {
+  const valid = results
+    .filter((result) => result?.champion)
+    .sort((a, b) => n(b.champion?.score, -Infinity) - n(a.champion?.score, -Infinity));
+  const eligible = valid.filter((result) => result.promotion_eligible === true);
+  const selected = eligible[0] || valid[0] || null;
+  return {
+    selected,
+    observationChampion: valid[0] || null,
+    eligibleCount: eligible.length,
+    validCount: valid.length,
+    failedCount: Math.max(0, results.length - valid.length),
+    selectionMode: eligible.length > 0 ? 'BEST_ELIGIBLE' : selected ? 'OBSERVATION_ONLY' : 'NONE'
+  };
+}
+
 async function runQuantResearchLab(db, options = {}) {
   const symbols = [...new Set((options.symbols || ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'TONUSDT'])
     .map((symbol) => String(symbol).toUpperCase()).filter((symbol) => /^[A-Z0-9]{5,20}USDT$/.test(symbol)))]
@@ -284,9 +300,8 @@ async function runQuantResearchLab(db, options = {}) {
     }
   }
 
-  const valid = results.filter((result) => result.champion);
-  valid.sort((a, b) => b.champion.score - a.champion.score);
-  const globalChampion = valid[0] || null;
+  const selection = selectGlobalChampion(results);
+  const globalChampion = selection.selected;
   const runId = `quant_${Date.now()}`;
   const summary = {
     id: runId,
@@ -297,20 +312,37 @@ async function runQuantResearchLab(db, options = {}) {
     symbols,
     results,
     global_champion: globalChampion,
+    observation_champion: selection.observationChampion,
     promotion_eligible: Boolean(globalChampion?.promotion_eligible),
+    no_eligible_champion: selection.eligibleCount === 0,
+    selection: {
+      mode: selection.selectionMode,
+      analyzed_count: results.length,
+      valid_count: selection.validCount,
+      eligible_count: selection.eligibleCount,
+      failed_count: selection.failedCount,
+      selected_symbol: globalChampion?.symbol || null,
+      observation_symbol: selection.observationChampion?.symbol || null
+    },
     limits_unchanged: true,
-    version: 'spot_quant_lab_v1'
+    version: 'spot_quant_lab_v2'
   };
 
   await db.collection(RESULTS).doc(runId).set(summary);
   if (globalChampion) {
     await db.collection(CHAMPIONS).doc('current').set({
       ...globalChampion,
+      selection_mode: selection.selectionMode,
+      eligible_candidates_count: selection.eligibleCount,
+      valid_candidates_count: selection.validCount,
+      no_eligible_champion: selection.eligibleCount === 0,
+      observation_symbol: selection.observationChampion?.symbol || null,
       selected_at: summary.created_at,
       research_run_id: runId,
       approved_for_real: false,
       requires_runtime_gate: true,
-      no_order_created: true
+      no_order_created: true,
+      version: 'spot_quant_champion_v2'
     }, { merge: true });
   }
   return summary;
@@ -324,6 +356,7 @@ module.exports = {
   walkForward,
   probabilityCalibration,
   promotionEligible,
+  selectGlobalChampion,
   runSymbolResearch,
   runQuantResearchLab
 };
