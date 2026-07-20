@@ -23,6 +23,11 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, n(value)));
 }
 
+function round(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(n(value) * factor) / factor;
+}
+
 function isEligibleSymbol(symbol = {}) {
   if (symbol.status !== 'TRADING' || symbol.quoteAsset !== 'USDT') return false;
   if (symbol.isSpotTradingAllowed === false) return false;
@@ -36,7 +41,7 @@ function isEligibleSymbol(symbol = {}) {
 async function getJson(path) {
   const response = await axios.get(`${BINANCE_API}${path}`, {
     timeout: 15000,
-    headers: { 'User-Agent': 'Proypers25-Spot-Gem-Radar/1.0' }
+    headers: { 'User-Agent': 'Proypers25-Spot-Gem-Radar/2.0' }
   });
   return response.data;
 }
@@ -47,9 +52,11 @@ async function fetchSpotUniverse() {
     getJson('/api/v3/ticker/24hr')
   ]);
   const tickerBySymbol = new Map((tickers || []).map((ticker) => [ticker.symbol, ticker]));
-  return (exchangeInfo.symbols || []).filter(isEligibleSymbol).map((symbol) => {
+  const unique = new Map();
+
+  for (const symbol of (exchangeInfo.symbols || []).filter(isEligibleSymbol)) {
     const ticker = tickerBySymbol.get(symbol.symbol) || {};
-    return {
+    unique.set(symbol.symbol, {
       symbol: symbol.symbol,
       base_asset: symbol.baseAsset,
       quote_asset: symbol.quoteAsset,
@@ -59,13 +66,50 @@ async function fetchSpotUniverse() {
       high_24h: n(ticker.highPrice, 0),
       low_24h: n(ticker.lowPrice, 0),
       trades_24h: n(ticker.count, 0)
-    };
-  });
+    });
+  }
+
+  return [...unique.values()];
 }
 
 function ageDays(firstSeenAt, now = Date.now()) {
   const timestamp = Date.parse(firstSeenAt || '');
   return Number.isFinite(timestamp) ? Math.max(0, (now - timestamp) / 86400000) : null;
+}
+
+function logScore(value, floor, ceiling, maxPoints) {
+  if (value <= floor) return 0;
+  if (value >= ceiling) return maxPoints;
+  const normalized = (Math.log10(value) - Math.log10(floor)) /
+    (Math.log10(ceiling) - Math.log10(floor));
+  return clamp(normalized * maxPoints, 0, maxPoints);
+}
+
+function momentumScore(change) {
+  if (change <= -10 || change >= 35) return 0;
+  if (change >= 3 && change <= 12) return 18;
+  if (change > 12 && change <= 20) return 14;
+  if (change > 20 && change < 35) return 7;
+  if (change > 0 && change < 3) return 9;
+  if (change >= -3 && change <= 0) return 4;
+  return 1;
+}
+
+function volatilityScore(rangePct) {
+  if (rangePct < 1 || rangePct > 25) return 0;
+  if (rangePct >= 3 && rangePct <= 12) return 14;
+  if (rangePct > 12 && rangePct <= 18) return 9;
+  if (rangePct >= 1 && rangePct < 3) return 6;
+  return 3;
+}
+
+function noveltyScore(days) {
+  if (days === null) return 0;
+  if (days <= 7) return 10;
+  if (days <= 30) return 8;
+  if (days <= 90) return 5;
+  if (days <= 180) return 2;
+  return 0;
 }
 
 function scoreGemCandidate(asset, prior = {}, now = Date.now()) {
@@ -77,57 +121,48 @@ function scoreGemCandidate(asset, prior = {}, now = Date.now()) {
   const reasons = [];
   const risks = [];
 
-  let liquidity = 0;
-  if (volume >= 100000000) liquidity = 25;
-  else if (volume >= 25000000) liquidity = 21;
-  else if (volume >= 5000000) liquidity = 16;
-  else if (volume >= 1000000) liquidity = 9;
-  else risks.push('LOW_LIQUIDITY');
+  const liquidity = logScore(volume, 500000, 150000000, 26);
+  const momentum = momentumScore(change);
+  const activity = logScore(n(asset.trades_24h), 1000, 500000, 18);
+  const volatility = volatilityScore(rangePct);
+  const novelty = noveltyScore(days);
+  const continuity = prior.active === true ? 4 : 0;
 
-  let momentum = 0;
-  if (change >= 2 && change <= 15) momentum = 18;
-  else if (change > 0 && change < 2) momentum = 10;
-  else if (change > 15 && change <= 30) momentum = 9;
-  else if (change < -15) risks.push('SHARP_NEGATIVE_MOVE');
-  if (Math.abs(change) > 35) risks.push('EXTREME_24H_MOVE');
+  let penalty = 0;
+  if (volume < 1000000) { risks.push('LOW_LIQUIDITY'); penalty += 20; }
+  if (Math.abs(change) > 35) { risks.push('EXTREME_24H_MOVE'); penalty += 20; }
+  if (change < -15) { risks.push('SHARP_NEGATIVE_MOVE'); penalty += 12; }
+  if (rangePct > 25) { risks.push('EXCESSIVE_INTRADAY_RANGE'); penalty += 15; }
+  if (n(asset.trades_24h) < 3000) { risks.push('LOW_MARKET_ACTIVITY'); penalty += 8; }
 
-  let activity = 0;
-  if (asset.trades_24h >= 500000) activity = 18;
-  else if (asset.trades_24h >= 100000) activity = 14;
-  else if (asset.trades_24h >= 20000) activity = 9;
-  else if (asset.trades_24h >= 5000) activity = 5;
-
-  let volatility = 0;
-  if (rangePct >= 3 && rangePct <= 15) volatility = 14;
-  else if (rangePct > 0 && rangePct < 3) volatility = 7;
-  else if (rangePct > 15 && rangePct <= 25) volatility = 6;
-  else if (rangePct > 25) risks.push('EXCESSIVE_INTRADAY_RANGE');
-
-  let novelty = 0;
-  if (days !== null && days <= 7) novelty = 15;
-  else if (days !== null && days <= 30) novelty = 12;
-  else if (days !== null && days <= 90) novelty = 8;
-  else if (days !== null && days <= 180) novelty = 4;
-
-  const continuity = prior.active === true ? 6 : 0;
-  const score = clamp(liquidity + momentum + activity + volatility + novelty + continuity);
+  const rawScore = liquidity + momentum + activity + volatility + novelty + continuity;
+  const score = clamp(rawScore - penalty, 0, 96);
 
   if (liquidity >= 16) reasons.push('LIQUID_MARKET');
-  if (momentum >= 10) reasons.push('CONSTRUCTIVE_MOMENTUM');
-  if (activity >= 9) reasons.push('STRONG_TRADING_ACTIVITY');
-  if (volatility >= 7) reasons.push('TRADEABLE_RANGE');
-  if (novelty >= 8) reasons.push('RECENT_LISTING');
+  if (momentum >= 12) reasons.push('CONSTRUCTIVE_MOMENTUM');
+  if (activity >= 10) reasons.push('STRONG_TRADING_ACTIVITY');
+  if (volatility >= 9) reasons.push('TRADEABLE_RANGE');
+  if (novelty >= 5) reasons.push('RECENT_LISTING');
 
-  const researchEligible = score >= 62 && volume >= 5000000 &&
+  const researchEligible = score >= 68 && volume >= 5000000 && n(asset.trades_24h) >= 10000 &&
     !risks.includes('EXTREME_24H_MOVE') && !risks.includes('EXCESSIVE_INTRADAY_RANGE');
-  const watchEligible = score >= 42 && volume >= 1000000;
+  const watchEligible = score >= 48 && volume >= 1000000;
 
   return {
-    gem_score: score,
-    components: { liquidity, momentum, activity, volatility, novelty, continuity },
+    gem_score: round(score),
+    raw_score: round(rawScore),
+    penalty: round(penalty),
+    components: {
+      liquidity: round(liquidity),
+      momentum: round(momentum),
+      activity: round(activity),
+      volatility: round(volatility),
+      novelty: round(novelty),
+      continuity: round(continuity)
+    },
     reasons,
     risks,
-    age_days: days,
+    age_days: days === null ? null : round(days, 1),
     state: researchEligible ? 'RESEARCH' : watchEligible ? 'WATCH' : 'OBSERVE',
     research_eligible: researchEligible,
     real_entry_approved: false,
@@ -139,6 +174,20 @@ function scoreGemCandidate(asset, prior = {}, now = Date.now()) {
 
 function preserveProtectedState(previousState, proposedState) {
   return ['PAPER', 'PROMOTED', 'REAL'].includes(previousState) ? previousState : proposedState;
+}
+
+function deduplicateRankedAssets(items = []) {
+  const bySymbol = new Map();
+  for (const item of items) {
+    const symbol = String(item?.symbol || '').toUpperCase();
+    if (!symbol) continue;
+    const previous = bySymbol.get(symbol);
+    if (!previous || n(item.gem_score) > n(previous.gem_score) ||
+      (n(item.gem_score) === n(previous.gem_score) && n(item.quote_volume_24h) > n(previous.quote_volume_24h))) {
+      bySymbol.set(symbol, { ...item, symbol });
+    }
+  }
+  return [...bySymbol.values()];
 }
 
 async function commitInChunks(db, operations, chunkSize = 400) {
@@ -160,7 +209,7 @@ async function runSpotGemRadar(db, options = {}) {
   const registry = new Map(registrySnapshot.docs.map((doc) => [doc.id, doc.data()]));
   const catalog = new Map(catalogSnapshot.docs.map((doc) => [doc.id, doc.data()]));
 
-  const ranked = universe.map((asset) => {
+  const assessed = universe.map((asset) => {
     const priorRegistry = registry.get(asset.symbol) || {};
     const priorCatalog = catalog.get(asset.symbol) || {};
     const firstSeenAt = priorRegistry.first_seen_at || priorCatalog.first_seen_at || createdAt;
@@ -170,6 +219,8 @@ async function runSpotGemRadar(db, options = {}) {
       first_seen_at: firstSeenAt,
       last_seen_at: createdAt,
       gem_score: assessment.gem_score,
+      gem_raw_score: assessment.raw_score,
+      gem_penalty: assessment.penalty,
       gem_components: assessment.components,
       reasons: assessment.reasons,
       risks: assessment.risks,
@@ -182,12 +233,17 @@ async function runSpotGemRadar(db, options = {}) {
       requires_paper_validation: true,
       requires_runtime_gate: true,
       active: true,
-      version: 'spot_gem_radar_v1'
+      version: 'spot_gem_radar_v2'
     };
-  }).sort((left, right) => right.gem_score - left.gem_score || right.quote_volume_24h - left.quote_volume_24h);
+  });
+
+  const ranked = deduplicateRankedAssets(assessed)
+    .sort((left, right) => right.gem_score - left.gem_score || right.quote_volume_24h - left.quote_volume_24h);
 
   const requested = Math.max(1, Math.min(MAX_RESEARCH_SYMBOLS, n(options.maxResearch, 10)));
-  const researchCandidates = ranked.filter((asset) => asset.research_eligible).slice(0, requested);
+  const researchCandidates = ranked
+    .filter((asset) => asset.research_eligible)
+    .slice(0, requested);
 
   const operations = ranked.flatMap((asset) => [
     (batch) => batch.set(db.collection(REGISTRY).doc(asset.symbol), {
@@ -231,6 +287,7 @@ async function runSpotGemRadar(db, options = {}) {
     id: `gem_radar_${now}`,
     created_at: createdAt,
     universe_size: ranked.length,
+    unique_symbol_count: ranked.length,
     research_candidate_count: researchCandidates.length,
     research_symbols: researchCandidates.map((asset) => asset.symbol),
     top_candidates: ranked.slice(0, 30),
@@ -239,7 +296,7 @@ async function runSpotGemRadar(db, options = {}) {
     spot_only: true,
     no_order_created: true,
     real_entry_approved: false,
-    version: 'spot_gem_radar_v1'
+    version: 'spot_gem_radar_v2'
   };
 
   await Promise.all([
@@ -250,7 +307,9 @@ async function runSpotGemRadar(db, options = {}) {
   console.log(JSON.stringify({
     event: 'SPOT_GEM_RADAR_RESULT',
     run_id: run.id,
+    version: run.version,
     universe_size: run.universe_size,
+    unique_symbol_count: run.unique_symbol_count,
     research_candidate_count: run.research_candidate_count,
     research_symbols: run.research_symbols,
     quant_run_id: run.quant_run_id,
@@ -265,5 +324,6 @@ module.exports = {
   isEligibleSymbol,
   scoreGemCandidate,
   preserveProtectedState,
+  deduplicateRankedAssets,
   runSpotGemRadar
 };
