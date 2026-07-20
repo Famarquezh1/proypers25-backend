@@ -7,7 +7,8 @@ const {
   metrics,
   walkForward,
   probabilityCalibration,
-  promotionEligible
+  promotionEligible,
+  selectGlobalChampion
 } = require('../services/spotQuantResearchLab');
 
 function candle(index, close, volume = 1000) {
@@ -62,6 +63,26 @@ function candle(index, close, volume = 1000) {
       test: { trades: 7, expectancy: 0.001, profitFactor: 1.3, maxDrawdown: 0.05 }
     }
   }), false);
+
+  const eligiblePreferred = selectGlobalChampion([
+    { symbol: 'BTCUSDT', champion: { score: 99 }, promotion_eligible: false },
+    { symbol: 'SOLUSDT', champion: { score: 94 }, promotion_eligible: true },
+    { symbol: 'ETHUSDT', champion: { score: 91 }, promotion_eligible: true }
+  ]);
+  assert.strictEqual(eligiblePreferred.selected.symbol, 'SOLUSDT');
+  assert.strictEqual(eligiblePreferred.observationChampion.symbol, 'BTCUSDT');
+  assert.strictEqual(eligiblePreferred.eligibleCount, 2);
+  assert.strictEqual(eligiblePreferred.selectionMode, 'BEST_ELIGIBLE');
+
+  const observationOnly = selectGlobalChampion([
+    { symbol: 'BTCUSDT', champion: { score: 99 }, promotion_eligible: false },
+    { symbol: 'SOLUSDT', champion: { score: 94 }, promotion_eligible: false },
+    { symbol: 'BROKENUSDT', promotion_eligible: false, error: 'failed' }
+  ]);
+  assert.strictEqual(observationOnly.selected.symbol, 'BTCUSDT');
+  assert.strictEqual(observationOnly.eligibleCount, 0);
+  assert.strictEqual(observationOnly.failedCount, 1);
+  assert.strictEqual(observationOnly.selectionMode, 'OBSERVATION_ONLY');
 
   console.log('spotQuantResearchLab tests passed');
 })();
