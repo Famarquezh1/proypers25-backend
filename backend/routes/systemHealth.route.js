@@ -3,6 +3,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../firebase-admin-config');
+const { assessPortfolioHealth, calculateSuggestedAllocation } = require('../services/spotPortfolioHealth');
 
 const router = express.Router();
 
@@ -60,8 +61,9 @@ async function safeLatest(collection, orderField) {
 }
 
 async function buildHealth() {
-  const [control, adaptive, promotion, champion, cost, quantRun, adaptiveRun, discoveryRun, costRun, openPositions] = await Promise.all([
+  const [control, balance, adaptive, promotion, champion, cost, quantRun, adaptiveRun, discoveryRun, costRun, reconciliationRun, cycleRun, openPositions] = await Promise.all([
     safeDoc('real_spot_config/control'),
+    safeDoc('real_spot_config/balance'),
     safeDoc('real_spot_config/adaptive_strategy'),
     safeDoc('real_spot_config/strategy_promotion'),
     safeDoc('spot_quant_champions/current'),
@@ -70,12 +72,35 @@ async function buildHealth() {
     safeLatest('spot_adaptive_strategy_runs', 'created_at'),
     safeLatest('spot_new_asset_discovery_runs', 'created_at'),
     safeLatest('spot_cost_governance_runs', 'created_at'),
+    safeLatest('real_spot_reconciliations', 'created_at'),
+    safeLatest('real_spot_cycle_decisions', 'timestamp'),
     db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get()
   ]);
 
   const promotionState = promotion?.state || 'NOT_INITIALIZED';
   const promotionFreshness = freshness(promotion?.updated_at || promotion?.created_at, 150, 300);
+  const exitStatus = cycleRun ? {
+    ok: cycleRun?.gates?.exit_engine !== 'FAIL',
+    blocked: cycleRun?.gates?.exit_engine === 'FAIL',
+    exit_engine_healthy: cycleRun?.gates?.exit_engine !== 'FAIL'
+  } : null;
+  const portfolioHealth = assessPortfolioHealth({
+    config: control,
+    reconciliation: reconciliationRun,
+    exitStatus,
+    balance,
+    adaptive,
+    promotion
+  });
+  const allocationAdvisory = calculateSuggestedAllocation(balance, control, portfolioHealth.state);
+
   const components = [
+    {
+      id: 'portfolio_health', label: 'Salud del portafolio',
+      state: portfolioHealth.state === 'HEALTHY' ? 'GREEN' : portfolioHealth.state === 'DEGRADED' ? 'YELLOW' : 'RED',
+      detail: portfolioHealth.critical_reasons[0] || portfolioHealth.degraded_reasons[0] || 'Entradas y salidas coherentes',
+      updated_at: reconciliationRun?.created_at || balance?.updated_at || null
+    },
     {
       id: 'real_spot', label: 'Motor Spot real',
       state: control && control.enabled === true && control.kill_switch !== true && control.real_sells_enabled === true ? 'GREEN' : 'RED',
@@ -92,7 +117,7 @@ async function buildHealth() {
       id: 'reconciliation', label: 'Reconciliación Binance',
       state: control && control.reconciliation_required !== true && control.account_consistent !== false ? 'GREEN' : 'RED',
       detail: control?.account_consistent === false ? 'Cuenta inconsistente' : 'Sin bloqueo de reconciliación',
-      updated_at: control?.reconciliation_gate_released_at || control?.updated_at || null
+      updated_at: reconciliationRun?.created_at || control?.reconciliation_gate_released_at || control?.updated_at || null
     },
     {
       id: 'discovery', label: 'Descubrimiento de activos',
@@ -108,7 +133,7 @@ async function buildHealth() {
     },
     {
       id: 'promotion', label: 'Promoción Paper → Real',
-      state: promotionState === 'PROMOTED_LIMITED' ? promotionFreshness.state : promotionState === 'NOT_INITIALIZED' ? 'YELLOW' : 'YELLOW',
+      state: promotionState === 'PROMOTED_LIMITED' ? promotionFreshness.state : 'YELLOW',
       detail: promotion?._error || `${promotionState}${promotion?.symbol ? ` · ${promotion.symbol}` : ''}`,
       updated_at: promotion?.updated_at || promotion?.created_at || null
     },
@@ -147,6 +172,11 @@ async function buildHealth() {
       max_open_positions: Number(control?.max_open_positions || 0),
       max_total_capital_usdt: Number(control?.max_total_capital_usdt || 0)
     },
+    portfolio: {
+      ...portfolioHealth,
+      allocation_advisory: allocationAdvisory,
+      current_balance: balance || null
+    },
     intelligence: {
       champion_symbol: champion?.symbol || null,
       champion_eligible: champion?.promotion_eligible === true,
@@ -175,10 +205,10 @@ router.get('/internal/system-health/status', requireSecret, async (_req, res) =>
 router.get('/system-health-dashboard', (_req, res) => {
   res.type('html').send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Proypers25 · Salud</title><style>
 :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:#07111f;color:#edf5ff}.wrap{max-width:1120px;margin:auto;padding:20px}.top{display:flex;gap:10px;flex-wrap:wrap}.top input{flex:1;min-width:220px}.top input,.top button{padding:14px;border-radius:12px;border:1px solid #29415f;background:#0d1b2d;color:white}.top button{background:#e8edf4;color:#07111f;font-weight:800}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}.card{background:#0d1b2d;border:1px solid #203853;border-radius:18px;padding:18px}.label,.muted{color:#91a8c2}.value{font-size:26px;font-weight:850;margin-top:7px}.green{color:#51d88a}.yellow{color:#ffd166}.red{color:#ff718a}h1{font-size:40px;margin:0}h2{margin-top:32px}.row{display:grid;grid-template-columns:1.3fr .7fr 1.4fr 1fr;gap:10px;align-items:center;padding:14px 0;border-bottom:1px solid #203853}.dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;background:currentColor}.error{color:#ff718a;margin-top:12px}@media(max-width:680px){.row{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}h1{font-size:34px}}
-</style></head><body><main class="wrap"><h1>Salud del sistema</h1><div class="muted">Proypers25 · Spot real, investigación, promoción y costos</div><div class="top"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div><div id="error" class="error"></div><section id="summary" class="grid"></section><h2>Inteligencia y promoción</h2><section id="intelligence" class="grid"></section><div id="components" class="card" hidden></div><script>
-const date=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'—';const cls=s=>String(s||'UNKNOWN').toLowerCase();const pct=v=>v===null||v===undefined?'—':(Number(v)*100).toFixed(2)+'%';
+</style></head><body><main class="wrap"><h1>Salud del sistema</h1><div class="muted">Proypers25 · Spot real, portafolio, investigación, promoción y costos</div><div class="top"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div><div id="error" class="error"></div><section id="summary" class="grid"></section><h2>Portafolio</h2><section id="portfolio" class="grid"></section><h2>Inteligencia y promoción</h2><section id="intelligence" class="grid"></section><div id="components" class="card" hidden></div><script>
+const date=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'—';const cls=s=>String(s||'UNKNOWN').toLowerCase();const pct=v=>v===null||v===undefined?'—':(Number(v)*100).toFixed(2)+'%';const usd=v=>'US$ '+Number(v||0).toFixed(2);
 async function load(){error.textContent='Consultando salud...';try{const s=secret.value;localStorage.setItem('proypers25_summary_secret',s);const r=await fetch('/internal/system-health/status',{headers:{'x-investments-secret':s}});const d=await r.json();if(!r.ok)throw new Error(d.error+(d.details?' · '+d.details:''));render(d);error.textContent='';}catch(e){components.hidden=true;error.textContent=e.message;}}
-function render(d){summary.innerHTML=[['Estado general',d.overall,cls(d.overall)],['Componentes sanos',d.summary.green,'green'],['Advertencias',d.summary.yellow,'yellow'],['Bloqueos',d.summary.red,'red'],['Posiciones abiertas',d.open_positions,''],['Límite por posición','US$ '+Number(d.limits.max_position_usdt||0).toFixed(2),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const i=d.intelligence||{};intelligence.innerHTML=[['Campeón actual',i.champion_symbol||'—',''],['Régimen',i.market_regime||'—',''],['Promoción',i.promotion_state||'—',i.promotion_state==='PROMOTED_LIMITED'?'green':'yellow'],['Validaciones Paper',i.paper_validations||0,''],['Operaciones reales',i.real_trades||0,''],['Expectancy real',pct(i.real_expectancy),Number(i.real_expectancy||0)>=0?'green':'red'],['Profit factor real',i.real_profit_factor===null?'—':Number(i.real_profit_factor).toFixed(2),Number(i.real_profit_factor||0)>=1.05?'green':'yellow'],['Brecha Paper/Real',pct(i.expectancy_gap),i.expectancy_gap!==null&&Number(i.expectancy_gap)>0.02?'red':'green']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');components.hidden=false;components.innerHTML=d.components.map(c=>'<div class="row"><div class="wide"><b>'+c.label+'</b></div><div class="'+cls(c.state)+'"><span class="dot"></span><b>'+c.state+'</b></div><div>'+c.detail+'</div><div class="muted">'+date(c.updated_at)+'</div></div>').join('');}
+function render(d){summary.innerHTML=[['Estado general',d.overall,cls(d.overall)],['Componentes sanos',d.summary.green,'green'],['Advertencias',d.summary.yellow,'yellow'],['Bloqueos',d.summary.red,'red'],['Posiciones abiertas',d.open_positions,''],['Límite actual',usd(d.limits.max_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const p=d.portfolio||{},a=p.allocation_advisory||{};portfolio.innerHTML=[['Salud',p.state||'—',p.state==='HEALTHY'?'green':p.state==='DEGRADED'?'yellow':'red'],['Entrada permitida',p.entry_allowed?'Sí':'No',p.entry_allowed?'green':'red'],['Salida permitida',p.exit_allowed?'Sí':'No',p.exit_allowed?'green':'red'],['Patrimonio',usd(a.total_portfolio_usdt),''],['USDT disponible',usd(a.available_usdt),''],['En posiciones',usd(a.in_positions_usdt),''],['Reserva sugerida',usd(a.reserve_usdt),''],['Tamaño sugerido',usd(a.suggested_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const i=d.intelligence||{};intelligence.innerHTML=[['Campeón actual',i.champion_symbol||'—',''],['Régimen',i.market_regime||'—',''],['Promoción',i.promotion_state||'—',i.promotion_state==='PROMOTED_LIMITED'?'green':'yellow'],['Validaciones Paper',i.paper_validations||0,''],['Operaciones reales',i.real_trades||0,''],['Expectancy real',pct(i.real_expectancy),Number(i.real_expectancy||0)>=0?'green':'red'],['Profit factor real',i.real_profit_factor===null?'—':Number(i.real_profit_factor).toFixed(2),Number(i.real_profit_factor||0)>=1.05?'green':'yellow'],['Brecha Paper/Real',pct(i.expectancy_gap),i.expectancy_gap!==null&&Number(i.expectancy_gap)>0.02?'red':'green']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');components.hidden=false;components.innerHTML=d.components.map(c=>'<div class="row"><div class="wide"><b>'+c.label+'</b></div><div class="'+cls(c.state)+'"><span class="dot"></span><b>'+c.state+'</b></div><div>'+c.detail+'</div><div class="muted">'+date(c.updated_at)+'</div></div>').join('');}
 secret.value=localStorage.getItem('proypers25_summary_secret')||'';</script></main></body></html>`);
 });
 
