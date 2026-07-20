@@ -28,7 +28,7 @@ concurrency:
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Run cost-aware Spot research cycle
         env:
@@ -44,7 +44,7 @@ jobs:
           call_endpoint() {
             local endpoint="$1"
             local body="$2"
-            curl --silent --show-error --fail-with-body --retry 2 --max-time 780 \
+            curl --silent --show-error --fail-with-body --retry 2 --max-time 1200 \
               -X POST "$BACKEND_URL$endpoint" \
               -H "Content-Type: application/json" \
               -H "x-cron-secret: $CRON_SECRET" \
@@ -53,32 +53,38 @@ jobs:
 
           run_quant_and_promotion() {
             echo "QUANT_START"
-            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}')
-            printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,promotion_eligible,no_eligible_champion,selection}'
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":3000,"feeRate":0.001}')
+            printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
 
             ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
             ANALYZED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.analyzed_count // 0')
+            SELECTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.selected_symbol // empty')
             if [ "$ACCEPTED" -le 0 ] || [ "$ANALYZED" -le 0 ]; then
               echo "Quant research produced no accepted/analyzed symbols" >&2
               exit 1
             fi
 
+            echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none}"
+            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: ($symbol | select(length > 0) | [.]) // [], source:"quant_research"}')
+            PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY")
+            printf '%s\n' "$PAPER_RESULT" | jq '{ok,paper_only,positions_closed,intents_created,intents_rejected,opened_symbols}'
+
             echo "PROMOTION_START"
             PROMOTION_RESULT=$(call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}')
-            printf '%s\n' "$PROMOTION_RESULT" | jq '{ok,state,reason,reasons,promoted_symbol}'
-            echo "QUANT_AND_PROMOTION_DONE"
+            printf '%s\n' "$PROMOTION_RESULT" | jq '{ok,state,entry_allowed,symbol,reasons,paper,champion_run_id}'
+            echo "QUANT_PAPER_PROMOTION_DONE"
           }
 
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             case "$MANUAL_TASK" in
               governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
-              discovery) call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}' ;;
+              discovery) call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":3000}' ;;
               adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
               promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' ;;
               quant) run_quant_and_promotion ;;
               all)
                 call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
-                call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
+                call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":3000}'
                 call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
                 run_quant_and_promotion
                 ;;
@@ -89,7 +95,7 @@ jobs:
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
 
-          call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":1000}'
+          call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":3000}'
 
           if [ "$MINUTE" = "00" ]; then
             call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
