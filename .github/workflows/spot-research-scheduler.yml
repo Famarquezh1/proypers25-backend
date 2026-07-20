@@ -38,8 +38,8 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
-
           echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK backend=$BACKEND_URL"
+          MARKET_RESULT='{}'
 
           call_endpoint() {
             local endpoint="$1"
@@ -51,6 +51,12 @@ jobs:
               --data "$body"
           }
 
+          run_market_opportunity() {
+            echo "MARKET_OPPORTUNITY_START bands=8_to_40 mode=observe_and_feed_quant"
+            MARKET_RESULT=$(call_endpoint "/internal/cron/binance/spot-market-opportunity" '{"researchLimit":10}')
+            printf '%s\n' "$MARKET_RESULT" | jq '{ok,id,version,breadth,research_symbols,top_winners:(.top_winners[:10]),learning_mode,no_order_created}'
+          }
+
           run_gem_radar() {
             echo "GEM_RADAR_START universe=dynamic max_research=10 quant=v6_productive"
             RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":5000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}')
@@ -58,8 +64,13 @@ jobs:
           }
 
           run_quant_and_promotion() {
-            echo "QUANT_START mode=productive folds=4 universe=10 candles=5000"
-            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"],"interval":"5m","limit":5000,"feeRate":0.001,"slippageRate":0.0005}')
+            CORE='["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"]'
+            MARKET_SYMBOLS=$(printf '%s' "$MARKET_RESULT" | jq -c '.research_symbols // []')
+            SYMBOLS=$(jq -nc --argjson core "$CORE" --argjson market "$MARKET_SYMBOLS" '$market + $core | unique | .[:12]')
+            QUANT_BODY=$(jq -nc --argjson symbols "$SYMBOLS" '{symbols:$symbols,interval:"5m",limit:5000,feeRate:0.001,slippageRate:0.0005}')
+
+            echo "QUANT_START mode=productive_v6 folds=4 universe=$(printf '%s' "$SYMBOLS" | jq length) market_winners_included=$(printf '%s' "$MARKET_SYMBOLS" | jq length)"
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" "$QUANT_BODY")
             printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,strategy_families,walk_forward_folds,safeguards,costs,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
 
             ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
@@ -70,8 +81,9 @@ jobs:
               exit 1
             fi
 
-            echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none} source=quant_v6_productive"
-            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: (if ($symbol | length) > 0 then [$symbol] else [] end), source:"quant_v6_productive"}')
+            PAPER_SYMBOLS=$(printf '%s' "$SYMBOLS" | jq -c '.[0:5]')
+            echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none} candidate_count=$(printf '%s' "$PAPER_SYMBOLS" | jq length)"
+            PAPER_BODY=$(jq -nc --argjson symbols "$PAPER_SYMBOLS" --arg selected "$SELECTED" '{preferredSymbols:($symbols + (if ($selected|length)>0 then [$selected] else [] end) | unique),source:"quant_research_market_breadth_v1"}')
             PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY")
             printf '%s\n' "$PAPER_RESULT" | jq '{ok,paper_only,positions_closed,intents_created,intents_rejected,opened_symbols}'
 
@@ -84,12 +96,13 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             case "$MANUAL_TASK" in
               governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
-              discovery) run_gem_radar ;;
+              discovery) run_market_opportunity; run_gem_radar ;;
               adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
               promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' ;;
-              quant) run_quant_and_promotion ;;
+              quant) run_market_opportunity; run_quant_and_promotion ;;
               all)
                 call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
+                run_market_opportunity
                 run_gem_radar
                 call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
                 run_quant_and_promotion
@@ -100,7 +113,7 @@ jobs:
 
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
-
+          run_market_opportunity
           run_gem_radar
 
           if [ "$MINUTE" = "00" ]; then
