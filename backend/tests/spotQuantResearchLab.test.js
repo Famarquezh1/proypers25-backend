@@ -8,6 +8,7 @@ const {
   walkForward,
   probabilityCalibration,
   promotionEligible,
+  normalizeSymbols,
   selectGlobalChampion
 } = require('../services/spotQuantResearchLab');
 
@@ -63,6 +64,15 @@ function candle(index, close, volume = 1000) {
       test: { trades: 7, expectancy: 0.001, profitFactor: 1.3, maxDrawdown: 0.05 }
     }
   }), false);
+
+  assert.deepStrictEqual(
+    normalizeSymbols(['btcusdt', 'ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'BAD', 'USDT']),
+    ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
+  );
+  assert.deepStrictEqual(
+    normalizeSymbols(),
+    ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'TONUSDT']
+  );
 
   const eligiblePreferred = selectGlobalChampion([
     { symbol: 'BTCUSDT', champion: { score: 99 }, promotion_eligible: false },
