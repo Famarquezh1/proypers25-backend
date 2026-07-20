@@ -28,8 +28,8 @@ router.post('/internal/cron/binance/spot-quant-research', requireCronSecret, asy
     const result = await runQuantResearchLab(db, {
       symbols: req.body?.symbols,
       interval: req.body?.interval || '5m',
-      limit: req.body?.limit || 1000,
-      feeRate: req.body?.fee_rate
+      limit: req.body?.limit || 3000,
+      feeRate: req.body?.feeRate ?? req.body?.fee_rate
     });
     return res.json({ ok: true, duration_ms: Date.now() - startedAt, ...result });
   } catch (error) {
