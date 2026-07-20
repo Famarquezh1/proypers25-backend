@@ -5,6 +5,7 @@ const ADAPTIVE = 'real_spot_config/adaptive_strategy';
 const PROMOTION = 'real_spot_config/strategy_promotion';
 const RESULTS = 'real_spot_execution_results';
 const VALIDATIONS = 'spot_opportunity_validations';
+const PAPER_RESULTS = 'spot_paper_execution_results';
 const RUNS = 'spot_strategy_promotion_runs';
 
 function n(value, fallback = 0) {
@@ -42,15 +43,36 @@ function summarizeReal(rows = [], symbol) {
   };
 }
 
-function summarizePaper(rows = [], symbol) {
-  const filtered = rows.filter((row) => normalizedSymbol(row.symbol) === normalizedSymbol(symbol));
+function summarizePaper(rows = [], symbol, executionRows = []) {
+  const normalized = normalizedSymbol(symbol);
+  const filtered = rows.filter((row) => normalizedSymbol(row.symbol) === normalized);
   const positive = filtered.filter(positiveValidation);
-  const sampleSize = filtered.reduce((sum, row) => sum + Math.max(1, n(row.sample_size ?? row.completed_count ?? row.observations, 1)), 0);
+  const validationSampleSize = filtered.reduce((sum, row) => (
+    sum + Math.max(1, n(row.sample_size ?? row.completed_count ?? row.observations, 1))
+  ), 0);
+
+  const paperTrades = executionRows.filter((row) => normalizedSymbol(row.symbol) === normalized);
+  const paperReturns = paperTrades
+    .map((row) => n(row.estimated_net_pnl_pct ?? row.net_pnl_pct) / 100)
+    .filter(Number.isFinite);
+  const winningPaperTrades = paperReturns.filter((value) => value > 0);
+  const losingPaperTrades = paperReturns.filter((value) => value <= 0);
+  const grossProfit = winningPaperTrades.reduce((sum, value) => sum + value, 0);
+  const grossLoss = Math.abs(losingPaperTrades.reduce((sum, value) => sum + value, 0));
+
+  const evidenceCount = filtered.length + paperReturns.length;
+  const positiveEvidence = positive.length + winningPaperTrades.length;
   return {
     validations: filtered.length,
     positive_validations: positive.length,
-    positive_rate: filtered.length ? positive.length / filtered.length : 0,
-    sample_size: sampleSize
+    paper_trades: paperReturns.length,
+    winning_paper_trades: winningPaperTrades.length,
+    positive_rate: evidenceCount ? positiveEvidence / evidenceCount : 0,
+    sample_size: validationSampleSize + paperReturns.length,
+    validation_sample_size: validationSampleSize,
+    paper_expectancy: mean(paperReturns),
+    paper_profit_factor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99 : 0,
+    paper_net_pnl_usdt: paperTrades.reduce((sum, row) => sum + n(row.estimated_net_pnl_usdt ?? row.net_pnl_usdt), 0)
   };
 }
 
@@ -114,21 +136,23 @@ function assessPromotion({ champion, adaptive, paper, real, config = {} }) {
 }
 
 async function evaluateStrategyPromotion(db, config = {}) {
-  const [championSnap, adaptiveSnap, validationSnap, resultSnap] = await Promise.all([
+  const [championSnap, adaptiveSnap, validationSnap, paperResultSnap, resultSnap] = await Promise.all([
     db.doc(CHAMPION).get(),
     db.doc(ADAPTIVE).get(),
     db.collection(VALIDATIONS).orderBy('created_at', 'desc').limit(300).get(),
+    db.collection(PAPER_RESULTS).orderBy('closed_at', 'desc').limit(300).get(),
     db.collection(RESULTS).orderBy('closed_at', 'desc').limit(200).get()
   ]);
   const champion = championSnap.exists ? championSnap.data() : null;
   const adaptive = adaptiveSnap.exists ? adaptiveSnap.data() : null;
   const symbol = normalizedSymbol(champion?.symbol);
   const paperRows = validationSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const paperExecutionRows = paperResultSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const realRows = resultSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const decision = assessPromotion({
     champion,
     adaptive,
-    paper: summarizePaper(paperRows, symbol),
+    paper: summarizePaper(paperRows, symbol, paperExecutionRows),
     real: summarizeReal(realRows, symbol),
     config
   });
@@ -142,10 +166,19 @@ async function evaluateStrategyPromotion(db, config = {}) {
     margin_allowed: false,
     leverage_allowed: false,
     withdrawals_allowed: false,
-    version: 'spot_strategy_promotion_v1'
+    version: 'spot_strategy_promotion_v2'
   };
   await db.collection(RUNS).doc(run.id).set(run);
   await db.doc(PROMOTION).set({ ...run, updated_at: now, source_run_id: run.id }, { merge: true });
+  console.log(JSON.stringify({
+    event: 'SPOT_STRATEGY_PROMOTION_RESULT',
+    symbol: run.symbol,
+    state: run.state,
+    entry_allowed: run.entry_allowed,
+    reasons: run.reasons,
+    paper: run.paper,
+    champion_run_id: run.champion_run_id
+  }));
   return run;
 }
 
