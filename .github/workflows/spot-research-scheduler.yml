@@ -65,7 +65,7 @@ jobs:
             fi
 
             echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none}"
-            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: ($symbol | select(length > 0) | [.]) // [], source:"quant_research"}')
+            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: (if ($symbol | length) > 0 then [$symbol] else [] end), source:"quant_research"}')
             PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY")
             printf '%s\n' "$PAPER_RESULT" | jq '{ok,paper_only,positions_closed,intents_created,intents_rejected,opened_symbols}'
 
