@@ -5,6 +5,8 @@ const axios = require('axios');
 const BINANCE_API = 'https://api.binance.com';
 const RESULTS = 'spot_quant_research_runs';
 const CHAMPIONS = 'spot_quant_champions';
+const DEFAULT_HISTORY_LIMIT = 3000;
+const MAX_HISTORY_LIMIT = 5000;
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -73,15 +75,52 @@ function parseKlines(rows) {
     volume: Number(row[5]),
     closeTime: Number(row[6]),
     quoteVolume: Number(row[7])
-  })).filter((row) => row.close > 0 && row.high > 0 && row.low > 0);
+  })).filter((row) => row.close > 0 && row.high > 0 && row.low > 0 && Number.isFinite(row.openTime));
 }
 
-async function fetchKlines(symbol, interval = '5m', limit = 1000) {
-  const response = await axios.get(`${BINANCE_API}/api/v3/klines`, {
-    params: { symbol, interval, limit: Math.min(1000, Math.max(100, limit)) },
-    timeout: 12000
-  });
-  return parseKlines(response.data || []);
+function intervalToMilliseconds(interval = '5m') {
+  const match = String(interval).match(/^(\d+)([mhdw])$/i);
+  if (!match) return 5 * 60 * 1000;
+  const value = Math.max(1, Number(match[1]));
+  const unit = match[2].toLowerCase();
+  const multipliers = {
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000
+  };
+  return value * multipliers[unit];
+}
+
+async function fetchKlines(symbol, interval = '5m', limit = DEFAULT_HISTORY_LIMIT) {
+  const requestedLimit = Math.min(MAX_HISTORY_LIMIT, Math.max(100, Math.floor(n(limit, DEFAULT_HISTORY_LIMIT))));
+  const rowsByOpenTime = new Map();
+  let endTime;
+  let requests = 0;
+
+  while (rowsByOpenTime.size < requestedLimit && requests < Math.ceil(requestedLimit / 1000) + 1) {
+    const batchLimit = Math.min(1000, requestedLimit - rowsByOpenTime.size);
+    const params = { symbol, interval, limit: Math.max(1, batchLimit) };
+    if (endTime) params.endTime = endTime;
+
+    const response = await axios.get(`${BINANCE_API}/api/v3/klines`, {
+      params,
+      timeout: 15000
+    });
+    const batch = parseKlines(response.data || []);
+    requests += 1;
+    if (!batch.length) break;
+
+    for (const candle of batch) rowsByOpenTime.set(candle.openTime, candle);
+    const oldestOpenTime = batch[0].openTime;
+    if (!Number.isFinite(oldestOpenTime) || oldestOpenTime <= 0) break;
+    endTime = oldestOpenTime - 1;
+    if (batch.length < batchLimit) break;
+  }
+
+  return Array.from(rowsByOpenTime.values())
+    .sort((left, right) => left.openTime - right.openTime)
+    .slice(-requestedLimit);
 }
 
 function featureAt(candles, index) {
@@ -132,7 +171,7 @@ function candidateConfigs() {
   for (const threshold of [66, 72, 78]) {
     for (const tpAtr of [1.5, 2, 2.5]) {
       for (const slAtr of [0.8, 1, 1.2]) {
-        for (const timeoutBars of [12, 24, 36]) {
+        for (const timeoutBars of [12, 24, 36, 48]) {
           configs.push({ threshold, tpAtr, slAtr, timeoutBars });
         }
       }
@@ -245,9 +284,31 @@ function probabilityCalibration(trades) {
   return { samples: trades.length, brier, calibrated: trades.length >= 20 && brier <= 0.25 };
 }
 
+function buildEligibilityDiagnostic(champion) {
+  const validation = champion?.walk?.validation || null;
+  const test = champion?.walk?.test || null;
+  const checks = {
+    validation_min_trades: n(validation?.trades) >= 5,
+    validation_expectancy_positive: n(validation?.expectancy) > 0,
+    validation_profit_factor: n(validation?.profitFactor) >= 1.15,
+    test_min_trades: n(test?.trades) >= 5,
+    test_expectancy_positive: n(test?.expectancy) > 0,
+    test_profit_factor: n(test?.profitFactor) >= 1.15,
+    test_drawdown: n(test?.maxDrawdown, 1) <= 0.12
+  };
+  return {
+    eligible: Object.values(checks).every(Boolean),
+    checks,
+    validation,
+    test,
+    calibration: champion?.calibration || null
+  };
+}
+
 async function runSymbolResearch(symbol, options = {}) {
   const interval = options.interval || '5m';
-  const candles = await fetchKlines(symbol, interval, n(options.limit, 1000));
+  const requestedLimit = Math.min(MAX_HISTORY_LIMIT, Math.max(100, n(options.limit, DEFAULT_HISTORY_LIMIT)));
+  const candles = await fetchKlines(symbol, interval, requestedLimit);
   const feeRate = clamp(n(options.feeRate, 0.001), 0, 0.01);
   const evaluated = candidateConfigs().map((config) => {
     const walk = walkForward(candles, config, feeRate);
@@ -257,24 +318,24 @@ async function runSymbolResearch(symbol, options = {}) {
     return { config, walk, calibration: probabilityCalibration(testTrades), score };
   }).sort((a, b) => b.score - a.score);
 
+  const champion = evaluated[0] || null;
   return {
     symbol,
     interval,
+    requested_candles: requestedLimit,
     candles: candles.length,
+    history_start: candles[0] ? new Date(candles[0].openTime).toISOString() : null,
+    history_end: candles.length ? new Date(candles[candles.length - 1].closeTime).toISOString() : null,
+    history_duration_hours: candles.length ? ((candles[candles.length - 1].closeTime - candles[0].openTime) / 3600000) : 0,
     generated_at: new Date().toISOString(),
-    champion: evaluated[0] || null,
+    champion,
+    eligibility: buildEligibilityDiagnostic(champion),
     runners_up: evaluated.slice(1, 5)
   };
 }
 
 function promotionEligible(champion) {
-  const test = champion?.walk?.test;
-  const validation = champion?.walk?.validation;
-  if (!test || !validation) return false;
-  return validation.trades >= 5 && test.trades >= 5 &&
-    validation.expectancy > 0 && test.expectancy > 0 &&
-    validation.profitFactor >= 1.15 && test.profitFactor >= 1.15 &&
-    test.maxDrawdown <= 0.12;
+  return buildEligibilityDiagnostic(champion).eligible;
 }
 
 function normalizeSymbols(input) {
@@ -305,10 +366,13 @@ function selectGlobalChampion(results = []) {
 
 async function runQuantResearchLab(db, options = {}) {
   const symbols = normalizeSymbols(options.symbols);
+  const requestedLimit = Math.min(MAX_HISTORY_LIMIT, Math.max(100, n(options.limit, DEFAULT_HISTORY_LIMIT)));
+  const researchOptions = { ...options, limit: requestedLimit };
   const results = [];
+
   for (const symbol of symbols) {
     try {
-      const result = await runSymbolResearch(symbol, options);
+      const result = await runSymbolResearch(symbol, researchOptions);
       result.promotion_eligible = promotionEligible(result.champion);
       results.push(result);
     } catch (error) {
@@ -325,12 +389,19 @@ async function runQuantResearchLab(db, options = {}) {
     mode: 'RESEARCH_ONLY',
     no_order_created: true,
     spot_only: true,
+    history: {
+      requested_candles_per_symbol: requestedLimit,
+      maximum_candles_per_symbol: MAX_HISTORY_LIMIT,
+      interval: researchOptions.interval || '5m',
+      interval_ms: intervalToMilliseconds(researchOptions.interval || '5m')
+    },
     symbols,
     results,
     global_champion: globalChampion,
     observation_champion: selection.observationChampion,
     promotion_eligible: Boolean(globalChampion?.promotion_eligible),
     no_eligible_champion: selection.eligibleCount === 0,
+    selected_evidence: globalChampion?.eligibility || null,
     selection: {
       mode: selection.selectionMode,
       requested_count: Array.isArray(options.symbols) ? options.symbols.length : 5,
@@ -343,7 +414,7 @@ async function runQuantResearchLab(db, options = {}) {
       observation_symbol: selection.observationChampion?.symbol || null
     },
     limits_unchanged: true,
-    version: 'spot_quant_lab_v3'
+    version: 'spot_quant_lab_v4'
   };
 
   await db.collection(RESULTS).doc(runId).set(summary);
@@ -360,7 +431,7 @@ async function runQuantResearchLab(db, options = {}) {
       approved_for_real: false,
       requires_runtime_gate: true,
       no_order_created: true,
-      version: 'spot_quant_champion_v3'
+      version: 'spot_quant_champion_v4'
     }, { merge: true });
   }
 
@@ -368,7 +439,9 @@ async function runQuantResearchLab(db, options = {}) {
     event: 'SPOT_QUANT_RESEARCH_RESULT',
     run_id: runId,
     symbols,
+    history: summary.history,
     selection: summary.selection,
+    selected_evidence: summary.selected_evidence,
     promotion_eligible: summary.promotion_eligible,
     no_eligible_champion: summary.no_eligible_champion,
     errors: results.filter((result) => result.error).map((result) => ({
@@ -382,11 +455,13 @@ async function runQuantResearchLab(db, options = {}) {
 
 module.exports = {
   fetchKlines,
+  intervalToMilliseconds,
   featureAt,
   simulate,
   metrics,
   walkForward,
   probabilityCalibration,
+  buildEligibilityDiagnostic,
   promotionEligible,
   normalizeSymbols,
   selectGlobalChampion,
