@@ -1,0 +1,192 @@
+name: Export Cloud Run observability
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloud-run-observability-export
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: proypers2025
+
+      - name: Read and sanitize Cloud Run logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/observability/ops
+
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend"' \
+            --project=proypers2025 \
+            --freshness=45m \
+            --limit=1000 \
+            --order=desc \
+            --format=json > /tmp/cloud-run-logs.json
+
+          GENERATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          jq --arg generated_at "$GENERATED_AT" '
+            def payload: (.jsonPayload // {});
+            def rev: (.resource.labels.revision_name // null);
+            def real_events: [ .[] | select(payload.event == "SPOT_REAL_CYCLE_DECISION") ];
+            def latest($items): ($items | sort_by(.timestamp) | reverse | .[0] // null);
+            (real_events) as $real |
+            (latest($real)) as $last |
+            {
+              generated_at: $generated_at,
+              window_minutes: 45,
+              service: "proypers25-backend",
+              cloud_run_revision: ($last.resource.labels.revision_name // null),
+              spot_real: {
+                cycles: ($real | length),
+                opened: ([ $real[] | payload.execution.positions_opened // 0 ] | add // 0),
+                closed: ([ $real[] | payload.execution.positions_closed // 0 ] | add // 0),
+                exit_failures: ([ $real[] | payload.execution.exit_failures // 0 ] | add // 0),
+                latest_decision: ($last.jsonPayload.decision // null),
+                latest_reason: ($last.jsonPayload.reason // null),
+                promotion_gate: ($last.jsonPayload.gates.promotion // null),
+                reconciliation_gate: ($last.jsonPayload.gates.reconciliation // null),
+                exit_engine_gate: ($last.jsonPayload.gates.exit_engine // null),
+                open_positions_after_cycle: ($last.jsonPayload.execution.open_positions_after_cycle // null),
+                promoted_symbol: ($last.jsonPayload.market.promoted_symbol // null),
+                promotion_state: ($last.jsonPayload.market.promotion_state // null),
+                reasons: ($last.jsonPayload.reasons // []),
+                safety: {
+                  spot_only: ($last.jsonPayload.safety.spot_only // true),
+                  max_position_usdt: ($last.jsonPayload.safety.max_position_usdt // null),
+                  futures_allowed: ($last.jsonPayload.safety.futures_allowed // false),
+                  margin_allowed: ($last.jsonPayload.safety.margin_allowed // false),
+                  leverage_allowed: ($last.jsonPayload.safety.leverage_allowed // false),
+                  withdrawals_allowed: ($last.jsonPayload.safety.withdrawals_allowed // false)
+                }
+              }
+            }
+          ' /tmp/cloud-run-logs.json > /tmp/observability/ops/latest-health.json
+
+          jq --arg generated_at "$GENERATED_AT" '
+            def p: (.jsonPayload // {});
+            [ .[] | select(p.event == "SPOT_GEM_RADAR_RESULT") ]
+            | sort_by(.timestamp) | reverse | .[0] as $e
+            | {
+                generated_at: $generated_at,
+                event_found: ($e != null),
+                timestamp: ($e.timestamp // null),
+                revision: ($e.resource.labels.revision_name // null),
+                run_id: ($e.jsonPayload.run_id // null),
+                version: ($e.jsonPayload.version // null),
+                universe_size: ($e.jsonPayload.universe_size // null),
+                unique_symbol_count: ($e.jsonPayload.unique_symbol_count // null),
+                research_candidate_count: ($e.jsonPayload.research_candidate_count // null),
+                research_symbols: ($e.jsonPayload.research_symbols // []),
+                quant_run_id: ($e.jsonPayload.quant_run_id // null),
+                quant_promotion_eligible: ($e.jsonPayload.quant_promotion_eligible // false)
+              }
+          ' /tmp/cloud-run-logs.json > /tmp/observability/ops/latest-gem-radar.json
+
+          jq --arg generated_at "$GENERATED_AT" '
+            def p: (.jsonPayload // {});
+            [ .[] | select(p.event == "SPOT_QUANT_RESEARCH_RESULT") ]
+            | sort_by(.timestamp) | reverse | .[0] as $e
+            | {
+                generated_at: $generated_at,
+                event_found: ($e != null),
+                timestamp: ($e.timestamp // null),
+                revision: ($e.resource.labels.revision_name // null),
+                run_id: ($e.jsonPayload.run_id // null),
+                promotion_eligible: ($e.jsonPayload.promotion_eligible // false),
+                no_eligible_champion: ($e.jsonPayload.no_eligible_champion // true),
+                selection: ($e.jsonPayload.selection // {}),
+                selected_evidence: ($e.jsonPayload.selected_evidence // {}),
+                strategy_families: ($e.jsonPayload.strategy_families // []),
+                walk_forward_folds: ($e.jsonPayload.walk_forward_folds // null),
+                history: ($e.jsonPayload.history // {})
+              }
+          ' /tmp/cloud-run-logs.json > /tmp/observability/ops/latest-quant-result.json
+
+          jq --arg generated_at "$GENERATED_AT" '
+            def p: (.jsonPayload // {});
+            [ .[]
+              | select(
+                  (.severity == "ERROR") or
+                  ((p.event // "") | test("FAILED$")) or
+                  ((.textPayload // "") | test("error|failed|exception"; "i"))
+                )
+              | {
+                  timestamp,
+                  severity: (.severity // "DEFAULT"),
+                  revision: (.resource.labels.revision_name // null),
+                  event: (p.event // null),
+                  message: ((p.error // p.details // .textPayload // "") | tostring | .[0:500])
+                }
+            ][0:100]
+            | {
+                generated_at: $generated_at,
+                count: length,
+                errors: .
+              }
+          ' /tmp/cloud-run-logs.json > /tmp/observability/ops/latest-errors.json
+
+          cat > /tmp/observability/README.md <<'EOF'
+          # Proypers25 Observability
+
+          Rama generada automáticamente cada 30 minutos desde Cloud Logging.
+
+          Solo contiene campos sanitizados y permitidos. No publica encabezados HTTP, secretos, API keys, cuerpos completos ni variables de entorno.
+
+          Archivos:
+
+          - `ops/latest-health.json`
+          - `ops/latest-errors.json`
+          - `ops/latest-gem-radar.json`
+          - `ops/latest-quant-result.json`
+          EOF
+
+      - name: Publish observability branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "proypers-observability-bot"
+          git config user.email "actions@github.com"
+
+          if git ls-remote --exit-code --heads origin observability >/dev/null 2>&1; then
+            git fetch origin observability
+            git switch -C observability origin/observability
+            git rm -rf . >/dev/null 2>&1 || true
+          else
+            git switch --orphan observability
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cp -R /tmp/observability/. .
+          git add README.md ops
+
+          if git diff --cached --quiet; then
+            echo "No observability changes to publish."
+            exit 0
+          fi
+
+          git commit -m "chore(observability): refresh sanitized Cloud Run reports"
+          git push origin HEAD:observability
