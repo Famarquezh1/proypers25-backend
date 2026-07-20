@@ -28,9 +28,9 @@ concurrency:
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
-      - name: Run cost-aware Spot research cycle
+      - name: Run productive Spot research cycle
         env:
           BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -44,7 +44,7 @@ jobs:
           call_endpoint() {
             local endpoint="$1"
             local body="$2"
-            curl --silent --show-error --fail-with-body --retry 2 --max-time 1800 \
+            curl --silent --show-error --fail-with-body --retry 2 --max-time 2100 \
               -X POST "$BACKEND_URL$endpoint" \
               -H "Content-Type: application/json" \
               -H "x-cron-secret: $CRON_SECRET" \
@@ -52,15 +52,15 @@ jobs:
           }
 
           run_gem_radar() {
-            echo "GEM_RADAR_START universe=dynamic max_research=10"
-            RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":4000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}')
-            printf '%s\n' "$RADAR_RESULT" | jq '{ok,duration_ms,discovery:{baseline:.discovery.baseline,universe_size:.discovery.universe_size,new_assets_detected:.discovery.new_assets_detected},radar:{id:.radar.id,universe_size:.radar.universe_size,research_candidate_count:.radar.research_candidate_count,research_symbols:.radar.research_symbols,quant_run_id:.radar.quant_run_id,quant_promotion_eligible:.radar.quant_promotion_eligible}}'
+            echo "GEM_RADAR_START universe=dynamic max_research=10 quant=v6_productive"
+            RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":5000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}')
+            printf '%s\n' "$RADAR_RESULT" | jq '{ok,duration_ms,discovery:{baseline:.discovery.baseline,universe_size:.discovery.universe_size,new_assets_detected:.discovery.new_assets_detected},radar:{id:.radar.id,version:.radar.version,universe_size:.radar.universe_size,unique_symbol_count:.radar.unique_symbol_count,research_candidate_count:.radar.research_candidate_count,research_symbols:.radar.research_symbols,quant_run_id:.radar.quant_run_id,quant_promotion_eligible:.radar.quant_promotion_eligible}}'
           }
 
           run_quant_and_promotion() {
-            echo "QUANT_START mode=multi_family folds=3 universe=10"
-            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"],"interval":"5m","limit":4000,"feeRate":0.001,"slippageRate":0.0005}')
-            printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,strategy_families,walk_forward_folds,costs,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
+            echo "QUANT_START mode=productive folds=4 universe=10 candles=5000"
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"],"interval":"5m","limit":5000,"feeRate":0.001,"slippageRate":0.0005}')
+            printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,strategy_families,walk_forward_folds,safeguards,costs,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
 
             ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
             ANALYZED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.analyzed_count // 0')
@@ -70,8 +70,8 @@ jobs:
               exit 1
             fi
 
-            echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none}"
-            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: (if ($symbol | length) > 0 then [$symbol] else [] end), source:"quant_research_multi_family"}')
+            echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none} source=quant_v6_productive"
+            PAPER_BODY=$(jq -nc --arg symbol "$SELECTED" '{preferredSymbols: (if ($symbol | length) > 0 then [$symbol] else [] end), source:"quant_v6_productive"}')
             PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY")
             printf '%s\n' "$PAPER_RESULT" | jq '{ok,paper_only,positions_closed,intents_created,intents_rejected,opened_symbols}'
 
