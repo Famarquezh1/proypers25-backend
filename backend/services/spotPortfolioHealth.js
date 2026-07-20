@@ -1,41 +1,37 @@
 'use strict';
 
-const VERSION = 'spot_portfolio_health_v1';
+const { buildPortfolioAllocationPolicy } = require('./spotPortfolioAllocationPolicy');
+
+const VERSION = 'spot_portfolio_health_v2';
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, number(value, min)));
-}
-
-function calculateSuggestedAllocation(balance, config, healthState) {
-  const available = Math.max(0, number(balance?.available_usdt));
-  const inPositions = Math.max(0, number(balance?.in_positions_usdt));
-  const total = Math.max(0, number(balance?.total_usdt, available + inPositions));
-  const reservePct = clamp(config?.portfolio_reserve_pct ?? 0.25, 0.15, 0.5);
-  const maxPositions = Math.round(clamp(config?.portfolio_max_positions ?? 4, 2, 6));
-  const maxPositionPct = clamp(config?.portfolio_max_position_pct ?? 0.2, 0.08, 0.3);
-  const hardCap = clamp(config?.portfolio_position_cap_usdt ?? 100, 10, 150);
-  const reserve = total * reservePct;
-  const deployable = Math.max(0, total - reserve);
-  const remaining = Math.max(0, deployable - inPositions);
-  const suggested = healthState === 'HEALTHY'
-    ? Math.floor(Math.min(available, remaining, deployable / maxPositions, total * maxPositionPct, hardCap) * 100) / 100
-    : 0;
+function calculateSuggestedAllocation(balance, config, healthState, openPositions = 0) {
+  const policy = buildPortfolioAllocationPolicy({
+    balance,
+    config,
+    healthState,
+    openPositions
+  });
   return {
     advisory_only: true,
-    total_portfolio_usdt: total,
-    available_usdt: available,
-    in_positions_usdt: inPositions,
-    reserve_usdt: reserve,
-    reserve_pct: reservePct,
-    deployable_total_usdt: deployable,
-    remaining_deployable_usdt: remaining,
-    suggested_max_open_positions: maxPositions,
-    suggested_position_usdt: suggested >= 10 ? suggested : 0
+    total_portfolio_usdt: policy.total_portfolio_usdt,
+    available_usdt: policy.available_usdt,
+    in_positions_usdt: policy.in_positions_usdt,
+    reserve_usdt: policy.reserve_usdt,
+    reserve_pct: policy.reserve_pct,
+    deployable_total_usdt: policy.deployable_cap_usdt,
+    remaining_deployable_usdt: policy.remaining_deployable_usdt,
+    suggested_max_open_positions: policy.max_open_positions,
+    open_positions: policy.open_positions,
+    slots_remaining: policy.slots_remaining,
+    suggested_position_usdt: policy.suggested_position_usdt,
+    entry_allowed: policy.entry_allowed,
+    block_reasons: policy.block_reasons,
+    policy_version: policy.version
   };
 }
 
