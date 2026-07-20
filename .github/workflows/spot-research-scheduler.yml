@@ -51,9 +51,15 @@ jobs:
               --data "$body"
           }
 
+          run_gem_radar() {
+            echo "GEM_RADAR_START universe=dynamic max_research=10"
+            RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":4000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}')
+            printf '%s\n' "$RADAR_RESULT" | jq '{ok,duration_ms,discovery:{baseline:.discovery.baseline,universe_size:.discovery.universe_size,new_assets_detected:.discovery.new_assets_detected},radar:{id:.radar.id,universe_size:.radar.universe_size,research_candidate_count:.radar.research_candidate_count,research_symbols:.radar.research_symbols,quant_run_id:.radar.quant_run_id,quant_promotion_eligible:.radar.quant_promotion_eligible}}'
+          }
+
           run_quant_and_promotion() {
             echo "QUANT_START mode=multi_family folds=3 universe=10"
-            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"],"interval":"5m","limit":4000,"feeRate":0.001,"slippageRate":0.00025}')
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT","BNBUSDT","ADAUSDT","DOGEUSDT","LINKUSDT","AVAXUSDT"],"interval":"5m","limit":4000,"feeRate":0.001,"slippageRate":0.0005}')
             printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,strategy_families,walk_forward_folds,costs,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
 
             ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
@@ -78,13 +84,13 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             case "$MANUAL_TASK" in
               governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
-              discovery) call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":4000}' ;;
+              discovery) run_gem_radar ;;
               adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
               promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' ;;
               quant) run_quant_and_promotion ;;
               all)
                 call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
-                call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":4000}'
+                run_gem_radar
                 call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
                 run_quant_and_promotion
                 ;;
@@ -95,7 +101,7 @@ jobs:
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
 
-          call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":8,"runQuant":true,"quantLimit":4000}'
+          run_gem_radar
 
           if [ "$MINUTE" = "00" ]; then
             call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
