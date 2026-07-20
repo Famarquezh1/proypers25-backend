@@ -3,7 +3,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../firebase-admin-config');
-const { runQuantResearchLab } = require('../services/spotQuantAdvancedResearchLab');
+const { runQuantResearchLab } = require('../services/spotQuantProductiveResearchLab');
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.post('/internal/cron/binance/spot-quant-research', requireCronSecret, asy
     const result = await runQuantResearchLab(db, {
       symbols: req.body?.symbols,
       interval: req.body?.interval || '5m',
-      limit: req.body?.limit || 4000,
+      limit: req.body?.limit || 5000,
       feeRate: req.body?.feeRate ?? req.body?.fee_rate,
       slippageRate: req.body?.slippageRate ?? req.body?.slippage_rate
     });
