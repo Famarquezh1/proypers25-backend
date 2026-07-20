@@ -39,10 +39,12 @@ jobs:
           set -euo pipefail
           test -n "$CRON_SECRET"
 
+          echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK backend=$BACKEND_URL"
+
           call_endpoint() {
             local endpoint="$1"
             local body="$2"
-            curl --fail-with-body --retry 2 --max-time 780 \
+            curl --silent --show-error --fail-with-body --retry 2 --max-time 780 \
               -X POST "$BACKEND_URL$endpoint" \
               -H "Content-Type: application/json" \
               -H "x-cron-secret: $CRON_SECRET" \
@@ -50,8 +52,21 @@ jobs:
           }
 
           run_quant_and_promotion() {
-            call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}'
-            call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}'
+            echo "QUANT_START"
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" '{"symbols":["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","TONUSDT"],"interval":"5m","limit":1000,"feeRate":0.001}')
+            printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,promotion_eligible,no_eligible_champion,selection}'
+
+            ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
+            ANALYZED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.analyzed_count // 0')
+            if [ "$ACCEPTED" -le 0 ] || [ "$ANALYZED" -le 0 ]; then
+              echo "Quant research produced no accepted/analyzed symbols" >&2
+              exit 1
+            fi
+
+            echo "PROMOTION_START"
+            PROMOTION_RESULT=$(call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}')
+            printf '%s\n' "$PROMOTION_RESULT" | jq '{ok,state,reason,reasons,promoted_symbol}'
+            echo "QUANT_AND_PROMOTION_DONE"
           }
 
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
@@ -86,7 +101,7 @@ jobs:
           fi
 
           if [ "$MINUTE" = "00" ]; then
-            STATUS=$(curl --fail-with-body --retry 2 --max-time 60 \
+            STATUS=$(curl --silent --show-error --fail-with-body --retry 2 --max-time 60 \
               -H "x-cron-secret: $CRON_SECRET" \
               "$BACKEND_URL/internal/spot-cost-governance/status" || echo '{}')
             MODE=$(printf '%s' "$STATUS" | jq -r '.config.current_mode // "NORMAL"')
