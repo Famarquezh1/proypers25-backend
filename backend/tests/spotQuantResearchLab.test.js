@@ -2,11 +2,13 @@
 
 const assert = require('assert');
 const {
+  intervalToMilliseconds,
   featureAt,
   simulate,
   metrics,
   walkForward,
   probabilityCalibration,
+  buildEligibilityDiagnostic,
   promotionEligible,
   normalizeSymbols,
   selectGlobalChampion
@@ -32,6 +34,9 @@ function candle(index, close, volume = 1000) {
     return candle(index, trend + wave, index % 20 === 0 ? 1800 : 1000);
   });
 
+  assert.strictEqual(intervalToMilliseconds('5m'), 300000);
+  assert.strictEqual(intervalToMilliseconds('1h'), 3600000);
+
   const feature = featureAt(candles, 120);
   assert(feature, 'feature should be produced after enough history');
   assert(feature.score >= 0 && feature.score <= 100, 'score should be bounded');
@@ -51,19 +56,25 @@ function candle(index, close, volume = 1000) {
   assert.strictEqual(calibration.samples, trades.length);
   if (calibration.brier !== null) assert(calibration.brier >= 0 && calibration.brier <= 1);
 
-  assert.strictEqual(promotionEligible({
+  const eligibleChampion = {
     walk: {
       validation: { trades: 6, expectancy: 0.002, profitFactor: 1.4, maxDrawdown: 0.04 },
       test: { trades: 7, expectancy: 0.001, profitFactor: 1.3, maxDrawdown: 0.05 }
     }
-  }), true);
+  };
+  assert.strictEqual(promotionEligible(eligibleChampion), true);
+  const evidence = buildEligibilityDiagnostic(eligibleChampion);
+  assert.strictEqual(evidence.eligible, true);
+  assert(Object.values(evidence.checks).every(Boolean));
 
-  assert.strictEqual(promotionEligible({
+  const weakChampion = {
     walk: {
       validation: { trades: 6, expectancy: -0.002, profitFactor: 0.8, maxDrawdown: 0.04 },
       test: { trades: 7, expectancy: 0.001, profitFactor: 1.3, maxDrawdown: 0.05 }
     }
-  }), false);
+  };
+  assert.strictEqual(promotionEligible(weakChampion), false);
+  assert.strictEqual(buildEligibilityDiagnostic(weakChampion).checks.validation_expectancy_positive, false);
 
   assert.deepStrictEqual(
     normalizeSymbols(['btcusdt', 'ETHUSDT', 'SOLUSDT', 'BTCUSDT', 'BAD', 'USDT']),
