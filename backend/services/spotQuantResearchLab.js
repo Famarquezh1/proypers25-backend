@@ -21,15 +21,17 @@ function mean(values) {
 
 function std(values) {
   if (values.length < 2) return 0;
-  const m = mean(values);
-  return Math.sqrt(mean(values.map((value) => (value - m) ** 2)));
+  const average = mean(values);
+  return Math.sqrt(mean(values.map((value) => (value - average) ** 2)));
 }
 
 function ema(values, period) {
   if (!Array.isArray(values) || values.length < period) return null;
   const alpha = 2 / (period + 1);
   let current = mean(values.slice(0, period));
-  for (let i = period; i < values.length; i += 1) current = values[i] * alpha + current * (1 - alpha);
+  for (let i = period; i < values.length; i += 1) {
+    current = values[i] * alpha + current * (1 - alpha);
+  }
   return current;
 }
 
@@ -127,14 +129,12 @@ function featureAt(candles, index) {
 
 function candidateConfigs() {
   const configs = [];
-  const thresholds = [66, 72, 78];
-  const tpMultipliers = [1.5, 2, 2.5];
-  const slMultipliers = [0.8, 1, 1.2];
-  const timeouts = [12, 24, 36];
-  for (const threshold of thresholds) {
-    for (const tpAtr of tpMultipliers) {
-      for (const slAtr of slMultipliers) {
-        for (const timeoutBars of timeouts) configs.push({ threshold, tpAtr, slAtr, timeoutBars });
+  for (const threshold of [66, 72, 78]) {
+    for (const tpAtr of [1.5, 2, 2.5]) {
+      for (const slAtr of [0.8, 1, 1.2]) {
+        for (const timeoutBars of [12, 24, 36]) {
+          configs.push({ threshold, tpAtr, slAtr, timeoutBars });
+        }
       }
     }
   }
@@ -178,8 +178,14 @@ function simulate(candles, config, startIndex, endIndex, feeRate = 0.001) {
     }
 
     const grossReturn = (exit / entry) - 1;
-    const netReturn = grossReturn - (feeRate * 2);
-    trades.push({ entryIndex: index + 1, exitIndex, netReturn, grossReturn, reason, score: feature.score });
+    trades.push({
+      entryIndex: index + 1,
+      exitIndex,
+      netReturn: grossReturn - (feeRate * 2),
+      grossReturn,
+      reason,
+      score: feature.score
+    });
     index = exitIndex + 1;
   }
   return trades;
@@ -213,7 +219,8 @@ function metrics(trades) {
 
 function objective(value) {
   if (!value || value.trades < 5) return -999;
-  return (value.expectancy * 1000) + Math.min(value.profitFactor, 4) - (value.maxDrawdown * 8) + Math.min(value.trades, 30) / 30;
+  return (value.expectancy * 1000) + Math.min(value.profitFactor, 4) -
+    (value.maxDrawdown * 8) + Math.min(value.trades, 30) / 30;
 }
 
 function walkForward(candles, config, feeRate) {
@@ -245,7 +252,8 @@ async function runSymbolResearch(symbol, options = {}) {
   const evaluated = candidateConfigs().map((config) => {
     const walk = walkForward(candles, config, feeRate);
     const score = objective(walk.validation) + objective(walk.test) * 1.5;
-    const testTrades = simulate(candles, config, 60 + Math.floor((candles.length - 60) * 0.8), candles.length, feeRate);
+    const testStart = 60 + Math.floor((candles.length - 60) * 0.8);
+    const testTrades = simulate(candles, config, testStart, candles.length, feeRate);
     return { config, walk, calibration: probabilityCalibration(testTrades), score };
   }).sort((a, b) => b.score - a.score);
 
@@ -269,6 +277,16 @@ function promotionEligible(champion) {
     test.maxDrawdown <= 0.12;
 }
 
+function normalizeSymbols(input) {
+  const requested = Array.isArray(input) && input.length
+    ? input
+    : ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'TONUSDT'];
+  return [...new Set(requested
+    .map((symbol) => String(symbol || '').trim().toUpperCase())
+    .filter((symbol) => /^[A-Z0-9]{2,16}USDT$/.test(symbol)))]
+    .slice(0, 10);
+}
+
 function selectGlobalChampion(results = []) {
   const valid = results
     .filter((result) => result?.champion)
@@ -286,9 +304,7 @@ function selectGlobalChampion(results = []) {
 }
 
 async function runQuantResearchLab(db, options = {}) {
-  const symbols = [...new Set((options.symbols || ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'TONUSDT'])
-    .map((symbol) => String(symbol).toUpperCase()).filter((symbol) => /^[A-Z0-9]{5,20}USDT$/.test(symbol)))]
-    .slice(0, 10);
+  const symbols = normalizeSymbols(options.symbols);
   const results = [];
   for (const symbol of symbols) {
     try {
@@ -317,6 +333,8 @@ async function runQuantResearchLab(db, options = {}) {
     no_eligible_champion: selection.eligibleCount === 0,
     selection: {
       mode: selection.selectionMode,
+      requested_count: Array.isArray(options.symbols) ? options.symbols.length : 5,
+      accepted_symbol_count: symbols.length,
       analyzed_count: results.length,
       valid_count: selection.validCount,
       eligible_count: selection.eligibleCount,
@@ -325,7 +343,7 @@ async function runQuantResearchLab(db, options = {}) {
       observation_symbol: selection.observationChampion?.symbol || null
     },
     limits_unchanged: true,
-    version: 'spot_quant_lab_v2'
+    version: 'spot_quant_lab_v3'
   };
 
   await db.collection(RESULTS).doc(runId).set(summary);
@@ -342,9 +360,23 @@ async function runQuantResearchLab(db, options = {}) {
       approved_for_real: false,
       requires_runtime_gate: true,
       no_order_created: true,
-      version: 'spot_quant_champion_v2'
+      version: 'spot_quant_champion_v3'
     }, { merge: true });
   }
+
+  console.log(JSON.stringify({
+    event: 'SPOT_QUANT_RESEARCH_RESULT',
+    run_id: runId,
+    symbols,
+    selection: summary.selection,
+    promotion_eligible: summary.promotion_eligible,
+    no_eligible_champion: summary.no_eligible_champion,
+    errors: results.filter((result) => result.error).map((result) => ({
+      symbol: result.symbol,
+      error: result.error
+    }))
+  }));
+
   return summary;
 }
 
@@ -356,6 +388,7 @@ module.exports = {
   walkForward,
   probabilityCalibration,
   promotionEligible,
+  normalizeSymbols,
   selectGlobalChampion,
   runSymbolResearch,
   runQuantResearchLab
