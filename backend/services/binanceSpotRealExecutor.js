@@ -1756,8 +1756,6 @@ module.exports = {
     getRealSpotCapitalExposure,
     hasOpenRealPosition,
     createRealExecutionIntent,
-    evaluateOpenRealPositions,
-    closeRealPosition,
     findBestRealSpotCandidate,
     buildRealSpotEntryDiagnostic,
     runRealSpotExecutionCycle,
