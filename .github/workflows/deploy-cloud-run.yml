@@ -115,11 +115,18 @@ jobs:
           jq -e 'all(.reconciliation.firestore_differences[]; (.managed_quantity >= 0) and (.historical_unmanaged_quantity >= 0))' <<<"$RECON" >/dev/null
           echo '/internal/cron/binance/spot-real-reconcile verified with managed quantities'
 
-          CYCLE=$(curl --silent --show-error --fail-with-body \
-            --retry 1 --max-time 240 \
+          CYCLE_BODY=$(mktemp)
+          CYCLE_HTTP_CODE=$(curl --silent --show-error \
+            --output "$CYCLE_BODY" --write-out '%{http_code}' \
+            --max-time 240 \
             -X POST -H 'Content-Type: application/json' \
             -H "x-cron-secret: $CRON_SECRET" --data '{}' \
             "$URL/internal/cron/binance/spot-real-execution")
+          CYCLE=$(cat "$CYCLE_BODY")
+          rm -f "$CYCLE_BODY"
+          echo "Controlled real Spot cycle HTTP status: $CYCLE_HTTP_CODE"
+          echo "Controlled real Spot cycle response: $(jq -c '.' <<<"$CYCLE" 2>/dev/null || printf '%s' "$CYCLE")"
+          test "$CYCLE_HTTP_CODE" = "200"
           jq -e '.real_mode == true and .spot_only == true and (.decision_summary | type == "object") and (.evidence_id | type == "string")' <<<"$CYCLE" >/dev/null
           ! grep -q 'Invalid quantity' <<<"$CYCLE"
           jq -e 'all((.exits.outcomes // [])[]; .error != "Invalid quantity.")' <<<"$CYCLE" >/dev/null
