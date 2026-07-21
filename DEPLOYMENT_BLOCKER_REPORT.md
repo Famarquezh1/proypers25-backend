@@ -44,13 +44,14 @@ git remote set-url origin <CORRECT_GITHUB_URL>
 git push
 ```
 
-**Option B: Manual Cloud Run Deployment**
-Use `gcloud` to deploy directly:
+**Option B: Manual Cloud Build submission**
+Use the same repository build configuration as GitHub Actions:
 ```bash
-gcloud run deploy proypers25-backend \
-  --source . \
-  --region southamerica-west1 \
-  --allow-unauthenticated
+gcloud builds submit \
+  --project=proypers2025 \
+  --config=cloudbuild.yaml \
+  --substitutions=_IMAGE_TAG="$(git rev-parse HEAD)" \
+  .
 ```
 
 ### Next Steps

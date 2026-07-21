@@ -124,7 +124,7 @@ const REAL_SPOT_EXECUTION_CONFIG = {
 
 ### Step 2: Restart Backend
 ```bash
-gcloud run deploy proypers25-backend --region southamerica-west1 --source .
+gcloud builds submit --project=proypers2025 --config=cloudbuild.yaml --substitutions=_IMAGE_TAG="$(git rev-parse HEAD)" .
 ```
 Or restart locally:
 ```bash
@@ -249,4 +249,3 @@ Real execution will **automatically disable** if any of these occur:
 **System Ready**: ✅ FASE 6 Complete  
 **Next**: ⏳ FASE 7 (Confirm disabled state - documentation above)  
 **Awaiting**: User decision to enable real execution + Binance API implementation
-

@@ -1,0 +1,76 @@
+name: Deploy backend to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-proypers25-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Cloud Build to Cloud Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: proypers2025
+
+      - name: Submit immutable build and deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud builds submit \
+            --project=proypers2025 \
+            --config=cloudbuild.yaml \
+            --substitutions=_IMAGE_TAG="$GITHUB_SHA" \
+            .
+
+      - name: Verify deployed commit and required routes
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CRON_SECRET"
+          URL=$(gcloud run services describe proypers25-backend \
+            --project=proypers2025 \
+            --region=southamerica-west1 \
+            --platform=managed \
+            --format='value(status.url)')
+          echo "Cloud Run URL: $URL"
+
+          VERSION=$(curl --silent --show-error --fail-with-body \
+            --retry 8 --retry-all-errors --retry-delay 10 "$URL/__version")
+          DEPLOYED_SHA=$(jq -r '.commit // empty' <<<"$VERSION")
+          test "$DEPLOYED_SHA" = "$GITHUB_SHA"
+          echo "APP_COMMIT_SHA verified: $DEPLOYED_SHA"
+
+          COVERAGE=$(curl --silent --show-error --fail-with-body \
+            --retry 4 --retry-all-errors --retry-delay 5 --max-time 90 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/coverage")
+          jq -e '.ok == true' <<<"$COVERAGE" >/dev/null
+          echo '/internal/investments/coverage verified'
+
+          OPPORTUNITY=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 2100 \
+            -X POST -H 'Content-Type: application/json' \
+            -H "x-cron-secret: $CRON_SECRET" --data '{"researchLimit":10}' \
+            "$URL/internal/cron/binance/spot-market-opportunity")
+          jq -e '.ok == true' <<<"$OPPORTUNITY" >/dev/null
+          echo '/internal/cron/binance/spot-market-opportunity verified'
