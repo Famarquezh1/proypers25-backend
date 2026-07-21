@@ -6,7 +6,8 @@ const {
   floorToStep,
   assertExitConfig,
   calculateAtrPct,
-  resolveAdaptiveProtection
+  resolveAdaptiveProtection,
+  buildExitClientOrderId
 } = require('../services/controlledSpotExitExecutor');
 const {
   assetFromSymbol,
@@ -33,6 +34,17 @@ assert.strictEqual(
   determineExit({ effective_sl_price: 108, protection_mode: 'TRAILING' }, 107.9, now),
   'TRAILING_STOP'
 );
+assert.strictEqual(
+  determineExit({ momentum_lost: true }, 100, now),
+  'MOMENTUM_LOSS'
+);
+assert.strictEqual(
+  determineExit({ current_score: 44, exit_score_floor: 45 }, 100, now),
+  'SCORE_DETERIORATION'
+);
+
+const retryPosition = { id: 'position-1', symbol: 'XECUSDT', quantity: 100, capital_usdt: 20 };
+assert.strictEqual(buildExitClientOrderId(retryPosition), buildExitClientOrderId({ ...retryPosition }));
 
 const candles = Array.from({ length: 20 }, (_, index) => ({
   high: 101 + index,

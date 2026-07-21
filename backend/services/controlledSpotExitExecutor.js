@@ -324,6 +324,55 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice) {
   };
 }
 
+// A process can restart after Binance accepted the order but before Firestore
+// recorded its fill. Resume only through the durable client order id; never
+// send a second sell while that outcome is unknown.
+async function recoverPendingExit(db, ref, position) {
+  const symbol = String(position.symbol || '').toUpperCase();
+  const claimId = position.exit_claim_id;
+  const clientOrderId = position.exit_client_order_id;
+  if (!claimId || !clientOrderId || !symbol) {
+    await releaseClaim(ref, claimId, new Error('PENDING_EXIT_RECOVERY_METADATA_MISSING'));
+    return { symbol, action: 'EXIT_RECOVERY_FAILED', error: 'PENDING_EXIT_RECOVERY_METADATA_MISSING' };
+  }
+  try {
+    const order = await findExistingSellOrder(symbol, clientOrderId);
+    if (!order) {
+      await ref.update({
+        exit_status: 'EXIT_RETRY_READY',
+        exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND',
+        exit_recovered_at: new Date().toISOString()
+      });
+      return { symbol, action: 'EXIT_RETRY_READY', client_order_id: clientOrderId };
+    }
+    if (Number(order.executedQty || 0) > 0) {
+      const result = await finalizeExit(db, ref, {
+        ...position,
+        id: position.id || ref.id,
+        claimId,
+        clientOrderId
+      }, order, position.exit_reason_pending || 'RECOVERED_EXIT', Number(position.exit_price_observed || 0));
+      return {
+        symbol,
+        action: 'RECOVERED_SELL',
+        order_id: order.orderId || null,
+        client_order_id: clientOrderId,
+        ...result
+      };
+    }
+    return {
+      symbol,
+      action: 'EXIT_ORDER_PENDING',
+      order_id: order.orderId || null,
+      client_order_id: clientOrderId,
+      order_status: order.status || 'UNKNOWN'
+    };
+  } catch (error) {
+    await releaseClaim(ref, claimId, error);
+    return { symbol, action: 'EXIT_RECOVERY_FAILED', error: error.message };
+  }
+}
+
 async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
   const startedAt = Date.now();
   try {
@@ -338,6 +387,10 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
     let position = { id: doc.id, ...doc.data() };
     const symbol = String(position.symbol || '').toUpperCase();
     try {
+      if (position.exit_status === 'EXIT_PENDING') {
+        outcomes.push(await recoverPendingExit(db, doc.ref, position));
+        continue;
+      }
       const ticker = options.currentPrices?.[symbol]
         ? { price: options.currentPrices[symbol] }
         : await publicGet('/api/v3/ticker/price', { symbol });
@@ -409,5 +462,6 @@ module.exports = {
   resolveAdaptiveProtection,
   determineExit,
   floorToStep,
+  recoverPendingExit,
   evaluateAndExecuteRealSpotExits
 };
