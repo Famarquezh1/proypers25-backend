@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-07-21T04:35:51Z",
+  "generated_at": "2026-07-21T05:59:25Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
-  "cloud_run_revision": "proypers25-backend-00632-jl9",
+  "cloud_run_revision": "proypers25-backend-00634-r8n",
   "spot_real": {
     "cycles": 9,
     "opened": 0,
     "closed": 0,
-    "exit_failures": 4,
+    "exit_failures": 9,
     "latest_decision": "SKIP",
     "latest_reason": "EXIT_ENGINE_NOT_HEALTHY",
     "promotion_gate": "BLOCK",
