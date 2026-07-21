@@ -78,6 +78,45 @@ function calculateReconciliation(position, actualQuantity) {
   };
 }
 
+function buildReconciliationClose(position, reconciliation, conversion, spotSales, now = new Date().toISOString()) {
+  const allocatedCapital = Math.max(0, asNumber(position.capital_usdt) - reconciliation.remainingCapital);
+  const source = conversion ? 'BINANCE_CONVERT' : spotSales ? 'BINANCE_SPOT_FILLS' : 'BINANCE_BALANCE_RECONCILIATION';
+  const quoteReceived = conversion ? asNumber(conversion.toAmount) : spotSales ? asNumber(spotSales.quoteAmount) : null;
+  const pnlVerified = quoteReceived !== null;
+  const reason = (conversion || spotSales) ? 'MANUAL_RECONCILIATION' : 'AUTO_RECONCILED';
+  const eventId = conversion?.latestOrderId
+    ? `binance_convert_${conversion.latestOrderId}`
+    : spotSales?.latestTradeId
+      ? `binance_spot_trade_${spotSales.latestTradeId}`
+      : `balance_absence_${position.id}_${Math.round(reconciliation.actualQuantity * 1e8)}`;
+  const exitPrice = reconciliation.deficit > 0 && quoteReceived !== null
+    ? quoteReceived / reconciliation.deficit
+    : asNumber(position.current_price || position.entry_price);
+  return {
+    allocatedCapital,
+    source,
+    quoteReceived,
+    pnlVerified,
+    reason,
+    eventId,
+    exitPrice,
+    realizedPnl: pnlVerified ? quoteReceived - allocatedCapital : null,
+    metadata: {
+      external_conversion: Boolean(conversion),
+      external_spot_sale: Boolean(spotSales),
+      conversion_trades: conversion?.trades || 0,
+      conversion_order_id: conversion?.latestOrderId || null,
+      spot_sale_trades: spotSales?.trades || 0,
+      spot_sale_order_id: spotSales?.latestOrderId || null,
+      pnl_verified: pnlVerified,
+      externally_sold_quantity: reconciliation.deficit,
+      externally_received_usdt: quoteReceived,
+      last_reconciled_at: now,
+      reconciliation_version: VERSION
+    }
+  };
+}
+
 async function findExternalConversion(position, asset) {
   const since = new Date(position.last_reconciled_at || position.opened_at || position.created_at || 0).getTime();
   if (!Number.isFinite(since) || since <= 0) return null;
@@ -169,64 +208,36 @@ async function reconcileRealSpotAccount(db) {
       findExternalConversion(position, asset),
       findExternalSpotSales(position)
     ]);
-    const allocatedCapital = Math.max(0, asNumber(position.capital_usdt) - reconciliation.remainingCapital);
-    const externalEvidence = conversion || spotSales;
-    const quoteReceived = conversion
-      ? Math.min(asNumber(conversion.toAmount), Math.max(asNumber(conversion.toAmount), 0))
-      : spotSales
-        ? Math.min(asNumber(spotSales.quoteAmount), Math.max(asNumber(spotSales.quoteAmount), 0))
-        : null;
-    const realizedPnl = quoteReceived === null ? null : quoteReceived - allocatedCapital;
-    // A Convert record is authoritative evidence of the user sale. When no
-    // conversion exists, this is a zombie position: Binance has no asset but
-    // Firestore still says OPEN. Both paths use the same lifecycle writer.
-    const reconciliationReason = externalEvidence ? 'MANUAL_RECONCILIATION' : 'AUTO_RECONCILED';
-    const eventId = conversion?.latestOrderId
-      ? `binance_convert_${conversion.latestOrderId}`
-      : spotSales?.latestTradeId
-        ? `binance_spot_trade_${spotSales.latestTradeId}`
-      : `balance_absence_${doc.id}_${Math.round(reconciliation.actualQuantity * 1e8)}`;
-    const inferredExitPrice = reconciliation.deficit > 0 && quoteReceived !== null
-      ? quoteReceived / reconciliation.deficit
-      : asNumber(position.current_price || position.entry_price);
+    // Binance evidence decides the close classification. Without a matching
+    // Convert/fill record, a missing balance is a zombie position and PnL is
+    // intentionally left unverified rather than fabricated.
+    const close = buildReconciliationClose(position, reconciliation, conversion, spotSales, now);
     await recordConfirmedSpotClose(db, {
       positionRef: doc.ref,
       position,
-      eventId,
-      reason: reconciliationReason,
-      source: conversion ? 'BINANCE_CONVERT' : spotSales ? 'BINANCE_SPOT_FILLS' : 'BINANCE_BALANCE_RECONCILIATION',
+      eventId: close.eventId,
+      reason: close.reason,
+      source: close.source,
       executedQuantity: reconciliation.deficit,
-      quoteReceivedUsdt: quoteReceived || 0,
-      exitPrice: inferredExitPrice,
-      pnlVerified: quoteReceived !== null,
+      quoteReceivedUsdt: close.quoteReceived || 0,
+      exitPrice: close.exitPrice,
+      pnlVerified: close.pnlVerified,
       feeUsdt: spotSales?.feesUsdt || 0,
-      metadata: {
-        external_conversion: Boolean(conversion),
-        external_spot_sale: Boolean(spotSales),
-        conversion_trades: conversion?.trades || 0,
-        conversion_order_id: conversion?.latestOrderId || null,
-        spot_sale_trades: spotSales?.trades || 0,
-        spot_sale_order_id: spotSales?.latestOrderId || null,
-        pnl_verified: quoteReceived !== null,
-        externally_sold_quantity: reconciliation.deficit,
-        externally_received_usdt: quoteReceived,
-        last_reconciled_at: now,
-        reconciliation_version: VERSION
-      }
+      metadata: close.metadata
     });
 
     inPositionsUsdt += reconciliation.remainingCapital;
     actions.push({
       position_id: doc.id,
       symbol: position.symbol,
-      action: reconciliation.fullyExternalClosed ? reconciliationReason : 'PARTIAL_RECONCILIATION',
+      action: reconciliation.fullyExternalClosed ? close.reason : 'PARTIAL_RECONCILIATION',
       recorded_quantity: reconciliation.recordedQuantity,
       actual_quantity: reconciliation.actualQuantity,
       external_quantity: reconciliation.deficit,
-      quote_received_usdt: quoteReceived,
-      pnl_usdt: realizedPnl,
-      pnl_verified: realizedPnl !== null,
-      reason: reconciliationReason
+      quote_received_usdt: close.quoteReceived,
+      pnl_usdt: close.realizedPnl,
+      pnl_verified: close.realizedPnl !== null,
+      reason: close.reason
     });
   }
 
@@ -294,6 +305,7 @@ module.exports = {
   VERSION,
   assetFromSymbol,
   calculateReconciliation,
+  buildReconciliationClose,
   reconcileRealSpotAccount,
   findExternalSpotSales
 };

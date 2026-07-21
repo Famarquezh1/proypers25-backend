@@ -11,7 +11,8 @@ const {
 } = require('../services/controlledSpotExitExecutor');
 const {
   assetFromSymbol,
-  calculateReconciliation
+  calculateReconciliation,
+  buildReconciliationClose
 } = require('../services/spotAccountReconciliation');
 
 const now = new Date('2026-07-15T12:00:00.000Z');
@@ -95,6 +96,30 @@ const full = calculateReconciliation({ quantity: 40000000, capital_usdt: 200 }, 
 assert.strictEqual(full.deficit, 40000000);
 assert.strictEqual(full.remainingCapital, 0);
 assert.strictEqual(full.fullyExternalClosed, true);
+
+const manualConversion = buildReconciliationClose(
+  { id: 'xec-1', symbol: 'XECUSDT', quantity: 100, capital_usdt: 20 },
+  calculateReconciliation({ quantity: 100, capital_usdt: 20 }, 0),
+  { toAmount: 23, trades: 1, latestOrderId: 'convert-1' },
+  null,
+  '2026-07-15T12:00:00.000Z'
+);
+assert.strictEqual(manualConversion.reason, 'MANUAL_RECONCILIATION');
+assert.strictEqual(manualConversion.source, 'BINANCE_CONVERT');
+assert.strictEqual(manualConversion.eventId, 'binance_convert_convert-1');
+assert.strictEqual(manualConversion.realizedPnl, 3);
+
+const zombie = buildReconciliationClose(
+  { id: 'xec-2', symbol: 'XECUSDT', quantity: 100, capital_usdt: 20, entry_price: 0.2 },
+  calculateReconciliation({ quantity: 100, capital_usdt: 20 }, 0),
+  null,
+  null,
+  '2026-07-15T12:00:00.000Z'
+);
+assert.strictEqual(zombie.reason, 'AUTO_RECONCILED');
+assert.strictEqual(zombie.pnlVerified, false);
+assert.strictEqual(zombie.realizedPnl, null);
+assert.strictEqual(zombie.eventId, 'balance_absence_xec-2_0');
 
 assert.doesNotThrow(() => assertExitConfig({
   enabled: true,
