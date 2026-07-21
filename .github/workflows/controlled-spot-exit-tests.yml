@@ -82,6 +82,11 @@ jobs:
           node --check backend/routes/velasCron.js
           node --check backend/server.js
 
+      - name: Load real Spot execution modules
+        run: |
+          node -e "require('./backend/services/binanceSpotRealExecutor')"
+          node -e "require('./backend/services/controlledSpotExitExecutor')"
+
       - name: Verify one real execution route
         run: |
           count=$(grep -R "router.post('/internal/cron/binance/spot-real-execution'" backend/routes --include='*.js' | wc -l)
