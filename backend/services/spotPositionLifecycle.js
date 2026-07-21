@@ -7,7 +7,7 @@
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
 const BALANCE_DOC = 'real_spot_config/balance';
-const VERSION = 'spot_position_lifecycle_v1';
+const VERSION = 'spot_position_lifecycle_v2';
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -47,6 +47,121 @@ function closeMetrics(position, { exitPrice, allocatedCapital, netPnl, closedAt,
     allocated_capital_usdt: number(allocatedCapital),
     net_pnl_usdt: netPnl === null || netPnl === undefined ? null : number(netPnl)
   };
+}
+
+function summarizeFilledBuy(order = {}) {
+  const fills = Array.isArray(order.fills) ? order.fills : [];
+  const filledQuantity = number(order.executedQty);
+  const quoteFromOrder = number(order.cummulativeQuoteQty);
+  const quoteFromFills = fills.reduce((sum, fill) => sum + (number(fill.price) * number(fill.qty)), 0);
+  const quoteSpent = quoteFromOrder > 0 ? quoteFromOrder : quoteFromFills;
+  const entryPrice = filledQuantity > 0 ? quoteSpent / filledQuantity : 0;
+  const feeUsdt = fills.reduce((sum, fill) =>
+    String(fill.commissionAsset || '').toUpperCase() === 'USDT' ? sum + number(fill.commission) : sum, 0);
+  return { filledQuantity, quoteSpent, entryPrice, feeUsdt };
+}
+
+function entryPositionId(intentId) {
+  return `real_spot_pos_${String(intentId || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+/**
+ * Persist an exchange-confirmed BUY and its capital reservation atomically.
+ * The intent id is deterministic, so retrying after a process restart never
+ * creates a second Firestore position or reserves capital twice.
+ */
+async function recordConfirmedSpotEntry(db, {
+  intentId,
+  candidate,
+  config,
+  order,
+  strategyMetadata = { strategy: 'CONSERVATIVE' },
+  openedAt = new Date().toISOString()
+}) {
+  if (!db || !intentId || !candidate || !config || !order) throw new Error('INVALID_SPOT_ENTRY_EVENT');
+  const summary = summarizeFilledBuy(order);
+  if (!(summary.filledQuantity > 0) || !(summary.quoteSpent > 0) || !(summary.entryPrice > 0)) {
+    throw new Error('BUY_ORDER_NOT_FILLED');
+  }
+
+  const positionId = entryPositionId(intentId);
+  const positionRef = db.collection(POSITIONS).doc(positionId);
+  const intentRef = db.collection('real_spot_execution_intents').doc(intentId);
+  const balanceRef = db.doc(BALANCE_DOC);
+  const takeProfit1Pct = number(config.take_profit_1_pct, 5);
+  const takeProfit2Pct = number(config.take_profit_2_pct, 10);
+  const stopLossPct = number(config.stop_loss_pct, -5);
+  const openedAtIso = asIso(openedAt) || new Date().toISOString();
+  const timeoutAt = new Date(new Date(openedAtIso).getTime() + (number(config.timeout_hours, 24) * 60 * 60 * 1000)).toISOString();
+
+  return db.runTransaction(async (tx) => {
+    const [positionSnap, balanceSnap] = await Promise.all([tx.get(positionRef), tx.get(balanceRef)]);
+    if (positionSnap.exists) return { idempotent: true, positionId };
+    const balance = balanceSnap.exists ? balanceSnap.data() : {};
+    const strategy = strategyMetadata || { strategy: 'CONSERVATIVE' };
+    const position = {
+      id: positionId,
+      symbol: String(candidate.symbol || '').toUpperCase(),
+      scan_id: candidate.scan_id || null,
+      intent_id: intentId,
+      order_id: order.orderId || null,
+      client_order_id: order.clientOrderId || null,
+      status: 'REAL_OPEN',
+      entry_price: summary.entryPrice,
+      quantity: summary.filledQuantity,
+      capital_usdt: summary.quoteSpent,
+      entry_fee_usdt: summary.feeUsdt,
+      take_profit_1_pct: takeProfit1Pct,
+      take_profit_2_pct: takeProfit2Pct,
+      stop_loss_pct: stopLossPct,
+      tp1_price: summary.entryPrice * (1 + (takeProfit1Pct / 100)),
+      tp2_price: summary.entryPrice * (1 + (takeProfit2Pct / 100)),
+      sl_price: summary.entryPrice * (1 + (stopLossPct / 100)),
+      timeout_at: timeoutAt,
+      opened_at: openedAtIso,
+      paper_only: false,
+      real_mode: true,
+      spot_only: true,
+      futures: false,
+      margin: false,
+      leverage: false,
+      strategy: strategy.strategy || 'CONSERVATIVE',
+      strategy_info: strategy.strategy !== 'CONSERVATIVE' ? {
+        decision_reason: strategy.decision_reason || null,
+        tp_targets: strategy.tp_targets || null,
+        sl_target: strategy.sl_target || null,
+        timeout_hours: strategy.timeout_hours || null,
+        partial_exit: strategy.partial_exit === true
+      } : null,
+      safety_version: candidate.safety_version || null,
+      lifecycle_version: VERSION,
+      entry_score: number(candidate.opportunityScore, null),
+      entry_reason: candidate.category || null,
+      model_version: candidate.model_version || candidate.version || null,
+      market_regime: candidate.market_regime || null,
+      decision_quality: candidate.execution_decision_snapshot?.validation_reason || null,
+      highest_price: summary.entryPrice,
+      lowest_price: summary.entryPrice,
+      execution_decision_snapshot: candidate.execution_decision_snapshot || null
+    };
+    tx.set(positionRef, position);
+    tx.set(intentRef, {
+      status: 'REAL_FILLED',
+      order_id: order.orderId || null,
+      client_order_id: order.clientOrderId || null,
+      filled_at: openedAtIso,
+      executed_quantity: summary.filledQuantity,
+      executed_quote_usdt: summary.quoteSpent,
+      lifecycle_version: VERSION
+    }, { merge: true });
+    tx.set(balanceRef, {
+      available_usdt: Math.max(0, number(balance.available_usdt) - summary.quoteSpent),
+      in_positions_usdt: number(balance.in_positions_usdt) + summary.quoteSpent,
+      updated_at: openedAtIso,
+      source: 'SPOT_LIFECYCLE_CONFIRMED'
+    }, { merge: true });
+    return { idempotent: false, positionId, position, summary };
+  });
 }
 
 /**
@@ -168,4 +283,12 @@ async function recordConfirmedSpotClose(db, {
   });
 }
 
-module.exports = { VERSION, number, closeMetrics, recordConfirmedSpotClose };
+module.exports = {
+  VERSION,
+  number,
+  closeMetrics,
+  summarizeFilledBuy,
+  entryPositionId,
+  recordConfirmedSpotEntry,
+  recordConfirmedSpotClose
+};

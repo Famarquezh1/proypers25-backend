@@ -16,6 +16,7 @@
 
 const crypto = require('crypto');
 const { getBinanceSpotCredentials, checkBinanceSpotCredentials } = require('../lib/secretManager');
+const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
 
 const REAL_SPOT_CONFIG_PATH = 'real_spot_config/control';
 const REAL_SPOT_INTENTS_COLLECTION = 'real_spot_execution_intents';
@@ -1231,115 +1232,31 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                     console.log(`[REAL_EXECUTOR] Order confirmed: ${orderResult.orderId}`);
                     console.log(`[REAL_EXECUTOR] Intent reserved: ${intentResult.id}`);
 
-                    // Create position document
+                    // The exchange fill is authoritative. Persist the intent,
+                    // open position and capital reservation atomically so a
+                    // timeout/restart cannot duplicate the local position.
                     try {
-                        const positionId = `real_spot_pos_${Date.now()}_${candidate.symbol}`;
                         const now = new Date();
-
-                        // Calculate entry price
-                        let entryPrice = 0;
-                        if (orderResult.fills && orderResult.fills.length > 0) {
-                            const totalQuote = orderResult.fills.reduce((sum, fill) => sum + parseFloat(fill.price || 0) * parseFloat(fill.qty || 0), 0);
-                            const totalQty = orderResult.fills.reduce((sum, fill) => sum + parseFloat(fill.qty || 0), 0);
-                            entryPrice = totalQty > 0 ? totalQuote / totalQty : orderResult.cummulativeQuoteQty / orderResult.executedQty;
-                        } else {
-                            entryPrice = orderResult.cummulativeQuoteQty / orderResult.executedQty;
-                        }
-
-                        // Calculate TP and SL prices
-                        const tp1Price = entryPrice * (1 + (Number(config.take_profit_1_pct || 5) / 100));
-                        const tp2Price = entryPrice * (1 + (Number(config.take_profit_2_pct || 10) / 100));
-                        const slPrice = entryPrice * (1 + (Number(config.stop_loss_pct || -5) / 100));
-
-                        // Extract strategy from options if available
                         const strategyMetadata = options.strategy_metadata || { strategy: 'CONSERVATIVE' };
-
-                        // PREPARE FORENSIC SNAPSHOT
-                        const positionData = {
-                            id: positionId,
-                            symbol: candidate.symbol,
-                            scan_id: candidate.scan_id || findDiagnostic.latest_scan_id,
-                            intent_id: intentResult?.id || null,
-                            order_id: orderResult.orderId,
-                            client_order_id: orderResult.clientOrderId || null,
-                            status: 'REAL_OPEN',
-                            entry_price: entryPrice,
-                            quantity: orderResult.executedQty || 0,
-                            // Binance is authoritative for the executed quote,
-                            // not the intended position limit.
-                            capital_usdt: Number(orderResult.cummulativeQuoteQty || config.max_position_usdt || 10),
-                            take_profit_1_pct: Number(config.take_profit_1_pct || 5),
-                            take_profit_2_pct: Number(config.take_profit_2_pct || 10),
-                            stop_loss_pct: Number(config.stop_loss_pct || -5),
-                            tp1_price: tp1Price,
-                            tp2_price: tp2Price,
-                            sl_price: slPrice,
-                            timeout_at: new Date(now.getTime() + (Number(config.timeout_hours || 24) * 60 * 60 * 1000)).toISOString(),
-                            opened_at: now.toISOString(),
-                            paper_only: false,
-                            real_mode: true,
-                            spot_only: true,
-                            futures: false,
-                            margin: false,
-                            leverage: false,
-                            // HYBRID MODE FIELDS
-                            strategy: strategyMetadata.strategy || 'CONSERVATIVE',
-                            strategy_info: strategyMetadata.strategy !== 'CONSERVATIVE' ? {
-                                decision_reason: strategyMetadata.decision_reason,
-                                tp_targets: strategyMetadata.tp_targets,
-                                sl_target: strategyMetadata.sl_target,
-                                timeout_hours: strategyMetadata.timeout_hours,
-                                partial_exit: strategyMetadata.partial_exit
-                            } : null,
-                            safety_version: SAFETY_VERSION,
-
-                            lifecycle_version: 'spot_position_lifecycle_v1',
-                            entry_score: Number(candidate.opportunityScore || 0) || null,
-                            entry_reason: candidate.category || null,
-                            model_version: candidate.model_version || candidate.version || null,
-                            market_regime: candidate.market_regime || null,
-                            decision_quality: candidate.execution_decision_snapshot?.validation_reason || null,
-                            highest_price: entryPrice,
-                            lowest_price: entryPrice,
-
-                            // FORENSIC FIELD - EXECUTION DECISION SNAPSHOT
-                            execution_decision_snapshot: candidate.execution_decision_snapshot || null
-                        };
-
-                        await db.collection(REAL_SPOT_POSITIONS_COLLECTION).doc(positionId).set(positionData, { merge: true });
-                        await db.collection(REAL_SPOT_INTENTS_COLLECTION).doc(intentResult.id).set({
-                            status: 'REAL_FILLED', order_id: orderResult.orderId,
-                            filled_at: now.toISOString(), executed_quantity: Number(orderResult.executedQty || 0),
-                            executed_quote_usdt: Number(orderResult.cummulativeQuoteQty || 0)
-                        }, { merge: true });
-
-                        console.log(`[REAL_EXECUTOR] Position created: ${positionId}`);
-                        console.log(`[REAL_EXECUTOR::FORENSIC] Snapshot saved - Score: ${positionData.execution_decision_snapshot?.score_at_execution || 'N/A'}, Threshold: ${positionData.execution_decision_snapshot?.min_score_required || 'N/A'}`);
-
-                        // Update balance: move capital from available to in_positions
-                        const balanceRef = db.collection('real_spot_config').doc('balance');
-                        const currentBalance = await balanceRef.get();
-                        const balData = currentBalance.data() || {};
-                        const positionCapital = Number(orderResult.cummulativeQuoteQty || config.max_position_usdt || 10);
-                        
-                        await balanceRef.update({
-                            available_usdt: Math.max(0, (balData.available_usdt || 0) - positionCapital),
-                            in_positions_usdt: (balData.in_positions_usdt || 0) + positionCapital
+                        const entry = await recordConfirmedSpotEntry(db, {
+                            intentId: intentResult.id,
+                            candidate: { ...candidate, scan_id: candidate.scan_id || findDiagnostic.latest_scan_id, safety_version: SAFETY_VERSION },
+                            config,
+                            order: orderResult,
+                            strategyMetadata,
+                            openedAt: now.toISOString()
                         });
-                        console.log(`[REAL_EXECUTOR] Capital tracked: ${positionCapital} USDT moved to position`);
-
-                        openedCount = 1;
-                        orderCreated = true;
-                        selectedSymbol = candidate.symbol;
-
-                        // Update config with entry tracking (but DO NOT disable new entries)
-                        await db.collection('real_spot_config').doc('control').update({
-                            entries_used_this_session: (config.entries_used_this_session || 0) + 1,
-                            last_entry_symbol: candidate.symbol,
-                            last_entry_at: now.toISOString()
-                        });
-
-                        console.log('[REAL_EXECUTOR] Entry tracked, system remains ENABLED for new positions');
+                        console.log(`[REAL_EXECUTOR] Position ${entry.idempotent ? 'recovered' : 'created'}: ${entry.positionId}`);
+                        if (!entry.idempotent) {
+                            openedCount = 1;
+                            orderCreated = true;
+                            selectedSymbol = candidate.symbol;
+                            await db.collection('real_spot_config').doc('control').update({
+                                entries_used_this_session: (config.entries_used_this_session || 0) + 1,
+                                last_entry_symbol: candidate.symbol,
+                                last_entry_at: now.toISOString()
+                            });
+                        }
 
                     } catch (posErr) {
                         console.error('[REAL_EXECUTOR] Failed to create position:', posErr.message);
