@@ -22,6 +22,7 @@ const adaptiveSpotStrategyRoute = require('./routes/adaptiveSpotStrategy.route')
 const spotStrategyPromotionRoute = require('./routes/spotStrategyPromotion.route');
 const spotCostGovernanceRoute = require('./routes/spotCostGovernance.route');
 const systemHealthRoute = require('./routes/systemHealth.route');
+const spotLiveDashboardRoute = require('./routes/spotLiveDashboard.route');
 const velasCronRoutes = require('./routes/velasCron');
 const impulseSchedulerRoute = require('./routes/impulseSchedulerRoute');
 const { warmExchangeInfoCache } = require('./lib/binanceFuturesExecutor');
@@ -114,6 +115,7 @@ app.use('/', adaptiveSpotStrategyRoute);
 app.use('/', spotStrategyPromotionRoute);
 app.use('/', spotCostGovernanceRoute);
 app.use('/', systemHealthRoute);
+app.use('/', spotLiveDashboardRoute);
 app.use('/', controlledRealSpotRoute);
 app.use('/', velasCronRoutes);
 app.use('/', impulseSchedulerRoute);
