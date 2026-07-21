@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-21T12:58:56Z",
+  "generated_at": "2026-07-21T13:38:14Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
-  "cloud_run_revision": "proypers25-backend-00634-r8n",
+  "cloud_run_revision": "proypers25-backend-00636-5cn",
   "spot_real": {
     "cycles": 9,
     "opened": 0,
@@ -14,7 +14,7 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "BLOCK",
     "open_positions_after_cycle": 1,
-    "promoted_symbol": "TONUSDT",
+    "promoted_symbol": "OPNUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "EXIT_ENGINE_NOT_HEALTHY",
@@ -23,6 +23,8 @@
       "QUANT_CHAMPION_NOT_ELIGIBLE",
       "VALIDATION_OUT_OF_SAMPLE_WEAK",
       "TEST_OUT_OF_SAMPLE_WEAK",
+      "PROBABILITY_CALIBRATION_WEAK",
+      "INSUFFICIENT_PAPER_VALIDATIONS",
       "INSUFFICIENT_PAPER_SAMPLE",
       "PAPER_POSITIVE_RATE_TOO_LOW"
     ],
