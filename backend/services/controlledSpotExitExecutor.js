@@ -327,16 +327,19 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice) {
 // A process can restart after Binance accepted the order but before Firestore
 // recorded its fill. Resume only through the durable client order id; never
 // send a second sell while that outcome is unknown.
-async function recoverPendingExit(db, ref, position) {
+async function recoverPendingExit(db, ref, position, dependencies = {}) {
+  const lookupExistingSellOrder = dependencies.findExistingSellOrder || findExistingSellOrder;
+  const finalizeRecoveredExit = dependencies.finalizeExit || finalizeExit;
+  const releasePendingClaim = dependencies.releaseClaim || releaseClaim;
   const symbol = String(position.symbol || '').toUpperCase();
   const claimId = position.exit_claim_id;
   const clientOrderId = position.exit_client_order_id;
   if (!claimId || !clientOrderId || !symbol) {
-    await releaseClaim(ref, claimId, new Error('PENDING_EXIT_RECOVERY_METADATA_MISSING'));
+    await releasePendingClaim(ref, claimId, new Error('PENDING_EXIT_RECOVERY_METADATA_MISSING'));
     return { symbol, action: 'EXIT_RECOVERY_FAILED', error: 'PENDING_EXIT_RECOVERY_METADATA_MISSING' };
   }
   try {
-    const order = await findExistingSellOrder(symbol, clientOrderId);
+    const order = await lookupExistingSellOrder(symbol, clientOrderId);
     if (!order) {
       await ref.update({
         exit_status: 'EXIT_RETRY_READY',
@@ -346,7 +349,7 @@ async function recoverPendingExit(db, ref, position) {
       return { symbol, action: 'EXIT_RETRY_READY', client_order_id: clientOrderId };
     }
     if (Number(order.executedQty || 0) > 0) {
-      const result = await finalizeExit(db, ref, {
+      const result = await finalizeRecoveredExit(db, ref, {
         ...position,
         id: position.id || ref.id,
         claimId,
@@ -368,7 +371,7 @@ async function recoverPendingExit(db, ref, position) {
       order_status: order.status || 'UNKNOWN'
     };
   } catch (error) {
-    await releaseClaim(ref, claimId, error);
+    await releasePendingClaim(ref, claimId, error);
     return { symbol, action: 'EXIT_RECOVERY_FAILED', error: error.message };
   }
 }

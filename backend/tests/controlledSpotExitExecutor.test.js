@@ -7,7 +7,8 @@ const {
   assertExitConfig,
   calculateAtrPct,
   resolveAdaptiveProtection,
-  buildExitClientOrderId
+  buildExitClientOrderId,
+  recoverPendingExit
 } = require('../services/controlledSpotExitExecutor');
 const {
   assetFromSymbol,
@@ -144,5 +145,54 @@ assert.throws(() => assertExitConfig({
   leverage_allowed: false,
   withdrawals_allowed: false
 }), /REAL_SELLS_NOT_ENABLED/);
+
+// Restart simulation: a durable EXIT_PENDING must use the existing Binance
+// client order id. The recovery function has no execution dependency, so this
+// test proves it never needs to submit a second sell after a process restart.
+(async () => {
+  const updates = [];
+  const position = {
+    id: 'position-restart-1', symbol: 'XECUSDT', exit_claim_id: 'claim-1',
+    exit_client_order_id: 'px25x_restart', exit_reason_pending: 'TAKE_PROFIT',
+    exit_price_observed: 0.0001
+  };
+  const recovered = await recoverPendingExit({}, {
+    id: position.id,
+    update: async (value) => updates.push(value)
+  }, position, {
+    findExistingSellOrder: async (symbol, clientOrderId) => {
+      assert.strictEqual(symbol, 'XECUSDT');
+      assert.strictEqual(clientOrderId, 'px25x_restart');
+      return { orderId: 9001, executedQty: '10', cummulativeQuoteQty: '2', status: 'FILLED' };
+    },
+    finalizeExit: async (_db, _ref, claimed, order, reason) => {
+      assert.strictEqual(claimed.claimId, 'claim-1');
+      assert.strictEqual(claimed.clientOrderId, 'px25x_restart');
+      assert.strictEqual(order.orderId, 9001);
+      assert.strictEqual(reason, 'TAKE_PROFIT');
+      return { fullyClosed: true, idempotent: false };
+    }
+  });
+  assert.strictEqual(recovered.action, 'RECOVERED_SELL');
+  assert.strictEqual(updates.length, 0);
+
+  const retryReady = await recoverPendingExit({}, {
+    id: position.id,
+    update: async (value) => updates.push(value)
+  }, position, {
+    findExistingSellOrder: async () => null
+  });
+  assert.strictEqual(retryReady.action, 'EXIT_RETRY_READY');
+  assert.deepStrictEqual(updates[0], {
+    exit_status: 'EXIT_RETRY_READY',
+    exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND',
+    exit_recovered_at: updates[0].exit_recovered_at
+  });
+  assert.ok(typeof updates[0].exit_recovered_at === 'string');
+  console.log('pending exit restart recovery tests passed');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 
 console.log('controlled Spot adaptive exit and reconciliation tests passed');
