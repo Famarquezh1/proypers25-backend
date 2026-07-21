@@ -8,7 +8,7 @@ const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
 const BALANCE_DOC = 'real_spot_config/balance';
-const SAFETY_VERSION = 'controlled_real_spot_exit_v3_adaptive';
+const SAFETY_VERSION = 'controlled_real_spot_exit_v4_normalized_quantity';
 
 function parseDate(value) {
   if (!value) return null;
@@ -88,23 +88,40 @@ function buildExitClientOrderId(position) {
   return `px25x_${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 24)}`;
 }
 
-async function getSellableQuantity(symbol, requestedQuantity) {
+function buildSellQuantityEvidence(rawManagedQuantity, freeQuantity, filter) {
+  const raw = Math.max(0, Number(rawManagedQuantity || 0));
+  const free = Math.max(0, Number(freeQuantity || 0));
+  const stepSize = String(filter?.stepSize || '');
+  const normalized = floorToStep(Math.min(raw, free), stepSize);
+  if (normalized < Number(filter?.minQty || 0)) throw new Error('SELL_QUANTITY_BELOW_MINIMUM');
+  if (Number(filter?.maxQty || 0) > 0 && normalized > Number(filter.maxQty)) {
+    throw new Error('SELL_QUANTITY_ABOVE_MAXIMUM');
+  }
+  return {
+    raw_managed_quantity: raw,
+    step_size: stepSize,
+    normalized_sell_quantity: normalized,
+    submitted_quantity: normalized,
+    binance_free_quantity: free
+  };
+}
+
+async function getSellableQuantity(symbol, rawManagedQuantity, dependencies = {}) {
+  const requestPrivate = dependencies.privateRequest || privateRequest;
+  const requestPublic = dependencies.publicGet || publicGet;
   const [account, exchangeInfo] = await Promise.all([
-    privateRequest('GET', '/api/v3/account'),
-    publicGet('/api/v3/exchangeInfo', { symbol })
+    requestPrivate('GET', '/api/v3/account'),
+    requestPublic('/api/v3/exchangeInfo', { symbol })
   ]);
   const info = exchangeInfo.symbols?.[0];
   if (!info || info.status !== 'TRADING' || info.isSpotTradingAllowed !== true) {
     throw new Error('SYMBOL_NOT_AVAILABLE_FOR_SPOT_SELL');
   }
   const free = Number(account.balances?.find((item) => item.asset === info.baseAsset)?.free || 0);
-  const filter = info.filters?.find((item) => item.filterType === 'MARKET_LOT_SIZE') ||
-    info.filters?.find((item) => item.filterType === 'LOT_SIZE');
+  const filter = info.filters?.find((item) => item.filterType === 'LOT_SIZE') ||
+    info.filters?.find((item) => item.filterType === 'MARKET_LOT_SIZE');
   if (!filter) throw new Error('LOT_SIZE_FILTER_NOT_FOUND');
-  const quantity = floorToStep(Math.min(Number(requestedQuantity || 0), free), filter.stepSize);
-  if (quantity < Number(filter.minQty || 0)) throw new Error('SELL_QUANTITY_BELOW_MINIMUM');
-  if (Number(filter.maxQty || 0) > 0 && quantity > Number(filter.maxQty)) throw new Error('SELL_QUANTITY_ABOVE_MAXIMUM');
-  return quantity;
+  return buildSellQuantityEvidence(rawManagedQuantity, free, filter);
 }
 
 function trueRange(previousClose, candle) {
@@ -139,7 +156,6 @@ async function fetchRecentKlines(symbol) {
 function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Date()) {
   const entry = Number(position.entry_price || 0);
   if (!(entry > 0) || !(currentPrice > 0)) return null;
-
   const normalizedAtr = clamp(atrPct || Number(position.entry_atr_pct || 0.01), 0.003, 0.05);
   const gainPct = (currentPrice / entry) - 1;
   const highest = Math.max(Number(position.highest_price || entry), currentPrice);
@@ -147,11 +163,9 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
   const lowest = persistedLow > 0 ? Math.min(persistedLow, currentPrice) : currentPrice;
   const originalSl = Number(position.sl_price || entry * (1 - clamp(normalizedAtr, 0.005, 0.03)));
   const originalTp = Number(position.tp1_price || entry * (1 + clamp(normalizedAtr * 2, 0.008, 0.06)));
-
   const breakEvenTrigger = clamp(normalizedAtr * 1.2, 0.006, 0.025);
   const trailingTrigger = clamp(normalizedAtr * 1.8, 0.01, 0.04);
   const trailingDistance = clamp(normalizedAtr * 1.1, 0.006, 0.03);
-
   let effectiveSl = originalSl;
   let mode = 'BASE';
   if (gainPct >= breakEvenTrigger) {
@@ -162,14 +176,12 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
     effectiveSl = Math.max(effectiveSl, highest * (1 - trailingDistance));
     mode = 'TRAILING';
   }
-
   const openedAt = parseDate(position.opened_at) || now;
   const ageMinutes = Math.max(0, (now.getTime() - openedAt.getTime()) / 60000);
   const timeoutMinutes = clamp(Math.round(180 + (normalizedAtr * 10000)), 180, 720);
   const adaptiveTimeoutAt = new Date(openedAt.getTime() + timeoutMinutes * 60000);
   const existingTimeout = parseDate(position.timeout_at);
   const effectiveTimeoutAt = existingTimeout && existingTimeout < adaptiveTimeoutAt ? existingTimeout : adaptiveTimeoutAt;
-
   return {
     highest_price: highest,
     lowest_price: lowest,
@@ -197,15 +209,10 @@ function determineExit(position, currentPrice, now = new Date()) {
   }
   if (currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
   if (timeoutAt && timeoutAt.getTime() <= now.getTime()) return 'TIMEOUT';
-  // These are written by the strategy evaluator when it has fresh evidence.
-  // They intentionally return a reason only; the sell always follows the
-  // same claimed, idempotent Binance-order path below.
   if (position.momentum_lost === true || position.exit_signal_reason === 'MOMENTUM_LOSS') return 'MOMENTUM_LOSS';
   const currentScore = Number(position.current_score);
   const exitScoreFloor = Number(position.exit_score_floor);
-  if (Number.isFinite(currentScore) && Number.isFinite(exitScoreFloor) && currentScore < exitScoreFloor) {
-    return 'SCORE_DETERIORATION';
-  }
+  if (Number.isFinite(currentScore) && Number.isFinite(exitScoreFloor) && currentScore < exitScoreFloor) return 'SCORE_DETERIORATION';
   return null;
 }
 
@@ -254,9 +261,10 @@ async function releaseClaim(ref, claimId, error) {
   });
 }
 
-async function findExistingSellOrder(symbol, clientOrderId) {
+async function findExistingSellOrder(symbol, clientOrderId, dependencies = {}) {
+  const requestPrivate = dependencies.privateRequest || privateRequest;
   try {
-    const order = await privateRequest('GET', '/api/v3/order', { symbol, origClientOrderId: clientOrderId });
+    const order = await requestPrivate('GET', '/api/v3/order', { symbol, origClientOrderId: clientOrderId });
     if (String(order.side || '').toUpperCase() !== 'SELL') throw new Error('EXISTING_ORDER_IS_NOT_SELL');
     return order;
   } catch (error) {
@@ -265,30 +273,31 @@ async function findExistingSellOrder(symbol, clientOrderId) {
   }
 }
 
-async function executeMarketSell(symbol, quantity, clientOrderId) {
-  const existing = await findExistingSellOrder(symbol, clientOrderId);
+async function executeMarketSell(symbol, submittedQuantity, clientOrderId, dependencies = {}) {
+  const requestPrivate = dependencies.privateRequest || privateRequest;
+  const lookupExisting = dependencies.findExistingSellOrder || ((s, id) => findExistingSellOrder(s, id, { privateRequest: requestPrivate }));
+  const existing = await lookupExisting(symbol, clientOrderId);
   if (existing) return existing;
   try {
-    return await privateRequest('POST', '/api/v3/order', {
+    return await requestPrivate('POST', '/api/v3/order', {
       symbol,
       side: 'SELL',
       type: 'MARKET',
-      quantity,
+      quantity: submittedQuantity,
       newClientOrderId: clientOrderId,
       newOrderRespType: 'FULL'
     });
   } catch (error) {
-    const recovered = await findExistingSellOrder(symbol, clientOrderId);
+    const recovered = await lookupExisting(symbol, clientOrderId);
     if (recovered) return recovered;
     throw error;
   }
 }
 
-async function finalizeExit(db, ref, position, order, reason, observedPrice) {
+async function finalizeExit(db, ref, position, order, reason, observedPrice, quantityEvidence = {}) {
   const executedQty = Number(order.executedQty || 0);
   const quoteReceived = Number(order.cummulativeQuoteQty || 0);
   if (!(executedQty > 0)) throw new Error(`SELL_ORDER_NOT_FILLED:${order.status || 'UNKNOWN'}`);
-
   const feeUsdt = (order.fills || []).reduce((sum, fill) =>
     String(fill.commissionAsset || '').toUpperCase() === 'USDT' ? sum + Number(fill.commission || 0) : sum, 0);
   const exitPrice = quoteReceived / executedQty || observedPrice;
@@ -307,7 +316,8 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice) {
     metadata: {
       sell_order_id: order.orderId || null,
       sell_client_order_id: position.clientOrderId || null,
-      exit_safety_version: SAFETY_VERSION
+      exit_safety_version: SAFETY_VERSION,
+      ...quantityEvidence
     }
   });
   const allocatedCapital = recorded.allocatedCapital || 0;
@@ -320,13 +330,11 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice) {
     netPnlPct: allocatedCapital > 0 ? (netPnl / allocatedCapital) * 100 : null,
     exitPrice,
     resultId: recorded.resultId,
-    idempotent: recorded.idempotent === true
+    idempotent: recorded.idempotent === true,
+    ...quantityEvidence
   };
 }
 
-// A process can restart after Binance accepted the order but before Firestore
-// recorded its fill. Resume only through the durable client order id; never
-// send a second sell while that outcome is unknown.
 async function recoverPendingExit(db, ref, position, dependencies = {}) {
   const lookupExistingSellOrder = dependencies.findExistingSellOrder || findExistingSellOrder;
   const finalizeRecoveredExit = dependencies.finalizeExit || finalizeExit;
@@ -341,35 +349,21 @@ async function recoverPendingExit(db, ref, position, dependencies = {}) {
   try {
     const order = await lookupExistingSellOrder(symbol, clientOrderId);
     if (!order) {
-      await ref.update({
-        exit_status: 'EXIT_RETRY_READY',
-        exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND',
-        exit_recovered_at: new Date().toISOString()
-      });
+      await ref.update({ exit_status: 'EXIT_RETRY_READY', exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND', exit_recovered_at: new Date().toISOString() });
       return { symbol, action: 'EXIT_RETRY_READY', client_order_id: clientOrderId };
     }
     if (Number(order.executedQty || 0) > 0) {
-      const result = await finalizeRecoveredExit(db, ref, {
-        ...position,
-        id: position.id || ref.id,
-        claimId,
-        clientOrderId
-      }, order, position.exit_reason_pending || 'RECOVERED_EXIT', Number(position.exit_price_observed || 0));
-      return {
-        symbol,
-        action: 'RECOVERED_SELL',
-        order_id: order.orderId || null,
-        client_order_id: clientOrderId,
-        ...result
+      const quantityEvidence = {
+        raw_managed_quantity: Number((position.raw_managed_quantity ?? position.managed_quantity ?? position.net_quantity ?? position.quantity) || 0),
+        step_size: position.step_size || null,
+        normalized_sell_quantity: Number(position.normalized_sell_quantity || 0),
+        submitted_quantity: Number(position.submitted_quantity || 0)
       };
+      const result = await finalizeRecoveredExit(db, ref, { ...position, id: position.id || ref.id, claimId, clientOrderId }, order,
+        position.exit_reason_pending || 'RECOVERED_EXIT', Number(position.exit_price_observed || 0), quantityEvidence);
+      return { symbol, action: 'RECOVERED_SELL', order_id: order.orderId || null, client_order_id: clientOrderId, ...result };
     }
-    return {
-      symbol,
-      action: 'EXIT_ORDER_PENDING',
-      order_id: order.orderId || null,
-      client_order_id: clientOrderId,
-      order_status: order.status || 'UNKNOWN'
-    };
+    return { symbol, action: 'EXIT_ORDER_PENDING', order_id: order.orderId || null, client_order_id: clientOrderId, order_status: order.status || 'UNKNOWN' };
   } catch (error) {
     await releasePendingClaim(ref, claimId, error);
     return { symbol, action: 'EXIT_RECOVERY_FAILED', error: error.message };
@@ -383,7 +377,6 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
   } catch (error) {
     return { ok: true, blocked: true, blocked_reason: error.message, evaluated: 0, sold: 0, failures: [] };
   }
-
   const snapshot = await db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get();
   const outcomes = [];
   for (const doc of snapshot.docs) {
@@ -394,16 +387,13 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
         outcomes.push(await recoverPendingExit(db, doc.ref, position));
         continue;
       }
-      const ticker = options.currentPrices?.[symbol]
-        ? { price: options.currentPrices[symbol] }
-        : await publicGet('/api/v3/ticker/price', { symbol });
+      const ticker = options.currentPrices?.[symbol] ? { price: options.currentPrices[symbol] } : await publicGet('/api/v3/ticker/price', { symbol });
       const currentPrice = Number(ticker.price || 0);
       const klines = options.klines?.[symbol] || await fetchRecentKlines(symbol);
       const atrPct = calculateAtrPct(klines);
       const adaptive = resolveAdaptiveProtection(position, currentPrice, atrPct);
       await persistAdaptiveProtection(doc.ref, adaptive);
       position = { ...position, ...(adaptive || {}) };
-
       const reason = determineExit(position, currentPrice);
       if (!reason) {
         outcomes.push({
@@ -422,26 +412,40 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
         outcomes.push({ symbol, action: 'SKIP_ALREADY_CLAIMED' });
         continue;
       }
+      let quantityEvidence = null;
       try {
-        const quantity = await getSellableQuantity(symbol, claimed.quantity);
-        const order = await executeMarketSell(symbol, quantity, claimed.clientOrderId);
+        const rawManagedQuantity = Number((claimed.managed_quantity ?? claimed.net_quantity ?? claimed.quantity) || 0);
+        quantityEvidence = await getSellableQuantity(symbol, rawManagedQuantity);
+        await doc.ref.set({ ...quantityEvidence, exit_quantity_evidence_at: new Date().toISOString() }, { merge: true });
+        const order = await executeMarketSell(symbol, quantityEvidence.submitted_quantity, claimed.clientOrderId);
         outcomes.push({
           symbol,
           action: 'SELL',
           reason,
           order_id: order.orderId,
           client_order_id: claimed.clientOrderId,
-          ...(await finalizeExit(db, doc.ref, claimed, order, reason, currentPrice))
+          ...quantityEvidence,
+          ...(await finalizeExit(db, doc.ref, claimed, order, reason, currentPrice, quantityEvidence))
         });
       } catch (error) {
         await releaseClaim(doc.ref, claimed.claimId, error);
-        outcomes.push({ symbol, action: 'SELL_FAILED', reason, error: error.message });
+        outcomes.push({
+          symbol,
+          action: 'SELL_FAILED',
+          reason,
+          error: error.message,
+          ...(quantityEvidence || {
+            raw_managed_quantity: Number((claimed.managed_quantity ?? claimed.net_quantity ?? claimed.quantity) || 0),
+            step_size: null,
+            normalized_sell_quantity: null,
+            submitted_quantity: null
+          })
+        });
       }
     } catch (error) {
       outcomes.push({ symbol, action: 'EVALUATION_FAILED', error: error.message });
     }
   }
-
   const failures = outcomes.filter((item) => item.action.endsWith('FAILED'));
   return {
     ok: failures.length === 0,
@@ -461,10 +465,13 @@ module.exports = {
   SAFETY_VERSION,
   assertExitConfig,
   buildExitClientOrderId,
+  buildSellQuantityEvidence,
   calculateAtrPct,
   resolveAdaptiveProtection,
   determineExit,
   floorToStep,
+  getSellableQuantity,
+  executeMarketSell,
   recoverPendingExit,
   evaluateAndExecuteRealSpotExits
 };
