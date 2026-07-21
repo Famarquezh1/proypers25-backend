@@ -203,7 +203,36 @@ async function validateSpotOrder(symbol, quantity, side, config) {
  * Place Spot Market Buy (REAL IMPLEMENTATION)
  * Makes actual POST to Binance /api/v3/order with strict safety gates
  */
-async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight) {
+async function lookupSpotOrderByClientId(symbol, clientOrderId) {
+    if (!symbol || !clientOrderId) return null;
+    const { apiKey, apiSecret } = await getBinanceSpotCredentials();
+    const params = { symbol: String(symbol).toUpperCase(), origClientOrderId: clientOrderId, timestamp: Date.now(), recvWindow: 5000 };
+    const queryString = Object.entries(params).map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');
+    const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.binance.com',
+            path: `/api/v3/order?${queryString}&signature=${signature}`,
+            method: 'GET', headers: { 'X-MBX-APIKEY': apiKey }, timeout: 5000
+        }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    if (res.statusCode === 200) return resolve(JSON.parse(data));
+                    if (res.statusCode === 400 && Number(JSON.parse(data)?.code) === -2013) return resolve(null);
+                    return reject(new Error(`BINANCE_ORDER_LOOKUP_HTTP_${res.statusCode}`));
+                } catch (error) { return reject(error); }
+            });
+        });
+        req.on('timeout', () => { req.destroy(); reject(new Error('BINANCE_ORDER_LOOKUP_TIMEOUT')); });
+        req.on('error', reject);
+        req.end();
+    });
+}
+
+async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clientOrderId = null) {
     try {
         // VALIDATION GATE 1: Config must allow real trading
         if (config.enabled !== true) {
@@ -290,6 +319,7 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight) {
             timestamp,
             recvWindow: 5000
         };
+        if (clientOrderId) params.newClientOrderId = clientOrderId;
 
         const queryString = Object.entries(params)
             .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
@@ -347,6 +377,21 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight) {
                             });
                         } else {
                             const error = JSON.parse(data);
+                            if (Number(error.code) === -2010 && clientOrderId) {
+                                lookupSpotOrderByClientId(symbolUpper, clientOrderId)
+                                    .then((order) => {
+                                        if (!order) return resolve({ ok: false, blocked: false, reason: 'BINANCE_DUPLICATE_ORDER_NOT_FOUND' });
+                                        return resolve({
+                                            ok: true, order_created: false, recovered_existing_order: true,
+                                            orderId: order.orderId, clientOrderId: order.clientOrderId,
+                                            symbol: order.symbol, side: order.side, type: order.type,
+                                            executedQty: Number(order.executedQty || 0),
+                                            cummulativeQuoteQty: Number(order.cummulativeQuoteQty || 0),
+                                            status: order.status, transactTime: order.time, fills: []
+                                        });
+                                    }).catch((lookupError) => resolve({ ok: false, blocked: false, reason: 'DUPLICATE_ORDER_LOOKUP_FAILED', error: lookupError.message }));
+                                return;
+                            }
                             resolve({
                                 ok: false,
                                 blocked: false,
@@ -631,8 +676,16 @@ async function createRealExecutionIntent(db, candidate, capital_usdt, config) {
 
     const intentId = `real_spot_intent_${candidate.scan_id}_${String(candidate.symbol || '').toUpperCase()}`;
 
+    const clientOrderId = buildEntryClientOrderId(candidate);
     try {
-        await db.collection(REAL_SPOT_INTENTS_COLLECTION).doc(intentId).set({
+        const intentRef = db.collection(REAL_SPOT_INTENTS_COLLECTION).doc(intentId);
+        const reservation = await db.runTransaction(async (tx) => {
+            const existing = await tx.get(intentRef);
+            if (existing.exists) {
+                const data = existing.data() || {};
+                return { id: intentId, created: false, status: data.status || null, clientOrderId: data.client_order_id || clientOrderId };
+            }
+            tx.create(intentRef, {
             id: intentId,
             symbol: String(candidate.symbol || '').toUpperCase(),
             scan_id: candidate.scan_id || null,
@@ -640,18 +693,25 @@ async function createRealExecutionIntent(db, candidate, capital_usdt, config) {
             category: candidate.category || 'UNKNOWN',
             opportunity_score: Number(candidate.opportunityScore || 0),
             status: 'REAL_PENDING',
+            client_order_id: clientOrderId,
             rejection_reason: null,
             intended_capital_usdt: capital_usdt,
             created_at: new Date().toISOString(),
             real_mode: true,
             safety_version: SAFETY_VERSION
-        }, { merge: true });
-
-        return { id: intentId, created: true };
+            });
+            return { id: intentId, created: true, status: 'REAL_PENDING', clientOrderId };
+        });
+        return reservation;
     } catch (error) {
         console.error('[REAL_EXECUTOR] Failed to create intent:', error.message);
         return null;
     }
+}
+
+function buildEntryClientOrderId(candidate = {}) {
+    const seed = [candidate.scan_id || 'scan', candidate.id || 'candidate', String(candidate.symbol || '').toUpperCase()].join('|');
+    return `px25b_${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 24)}`;
 }
 
 /**
@@ -781,151 +841,6 @@ async function buildRealSpotEntryDiagnostic(db, config, exposure = { total: 0 },
     } catch (error) {
         diagnostic.rejected_reasons.push('ENTRY_DIAGNOSTIC_READ_FAILED');
         return diagnostic;
-    }
-}
-
-/**
- * Evaluate open positions for exit (TP1, TP2, SL, TIMEOUT)
- */
-async function evaluateOpenRealPositions(db, config, currentPrices = {}) {
-    if (!db) {
-        return { closed: 0 };
-    }
-
-    try {
-        const snapshot = await db.collection(REAL_SPOT_POSITIONS_COLLECTION)
-            .where('status', '==', 'REAL_OPEN')
-            .get();
-
-        let closedCount = 0;
-        const now = new Date();
-
-        // Get current prices from Binance if not provided
-        let prices = { ...currentPrices };
-        if (Object.keys(prices).length === 0 && snapshot.size > 0) {
-            try {
-                const symbols = snapshot.docs.map(doc => doc.data().symbol);
-                for (const symbol of symbols) {
-                    const priceResult = await createSignedBinanceSpotRequest('GET', '/api/v3/ticker/price', { symbol });
-                    if (priceResult.price) {
-                        prices[symbol] = parseFloat(priceResult.price);
-                    }
-                }
-                console.log(`[REAL_EXECUTOR] Fetched ${Object.keys(prices).length} current prices from Binance`);
-            } catch (priceErr) {
-                console.warn('[REAL_EXECUTOR] Failed to fetch current prices:', priceErr.message);
-            }
-        }
-
-        for (const doc of snapshot.docs) {
-            const position = { id: doc.id, ...doc.data() };
-            const currentPrice = prices[position.symbol] || null;
-
-            // Check TP1
-            if (currentPrice && currentPrice >= position.tp1_price) {
-                await closeRealPosition(db, position, currentPrice, 'TP1');
-                closedCount++;
-                continue;
-            }
-
-            // Check TP2
-            if (currentPrice && currentPrice >= position.tp2_price) {
-                await closeRealPosition(db, position, currentPrice, 'TP2');
-                closedCount++;
-                continue;
-            }
-
-            // Check SL
-            if (currentPrice && currentPrice <= position.sl_price) {
-                await closeRealPosition(db, position, currentPrice, 'SL');
-                closedCount++;
-                continue;
-            }
-
-            // Check TIMEOUT
-            const timeoutAt = parseDateLike(position.timeout_at);
-            if (timeoutAt && timeoutAt.getTime() <= now.getTime()) {
-                const exitPrice = currentPrice || position.entry_price;
-                await closeRealPosition(db, position, exitPrice, 'TIMEOUT');
-                closedCount++;
-            }
-        }
-
-        return { closed: closedCount };
-    } catch (error) {
-        console.error('[REAL_EXECUTOR] Failed to evaluate positions:', error.message);
-        return { closed: 0 };
-    }
-}
-
-/**
- * Close real position
- */
-async function closeRealPosition(db, position, exitPrice, closeReason) {
-    if (!db || !position) {
-        return { closed: false };
-    }
-
-    try {
-        const resultId = `real_spot_result_${position.id}`;
-        const now = new Date();
-        const openedAt = parseDateLike(position.opened_at) || new Date();
-        const durationHours = (now.getTime() - openedAt.getTime()) / (60 * 60 * 1000);
-
-        const grossPnlUsdt = position.quantity * (exitPrice - position.entry_price);
-        const estimatedFeeUsdt = position.capital_usdt * 0.001; // 0.1% fee estimate
-        const netPnlUsdt = grossPnlUsdt - estimatedFeeUsdt;
-        const netPnlPct = (netPnlUsdt / position.capital_usdt) * 100;
-
-        // Update position to closed
-        await db.collection(REAL_SPOT_POSITIONS_COLLECTION).doc(position.id).update({
-            status: 'REAL_CLOSED',
-            closed_at: now.toISOString(),
-            closing_reason: closeReason,
-            exit_price: exitPrice,
-            pnl_usdt: netPnlUsdt
-        });
-
-        // Update balance: return capital from position back to available (add pnl if positive)
-        const balanceRef = db.collection('real_spot_config').doc('balance');
-        const currentBalance = await balanceRef.get();
-        const balData = currentBalance.data() || {};
-        const positionCapital = position.capital_usdt || 0;
-        const returnedCapital = positionCapital + netPnlUsdt;
-        
-        await balanceRef.update({
-            available_usdt: (balData.available_usdt || 0) + returnedCapital,
-            in_positions_usdt: Math.max(0, (balData.in_positions_usdt || 0) - positionCapital),
-            total_usdt: (balData.total_usdt || 561.47) + (netPnlUsdt > 0 ? netPnlUsdt : 0)
-        });
-        console.log(`[REAL_EXECUTOR] Capital returned: ${returnedCapital.toFixed(2)} USDT (original: ${positionCapital}, pnl: ${netPnlUsdt.toFixed(2)})`)
-
-        // Create result record
-        await db.collection(REAL_SPOT_RESULTS_COLLECTION).doc(resultId).set({
-            id: resultId,
-            position_id: position.id,
-            symbol: position.symbol,
-            entry_price: position.entry_price,
-            exit_price: exitPrice,
-            quantity: position.quantity,
-            gross_pnl_usdt: grossPnlUsdt,
-            estimated_fee_usdt: estimatedFeeUsdt,
-            net_pnl_usdt: netPnlUsdt,
-            net_pnl_pct: netPnlPct,
-            closing_reason: closeReason,
-            opened_at: position.opened_at,
-            closed_at: now.toISOString(),
-            duration_hours: durationHours,
-            real_mode: true,
-            safety_version: SAFETY_VERSION
-        }, { merge: true });
-
-        console.log(`[REAL_EXECUTOR] Closed ${position.symbol} by ${closeReason}: ${netPnlUsdt > 0 ? '+' : ''}${netPnlUsdt.toFixed(2)} USDT (${netPnlPct.toFixed(2)}%)`);
-
-        return { closed: true, result_id: resultId };
-    } catch (error) {
-        console.error('[REAL_EXECUTOR] Failed to close position:', error.message);
-        return { closed: false };
     }
 }
 
@@ -1255,8 +1170,11 @@ async function runRealSpotExecutionCycle(db, options = {}) {
 
     console.log('[REAL_EXECUTOR] Config valid, proceeding...');
 
-    // Evaluate open positions for exits
-    const exitResults = await evaluateOpenRealPositions(db, config, options.currentPrices || {});
+    // Exits are deliberately not evaluated here. The controlled real Spot
+    // route runs controlledSpotExitExecutor before it delegates entry work to
+    // this function. Keeping a second close implementation here once caused
+    // Firestore-only closes that did not sell on Binance.
+    const exitResults = { closed: 0, delegated_to: 'controlledSpotExitExecutor' };
 
     // Check if can open new positions
     const exposure = await getRealSpotCapitalExposure(db);
@@ -1284,20 +1202,34 @@ async function runRealSpotExecutionCycle(db, options = {}) {
             if (!preflight.ok || !preflight.credentials_valid) {
                 console.log('[REAL_EXECUTOR] Preflight failed, skipping order placement');
             } else {
-                // Attempt order placement
+                // The intent and deterministic client id exist before Binance is
+                // called. A timeout/restart therefore retries the same order,
+                // never creates a second buy.
+                const intentResult = await createRealExecutionIntent(db, candidate, config.max_position_usdt || 10, config);
+                if (!intentResult?.id) {
+                    console.error('[REAL_EXECUTOR] Unable to reserve idempotent entry intent');
+                    return { ok: false, blocked: true, blocked_reason: 'ENTRY_INTENT_RESERVATION_FAILED' };
+                }
+                if (intentResult.created === false && intentResult.status === 'REAL_FILLED') {
+                    console.log(`[REAL_EXECUTOR] Candidate already filled under intent ${intentResult.id}; duplicate buy skipped`);
+                    return {
+                        ok: true, real_mode: true, blocked: false, positions_closed: 0,
+                        positions_opened: 0, order_created: false, selected_symbol: candidate.symbol,
+                        entry_diagnostic: createBaseEntryDiagnostic({ rejected_reasons: ['ENTRY_ALREADY_FILLED'] }),
+                        duration_ms: new Date().getTime() - cycleStart.getTime()
+                    };
+                }
                 const orderResult = await placeSpotMarketBuy(
                     candidate.symbol,
                     config.max_position_usdt || 10,
                     config,
-                    preflight
+                    preflight,
+                    intentResult.clientOrderId
                 );
 
-                if (orderResult.ok && orderResult.order_created) {
-                    console.log(`[REAL_EXECUTOR] Order created successfully: ${orderResult.orderId}`);
-
-                    // Create intent
-                    const intentResult = await createRealExecutionIntent(db, candidate, config.max_position_usdt || 10, config);
-                    console.log(`[REAL_EXECUTOR] Intent created: ${intentResult?.id}`);
+                if (orderResult.ok && (orderResult.order_created || orderResult.recovered_existing_order)) {
+                    console.log(`[REAL_EXECUTOR] Order confirmed: ${orderResult.orderId}`);
+                    console.log(`[REAL_EXECUTOR] Intent reserved: ${intentResult.id}`);
 
                     // Create position document
                     try {
@@ -1333,7 +1265,9 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                             status: 'REAL_OPEN',
                             entry_price: entryPrice,
                             quantity: orderResult.executedQty || 0,
-                            capital_usdt: config.max_position_usdt || 10,
+                            // Binance is authoritative for the executed quote,
+                            // not the intended position limit.
+                            capital_usdt: Number(orderResult.cummulativeQuoteQty || config.max_position_usdt || 10),
                             take_profit_1_pct: Number(config.take_profit_1_pct || 5),
                             take_profit_2_pct: Number(config.take_profit_2_pct || 10),
                             stop_loss_pct: Number(config.stop_loss_pct || -5),
@@ -1359,11 +1293,25 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                             } : null,
                             safety_version: SAFETY_VERSION,
 
+                            lifecycle_version: 'spot_position_lifecycle_v1',
+                            entry_score: Number(candidate.opportunityScore || 0) || null,
+                            entry_reason: candidate.category || null,
+                            model_version: candidate.model_version || candidate.version || null,
+                            market_regime: candidate.market_regime || null,
+                            decision_quality: candidate.execution_decision_snapshot?.validation_reason || null,
+                            highest_price: entryPrice,
+                            lowest_price: entryPrice,
+
                             // FORENSIC FIELD - EXECUTION DECISION SNAPSHOT
                             execution_decision_snapshot: candidate.execution_decision_snapshot || null
                         };
 
                         await db.collection(REAL_SPOT_POSITIONS_COLLECTION).doc(positionId).set(positionData, { merge: true });
+                        await db.collection(REAL_SPOT_INTENTS_COLLECTION).doc(intentResult.id).set({
+                            status: 'REAL_FILLED', order_id: orderResult.orderId,
+                            filled_at: now.toISOString(), executed_quantity: Number(orderResult.executedQty || 0),
+                            executed_quote_usdt: Number(orderResult.cummulativeQuoteQty || 0)
+                        }, { merge: true });
 
                         console.log(`[REAL_EXECUTOR] Position created: ${positionId}`);
                         console.log(`[REAL_EXECUTOR::FORENSIC] Snapshot saved - Score: ${positionData.execution_decision_snapshot?.score_at_execution || 'N/A'}, Threshold: ${positionData.execution_decision_snapshot?.min_score_required || 'N/A'}`);
@@ -1372,7 +1320,7 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                         const balanceRef = db.collection('real_spot_config').doc('balance');
                         const currentBalance = await balanceRef.get();
                         const balData = currentBalance.data() || {};
-                        const positionCapital = config.max_position_usdt || 10;
+                        const positionCapital = Number(orderResult.cummulativeQuoteQty || config.max_position_usdt || 10);
                         
                         await balanceRef.update({
                             available_usdt: Math.max(0, (balData.available_usdt || 0) - positionCapital),
@@ -1398,6 +1346,10 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                     }
 
                 } else {
+                    await db.collection(REAL_SPOT_INTENTS_COLLECTION).doc(intentResult.id).set({
+                        status: 'REAL_REJECTED', rejection_reason: orderResult.reason || 'ORDER_NOT_CREATED',
+                        updated_at: new Date().toISOString()
+                    }, { merge: true });
                     console.log('[REAL_EXECUTOR] Order placement failed:', orderResult.reason);
                 }
             }

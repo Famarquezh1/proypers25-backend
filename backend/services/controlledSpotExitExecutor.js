@@ -3,6 +3,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const { getBinanceSpotCredentials } = require('../lib/secretManager');
+const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
 
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
@@ -142,6 +143,8 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
   const normalizedAtr = clamp(atrPct || Number(position.entry_atr_pct || 0.01), 0.003, 0.05);
   const gainPct = (currentPrice / entry) - 1;
   const highest = Math.max(Number(position.highest_price || entry), currentPrice);
+  const persistedLow = Number(position.lowest_price || entry);
+  const lowest = persistedLow > 0 ? Math.min(persistedLow, currentPrice) : currentPrice;
   const originalSl = Number(position.sl_price || entry * (1 - clamp(normalizedAtr, 0.005, 0.03)));
   const originalTp = Number(position.tp1_price || entry * (1 + clamp(normalizedAtr * 2, 0.008, 0.06)));
 
@@ -169,6 +172,7 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
 
   return {
     highest_price: highest,
+    lowest_price: lowest,
     atr_pct: normalizedAtr,
     effective_sl_price: effectiveSl,
     effective_tp_price: originalTp,
@@ -193,6 +197,15 @@ function determineExit(position, currentPrice, now = new Date()) {
   }
   if (currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
   if (timeoutAt && timeoutAt.getTime() <= now.getTime()) return 'TIMEOUT';
+  // These are written by the strategy evaluator when it has fresh evidence.
+  // They intentionally return a reason only; the sell always follows the
+  // same claimed, idempotent Binance-order path below.
+  if (position.momentum_lost === true || position.exit_signal_reason === 'MOMENTUM_LOSS') return 'MOMENTUM_LOSS';
+  const currentScore = Number(position.current_score);
+  const exitScoreFloor = Number(position.exit_score_floor);
+  if (Number.isFinite(currentScore) && Number.isFinite(exitScoreFloor) && currentScore < exitScoreFloor) {
+    return 'SCORE_DETERIORATION';
+  }
   return null;
 }
 
@@ -200,6 +213,7 @@ async function persistAdaptiveProtection(ref, adaptive) {
   if (!adaptive) return;
   await ref.set({
     highest_price: adaptive.highest_price,
+    lowest_price: adaptive.lowest_price,
     atr_pct_runtime: adaptive.atr_pct,
     effective_sl_price: adaptive.effective_sl_price,
     effective_tp_price: adaptive.effective_tp_price,
@@ -275,86 +289,39 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice) {
   const quoteReceived = Number(order.cummulativeQuoteQty || 0);
   if (!(executedQty > 0)) throw new Error(`SELL_ORDER_NOT_FILLED:${order.status || 'UNKNOWN'}`);
 
-  const originalQty = Number(position.quantity || 0);
-  const originalCapital = Number(position.capital_usdt || 0);
-  const soldFraction = originalQty > 0 ? Math.min(1, executedQty / originalQty) : 1;
-  const allocatedCapital = originalCapital * soldFraction;
   const feeUsdt = (order.fills || []).reduce((sum, fill) =>
     String(fill.commissionAsset || '').toUpperCase() === 'USDT' ? sum + Number(fill.commission || 0) : sum, 0);
-  const grossPnl = quoteReceived - allocatedCapital;
-  const netPnl = grossPnl - feeUsdt;
-  const netPnlPct = allocatedCapital > 0 ? (netPnl / allocatedCapital) * 100 : 0;
   const exitPrice = quoteReceived / executedQty || observedPrice;
-  const closedAt = new Date().toISOString();
-  const fullyClosed = soldFraction >= 0.999;
-  const resultId = `real_spot_result_${position.id}_${order.orderId}`;
-  const balanceRef = db.doc(BALANCE_DOC);
-
-  await db.runTransaction(async (tx) => {
-    const [latest, balanceSnap, resultSnap] = await Promise.all([
-      tx.get(ref),
-      tx.get(balanceRef),
-      tx.get(db.collection(RESULTS).doc(resultId))
-    ]);
-    if (resultSnap.exists) return;
-    if (!latest.exists || latest.data().exit_claim_id !== position.claimId) throw new Error('EXIT_CLAIM_LOST');
-    const balance = balanceSnap.exists ? balanceSnap.data() : {};
-
-    tx.update(ref, fullyClosed ? {
-      status: 'REAL_CLOSED',
-      exit_status: 'EXIT_FILLED',
-      closing_reason: reason,
-      closed_at: closedAt,
-      exit_price: exitPrice,
-      pnl_usdt: netPnl,
-      sell_order_id: order.orderId,
-      sell_client_order_id: position.clientOrderId,
-      sold_quantity: executedQty,
-      quote_received_usdt: quoteReceived
-    } : {
-      quantity: Math.max(0, originalQty - executedQty),
-      capital_usdt: Math.max(0, originalCapital - allocatedCapital),
-      exit_status: 'PARTIAL_EXIT_FILLED',
-      exit_client_order_id: null,
-      last_partial_exit_at: closedAt,
-      last_sell_order_id: order.orderId,
-      last_sell_client_order_id: position.clientOrderId,
-      last_sold_quantity: executedQty
-    });
-
-    tx.set(db.collection(RESULTS).doc(resultId), {
-      id: resultId,
-      position_id: position.id,
-      symbol: position.symbol,
-      entry_price: Number(position.entry_price || 0),
-      exit_price: exitPrice,
-      quantity: executedQty,
-      allocated_capital_usdt: allocatedCapital,
-      quote_received_usdt: quoteReceived,
-      gross_pnl_usdt: grossPnl,
-      actual_fee_usdt: feeUsdt,
-      net_pnl_usdt: netPnl,
-      net_pnl_pct: netPnlPct,
-      closing_reason: reason,
-      opened_at: position.opened_at || null,
-      closed_at: closedAt,
-      order_id: order.orderId,
-      client_order_id: position.clientOrderId,
-      order_status: order.status,
-      fully_closed: fullyClosed,
-      real_mode: true,
-      safety_version: SAFETY_VERSION
-    });
-
-    tx.set(balanceRef, {
-      available_usdt: Number(balance.available_usdt || 0) + quoteReceived,
-      in_positions_usdt: Math.max(0, Number(balance.in_positions_usdt || 0) - allocatedCapital),
-      realized_pnl_usdt: Number(balance.realized_pnl_usdt || 0) + netPnl,
-      updated_at: closedAt
-    }, { merge: true });
+  const recorded = await recordConfirmedSpotClose(db, {
+    positionRef: ref,
+    position,
+    eventId: `binance_order_${order.orderId}`,
+    reason,
+    source: 'BINANCE_ORDER',
+    executedQuantity: executedQty,
+    quoteReceivedUsdt: quoteReceived,
+    exitPrice,
+    feeUsdt,
+    order,
+    expectedClaimId: position.claimId,
+    metadata: {
+      sell_order_id: order.orderId || null,
+      sell_client_order_id: position.clientOrderId || null,
+      exit_safety_version: SAFETY_VERSION
+    }
   });
-
-  return { fullyClosed, executedQty, quoteReceived, netPnl, netPnlPct, exitPrice, resultId };
+  const allocatedCapital = recorded.allocatedCapital || 0;
+  const netPnl = recorded.netPnl || 0;
+  return {
+    fullyClosed: recorded.fullyClosed === true,
+    executedQty,
+    quoteReceived,
+    netPnl,
+    netPnlPct: allocatedCapital > 0 ? (netPnl / allocatedCapital) * 100 : null,
+    exitPrice,
+    resultId: recorded.resultId,
+    idempotent: recorded.idempotent === true
+  };
 }
 
 async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {

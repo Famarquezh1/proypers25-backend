@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/spotPositionLifecycle.js"
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
@@ -17,6 +18,7 @@ on:
       - "backend/routes/spotCostGovernance.route.js"
       - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
+      - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/server.js"
@@ -27,6 +29,7 @@ on:
       - feat/controlled-real-spot-exits
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/spotPositionLifecycle.js"
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
@@ -38,6 +41,7 @@ on:
       - "backend/routes/spotCostGovernance.route.js"
       - "backend/routes/velasCron.js"
       - "backend/tests/controlledSpotExitExecutor.test.js"
+      - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/server.js"
@@ -65,6 +69,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/services/spotPositionLifecycle.js
           node --check backend/services/spotAccountReconciliation.js
           node --check backend/services/adaptiveSpotStrategyController.js
           node --check backend/services/spotStrategyPromotionController.js
@@ -84,7 +89,9 @@ jobs:
           test "$count" -eq 1
 
       - name: Controlled Spot exit unit tests
-        run: node backend/tests/controlledSpotExitExecutor.test.js
+        run: |
+          node backend/tests/controlledSpotExitExecutor.test.js
+          node backend/tests/spotPositionLifecycle.test.js
 
       - name: Controlled strategy promotion unit tests
         run: node backend/tests/spotStrategyPromotion.test.js
