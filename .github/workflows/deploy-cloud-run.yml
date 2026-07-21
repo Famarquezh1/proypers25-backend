@@ -30,6 +30,7 @@ jobs:
         run: |
           node tests/spotManagedQuantityRepair.test.js
           node tests/controlledSpotExitExecutor.test.js
+          node tests/controlledSpotSubmittedQuantity.test.js
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -130,6 +131,7 @@ jobs:
           jq -e '.real_mode == true and .spot_only == true and (.decision_summary | type == "object") and (.evidence_id | type == "string")' <<<"$CYCLE" >/dev/null
           ! grep -q 'Invalid quantity' <<<"$CYCLE"
           jq -e 'all((.exits.outcomes // [])[]; .error != "Invalid quantity.")' <<<"$CYCLE" >/dev/null
+          jq -e 'any((.exits.outcomes // [])[]; .symbol == "XECUSDT" and .raw_managed_quantity == 1493273.23 and .step_size == "1.00" and .normalized_sell_quantity == 1493273 and .submitted_quantity == 1493273)' <<<"$CYCLE" >/dev/null
           echo "Controlled real Spot cycle persisted: $(jq -r '.evidence_id' <<<"$CYCLE")"
           echo "XEC outcome: $(jq -c '(.exits.outcomes // [])[] | select(.symbol == "XECUSDT")' <<<"$CYCLE")"
 
