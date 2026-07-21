@@ -22,6 +22,40 @@ function inferAction(entries, exits) {
   return 'NO_ACTION';
 }
 
+function normalizeExitFailure(failure, index) {
+  const source = failure && typeof failure === 'object' ? failure : { message: failure };
+  const error = source.error && typeof source.error === 'object' ? source.error : {};
+
+  return {
+    index,
+    symbol: firstNonEmpty(source.symbol, source.pair, source.position?.symbol, source.asset),
+    position_id: firstNonEmpty(source.position_id, source.positionId, source.position?.id, source.id),
+    stage: firstNonEmpty(source.stage, source.phase, source.operation, source.action),
+    reason: firstNonEmpty(source.reason, source.code, error.code, source.status),
+    message: firstNonEmpty(source.message, error.message, typeof source.error === 'string' ? source.error : null),
+    retryable: source.retryable === true,
+    retry_state: firstNonEmpty(source.retry_state, source.retryState, source.next_state, source.nextState),
+    attempt: asNumber(source.attempt ?? source.retry_count ?? source.retryCount, 0) || null
+  };
+}
+
+function buildExitDiagnostics(exits = {}) {
+  const failures = Array.isArray(exits?.failures) ? exits.failures : [];
+  const normalizedFailures = failures.slice(0, 10).map(normalizeExitFailure);
+
+  return {
+    ok: exits?.ok !== false,
+    blocked: exits?.blocked === true,
+    healthy: exits?.exit_engine_healthy !== false,
+    failure_count: failures.length,
+    failure_reasons: compactReasons(normalizedFailures.map((failure) => failure.reason || failure.message)),
+    failures: normalizedFailures,
+    last_error: firstNonEmpty(exits?.last_error, exits?.lastError, exits?.error),
+    recovery_state: firstNonEmpty(exits?.recovery_state, exits?.recoveryState, exits?.status),
+    retryable_failures: normalizedFailures.filter((failure) => failure.retryable).length
+  };
+}
+
 function buildSpotCycleDecisionLog(input = {}) {
   const {
     reconciliation = {},
@@ -38,7 +72,9 @@ function buildSpotCycleDecisionLog(input = {}) {
 
   const candidate = paperGate?.candidate || entries?.candidate || null;
   const action = inferAction(entries, exits);
+  const exitDiagnostics = buildExitDiagnostics(exits);
   const reasons = compactReasons(
+    exitDiagnostics.failure_reasons,
     entries?.reason,
     entries?.gate_reasons || [],
     paperGate?.reasons || [],
@@ -79,9 +115,10 @@ function buildSpotCycleDecisionLog(input = {}) {
       positions_opened: asNumber(entries?.positions_opened ?? entries?.opened_positions, 0),
       positions_closed: asNumber(exits?.positions_closed ?? exits?.closed_positions, 0),
       open_positions_after_cycle: asNumber(openPositionsAfterCycle, 0),
-      exit_failures: Array.isArray(exits?.failures) ? exits.failures.length : 0,
+      exit_failures: exitDiagnostics.failure_count,
       duration_ms: asNumber(durationMs, 0)
     },
+    exit_diagnostics: exitDiagnostics,
     safety: {
       spot_only: config?.spot_only === true,
       max_position_usdt: asNumber(config?.max_position_usdt ?? config?.max_capital_per_trade_usdt, 0),
@@ -100,6 +137,8 @@ function logSpotCycleDecision(summary, logger = console) {
 
 module.exports = {
   buildSpotCycleDecisionLog,
+  buildExitDiagnostics,
+  normalizeExitFailure,
   logSpotCycleDecision,
   inferAction,
   compactReasons
