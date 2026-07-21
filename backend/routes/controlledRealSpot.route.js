@@ -8,12 +8,10 @@ const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/
 const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
-const {
-  getAdaptiveEntryGate,
-  runAdaptiveSpotStrategyController
-} = require('../services/adaptiveSpotStrategyController');
+const { getAdaptiveEntryGate, runAdaptiveSpotStrategyController } = require('../services/adaptiveSpotStrategyController');
 const { getStrategyPromotionGate } = require('../services/spotStrategyPromotionController');
 const { buildSpotCycleDecisionLog, logSpotCycleDecision } = require('../services/spotCycleObservability');
+const { persistActivity, persistCycleEvidence } = require('../services/spotLiveEvidence');
 
 const router = express.Router();
 
@@ -64,39 +62,36 @@ router.get('/spot-adaptive-strategy/status', async (_req, res) => {
 });
 
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
-  const startedAt = Date.now();
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  let config = {};
+  let reconciliation = {};
+  let exits = {};
+  let autonomy = {};
+  let adaptiveGate = {};
+  let promotionGate = {};
+  let paperGate = {};
+  let entries = {};
   try {
-    const reconciliation = await reconcileRealSpotAccount(db);
+    await persistActivity(db, { event_type: 'SCHEDULER_START', source: 'CLOUD_SCHEDULER', created_at: startedAt, route: req.path });
+    reconciliation = await reconcileRealSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
 
-    let config = await getRealSpotConfig(db);
-    const exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
-    const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
-    const autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
-    const [adaptiveGate, promotionGate] = await Promise.all([
-      getAdaptiveEntryGate(db),
-      getStrategyPromotionGate(db)
-    ]);
+    exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
+    const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
+    autonomy = await enforceAutonomousSafety(db, config);
+    config = await getRealSpotConfig(db);
+    [adaptiveGate, promotionGate] = await Promise.all([getAdaptiveEntryGate(db), getStrategyPromotionGate(db)]);
 
-    const reconciliationBlocksEntry = reconciliation.account_consistent !== true ||
-      reconciliation.entries_blocked === true || config.reconciliation_required === true ||
-      config.account_consistent === false;
+    const reconciliationBlocksEntry = reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false;
     const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
-    const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false ||
-      exits.exit_engine_healthy === false || exitFailures > 0;
+    const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false || exits.exit_engine_healthy === false || exitFailures > 0;
     const adaptiveBlocksEntry = adaptiveGate.allowed === false;
     const promotionBlocksEntry = promotionGate.allowed !== true;
 
-    let paperGate = {
-      allowed: false,
-      skipped: true,
-      reasons: ['ENTRY_PRECONDITIONS_NOT_MET'],
-      no_order_created: true,
-      version: 'paper_to_real_entry_gate_v1'
-    };
-
-    let entries = {
+    paperGate = { allowed: false, skipped: true, reasons: ['ENTRY_PRECONDITIONS_NOT_MET'], no_order_created: true, version: 'paper_to_real_entry_gate_v1' };
+    entries = {
       ok: true,
       skipped: true,
       reason: reconciliationBlocksEntry ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED' :
@@ -107,17 +102,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
                 autonomy.should_halt ? autonomy.halt_reason : 'PAPER_REAL_GATE_NOT_EVALUATED'
     };
 
-    const baseEntryConditionsMet = !reconciliationBlocksEntry && !exitEngineBlocksEntry &&
-      !adaptiveBlocksEntry && !promotionBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
-      config.enabled === true && config.kill_switch !== true && config.new_entries_enabled === true &&
-      config.auto_order_execution === true && config.real_sells_enabled === true &&
-      config.spot_only === true && config.futures_allowed !== true && config.margin_allowed !== true &&
-      config.leverage_allowed !== true && config.withdrawals_allowed === false;
+    const baseEntryConditionsMet = !reconciliationBlocksEntry && !exitEngineBlocksEntry && !adaptiveBlocksEntry && !promotionBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
+      config.enabled === true && config.kill_switch !== true && config.new_entries_enabled === true && config.auto_order_execution === true && config.real_sells_enabled === true &&
+      config.spot_only === true && config.futures_allowed !== true && config.margin_allowed !== true && config.leverage_allowed !== true && config.withdrawals_allowed === false;
 
     if (baseEntryConditionsMet) {
       paperGate = await evaluatePaperToRealEntryGate(db, config);
-      const promotedSymbolMatches = !promotionGate.symbol ||
-        String(paperGate.candidate?.symbol || '').toUpperCase() === String(promotionGate.symbol).toUpperCase();
+      const promotedSymbolMatches = !promotionGate.symbol || String(paperGate.candidate?.symbol || '').toUpperCase() === String(promotionGate.symbol).toUpperCase();
       if (paperGate.allowed === true && promotedSymbolMatches) {
         entries = await runRealSpotExecutionCycle(db, {
           ...req.body,
@@ -144,8 +135,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       }
     }
 
-    const durationMs = Date.now() - startedAt;
-    const decisionLog = buildSpotCycleDecisionLog({
+    const durationMs = Date.now() - startedAtMs;
+    const decisionLog = buildSpotCycleDecisionLog({ reconciliation, exits, autonomy, adaptiveGate, promotionGate, paperGate, entries, openPositionsAfterCycle: openAfterExit.size, durationMs, config });
+    logSpotCycleDecision(decisionLog);
+    const evidence = await persistCycleEvidence(db, {
+      decision: decisionLog,
+      started_at: startedAt,
+      duration_ms: durationMs,
       reconciliation,
       exits,
       autonomy,
@@ -153,11 +149,8 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       promotionGate,
       paperGate,
       entries,
-      openPositionsAfterCycle: openAfterExit.size,
-      durationMs,
       config
     });
-    logSpotCycleDecision(decisionLog);
 
     return res.json({
       ok: reconciliation.ok !== false && exits.ok !== false && entries.ok !== false,
@@ -178,12 +171,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       paper_entry_gate: paperGate,
       entries,
       decision_summary: decisionLog,
+      evidence_id: evidence.id,
       open_positions_after_cycle: openAfterExit.size,
       duration_ms: durationMs
     });
   } catch (error) {
-    const durationMs = Date.now() - startedAt;
-    console.error(JSON.stringify({
+    const durationMs = Date.now() - startedAtMs;
+    const decisionLog = {
       event: 'SPOT_REAL_CYCLE_DECISION',
       timestamp: new Date().toISOString(),
       action: 'ERROR',
@@ -191,13 +185,27 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       reason: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED',
       error: error.message,
       duration_ms: durationMs
-    }));
-    return res.status(500).json({
-      ok: false,
-      error: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED',
-      details: error.message,
-      duration_ms: durationMs
-    });
+    };
+    console.error(JSON.stringify(decisionLog));
+    try {
+      await persistCycleEvidence(db, {
+        decision: decisionLog,
+        started_at: startedAt,
+        duration_ms: durationMs,
+        reconciliation,
+        exits,
+        autonomy,
+        adaptiveGate,
+        promotionGate,
+        paperGate,
+        entries,
+        config,
+        error: error.message
+      });
+    } catch (persistError) {
+      console.error('[SPOT_EVIDENCE] failed to persist failed cycle:', persistError.message);
+    }
+    return res.status(500).json({ ok: false, error: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED', details: error.message, duration_ms: durationMs });
   }
 });
 
@@ -205,8 +213,10 @@ router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, asy
   try {
     const reconciliation = await reconcileRealSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
+    await persistActivity(db, { event_type: 'RECONCILIATION', source: 'BACKEND', result: reconciliation.account_consistent === true ? 'PASS' : 'BLOCK', details: reconciliation });
     return res.json({ ok: reconciliation.ok !== false, real_mode: true, spot_only: true, no_order_created: true, reconciliation });
   } catch (error) {
+    await persistActivity(db, { event_type: 'ERROR', source: 'RECONCILIATION', error: error.message });
     return res.status(500).json({ ok: false, error: 'SPOT_RECONCILIATION_FAILED', details: error.message });
   }
 });
