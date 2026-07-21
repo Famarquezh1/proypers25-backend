@@ -41,6 +41,24 @@ jobs:
             --substitutions=_IMAGE_TAG="$GITHUB_SHA" \
             .
 
+      - name: Diagnose failed Cloud Build or Cloud Run revision
+        if: failure()
+        shell: bash
+        run: |
+          set -u
+          BUILD_ID=$(gcloud builds list --project=proypers2025 --limit=1 --sort-by='~createTime' --format='value(id)' || true)
+          echo "Latest Cloud Build: ${BUILD_ID:-unavailable}"
+          if [ -n "${BUILD_ID:-}" ]; then
+            gcloud logging read \
+              "resource.type=build AND labels.build_id=$BUILD_ID" \
+              --project=proypers2025 --limit=250 --order=asc \
+              --format='value(timestamp,severity,textPayload,jsonPayload.message,jsonPayload.error)' || true
+          fi
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend" AND severity>=ERROR' \
+            --project=proypers2025 --freshness=30m --limit=100 --order=desc \
+            --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
+
       - name: Verify deployed commit and required routes
         shell: bash
         env:
