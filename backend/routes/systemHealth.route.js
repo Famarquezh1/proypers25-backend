@@ -42,6 +42,33 @@ function freshness(value, warnMinutes, failMinutes) {
   return { state: 'GREEN', age_minutes: age };
 }
 
+function isBlockedGate(value) {
+  return ['BLOCK', 'FAIL', 'FAILED', 'RED', 'UNHEALTHY'].includes(String(value || '').toUpperCase());
+}
+
+function firstExitFailure(cycleRun) {
+  const failures = cycleRun?.exit_diagnostics?.failures;
+  return Array.isArray(failures) && failures.length ? failures[0] : null;
+}
+
+function exitDetail(cycleRun, control) {
+  if (!cycleRun) return 'Sin ciclo real registrado';
+  const failure = firstExitFailure(cycleRun);
+  if (failure) {
+    const subject = failure.symbol || failure.position_id || 'posición no identificada';
+    const cause = failure.reason || failure.message || 'causa no informada';
+    const stage = failure.stage ? ` · etapa ${failure.stage}` : '';
+    return `${subject}: ${cause}${stage}`;
+  }
+  if (isBlockedGate(cycleRun?.gates?.exit_engine)) {
+    const reasons = cycleRun?.exit_diagnostics?.failure_reasons || cycleRun?.reasons || [];
+    return Array.isArray(reasons) && reasons.length ? reasons.join(' · ') : 'Motor bloqueado sin detalle disponible';
+  }
+  if (control?.real_sells_enabled !== true) return 'Ventas automáticas no habilitadas';
+  if (control?.auto_order_execution !== true) return 'Ejecución automática no habilitada';
+  return 'Último ciclo procesó el motor de salidas sin bloqueo';
+}
+
 async function safeDoc(path) {
   try {
     const snap = await db.doc(path).get();
@@ -79,10 +106,16 @@ async function buildHealth() {
 
   const promotionState = promotion?.state || 'NOT_INITIALIZED';
   const promotionFreshness = freshness(promotion?.updated_at || promotion?.created_at, 150, 300);
+  const exitGate = cycleRun?.gates?.exit_engine || null;
+  const exitBlocked = isBlockedGate(exitGate)
+    || cycleRun?.exit_diagnostics?.blocked === true
+    || cycleRun?.exit_diagnostics?.healthy === false
+    || Number(cycleRun?.execution?.exit_failures || cycleRun?.exit_diagnostics?.failure_count || 0) > 0;
   const exitStatus = cycleRun ? {
-    ok: cycleRun?.gates?.exit_engine !== 'FAIL',
-    blocked: cycleRun?.gates?.exit_engine === 'FAIL',
-    exit_engine_healthy: cycleRun?.gates?.exit_engine !== 'FAIL'
+    ok: !exitBlocked,
+    blocked: exitBlocked,
+    exit_engine_healthy: !exitBlocked,
+    failures: cycleRun?.exit_diagnostics?.failures || []
   } : null;
   const portfolioHealth = assessPortfolioHealth({
     config: control,
@@ -93,13 +126,14 @@ async function buildHealth() {
     promotion
   });
   const allocationAdvisory = calculateSuggestedAllocation(balance, control, portfolioHealth.state);
+  const exitsConfigured = control?.real_sells_enabled === true && control?.auto_order_execution === true;
 
   const components = [
     {
       id: 'portfolio_health', label: 'Salud del portafolio',
       state: portfolioHealth.state === 'HEALTHY' ? 'GREEN' : portfolioHealth.state === 'DEGRADED' ? 'YELLOW' : 'RED',
       detail: portfolioHealth.critical_reasons[0] || portfolioHealth.degraded_reasons[0] || 'Entradas y salidas coherentes',
-      updated_at: reconciliationRun?.created_at || balance?.updated_at || null
+      updated_at: cycleRun?.timestamp || reconciliationRun?.created_at || balance?.updated_at || null
     },
     {
       id: 'real_spot', label: 'Motor Spot real',
@@ -109,9 +143,9 @@ async function buildHealth() {
     },
     {
       id: 'exit_engine', label: 'Motor de salidas',
-      state: control && control.real_sells_enabled === true && control.auto_order_execution === true ? 'GREEN' : 'RED',
-      detail: control?.real_sells_enabled === true ? 'Ventas automáticas habilitadas' : 'Ventas automáticas no habilitadas',
-      updated_at: control?.updated_at || null
+      state: !exitsConfigured || exitBlocked ? 'RED' : 'GREEN',
+      detail: exitDetail(cycleRun, control),
+      updated_at: cycleRun?.timestamp || control?.updated_at || null
     },
     {
       id: 'reconciliation', label: 'Reconciliación Binance',
@@ -177,6 +211,16 @@ async function buildHealth() {
       allocation_advisory: allocationAdvisory,
       current_balance: balance || null
     },
+    latest_cycle: cycleRun ? {
+      timestamp: cycleRun.timestamp || null,
+      decision: cycleRun.decision || null,
+      action: cycleRun.action || null,
+      reason: cycleRun.reason || null,
+      reasons: cycleRun.reasons || [],
+      gates: cycleRun.gates || {},
+      execution: cycleRun.execution || {},
+      exit_diagnostics: cycleRun.exit_diagnostics || null
+    } : null,
     intelligence: {
       champion_symbol: champion?.symbol || null,
       champion_eligible: champion?.promotion_eligible === true,
@@ -204,11 +248,11 @@ router.get('/internal/system-health/status', requireSecret, async (_req, res) =>
 
 router.get('/system-health-dashboard', (_req, res) => {
   res.type('html').send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Proypers25 · Salud</title><style>
-:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:#07111f;color:#edf5ff}.wrap{max-width:1120px;margin:auto;padding:20px}.top{display:flex;gap:10px;flex-wrap:wrap}.top input{flex:1;min-width:220px}.top input,.top button{padding:14px;border-radius:12px;border:1px solid #29415f;background:#0d1b2d;color:white}.top button{background:#e8edf4;color:#07111f;font-weight:800}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}.card{background:#0d1b2d;border:1px solid #203853;border-radius:18px;padding:18px}.label,.muted{color:#91a8c2}.value{font-size:26px;font-weight:850;margin-top:7px}.green{color:#51d88a}.yellow{color:#ffd166}.red{color:#ff718a}h1{font-size:40px;margin:0}h2{margin-top:32px}.row{display:grid;grid-template-columns:1.3fr .7fr 1.4fr 1fr;gap:10px;align-items:center;padding:14px 0;border-bottom:1px solid #203853}.dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;background:currentColor}.error{color:#ff718a;margin-top:12px}@media(max-width:680px){.row{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}h1{font-size:34px}}
-</style></head><body><main class="wrap"><h1>Salud del sistema</h1><div class="muted">Proypers25 · Spot real, portafolio, investigación, promoción y costos</div><div class="top"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div><div id="error" class="error"></div><section id="summary" class="grid"></section><h2>Portafolio</h2><section id="portfolio" class="grid"></section><h2>Inteligencia y promoción</h2><section id="intelligence" class="grid"></section><div id="components" class="card" hidden></div><script>
-const date=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'—';const cls=s=>String(s||'UNKNOWN').toLowerCase();const pct=v=>v===null||v===undefined?'—':(Number(v)*100).toFixed(2)+'%';const usd=v=>'US$ '+Number(v||0).toFixed(2);
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:#07111f;color:#edf5ff}.wrap{max-width:1120px;margin:auto;padding:20px}.top{display:flex;gap:10px;flex-wrap:wrap}.top input{flex:1;min-width:220px}.top input,.top button{padding:14px;border-radius:12px;border:1px solid #29415f;background:#0d1b2d;color:white}.top button{background:#e8edf4;color:#07111f;font-weight:800}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}.card{background:#0d1b2d;border:1px solid #203853;border-radius:18px;padding:18px}.label,.muted{color:#91a8c2}.value{font-size:26px;font-weight:850;margin-top:7px}.green{color:#51d88a}.yellow{color:#ffd166}.red{color:#ff718a}h1{font-size:40px;margin:0}h2{margin-top:32px}.row{display:grid;grid-template-columns:1.3fr .7fr 1.4fr 1fr;gap:10px;align-items:center;padding:14px 0;border-bottom:1px solid #203853}.dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;background:currentColor}.error{color:#ff718a;margin-top:12px}.failure{border-left:4px solid #ff718a;margin-top:10px}.failure-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}@media(max-width:680px){.row{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}h1{font-size:34px}}
+</style></head><body><main class="wrap"><h1>Salud del sistema</h1><div class="muted">Proypers25 · Spot real, portafolio, investigación, promoción y costos</div><div class="top"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div><div id="error" class="error"></div><section id="summary" class="grid"></section><h2>Último ciclo Spot real</h2><section id="cycle" class="card"></section><div id="exitFailures"></div><h2>Portafolio</h2><section id="portfolio" class="grid"></section><h2>Inteligencia y promoción</h2><section id="intelligence" class="grid"></section><div id="components" class="card" hidden></div><script>
+const date=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'—';const cls=s=>String(s||'UNKNOWN').toLowerCase();const pct=v=>v===null||v===undefined?'—':(Number(v)*100).toFixed(2)+'%';const usd=v=>'US$ '+Number(v||0).toFixed(2);const text=v=>v===null||v===undefined||v===''?'—':String(v);
 async function load(){error.textContent='Consultando salud...';try{const s=secret.value;localStorage.setItem('proypers25_summary_secret',s);const r=await fetch('/internal/system-health/status',{headers:{'x-investments-secret':s}});const d=await r.json();if(!r.ok)throw new Error(d.error+(d.details?' · '+d.details:''));render(d);error.textContent='';}catch(e){components.hidden=true;error.textContent=e.message;}}
-function render(d){summary.innerHTML=[['Estado general',d.overall,cls(d.overall)],['Componentes sanos',d.summary.green,'green'],['Advertencias',d.summary.yellow,'yellow'],['Bloqueos',d.summary.red,'red'],['Posiciones abiertas',d.open_positions,''],['Límite actual',usd(d.limits.max_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const p=d.portfolio||{},a=p.allocation_advisory||{};portfolio.innerHTML=[['Salud',p.state||'—',p.state==='HEALTHY'?'green':p.state==='DEGRADED'?'yellow':'red'],['Entrada permitida',p.entry_allowed?'Sí':'No',p.entry_allowed?'green':'red'],['Salida permitida',p.exit_allowed?'Sí':'No',p.exit_allowed?'green':'red'],['Patrimonio',usd(a.total_portfolio_usdt),''],['USDT disponible',usd(a.available_usdt),''],['En posiciones',usd(a.in_positions_usdt),''],['Reserva sugerida',usd(a.reserve_usdt),''],['Tamaño sugerido',usd(a.suggested_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const i=d.intelligence||{};intelligence.innerHTML=[['Campeón actual',i.champion_symbol||'—',''],['Régimen',i.market_regime||'—',''],['Promoción',i.promotion_state||'—',i.promotion_state==='PROMOTED_LIMITED'?'green':'yellow'],['Validaciones Paper',i.paper_validations||0,''],['Operaciones reales',i.real_trades||0,''],['Expectancy real',pct(i.real_expectancy),Number(i.real_expectancy||0)>=0?'green':'red'],['Profit factor real',i.real_profit_factor===null?'—':Number(i.real_profit_factor).toFixed(2),Number(i.real_profit_factor||0)>=1.05?'green':'yellow'],['Brecha Paper/Real',pct(i.expectancy_gap),i.expectancy_gap!==null&&Number(i.expectancy_gap)>0.02?'red':'green']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');components.hidden=false;components.innerHTML=d.components.map(c=>'<div class="row"><div class="wide"><b>'+c.label+'</b></div><div class="'+cls(c.state)+'"><span class="dot"></span><b>'+c.state+'</b></div><div>'+c.detail+'</div><div class="muted">'+date(c.updated_at)+'</div></div>').join('');}
+function render(d){summary.innerHTML=[['Estado general',d.overall,cls(d.overall)],['Componentes sanos',d.summary.green,'green'],['Advertencias',d.summary.yellow,'yellow'],['Bloqueos',d.summary.red,'red'],['Posiciones abiertas',d.open_positions,''],['Límite actual',usd(d.limits.max_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const c=d.latest_cycle||{},g=c.gates||{},x=c.execution||{},ed=c.exit_diagnostics||{},blocked=['BLOCK','FAIL','FAILED','RED','UNHEALTHY'].includes(String(g.exit_engine||'').toUpperCase())||Number(x.exit_failures||ed.failure_count||0)>0;cycle.innerHTML='<div class="grid"><div><div class="label">Fecha</div><b>'+date(c.timestamp)+'</b></div><div><div class="label">Decisión</div><b>'+text(c.decision)+'</b></div><div><div class="label">Acción</div><b>'+text(c.action)+'</b></div><div><div class="label">Motor de salidas</div><b class="'+(blocked?'red':'green')+'">'+text(g.exit_engine)+'</b></div><div><div class="label">Fallos de salida</div><b class="'+(Number(x.exit_failures||ed.failure_count||0)>0?'red':'green')+'">'+Number(x.exit_failures||ed.failure_count||0)+'</b></div></div><div class="muted">Motivo: '+text(c.reason)+'</div>';const failures=Array.isArray(ed.failures)?ed.failures:[];exitFailures.innerHTML=failures.map(f=>'<div class="card failure"><b class="red">'+text(f.symbol||f.position_id||'Salida fallida')+'</b><div class="failure-grid"><div><div class="label">Causa</div><b>'+text(f.reason||f.message)+'</b></div><div><div class="label">Etapa</div><b>'+text(f.stage)+'</b></div><div><div class="label">Reintentable</div><b>'+text(f.retryable)+'</b></div><div><div class="label">Intento</div><b>'+text(f.attempt)+'</b></div><div><div class="label">Recuperación</div><b>'+text(f.retry_state||ed.recovery_state)+'</b></div></div></div>').join('');const p=d.portfolio||{},a=p.allocation_advisory||{};portfolio.innerHTML=[['Salud',p.state||'—',p.state==='HEALTHY'?'green':p.state==='DEGRADED'?'yellow':'red'],['Entrada permitida',p.entry_allowed?'Sí':'No',p.entry_allowed?'green':'red'],['Salida permitida',p.exit_allowed?'Sí':'No',p.exit_allowed?'green':'red'],['Patrimonio',usd(a.total_portfolio_usdt),''],['USDT disponible',usd(a.available_usdt),''],['En posiciones',usd(a.in_positions_usdt),''],['Reserva sugerida',usd(a.reserve_usdt),''],['Tamaño sugerido',usd(a.suggested_position_usdt),'']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const i=d.intelligence||{};intelligence.innerHTML=[['Campeón actual',i.champion_symbol||'—',''],['Régimen',i.market_regime||'—',''],['Promoción',i.promotion_state||'—',i.promotion_state==='PROMOTED_LIMITED'?'green':'yellow'],['Validaciones Paper',i.paper_validations||0,''],['Operaciones reales',i.real_trades||0,''],['Expectancy real',pct(i.real_expectancy),Number(i.real_expectancy||0)>=0?'green':'red'],['Profit factor real',i.real_profit_factor===null?'—':Number(i.real_profit_factor).toFixed(2),Number(i.real_profit_factor||0)>=1.05?'green':'yellow'],['Brecha Paper/Real',pct(i.expectancy_gap),i.expectancy_gap!==null&&Number(i.expectancy_gap)>0.02?'red':'green']].map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');components.hidden=false;components.innerHTML=d.components.map(c=>'<div class="row"><div class="wide"><b>'+c.label+'</b></div><div class="'+cls(c.state)+'"><span class="dot"></span><b>'+c.state+'</b></div><div>'+c.detail+'</div><div class="muted">'+date(c.updated_at)+'</div></div>').join('');}
 secret.value=localStorage.getItem('proypers25_summary_secret')||'';</script></main></body></html>`);
 });
 
