@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/binanceSpotRealExecutor.js"
       - "backend/services/spotPositionLifecycle.js"
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
@@ -29,6 +30,7 @@ on:
       - feat/controlled-real-spot-exits
     paths:
       - "backend/services/controlledSpotExitExecutor.js"
+      - "backend/services/binanceSpotRealExecutor.js"
       - "backend/services/spotPositionLifecycle.js"
       - "backend/services/spotAccountReconciliation.js"
       - "backend/services/adaptiveSpotStrategyController.js"
@@ -69,6 +71,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/services/binanceSpotRealExecutor.js
           node --check backend/services/spotPositionLifecycle.js
           node --check backend/services/spotAccountReconciliation.js
           node --check backend/services/adaptiveSpotStrategyController.js
