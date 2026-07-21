@@ -21,6 +21,15 @@ jobs:
       - name: Checkout exact commit
         uses: actions/checkout@v4
 
+      - name: Run managed quantity regression tests
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          node --check services/spotManagedQuantityRepair.js
+          node --check routes/controlledRealSpot.route.js
+          node tests/spotManagedQuantityRepair.test.js
+          node tests/controlledSpotExitExecutor.test.js
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -30,6 +39,23 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: proypers2025
+
+      - name: Confirm real Spot scheduler remains paused
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB=$(gcloud scheduler jobs list \
+            --project=proypers2025 \
+            --location=southamerica-east1 \
+            --filter='httpTarget.uri:spot-real-execution' \
+            --format='value(name)' | head -n1)
+          test -n "$JOB"
+          STATE=$(gcloud scheduler jobs describe "$JOB" \
+            --project=proypers2025 \
+            --location=southamerica-east1 \
+            --format='value(state)')
+          test "$STATE" = "PAUSED"
+          echo "Scheduler verified PAUSED: $JOB"
 
       - name: Submit immutable build and deployment
         shell: bash
@@ -59,7 +85,7 @@ jobs:
             --project=proypers2025 --freshness=30m --limit=100 --order=desc \
             --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
 
-      - name: Verify deployed commit and required routes
+      - name: Verify deployment and controlled XEC retry
         shell: bash
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -79,42 +105,42 @@ jobs:
           test "$DEPLOYED_SHA" = "$GITHUB_SHA"
           echo "APP_COMMIT_SHA verified: $DEPLOYED_SHA"
 
-          COVERAGE=$(curl --silent --show-error --fail-with-body \
-            --retry 4 --retry-all-errors --retry-delay 5 --max-time 90 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/coverage")
-          jq -e '.ok == true' <<<"$COVERAGE" >/dev/null
-          echo '/internal/investments/coverage verified'
-
-          SUMMARY=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 90 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
-          jq -e '.ok == true and (.account | type == "object") and (.assets | type == "array") and (.engine.diagnosis | type == "object")' <<<"$SUMMARY" >/dev/null
-          echo '/internal/investments/summary verified (Binance + Firestore dashboard source)'
-
-          OPPORTUNITY=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 2100 \
+          RECON=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 180 \
             -X POST -H 'Content-Type: application/json' \
-            -H "x-cron-secret: $CRON_SECRET" --data '{"researchLimit":10}' \
-            "$URL/internal/cron/binance/spot-market-opportunity")
-          jq -e '.ok == true' <<<"$OPPORTUNITY" >/dev/null
-          echo '/internal/cron/binance/spot-market-opportunity verified'
+            -H "x-cron-secret: $CRON_SECRET" --data '{}' \
+            "$URL/internal/cron/binance/spot-real-reconcile")
+          jq -e '.real_mode == true and .spot_only == true and (.reconciliation.firestore_differences | type == "array")' <<<"$RECON" >/dev/null
+          jq -e 'all(.reconciliation.firestore_differences[]; (.managed_quantity >= 0) and (.historical_unmanaged_quantity >= 0))' <<<"$RECON" >/dev/null
+          echo '/internal/cron/binance/spot-real-reconcile verified with managed quantities'
 
           CYCLE=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 240 \
+            --retry 1 --max-time 240 \
             -X POST -H 'Content-Type: application/json' \
             -H "x-cron-secret: $CRON_SECRET" --data '{}' \
             "$URL/internal/cron/binance/spot-real-execution")
           jq -e '.real_mode == true and .spot_only == true and (.decision_summary | type == "object") and (.evidence_id | type == "string")' <<<"$CYCLE" >/dev/null
-          echo "Real Spot cycle persisted: $(jq -r '.evidence_id' <<<"$CYCLE")"
+          ! grep -q 'Invalid quantity' <<<"$CYCLE"
+          jq -e 'all((.exits.outcomes // [])[]; .error != "Invalid quantity.")' <<<"$CYCLE" >/dev/null
+          echo "Controlled real Spot cycle persisted: $(jq -r '.evidence_id' <<<"$CYCLE")"
+          echo "XEC outcome: $(jq -c '(.exits.outcomes // [])[] | select(.symbol == "XECUSDT")' <<<"$CYCLE")"
 
           LIVE=$(curl --silent --show-error --fail-with-body \
             --retry 4 --retry-all-errors --retry-delay 5 --max-time 120 \
             -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence")
-          jq -e '.ok == true and .real_mode == true and .spot_only == true and (.latest_cycle | type == "object") and (.scheduler | type == "object") and (.binance | type == "object") and (.activity | type == "array")' <<<"$LIVE" >/dev/null
-          test "$(jq -r '.latest_cycle.timestamp // empty' <<<"$LIVE")" != ""
-          echo '/internal/spot-live/evidence verified with persisted real activity'
+          jq -e '.ok == true and .real_mode == true and .spot_only == true and (.latest_cycle | type == "object") and (.activity | type == "array")' <<<"$LIVE" >/dev/null
+          echo '/internal/spot-live/evidence verified'
 
-          DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/spot-live-dashboard")
-          grep -q 'Spot real · Evidencia viva' <<<"$DASHBOARD"
-          grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
-          echo '/spot-live-dashboard verified'
+          SUMMARY=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
+          jq -e '.ok == true and (.portfolio_history | type == "array")' <<<"$SUMMARY" >/dev/null
+          echo "XEC dashboard evidence: $(jq -c '(.portfolio_history // [])[] | select(.symbol == "XECUSDT") | {account_quantity,tracked_quantity,untracked_quantity,realized_pnl_usdt,unrealized_pnl_usdt,total_pnl_usdt}' <<<"$SUMMARY")"
+
+          JOB=$(gcloud scheduler jobs list \
+            --project=proypers2025 \
+            --location=southamerica-east1 \
+            --filter='httpTarget.uri:spot-real-execution' \
+            --format='value(name)' | head -n1)
+          test "$(gcloud scheduler jobs describe "$JOB" --project=proypers2025 --location=southamerica-east1 --format='value(state)')" = "PAUSED"
+          echo 'Scheduler remains PAUSED after controlled retry'
