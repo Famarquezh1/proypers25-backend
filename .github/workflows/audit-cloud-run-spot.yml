@@ -1,0 +1,170 @@
+name: Audit Cloud Run Spot
+
+on:
+  workflow_dispatch:
+    inputs:
+      freshness:
+        description: Log window (for example 1h, 6h, 24h, 7d)
+        required: false
+        default: 24h
+      log_limit:
+        description: Maximum log entries per query
+        required: false
+        default: "250"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-proypers25-backend
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Read-only production audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROJECT_ID: proypers2025
+      SERVICE_NAME: proypers25-backend
+      REGION: southamerica-west1
+      FRESHNESS: ${{ inputs.freshness }}
+      LOG_LIMIT: ${{ inputs.log_limit }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Validate audit inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$FRESHNESS" =~ ^[1-9][0-9]*(m|h|d)$ ]]
+          [[ "$LOG_LIMIT" =~ ^[1-9][0-9]*$ ]]
+          test "$LOG_LIMIT" -le 1000
+          test -n "$CRON_SECRET"
+
+      - name: Collect Cloud Run state and backend evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+
+          URL=$(gcloud run services describe "$SERVICE_NAME" \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --platform=managed \
+            --format='value(status.url)')
+          test -n "$URL"
+          echo "$URL" > audit/service-url.txt
+
+          gcloud run services describe "$SERVICE_NAME" \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --platform=managed \
+            --format=json > audit/service.json
+
+          gcloud run revisions list \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --service="$SERVICE_NAME" \
+            --platform=managed \
+            --limit=20 \
+            --format=json > audit/revisions.json
+
+          curl --silent --show-error --fail-with-body \
+            --retry 4 --retry-all-errors --retry-delay 5 \
+            "$URL/__version" | jq . > audit/version.json
+
+          curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-all-errors --retry-delay 5 --max-time 90 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/investments/coverage" | jq . > audit/coverage.json
+
+          curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 90 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/investments/summary" | jq . > audit/summary.json
+
+          jq -e '.commit | type == "string" and length > 0' audit/version.json >/dev/null
+          jq -e '.ok == true' audit/coverage.json >/dev/null
+          jq -e '.ok == true and (.account | type == "object") and (.assets | type == "array")' audit/summary.json >/dev/null
+
+          echo "Cloud Run URL: $URL"
+          echo "Served commit: $(jq -r '.commit' audit/version.json)"
+          echo "Coverage route: OK"
+          echo "Summary route: OK"
+
+      - name: Collect Cloud Logging evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="'"$SERVICE_NAME"'"'
+          FORMAT='json'
+
+          gcloud logging read \
+            "$BASE_FILTER" \
+            --project="$PROJECT_ID" \
+            --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" \
+            --order=desc \
+            --format="$FORMAT" > audit/cloud-run-all.json
+
+          gcloud logging read \
+            "$BASE_FILTER AND severity>=ERROR" \
+            --project="$PROJECT_ID" \
+            --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" \
+            --order=desc \
+            --format="$FORMAT" > audit/cloud-run-errors.json
+
+          gcloud logging read \
+            "$BASE_FILTER AND (textPayload:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.message:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.symbol="XECUSDT" OR jsonPayload.asset="XEC")" \
+            --project="$PROJECT_ID" \
+            --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" \
+            --order=desc \
+            --format="$FORMAT" > audit/spot-events.json
+
+          echo "All Cloud Run entries: $(jq 'length' audit/cloud-run-all.json)"
+          echo "Error entries: $(jq 'length' audit/cloud-run-errors.json)"
+          echo "Spot-related entries: $(jq 'length' audit/spot-events.json)"
+
+      - name: Produce concise audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# Proypers25 Cloud Run Spot audit"
+            echo
+            echo "- Generated (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- Project: $PROJECT_ID"
+            echo "- Service: $SERVICE_NAME"
+            echo "- Region: $REGION"
+            echo "- Log window: $FRESHNESS"
+            echo "- Service URL: $(cat audit/service-url.txt)"
+            echo "- Served commit: $(jq -r '.commit' audit/version.json)"
+            echo "- Coverage route ok: $(jq -r '.ok' audit/coverage.json)"
+            echo "- Summary route ok: $(jq -r '.ok' audit/summary.json)"
+            echo "- Cloud Run entries: $(jq 'length' audit/cloud-run-all.json)"
+            echo "- Error entries: $(jq 'length' audit/cloud-run-errors.json)"
+            echo "- Spot-related entries: $(jq 'length' audit/spot-events.json)"
+          } | tee audit/report.md
+
+          cat audit/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-run-spot-audit-${{ github.run_id }}
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
