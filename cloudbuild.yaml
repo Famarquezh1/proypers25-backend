@@ -27,9 +27,17 @@ steps:
         docker run --rm --entrypoint sh "$$IMAGE" -c '
           test -f /usr/src/app/server.js
           test -f /usr/src/app/routes/investmentsSummary.route.js
+          test -f /usr/src/app/routes/spotLiveDashboard.route.js
+          test -f /usr/src/app/services/spotLiveEvidence.js
           test -f /usr/src/app/routes/admin.route.js
           grep -q "investments-dashboard" /usr/src/app/routes/investmentsSummary.route.js
-          grep -q "investmentsSummaryRoute" /usr/src/app/server.js
+          grep -q "spot-live-dashboard" /usr/src/app/routes/spotLiveDashboard.route.js
+          grep -q "spotLiveDashboardRoute" /usr/src/app/server.js
+          node --check /usr/src/app/services/spotLiveEvidence.js
+          node --check /usr/src/app/routes/spotLiveDashboard.route.js
+          node --check /usr/src/app/routes/controlledRealSpot.route.js
+          node /usr/src/app/tests/spotCycleObservability.test.js
+          node /usr/src/app/tests/spotLiveEvidence.test.js
         '
 
   - id: push-backend-image
