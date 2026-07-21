@@ -98,3 +98,23 @@ jobs:
             "$URL/internal/cron/binance/spot-market-opportunity")
           jq -e '.ok == true' <<<"$OPPORTUNITY" >/dev/null
           echo '/internal/cron/binance/spot-market-opportunity verified'
+
+          CYCLE=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 240 \
+            -X POST -H 'Content-Type: application/json' \
+            -H "x-cron-secret: $CRON_SECRET" --data '{}' \
+            "$URL/internal/cron/binance/spot-real-execution")
+          jq -e '.real_mode == true and .spot_only == true and (.decision_summary | type == "object") and (.evidence_id | type == "string")' <<<"$CYCLE" >/dev/null
+          echo "Real Spot cycle persisted: $(jq -r '.evidence_id' <<<"$CYCLE")"
+
+          LIVE=$(curl --silent --show-error --fail-with-body \
+            --retry 4 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence")
+          jq -e '.ok == true and .real_mode == true and .spot_only == true and (.latest_cycle | type == "object") and (.scheduler | type == "object") and (.binance | type == "object") and (.activity | type == "array")' <<<"$LIVE" >/dev/null
+          test "$(jq -r '.latest_cycle.timestamp // empty' <<<"$LIVE")" != ""
+          echo '/internal/spot-live/evidence verified with persisted real activity'
+
+          DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/spot-live-dashboard")
+          grep -q 'Spot real · Evidencia viva' <<<"$DASHBOARD"
+          grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
+          echo '/spot-live-dashboard verified'
