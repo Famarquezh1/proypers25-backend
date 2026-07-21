@@ -1,90 +1,209 @@
 {
-  "generated_at": "2026-07-21T14:40:23Z",
-  "count": 12,
+  "generated_at": "2026-07-21T15:32:39Z",
+  "count": 29,
   "errors": [
     {
-      "timestamp": "2026-07-21T14:40:02.889935Z",
+      "timestamp": "2026-07-21T15:30:14.431548Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:30:14.419308Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:30:02.718293Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:29:25.603145Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:25:02.490078Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:23:55.915219Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:20:03.051215Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:20:02.256318Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:35:07.240432Z",
+      "timestamp": "2026-07-21T15:15:09.759071Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:15:07.798987Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:30:12.179926Z",
+      "timestamp": "2026-07-21T15:14:59.477976Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:14:57.819283Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:27:28.603381Z",
+      "timestamp": "2026-07-21T15:14:48.532842Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:14:47.026460Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:25:01.960124Z",
+      "timestamp": "2026-07-21T15:14:38.408533Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:14:36.380394Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:20:08.223248Z",
+      "timestamp": "2026-07-21T15:14:28.241274Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:14:26.271995Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:17:15.759547Z",
+      "timestamp": "2026-07-21T15:14:17.271410Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:10:14.470340Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:17:02.951576Z",
+      "timestamp": "2026-07-21T15:10:07.767445Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:10:02.793506Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:16:51.149705Z",
+      "timestamp": "2026-07-21T15:05:12.027015Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:05:07.657128Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:16:39.776175Z",
+      "timestamp": "2026-07-21T15:00:15.290054Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T15:00:11.188070Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00637-4sg",
       "event": null,
       "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:10:09.171719Z",
+      "timestamp": "2026-07-21T15:00:04.633614Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00636-5cn",
+      "revision": "proypers25-backend-00637-4sg",
       "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-21T14:05:11.082713Z",
+      "timestamp": "2026-07-21T14:55:07.976841Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00636-5cn",
+      "revision": "proypers25-backend-00637-4sg",
       "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-21T14:50:10.296661Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00637-4sg",
+      "event": null,
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
     }
   ]
 }
