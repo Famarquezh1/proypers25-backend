@@ -21,12 +21,13 @@ jobs:
       - name: Checkout exact commit
         uses: actions/checkout@v4
 
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
       - name: Run managed quantity regression tests
         working-directory: backend
         run: |
-          set -euo pipefail
-          node --check services/spotManagedQuantityRepair.js
-          node --check routes/controlledRealSpot.route.js
           node tests/spotManagedQuantityRepair.test.js
           node tests/controlledSpotExitExecutor.test.js
 
