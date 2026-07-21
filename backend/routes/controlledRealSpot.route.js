@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const db = require('../firebase-admin-config');
 const { getRealSpotConfig, runRealSpotExecutionCycle } = require('../services/binanceSpotRealExecutor');
 const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/controlledSpotExitExecutor');
-const { reconcileRealSpotAccount } = require('../services/spotAccountReconciliation');
+const { reconcileManagedSpotAccount } = require('../services/spotManagedQuantityRepair');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
 const { getAdaptiveEntryGate, runAdaptiveSpotStrategyController } = require('../services/adaptiveSpotStrategyController');
@@ -74,7 +74,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
   let entries = {};
   try {
     await persistActivity(db, { event_type: 'SCHEDULER_START', source: 'CLOUD_SCHEDULER', created_at: startedAt, route: req.path });
-    reconciliation = await reconcileRealSpotAccount(db);
+    reconciliation = await reconcileManagedSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
 
     config = await getRealSpotConfig(db);
@@ -211,7 +211,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
 
 router.post('/internal/cron/binance/spot-real-reconcile', requireCronSecret, async (_req, res) => {
   try {
-    const reconciliation = await reconcileRealSpotAccount(db);
+    const reconciliation = await reconcileManagedSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
     await persistActivity(db, { event_type: 'RECONCILIATION', source: 'BACKEND', result: reconciliation.account_consistent === true ? 'PASS' : 'BLOCK', details: reconciliation });
     return res.json({ ok: reconciliation.ok !== false, real_mode: true, spot_only: true, no_order_created: true, reconciliation });
