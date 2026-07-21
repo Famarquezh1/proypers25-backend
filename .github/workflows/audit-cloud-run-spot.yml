@@ -13,7 +13,7 @@ on:
         default: "250"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: audit-proypers25-backend
@@ -32,6 +32,11 @@ jobs:
       LOG_LIMIT: ${{ inputs.log_limit }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -97,55 +102,38 @@ jobs:
           jq -e '.ok == true' audit/coverage.json >/dev/null
           jq -e '.ok == true and (.account | type == "object") and (.assets | type == "array")' audit/summary.json >/dev/null
 
-          echo "Cloud Run URL: $URL"
-          echo "Served commit: $(jq -r '.commit' audit/version.json)"
-          echo "Coverage route: OK"
-          echo "Summary route: OK"
-
       - name: Collect Cloud Logging evidence
         shell: bash
         run: |
           set -euo pipefail
-
           BASE_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="'"$SERVICE_NAME"'"'
-          FORMAT='json'
+
+          gcloud logging read "$BASE_FILTER" \
+            --project="$PROJECT_ID" --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" --order=desc --format=json > audit/cloud-run-all.json
+
+          gcloud logging read "$BASE_FILTER AND severity>=ERROR" \
+            --project="$PROJECT_ID" --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" --order=desc --format=json > audit/cloud-run-errors.json
 
           gcloud logging read \
-            "$BASE_FILTER" \
-            --project="$PROJECT_ID" \
-            --freshness="$FRESHNESS" \
-            --limit="$LOG_LIMIT" \
-            --order=desc \
-            --format="$FORMAT" > audit/cloud-run-all.json
-
-          gcloud logging read \
-            "$BASE_FILTER AND severity>=ERROR" \
-            --project="$PROJECT_ID" \
-            --freshness="$FRESHNESS" \
-            --limit="$LOG_LIMIT" \
-            --order=desc \
-            --format="$FORMAT" > audit/cloud-run-errors.json
-
-          gcloud logging read \
-            "$BASE_FILTER AND (textPayload:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.message:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.symbol="XECUSDT" OR jsonPayload.asset="XEC")" \
-            --project="$PROJECT_ID" \
-            --freshness="$FRESHNESS" \
-            --limit="$LOG_LIMIT" \
-            --order=desc \
-            --format="$FORMAT" > audit/spot-events.json
-
-          echo "All Cloud Run entries: $(jq 'length' audit/cloud-run-all.json)"
-          echo "Error entries: $(jq 'length' audit/cloud-run-errors.json)"
-          echo "Spot-related entries: $(jq 'length' audit/spot-events.json)"
+            "$BASE_FILTER AND (textPayload:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.message:(spot OR sell OR exit OR reconciliation OR partial OR zombie OR XEC) OR jsonPayload.symbol=\"XECUSDT\" OR jsonPayload.asset=\"XEC\")" \
+            --project="$PROJECT_ID" --freshness="$FRESHNESS" \
+            --limit="$LOG_LIMIT" --order=desc --format=json > audit/spot-events.json
 
       - name: Produce concise audit report
         shell: bash
         run: |
           set -euo pipefail
+          ERROR_COUNT=$(jq 'length' audit/cloud-run-errors.json)
+          SPOT_COUNT=$(jq 'length' audit/spot-events.json)
+          ALL_COUNT=$(jq 'length' audit/cloud-run-all.json)
           {
             echo "# Proypers25 Cloud Run Spot audit"
             echo
             echo "- Generated (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- Workflow run: $GITHUB_RUN_ID"
+            echo "- Source commit: $GITHUB_SHA"
             echo "- Project: $PROJECT_ID"
             echo "- Service: $SERVICE_NAME"
             echo "- Region: $REGION"
@@ -154,12 +142,56 @@ jobs:
             echo "- Served commit: $(jq -r '.commit' audit/version.json)"
             echo "- Coverage route ok: $(jq -r '.ok' audit/coverage.json)"
             echo "- Summary route ok: $(jq -r '.ok' audit/summary.json)"
-            echo "- Cloud Run entries: $(jq 'length' audit/cloud-run-all.json)"
-            echo "- Error entries: $(jq 'length' audit/cloud-run-errors.json)"
-            echo "- Spot-related entries: $(jq 'length' audit/spot-events.json)"
+            echo "- Cloud Run entries: $ALL_COUNT"
+            echo "- Error entries: $ERROR_COUNT"
+            echo "- Spot-related entries: $SPOT_COUNT"
           } | tee audit/report.md
-
           cat audit/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare reviewable sanitized evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit/publish/latest
+          cp audit/report.md audit/publish/latest/report.md
+          cp audit/version.json audit/publish/latest/version.json
+
+          jq '{metadata: {name, namespace, labels}, status: {url, latestCreatedRevisionName, latestReadyRevisionName, traffic, conditions}}' \
+            audit/service.json > audit/publish/latest/service.json
+
+          jq '[.[] | {metadata: {name, creationTimestamp, labels}, status: {conditions, logUrl}}]' \
+            audit/revisions.json > audit/publish/latest/revisions.json
+
+          jq '{ok, account, assets, engine}' audit/summary.json > audit/publish/latest/summary.json
+          jq '.' audit/coverage.json > audit/publish/latest/coverage.json
+
+          jq '[.[] | {timestamp, severity, logName, resource, textPayload, jsonPayload}]' \
+            audit/cloud-run-errors.json > audit/publish/latest/errors.json
+
+          jq '[.[] | {timestamp, severity, logName, resource, textPayload, jsonPayload}]' \
+            audit/spot-events.json > audit/publish/latest/spot-events.json
+
+      - name: Publish latest evidence to audit branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -R audit/publish /tmp/audit-publish
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin audit-evidence >/dev/null 2>&1; then
+            git fetch origin audit-evidence
+            git switch -C audit-evidence origin/audit-evidence
+          else
+            git switch --orphan audit-evidence
+            git rm -rf .
+          fi
+
+          rm -rf latest
+          cp -R /tmp/audit-publish/latest ./latest
+          git add latest
+          git commit -m "audit: publish Cloud Run Spot evidence from run $GITHUB_RUN_ID"
+          git push origin audit-evidence
 
       - name: Upload audit evidence
         uses: actions/upload-artifact@v4
