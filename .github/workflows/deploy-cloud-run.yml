@@ -37,14 +37,17 @@ jobs:
           node tests/spotDiscoveryLongHorizon.test.js
           node tests/spotShadowDecisionEngine.test.js
           node tests/spotShadowGemHunter.test.js
+          node tests/unifiedControlPortal.test.js
           node --check routes/professionalInvestmentsDashboard.route.js
           node --check routes/spotDiscovery.route.js
           node --check routes/spotShadowDecision.route.js
           node --check routes/spotShadowGemHunter.route.js
+          node --check routes/unifiedControlPortal.route.js
           node --check services/spotDiscoveryIntelligence.js
           node --check services/spotDiscoveryLongHorizon.js
           node --check services/spotShadowDecisionEngine.js
           node --check services/spotShadowGemHunter.js
+          node --check services/unifiedControlPortal.js
           node --check server.js
 
       - name: Authenticate to Google Cloud
@@ -131,6 +134,10 @@ jobs:
           jq -e '.ok == true and .strategy == "GEM_HUNTER" and .mode == "SHADOW" and .real_orders_enabled == false and (.open_positions | type == "array") and (.recent_decisions | type == "array")' <<<"$GEM" >/dev/null
           echo '/internal/gem-hunter/portfolio verified without real orders'
 
+          PORTAL=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/dashboard/control-center")
+          jq -e '.ok == true and .portal.mode == "CONTROL_ONLY" and .portal.real_trading_changed == false and (.modules | length == 13) and .comparison.core.real_orders_enabled == false and .comparison.gem_hunter.real_orders_enabled == false and .production_gate.enables_real_trading == false and (.production_gate.checks | type == "array")' <<<"$PORTAL" >/dev/null
+          echo '/internal/dashboard/control-center verified'
+
           DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/investments-dashboard")
           grep -q 'Resultado Proypers25' <<<"$DASHBOARD"
           grep -q 'Resumen de la cuenta Binance' <<<"$DASHBOARD"
@@ -156,6 +163,13 @@ jobs:
           grep -q 'No ejecuta órdenes reales' <<<"$GEM_DASHBOARD"
           grep -q 'Ejecutar ciclo sombra' <<<"$GEM_DASHBOARD"
           echo '/gem-hunter-dashboard verified'
+
+          CONTROL_CENTER=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/dashboard")
+          grep -q 'Proypers25 Control Center' <<<"$CONTROL_CENTER"
+          grep -q 'CORE vs GEM' <<<"$CONTROL_CENTER"
+          grep -q 'Production Gate' <<<"$CONTROL_CENTER"
+          grep -q '/internal/dashboard/control-center' <<<"$CONTROL_CENTER"
+          echo '/dashboard unified portal verified'
 
           PROJECT="proypers2025"
           LOCATION="southamerica-east1"
