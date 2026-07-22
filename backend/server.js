@@ -17,6 +17,7 @@ const investmentsSummaryRoute = require('./routes/investmentsSummary.route');
 const spotPortfolioCoverageRoute = require('./routes/spotPortfolioCoverage.route');
 const spotPaperRankingRoute = require('./routes/spotPaperRanking.route');
 const spotDiscoveryRoute = require('./routes/spotDiscovery.route');
+const spotShadowDecisionRoute = require('./routes/spotShadowDecision.route');
 const spotQuantResearchRoute = require('./routes/spotQuantResearch.route');
 const newSpotAssetDiscoveryRoute = require('./routes/newSpotAssetDiscovery.route');
 const spotMarketOpportunityRoute = require('./routes/spotMarketOpportunity.route');
@@ -38,7 +39,6 @@ const reevaluarValidacion = require('./scripts/reevaluar_validacion');
 const modelosRoute = require('./routes/modelos.route');
 const analizarRoute = require('./routes/analizar.route');
 const validacionRoute = require('./routes/validacion.route');
-
 const velasRoutes = require('./routes/velas');
 const { createDeepHealthRouter } = require('./routes/deep_health_router');
 const adminRoute = require('./routes/admin.route');
@@ -48,12 +48,8 @@ const PORT = process.env.PORT || 8080;
 const CRON_SECRET = process.env.CRON_SECRET || null;
 const LEARNING_MODE = process.env.LEARNING_MODE || 'observe';
 const LEARNING_LOG = process.env.LEARNING_LOG === 'true';
-const EXCHANGE_INFO_WARMUP_ENABLED =
-  String(process.env.EXCHANGE_INFO_WARMUP_ENABLED || 'true').toLowerCase() === 'true';
-const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(
-  60000,
-  Number(process.env.EXCHANGE_INFO_WARMUP_INTERVAL_MS || 15 * 60 * 1000)
-);
+const EXCHANGE_INFO_WARMUP_ENABLED = String(process.env.EXCHANGE_INFO_WARMUP_ENABLED || 'true').toLowerCase() === 'true';
+const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(60000, Number(process.env.EXCHANGE_INFO_WARMUP_INTERVAL_MS || 15 * 60 * 1000));
 
 const db = require('./firebase-admin-config');
 
@@ -83,7 +79,6 @@ app.use((req, res, next) => {
     '/internal/cron/binance/spot-real-execution-approve',
     '/cron/binance/spot-real-preflight'
   ]);
-
   if (req.path === '/internal/cron/binance/spot-real-execution-diagnostic') {
     return res.status(410).json({ ok: false, error: 'Diagnostic endpoint disabled for security' });
   }
@@ -98,7 +93,7 @@ app.use((req, res, next) => {
 app.use("/api/consultar", consultaRoute);
 app.use("/api/stock/proyeccion", proyeccionRoute);
 app.use("/api", quantumRoutes);
-app.use("/api/inversion", inversionRoute);
+app.use('/api/inversion', inversionRoute);
 app.use('/api/cron', cronRoute);
 app.use('/api/modelos', modelosRoute);
 app.use("/api", analizarRoute);
@@ -112,6 +107,7 @@ app.use('/', investmentsSummaryRoute);
 app.use('/', spotPortfolioCoverageRoute);
 app.use('/', spotPaperRankingRoute);
 app.use('/', spotDiscoveryRoute);
+app.use('/', spotShadowDecisionRoute);
 app.use('/', spotQuantResearchRoute);
 app.use('/', newSpotAssetDiscoveryRoute);
 app.use('/', spotMarketOpportunityRoute);
