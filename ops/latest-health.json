@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-07-22T00:23:18Z",
+  "generated_at": "2026-07-22T00:58:58Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00648-zrf",
   "spot_real": {
-    "cycles": 11,
+    "cycles": 9,
     "opened": 0,
     "closed": 0,
-    "exit_failures": 2,
+    "exit_failures": 0,
     "latest_decision": "SKIP",
     "latest_reason": "STRATEGY_NOT_PROMOTED",
     "promotion_gate": "BLOCK",
