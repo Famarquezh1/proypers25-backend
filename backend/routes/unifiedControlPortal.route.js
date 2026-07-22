@@ -32,14 +32,99 @@ router.get('/internal/dashboard/control-center', privateOnly, async (_req, res) 
 });
 
 const page = (initialView = 'home') => `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Proypers25 Control Center</title>
 <style>
-:root{color-scheme:dark;--bg:#081018;--panel:#101b26;--line:#203244;--text:#eff6fc;--muted:#8ea2b6;--good:#61d49b;--warn:#f2c66d;--bad:#ff7788;--accent:#70a7ff}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#122235 0,#081018 42%);color:var(--text);font:14px Inter,system-ui,sans-serif}.shell{max-width:1440px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 4px 20px}.brand{font-size:22px;font-weight:900;letter-spacing:-.4px}.sub{color:var(--muted);font-size:12px}.tools{display:flex;gap:8px;flex-wrap:wrap}.tools input,.tools button{border:1px solid var(--line);background:#0d1721;color:var(--text);border-radius:10px;padding:10px 12px}.tools input{min-width:240px}.tools button{font-weight:800;cursor:pointer}.nav{display:flex;gap:8px;overflow:auto;padding-bottom:14px}.nav button{white-space:nowrap;border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 12px;border-radius:999px;cursor:pointer}.nav button.active{background:var(--text);color:#07101a}.hero{display:grid;grid-template-columns:1.7fr .8fr;gap:14px;margin-bottom:18px}.panel,.card{background:linear-gradient(180deg,rgba(18,30,42,.96),rgba(12,22,31,.96));border:1px solid var(--line);border-radius:16px}.panel{padding:20px}.gate{font-size:25px;font-weight:950;margin-top:8px}.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}.module{padding:16px;display:flex;flex-direction:column;min-height:165px;text-decoration:none;color:inherit;transition:.18s}.module:hover{transform:translateY(-2px);border-color:#486985}.icon{width:42px;height:42px;border-radius:12px;background:#17283a;display:grid;place-items:center;font-size:20px}.module h3{margin:14px 0 4px}.status{font-size:12px;font-weight:850}.spacer{flex:1}.meta{color:var(--muted);font-size:11px;margin-top:12px}.alert{color:var(--warn);font-size:11px;margin-top:5px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.metric{padding:14px}.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.45px}.value{font-size:21px;font-weight:900;margin-top:7px}.compare{display:grid;grid-template-columns:1fr 1fr;gap:14px}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:11px 8px;border-bottom:1px solid var(--line);text-align:left}.table th{color:var(--muted);font-size:11px}.check{padding:15px;margin-bottom:10px;cursor:pointer}.checkhead{display:flex;justify-content:space-between;gap:10px;font-weight:850}.detail{color:var(--muted);font-size:12px;margin-top:9px;display:none}.check.open .detail{display:block}.empty{padding:28px;text-align:center;color:var(--muted)}#error{color:var(--bad);padding:8px 2px}.hidden{display:none}@media(max-width:760px){.hero,.compare{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.tools{width:100%}.tools input{min-width:0;flex:1}.shell{padding:12px}.grid{grid-template-columns:1fr 1fr}.module{min-height:145px;padding:13px}}@media(max-width:470px){.grid{grid-template-columns:1fr}}
-</style></head><body><main class="shell"><header class="top"><div><div class="brand">Proypers25 Control Center</div><div class="sub">Portal unificado · observación, comparación y control</div></div><div class="tools"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div></header><nav class="nav"><button data-view="home" onclick="show('home')">Home</button><button data-view="comparison" onclick="show('comparison')">CORE vs GEM</button><button data-view="gate" onclick="show('gate')">Production Gate</button><button data-view="settings" onclick="show('settings')">Settings</button></nav><div id="error"></div><section id="home" class="view"><div class="hero"><div class="panel"><div class="label">Estado general</div><div class="gate" id="headline">Cargando sistema…</div><p class="sub" id="generated"></p></div><div class="panel"><div class="label">Trading real</div><div class="gate good">SIN CAMBIOS</div><p class="sub">Este portal no habilita órdenes ni altera scheduler, capital, límites o ejecución.</p></div></div><div id="modules" class="grid"></div></section><section id="comparison" class="view hidden"><div class="panel" style="margin-bottom:14px"><div class="label">Estrategia líder</div><div id="leader" class="gate">—</div></div><div id="compare" class="compare"></div></section><section id="gate" class="view hidden"><div class="panel" style="margin-bottom:14px"><div class="label">Production Gate informativo</div><div id="gateStatus" class="gate">—</div><p class="sub">No activa trading real. Todas las condiciones deben aprobar antes de mostrar READY FOR PRODUCTION.</p></div><div id="checks"></div></section><section id="settings" class="view hidden"><div class="panel"><h2>Settings</h2><p class="sub">Vista de control de solo lectura. La configuración operativa permanece en sus rutas y variables actuales.</p><div class="metrics"><div class="card metric"><div class="label">Modo</div><div class="value">CONTROL ONLY</div></div><div class="card metric"><div class="label">Órdenes nuevas</div><div class="value good">DESHABILITADAS</div></div><div class="card metric"><div class="label">Compatibilidad</div><div class="value good">PRESERVADA</div></div></div></div></section></main>
+:root{color-scheme:dark;--bg:#081018;--panel:#101b26;--line:#203244;--text:#eff6fc;--muted:#8ea2b6;--good:#61d49b;--warn:#f2c66d;--bad:#ff7788}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#122235 0,#081018 42%);color:var(--text);font:14px Inter,system-ui,sans-serif}.shell{max-width:1400px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:10px 0 20px}.brand{font-size:22px;font-weight:900}.sub{color:var(--muted);font-size:12px}.tools{display:flex;gap:8px;flex-wrap:wrap}.tools input,.tools button{border:1px solid var(--line);background:#0d1721;color:var(--text);border-radius:10px;padding:11px 12px}.tools input{min-width:240px}.tools button{font-weight:800;cursor:pointer}.nav{display:flex;gap:8px;overflow:auto;padding-bottom:14px}.nav button{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 12px;border-radius:999px;white-space:nowrap}.nav button.active{background:var(--text);color:#07101a}.panel,.card{background:linear-gradient(180deg,rgba(18,30,42,.96),rgba(12,22,31,.96));border:1px solid var(--line);border-radius:16px}.panel{padding:20px;margin-bottom:14px}.gate{font-size:25px;font-weight:900;margin-top:8px}.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}.module{padding:16px;min-height:145px;text-decoration:none;color:inherit;display:flex;flex-direction:column}.module h3{margin:8px 0}.meta{color:var(--muted);font-size:11px;margin-top:auto}.compare{display:grid;grid-template-columns:1fr 1fr;gap:14px}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left}.table th{color:var(--muted)}.check{padding:14px;margin-bottom:10px}.checkhead{display:flex;justify-content:space-between;font-weight:800}.detail{color:var(--muted);font-size:12px;margin-top:8px}.hidden{display:none}#error{padding:8px 0;color:var(--bad);white-space:pre-wrap}@media(max-width:760px){.top{align-items:flex-start;flex-direction:column}.tools{width:100%}.tools input{min-width:0;flex:1}.compare{grid-template-columns:1fr}.shell{padding:12px}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="top"><div><div class="brand">Proypers25 Control Center</div><div class="sub">Portal unificado de observación, comparación y control</div></div><div class="tools"><input id="secretInput" type="password" placeholder="Clave privada" autocomplete="current-password"><button id="loadButton" type="button">Acceder / actualizar</button></div></header>
+<nav class="nav"><button data-view="home">Home</button><button data-view="comparison">CORE vs GEM</button><button data-view="gate">Production Gate</button><button data-view="settings">Settings</button></nav>
+<div id="error"></div>
+<section id="home" class="view"><div class="panel"><div class="sub">Estado general</div><div class="gate" id="headline">Ingrese la clave para cargar</div><div class="sub" id="generated"></div></div><div id="modules" class="grid"></div></section>
+<section id="comparison" class="view hidden"><div class="panel"><div class="sub">Estrategia líder</div><div id="leader" class="gate">—</div></div><div id="compare" class="compare"></div></section>
+<section id="gate" class="view hidden"><div class="panel"><div class="sub">Production Gate informativo</div><div id="gateStatus" class="gate">—</div></div><div id="checks"></div></section>
+<section id="settings" class="view hidden"><div class="panel"><h2>Settings</h2><p class="sub">Vista de solo lectura. Este portal no habilita órdenes ni modifica la ejecución Spot.</p></div></section>
+</main>
 <script>
-const initial='${initialView}';let state=null;const icons={'CORE AI':'◈','GEM Hunter':'✦','Discovery':'⌁','Decision Engine':'◎','Shadow Portfolio':'◐','Portfolio':'▦','Binance':'₿','Learning':'↻','Analytics':'▥','Health':'♥','Logs':'≡','Settings':'⚙','Production Gate':'✓'};const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const num=(v,d=2)=>v===null||v===undefined?'Sin datos':Number(v).toLocaleString('es-CL',{maximumFractionDigits:d});const money=v=>v===null||v===undefined?'Sin datos':new Intl.NumberFormat('es-CL',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(v));const when=v=>v?new Date(v).toLocaleString('es-CL'):'Sin ciclo registrado';function cls(s){s=String(s||'');return s.includes('READY')||['PASS','HEALTHY','AVAILABLE','ACTIVE'].includes(s)?'good':s.includes('BLOCK')||s==='UNKNOWN'?'bad':'warn'}function show(name){document.querySelectorAll('.view').forEach(x=>x.classList.add('hidden'));document.getElementById(name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===name));history.replaceState(null,'',name==='home'?'/dashboard':'/dashboard/'+(name==='gate'?'production-gate':name))}async function load(){localStorage.setItem('proypers25_summary_secret',secret.value);error.textContent='Cargando datos reales…';try{const r=await fetch('/internal/dashboard/control-center',{headers:{'x-investments-secret':secret.value}});const d=await r.json();if(!r.ok)throw new Error(d.error+(d.details?' · '+d.details:''));state=d;render();error.textContent=''}catch(e){error.textContent=e.message}}function render(){headline.textContent=state.production_gate.status;headline.className='gate '+cls(state.production_gate.status);generated.textContent='Actualizado '+when(state.generated_at);modules.innerHTML=state.modules.map(m=>'<a class="card module" href="'+esc(m.route)+'"><div class="icon">'+(icons[m.name]||'•')+'</div><h3>'+esc(m.name)+'</h3><div class="status '+cls(m.status)+'">'+esc(m.status)+'</div><div class="spacer"></div><div class="meta">Último ciclo: '+esc(when(m.last_cycle_at))+'</div>'+(m.alert?'<div class="alert">'+esc(m.alert)+'</div>':'')+'</a>').join('');leader.textContent=state.comparison.leader.strategy||'Sin líder';leader.className='gate '+(state.comparison.leader.strategy?'good':'warn');const labels=[['Win Rate','win_rate_pct','%'],['Profit Factor','profit_factor',''],['Expectancy','expectancy_usdt','$'],['Drawdown','drawdown_pct','%'],['Capital utilizado','capital_used_usdt','$'],['Capital disponible','capital_available_usdt','$'],['Equity','equity_usdt','$'],['PnL','pnl_usdt','$'],['Mejor operación','best_trade_usdt','$'],['Peor operación','worst_trade_usdt','$'],['Tiempo promedio','average_duration_ms','ms'],['TP','tp_count',''],['SL','sl_count',''],['Timeout','timeout_count',''],['Riesgo','average_risk_score',''],['Operaciones','operations_count',''],['Estado','status','']];compare.innerHTML=[state.comparison.core,state.comparison.gem_hunter].map(s=>'<div class="panel"><h2>'+esc(s.strategy)+'</h2><table class="table"><tbody>'+labels.map(([l,k,u])=>'<tr><th>'+l+'</th><td>'+esc(typeof s[k]==='number'?num(s[k])+(u==='%'?'%':u==='ms'?' ms':u==='$'?' USDT':''):s[k])+'</td></tr>').join('')+'</tbody></table></div>').join('');gateStatus.textContent=state.production_gate.status;gateStatus.className='gate '+cls(state.production_gate.status);checks.innerHTML=state.production_gate.checks.map(c=>'<div class="card check" onclick="this.classList.toggle(\'open\')"><div class="checkhead"><span>'+esc(c.name)+'</span><span class="'+cls(c.status)+'">'+esc(c.status)+'</span></div><div class="detail">'+esc(c.detail)+'</div></div>').join('')}secret.value=localStorage.getItem('proypers25_summary_secret')||'';show(initial==='production-gate'?'gate':initial);if(secret.value)load();
-</script></body></html>`;
+(() => {
+  'use strict';
+  const initialView = ${JSON.stringify(initialView)};
+  const el = {
+    secret: document.getElementById('secretInput'),
+    load: document.getElementById('loadButton'),
+    error: document.getElementById('error'),
+    headline: document.getElementById('headline'),
+    generated: document.getElementById('generated'),
+    modules: document.getElementById('modules'),
+    leader: document.getElementById('leader'),
+    compare: document.getElementById('compare'),
+    gateStatus: document.getElementById('gateStatus'),
+    checks: document.getElementById('checks')
+  };
+  const esc = value => String(value ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const when = value => value ? new Date(value).toLocaleString('es-CL') : 'Sin ciclo registrado';
+  const cls = value => { const s=String(value||''); return s.includes('READY') || ['PASS','HEALTHY','AVAILABLE','ACTIVE'].includes(s) ? 'good' : s.includes('BLOCK') || s==='UNKNOWN' ? 'bad' : 'warn'; };
+  function show(name) {
+    document.querySelectorAll('.view').forEach(node => node.classList.add('hidden'));
+    const target = document.getElementById(name);
+    if (target) target.classList.remove('hidden');
+    document.querySelectorAll('.nav button').forEach(button => button.classList.toggle('active', button.dataset.view === name));
+    history.replaceState(null, '', name === 'home' ? '/dashboard' : '/dashboard/' + (name === 'gate' ? 'production-gate' : name));
+  }
+  function render(state) {
+    el.headline.textContent = state.production_gate?.status || 'SIN DATOS';
+    el.headline.className = 'gate ' + cls(state.production_gate?.status);
+    el.generated.textContent = 'Actualizado: ' + when(state.generated_at);
+    el.modules.innerHTML = (state.modules || []).map(module => '<a class="card module" href="'+esc(module.route)+'"><h3>'+esc(module.name)+'</h3><div class="'+cls(module.status)+'">'+esc(module.status)+'</div><div class="meta">Último ciclo: '+esc(when(module.last_cycle_at))+'</div></a>').join('');
+    el.leader.textContent = state.comparison?.leader?.strategy || 'Sin líder';
+    el.leader.className = 'gate ' + (state.comparison?.leader?.strategy ? 'good' : 'warn');
+    const labels=[['Win Rate','win_rate_pct'],['Profit Factor','profit_factor'],['Expectancy','expectancy_usdt'],['Drawdown','drawdown_pct'],['Equity','equity_usdt'],['PnL','pnl_usdt'],['Operaciones','operations_count'],['Estado','status']];
+    el.compare.innerHTML = [state.comparison?.core,state.comparison?.gem_hunter].filter(Boolean).map(strategy => '<div class="panel"><h2>'+esc(strategy.strategy)+'</h2><table class="table"><tbody>'+labels.map(([label,key]) => '<tr><th>'+label+'</th><td>'+esc(strategy[key])+'</td></tr>').join('')+'</tbody></table></div>').join('');
+    el.gateStatus.textContent = state.production_gate?.status || 'SIN DATOS';
+    el.gateStatus.className = 'gate ' + cls(state.production_gate?.status);
+    el.checks.innerHTML = (state.production_gate?.checks || []).map(check => '<div class="card check"><div class="checkhead"><span>'+esc(check.name)+'</span><span class="'+cls(check.status)+'">'+esc(check.status)+'</span></div><div class="detail">'+esc(check.detail)+'</div></div>').join('');
+  }
+  async function load() {
+    const secret = el.secret.value.trim();
+    if (!secret) { el.error.textContent = 'Ingrese la clave privada.'; return; }
+    localStorage.setItem('proypers25_summary_secret', secret);
+    el.error.textContent = 'Cargando datos reales…';
+    el.load.disabled = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch('/internal/dashboard/control-center', { headers: { 'x-investments-secret': secret }, signal: controller.signal });
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor (' + response.status + ').'); }
+      if (!response.ok) throw new Error((data.error || 'ERROR') + (data.details ? ' · ' + data.details : ''));
+      render(data);
+      el.error.textContent = '';
+    } catch (error) {
+      el.headline.textContent = 'NO SE PUDO CARGAR';
+      el.headline.className = 'gate bad';
+      el.error.textContent = error.name === 'AbortError' ? 'La consulta superó 20 segundos. Reintente.' : error.message;
+    } finally {
+      clearTimeout(timeout);
+      el.load.disabled = false;
+    }
+  }
+  document.querySelectorAll('.nav button').forEach(button => button.addEventListener('click', () => show(button.dataset.view)));
+  el.load.addEventListener('click', load);
+  el.secret.addEventListener('keydown', event => { if (event.key === 'Enter') load(); });
+  el.secret.value = localStorage.getItem('proypers25_summary_secret') || '';
+  show(initialView === 'production-gate' ? 'gate' : initialView);
+  if (el.secret.value) load();
+})();
+</script>
+</body>
+</html>`;
 
 router.get('/dashboard', (_req, res) => res.type('html').send(page('home')));
 router.get('/dashboard/comparison', (_req, res) => res.type('html').send(page('comparison')));
