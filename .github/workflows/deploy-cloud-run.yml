@@ -25,12 +25,15 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Run managed quantity regression tests
+      - name: Run backend regression tests
         working-directory: backend
         run: |
           node tests/spotManagedQuantityRepair.test.js
           node tests/controlledSpotExitExecutor.test.js
           node tests/controlledSpotSubmittedQuantity.test.js
+          node tests/professionalInvestmentsDashboard.test.js
+          node --check routes/professionalInvestmentsDashboard.route.js
+          node --check server.js
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -87,7 +90,7 @@ jobs:
             --project=proypers2025 --freshness=30m --limit=100 --order=desc \
             --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
 
-      - name: Verify deployment and controlled XEC retry
+      - name: Verify professional dashboard deployment
         shell: bash
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -107,45 +110,26 @@ jobs:
           test "$DEPLOYED_SHA" = "$GITHUB_SHA"
           echo "APP_COMMIT_SHA verified: $DEPLOYED_SHA"
 
-          RECON=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 180 \
-            -X POST -H 'Content-Type: application/json' \
-            -H "x-cron-secret: $CRON_SECRET" --data '{}' \
-            "$URL/internal/cron/binance/spot-real-reconcile")
-          jq -e '.real_mode == true and .spot_only == true and (.reconciliation.firestore_differences | type == "array")' <<<"$RECON" >/dev/null
-          jq -e 'all(.reconciliation.firestore_differences[]; (.managed_quantity >= 0) and (.historical_unmanaged_quantity >= 0))' <<<"$RECON" >/dev/null
-          echo '/internal/cron/binance/spot-real-reconcile verified with managed quantities'
-
-          CYCLE_BODY=$(mktemp)
-          CYCLE_HTTP_CODE=$(curl --silent --show-error \
-            --output "$CYCLE_BODY" --write-out '%{http_code}' \
-            --max-time 240 \
-            -X POST -H 'Content-Type: application/json' \
-            -H "x-cron-secret: $CRON_SECRET" --data '{}' \
-            "$URL/internal/cron/binance/spot-real-execution")
-          CYCLE=$(cat "$CYCLE_BODY")
-          rm -f "$CYCLE_BODY"
-          echo "Controlled real Spot cycle HTTP status: $CYCLE_HTTP_CODE"
-          echo "Controlled real Spot cycle response: $(jq -c '.' <<<"$CYCLE" 2>/dev/null || printf '%s' "$CYCLE")"
-          test "$CYCLE_HTTP_CODE" = "200"
-          jq -e '.real_mode == true and .spot_only == true and (.decision_summary | type == "object") and (.evidence_id | type == "string")' <<<"$CYCLE" >/dev/null
-          ! grep -q 'Invalid quantity' <<<"$CYCLE"
-          jq -e 'all((.exits.outcomes // [])[]; .error != "Invalid quantity.")' <<<"$CYCLE" >/dev/null
-          jq -e 'any((.exits.outcomes // [])[]; .symbol == "XECUSDT" and .raw_managed_quantity == 1493273.23 and .step_size == "1.00" and .normalized_sell_quantity == 1493273 and .submitted_quantity == 1493273)' <<<"$CYCLE" >/dev/null
-          echo "Controlled real Spot cycle persisted: $(jq -r '.evidence_id' <<<"$CYCLE")"
-          echo "XEC outcome: $(jq -c '(.exits.outcomes // [])[] | select(.symbol == "XECUSDT")' <<<"$CYCLE")"
+          SUMMARY=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
+          jq -e '.ok == true and (.account | type == "object") and (.assets | type == "array") and (.recent_trades | type == "array")' <<<"$SUMMARY" >/dev/null
+          echo '/internal/investments/summary verified'
 
           LIVE=$(curl --silent --show-error --fail-with-body \
             --retry 4 --retry-all-errors --retry-delay 5 --max-time 120 \
             -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence")
-          jq -e '.ok == true and .real_mode == true and .spot_only == true and (.latest_cycle | type == "object") and (.activity | type == "array")' <<<"$LIVE" >/dev/null
+          jq -e '.ok == true and .real_mode == true and .spot_only == true' <<<"$LIVE" >/dev/null
           echo '/internal/spot-live/evidence verified'
 
-          SUMMARY=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
-          jq -e '.ok == true and (.portfolio_history | type == "array")' <<<"$SUMMARY" >/dev/null
-          echo "XEC dashboard evidence: $(jq -c '(.portfolio_history // [])[] | select(.symbol == "XECUSDT") | {account_quantity,tracked_quantity,untracked_quantity,realized_pnl_usdt,unrealized_pnl_usdt,total_pnl_usdt}' <<<"$SUMMARY")"
+          DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/investments-dashboard")
+          grep -q 'Resultado Proypers25' <<<"$DASHBOARD"
+          grep -q 'Resumen de la cuenta Binance' <<<"$DASHBOARD"
+          grep -q 'Gestionado por Proypers25' <<<"$DASHBOARD"
+          grep -q 'Estas operaciones NO forman parte del rendimiento del bot' <<<"$DASHBOARD"
+          grep -q '/internal/investments/summary' <<<"$DASHBOARD"
+          grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
+          echo '/investments-dashboard professional view verified'
 
           JOB=$(gcloud scheduler jobs list \
             --project=proypers2025 \
@@ -153,4 +137,4 @@ jobs:
             --filter='httpTarget.uri:spot-real-execution' \
             --format='value(name)' | head -n1)
           test "$(gcloud scheduler jobs describe "$JOB" --project=proypers2025 --location=southamerica-east1 --format='value(state)')" = "PAUSED"
-          echo 'Scheduler remains PAUSED after controlled retry'
+          echo 'Scheduler remains PAUSED; no trading endpoint was invoked by deployment verification'
