@@ -33,7 +33,12 @@ jobs:
           node tests/controlledSpotExitExecutor.test.js
           node tests/controlledSpotSubmittedQuantity.test.js
           node tests/professionalInvestmentsDashboard.test.js
+          node tests/spotDiscoveryIntelligence.test.js
+          node tests/spotDiscoveryLongHorizon.test.js
           node --check routes/professionalInvestmentsDashboard.route.js
+          node --check routes/spotDiscovery.route.js
+          node --check services/spotDiscoveryIntelligence.js
+          node --check services/spotDiscoveryLongHorizon.js
           node --check server.js
 
       - name: Authenticate to Google Cloud
@@ -145,6 +150,12 @@ jobs:
           jq -e '.ok == true and .real_mode == true and .spot_only == true' <<<"$LIVE" >/dev/null
           echo '/internal/spot-live/evidence verified'
 
+          DISCOVERY=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/discovery-engine")
+          jq -e '.ok == true and .mode == "SHADOW" and .real_orders_enabled == false and (.ranking | type == "array")' <<<"$DISCOVERY" >/dev/null
+          echo '/internal/discovery-engine shadow mode verified'
+
           DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/investments-dashboard")
           grep -q 'Resultado Proypers25' <<<"$DASHBOARD"
           grep -q 'Resumen de la cuenta Binance' <<<"$DASHBOARD"
@@ -153,6 +164,12 @@ jobs:
           grep -q '/internal/investments/summary' <<<"$DASHBOARD"
           grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
           echo '/investments-dashboard professional view verified'
+
+          DISCOVERY_DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/discovery-dashboard")
+          grep -q 'Discovery Engine' <<<"$DISCOVERY_DASHBOARD"
+          grep -q 'Actualizar 7 días' <<<"$DISCOVERY_DASHBOARD"
+          grep -q 'Extraordinarios +50%' <<<"$DISCOVERY_DASHBOARD"
+          echo '/discovery-dashboard long-horizon view verified'
 
           PROJECT="proypers2025"
           LOCATION="southamerica-east1"
