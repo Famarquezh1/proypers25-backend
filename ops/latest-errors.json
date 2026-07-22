@@ -1,41 +1,34 @@
 {
-  "generated_at": "2026-07-22T17:53:27Z",
-  "count": 5,
+  "generated_at": "2026-07-22T18:24:34Z",
+  "count": 4,
   "errors": [
     {
-      "timestamp": "2026-07-22T17:20:31.094457Z",
+      "timestamp": "2026-07-22T18:20:10.364599Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00653-926",
+      "revision": "proypers25-backend-00657-cll",
       "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-07-22T17:20:31.030158Z",
+      "timestamp": "2026-07-22T18:05:19.124372Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00653-926",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-22T17:17:30.368524Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00653-926",
+      "revision": "proypers25-backend-00656-ch8",
       "event": null,
       "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-07-22T17:17:23.969155Z",
+      "timestamp": "2026-07-22T17:58:57.022117Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00653-926",
+      "revision": "proypers25-backend-00656-ch8",
       "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "  error: 'The operation was aborted due to timeout'"
     },
     {
-      "timestamp": "2026-07-22T17:11:43.268444Z",
+      "timestamp": "2026-07-22T17:58:57.022098Z",
       "severity": "DEFAULT",
-      "revision": "proypers25-backend-00653-926",
+      "revision": "proypers25-backend-00656-ch8",
       "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "[EXCHANGE_INFO_WARMUP] failed {"
     }
   ]
 }
