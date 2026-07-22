@@ -152,8 +152,8 @@ async function getUnifiedControlPortal(db) {
     ['Binance', '/investments-dashboard', realCycle.binance_ok === true ? 'HEALTHY' : 'UNKNOWN', realCycle.finished_at || realCycle.started_at],
     ['Learning', '/paper-ranking-dashboard', 'OBSERVE', core.last_cycle_at],
     ['Analytics', '/paper-ranking-dashboard', 'AVAILABLE', core.last_cycle_at],
-    ['Health', '/health-dashboard', 'AVAILABLE', null],
-    ['Logs', '/spot-live-dashboard', realCycles.length ? 'AVAILABLE' : 'EMPTY', realCycle.finished_at || realCycle.started_at],
+    ['Health', '/system-health-dashboard', 'AVAILABLE', null],
+    ['Logs', '/control-center/logs', realCycles.length ? 'AVAILABLE' : 'EMPTY', realCycle.finished_at || realCycle.started_at],
     ['Settings', '/dashboard/settings', 'READ_ONLY', null],
     ['Production Gate', '/dashboard/production-gate', 'EVALUATING', new Date().toISOString()]
   ].map(([name, route, status, lastCycle]) => ({ name, route, status, last_cycle_at: timestamp(lastCycle) || lastCycle || null, alert: status === 'EMPTY' || status === 'UNKNOWN' ? 'Requiere evidencia' : null }));
