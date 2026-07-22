@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-07-22T19:59:20Z",
+  "generated_at": "2026-07-22T20:31:23Z",
   "event_found": true,
-  "timestamp": "2026-07-22T19:34:00.957768Z",
-  "revision": "proypers25-backend-00661-v48",
-  "run_id": "quant_1784748836087",
+  "timestamp": "2026-07-22T20:29:20.940381Z",
+  "revision": "proypers25-backend-00662-g9h",
+  "run_id": "quant_1784752156339",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
     "accepted_symbol_count": 10,
     "analyzed_count": 10,
     "eligible_count": 0,
-    "failed_count": 4,
+    "failed_count": 3,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "KITEUSDT",
     "requested_count": 10,
     "selected_family": "MOMENTUM",
     "selected_symbol": "KITEUSDT",
-    "valid_count": 6
+    "valid_count": 7
   },
   "selected_evidence": {
     "calibration": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": 0.003113429350294729,
-      "median_validation_expectancy": -0.0028318934838892544,
+      "median_validation_expectancy": -0.0027348958615636683,
       "positive_test_folds": 2,
       "positive_validation_folds": 0,
       "test_expectancy_std": 0.00532497059433232,
@@ -63,16 +63,16 @@
       "winRate": 0.4166666666666667
     },
     "validation": {
-      "averageLoss": -0.005670002131675621,
+      "averageLoss": -0.005529479695919961,
       "averageWin": 0.009180196225471839,
-      "expectancy": -0.004527679181125817,
-      "maxDrawdown": 0.05946557470714886,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.05748402906552952,
-      "profitFactor": 0.13492346816747539,
-      "returnStd": 0.005650622681304955,
-      "trades": 13,
-      "winRate": 0.07692307692307693
+      "expectancy": -0.004303673369137311,
+      "maxDrawdown": 0.05262958767283388,
+      "medianReturn": -0.001750374999999969,
+      "netReturn": -0.05063363977229696,
+      "profitFactor": 0.15092980517507137,
+      "returnStd": 0.005825633833403107,
+      "trades": 12,
+      "winRate": 0.08333333333333333
     }
   },
   "strategy_families": [
