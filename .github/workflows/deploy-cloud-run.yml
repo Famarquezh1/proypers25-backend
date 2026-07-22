@@ -49,12 +49,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          JOB="spot-real-execution"
+          PROJECT="proypers2025"
+          LOCATION="southamerica-east1"
+
+          echo "Scheduler jobs visible in ${LOCATION}:"
+          gcloud scheduler jobs list \
+            --project="$PROJECT" \
+            --location="$LOCATION" \
+            --format='table(name.basename(),state,httpTarget.uri)'
+
+          JOB=$(gcloud scheduler jobs list \
+            --project="$PROJECT" \
+            --location="$LOCATION" \
+            --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' \
+            --format='value(name)' | head -n1)
+
+          if [ -z "$JOB" ]; then
+            echo "ERROR: spot-real-execution was not found in ${LOCATION}." >&2
+            exit 1
+          fi
+
           STATE=$(gcloud scheduler jobs describe "$JOB" \
-            --project=proypers2025 \
-            --location=southamerica-east1 \
-            --format='value(state)')
-          test "$STATE" = "PAUSED"
+            --project="$PROJECT" \
+            --location="$LOCATION" \
+            --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+
+          echo "Resolved scheduler job: $JOB"
+          echo "Resolved scheduler state: '$STATE'"
+
+          if [ "$STATE" != "PAUSED" ]; then
+            echo "ERROR: Scheduler must remain PAUSED before deployment; current state is '$STATE'." >&2
+            exit 1
+          fi
+
           echo "Scheduler verified PAUSED: $JOB"
 
       - name: Submit immutable build and deployment
@@ -126,10 +153,17 @@ jobs:
           grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
           echo '/investments-dashboard professional view verified'
 
-          JOB="spot-real-execution"
+          PROJECT="proypers2025"
+          LOCATION="southamerica-east1"
+          JOB=$(gcloud scheduler jobs list \
+            --project="$PROJECT" \
+            --location="$LOCATION" \
+            --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' \
+            --format='value(name)' | head -n1)
+          test -n "$JOB"
           STATE=$(gcloud scheduler jobs describe "$JOB" \
-            --project=proypers2025 \
-            --location=southamerica-east1 \
-            --format='value(state)')
+            --project="$PROJECT" \
+            --location="$LOCATION" \
+            --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$STATE" = "PAUSED"
-          echo 'Scheduler remains PAUSED; no trading endpoint was invoked by deployment verification'
+          echo "Scheduler remains PAUSED: $JOB; no trading endpoint was invoked by deployment verification"
