@@ -35,10 +35,13 @@ jobs:
           node tests/professionalInvestmentsDashboard.test.js
           node tests/spotDiscoveryIntelligence.test.js
           node tests/spotDiscoveryLongHorizon.test.js
+          node tests/spotShadowDecisionEngine.test.js
           node --check routes/professionalInvestmentsDashboard.route.js
           node --check routes/spotDiscovery.route.js
+          node --check routes/spotShadowDecision.route.js
           node --check services/spotDiscoveryIntelligence.js
           node --check services/spotDiscoveryLongHorizon.js
+          node --check services/spotShadowDecisionEngine.js
           node --check server.js
 
       - name: Authenticate to Google Cloud
@@ -156,6 +159,12 @@ jobs:
           jq -e '.ok == true and .mode == "SHADOW" and .real_orders_enabled == false and (.ranking | type == "array")' <<<"$DISCOVERY" >/dev/null
           echo '/internal/discovery-engine shadow mode verified'
 
+          SHADOW=$(curl --silent --show-error --fail-with-body \
+            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/shadow-decision/portfolio")
+          jq -e '.ok == true and .mode == "SHADOW" and .real_orders_enabled == false and (.open_positions | type == "array") and (.recent_decisions | type == "array")' <<<"$SHADOW" >/dev/null
+          echo '/internal/shadow-decision/portfolio verified without real orders'
+
           DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/investments-dashboard")
           grep -q 'Resultado Proypers25' <<<"$DASHBOARD"
           grep -q 'Resumen de la cuenta Binance' <<<"$DASHBOARD"
@@ -170,6 +179,11 @@ jobs:
           grep -q 'Actualizar 7 días' <<<"$DISCOVERY_DASHBOARD"
           grep -q 'Extraordinarios +50%' <<<"$DISCOVERY_DASHBOARD"
           echo '/discovery-dashboard long-horizon view verified'
+
+          SHADOW_DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/shadow-decision-dashboard")
+          grep -q 'Decision Engine + Portafolio sombra' <<<"$SHADOW_DASHBOARD"
+          grep -q 'No ejecuta órdenes reales' <<<"$SHADOW_DASHBOARD"
+          echo '/shadow-decision-dashboard verified'
 
           PROJECT="proypers2025"
           LOCATION="southamerica-east1"
