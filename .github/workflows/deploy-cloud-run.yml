@@ -36,12 +36,15 @@ jobs:
           node tests/spotDiscoveryIntelligence.test.js
           node tests/spotDiscoveryLongHorizon.test.js
           node tests/spotShadowDecisionEngine.test.js
+          node tests/spotShadowGemHunter.test.js
           node --check routes/professionalInvestmentsDashboard.route.js
           node --check routes/spotDiscovery.route.js
           node --check routes/spotShadowDecision.route.js
+          node --check routes/spotShadowGemHunter.route.js
           node --check services/spotDiscoveryIntelligence.js
           node --check services/spotDiscoveryLongHorizon.js
           node --check services/spotShadowDecisionEngine.js
+          node --check services/spotShadowGemHunter.js
           node --check server.js
 
       - name: Authenticate to Google Cloud
@@ -60,48 +63,27 @@ jobs:
           set -euo pipefail
           PROJECT="proypers2025"
           LOCATION="southamerica-east1"
-
           echo "Scheduler jobs visible in ${LOCATION}:"
-          gcloud scheduler jobs list \
-            --project="$PROJECT" \
-            --location="$LOCATION" \
-            --format='table(name.basename(),state,httpTarget.uri)'
-
-          JOB=$(gcloud scheduler jobs list \
-            --project="$PROJECT" \
-            --location="$LOCATION" \
-            --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' \
-            --format='value(name)' | head -n1)
-
+          gcloud scheduler jobs list --project="$PROJECT" --location="$LOCATION" --format='table(name.basename(),state,httpTarget.uri)'
+          JOB=$(gcloud scheduler jobs list --project="$PROJECT" --location="$LOCATION" --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' --format='value(name)' | head -n1)
           if [ -z "$JOB" ]; then
             echo "ERROR: spot-real-execution was not found in ${LOCATION}." >&2
             exit 1
           fi
-
-          STATE=$(gcloud scheduler jobs describe "$JOB" \
-            --project="$PROJECT" \
-            --location="$LOCATION" \
-            --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-
+          STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$LOCATION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           echo "Resolved scheduler job: $JOB"
           echo "Resolved scheduler state: '$STATE'"
-
           if [ "$STATE" != "PAUSED" ]; then
             echo "ERROR: Scheduler must remain PAUSED before deployment; current state is '$STATE'." >&2
             exit 1
           fi
-
           echo "Scheduler verified PAUSED: $JOB"
 
       - name: Submit immutable build and deployment
         shell: bash
         run: |
           set -euo pipefail
-          gcloud builds submit \
-            --project=proypers2025 \
-            --config=cloudbuild.yaml \
-            --substitutions=_IMAGE_TAG="$GITHUB_SHA" \
-            .
+          gcloud builds submit --project=proypers2025 --config=cloudbuild.yaml --substitutions=_IMAGE_TAG="$GITHUB_SHA" .
 
       - name: Diagnose failed Cloud Build or Cloud Run revision
         if: failure()
@@ -111,15 +93,9 @@ jobs:
           BUILD_ID=$(gcloud builds list --project=proypers2025 --limit=1 --sort-by='~createTime' --format='value(id)' || true)
           echo "Latest Cloud Build: ${BUILD_ID:-unavailable}"
           if [ -n "${BUILD_ID:-}" ]; then
-            gcloud logging read \
-              "resource.type=build AND labels.build_id=$BUILD_ID" \
-              --project=proypers2025 --limit=250 --order=asc \
-              --format='value(timestamp,severity,textPayload,jsonPayload.message,jsonPayload.error)' || true
+            gcloud logging read "resource.type=build AND labels.build_id=$BUILD_ID" --project=proypers2025 --limit=250 --order=asc --format='value(timestamp,severity,textPayload,jsonPayload.message,jsonPayload.error)' || true
           fi
-          gcloud logging read \
-            'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend" AND severity>=ERROR' \
-            --project=proypers2025 --freshness=30m --limit=100 --order=desc \
-            --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend" AND severity>=ERROR' --project=proypers2025 --freshness=30m --limit=100 --order=desc --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
 
       - name: Verify professional dashboard deployment
         shell: bash
@@ -128,42 +104,32 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
-          URL=$(gcloud run services describe proypers25-backend \
-            --project=proypers2025 \
-            --region=southamerica-west1 \
-            --platform=managed \
-            --format='value(status.url)')
+          URL=$(gcloud run services describe proypers25-backend --project=proypers2025 --region=southamerica-west1 --platform=managed --format='value(status.url)')
           echo "Cloud Run URL: $URL"
-
-          VERSION=$(curl --silent --show-error --fail-with-body \
-            --retry 8 --retry-all-errors --retry-delay 10 "$URL/__version")
+          VERSION=$(curl --silent --show-error --fail-with-body --retry 8 --retry-all-errors --retry-delay 10 "$URL/__version")
           DEPLOYED_SHA=$(jq -r '.commit // empty' <<<"$VERSION")
           test "$DEPLOYED_SHA" = "$GITHUB_SHA"
           echo "APP_COMMIT_SHA verified: $DEPLOYED_SHA"
 
-          SUMMARY=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
+          SUMMARY=$(curl --silent --show-error --fail-with-body --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
           jq -e '.ok == true and (.account | type == "object") and (.assets | type == "array") and (.recent_trades | type == "array")' <<<"$SUMMARY" >/dev/null
           echo '/internal/investments/summary verified'
 
-          LIVE=$(curl --silent --show-error --fail-with-body \
-            --retry 4 --retry-all-errors --retry-delay 5 --max-time 120 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence")
+          LIVE=$(curl --silent --show-error --fail-with-body --retry 4 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence")
           jq -e '.ok == true and .real_mode == true and .spot_only == true' <<<"$LIVE" >/dev/null
           echo '/internal/spot-live/evidence verified'
 
-          DISCOVERY=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/discovery-engine")
+          DISCOVERY=$(curl --silent --show-error --fail-with-body --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/discovery-engine")
           jq -e '.ok == true and .mode == "SHADOW" and .real_orders_enabled == false and (.ranking | type == "array")' <<<"$DISCOVERY" >/dev/null
           echo '/internal/discovery-engine shadow mode verified'
 
-          SHADOW=$(curl --silent --show-error --fail-with-body \
-            --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 \
-            -H "x-cron-secret: $CRON_SECRET" "$URL/internal/shadow-decision/portfolio")
+          SHADOW=$(curl --silent --show-error --fail-with-body --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/shadow-decision/portfolio")
           jq -e '.ok == true and .mode == "SHADOW" and .real_orders_enabled == false and (.open_positions | type == "array") and (.recent_decisions | type == "array")' <<<"$SHADOW" >/dev/null
           echo '/internal/shadow-decision/portfolio verified without real orders'
+
+          GEM=$(curl --silent --show-error --fail-with-body --retry 2 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/gem-hunter/portfolio")
+          jq -e '.ok == true and .strategy == "GEM_HUNTER" and .mode == "SHADOW" and .real_orders_enabled == false and (.open_positions | type == "array") and (.recent_decisions | type == "array")' <<<"$GEM" >/dev/null
+          echo '/internal/gem-hunter/portfolio verified without real orders'
 
           DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/investments-dashboard")
           grep -q 'Resultado Proypers25' <<<"$DASHBOARD"
@@ -185,17 +151,16 @@ jobs:
           grep -q 'No ejecuta órdenes reales' <<<"$SHADOW_DASHBOARD"
           echo '/shadow-decision-dashboard verified'
 
+          GEM_DASHBOARD=$(curl --silent --show-error --fail-with-body --max-time 30 "$URL/gem-hunter-dashboard")
+          grep -q 'Gem Hunter' <<<"$GEM_DASHBOARD"
+          grep -q 'No ejecuta órdenes reales' <<<"$GEM_DASHBOARD"
+          grep -q 'Ejecutar ciclo sombra' <<<"$GEM_DASHBOARD"
+          echo '/gem-hunter-dashboard verified'
+
           PROJECT="proypers2025"
           LOCATION="southamerica-east1"
-          JOB=$(gcloud scheduler jobs list \
-            --project="$PROJECT" \
-            --location="$LOCATION" \
-            --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' \
-            --format='value(name)' | head -n1)
+          JOB=$(gcloud scheduler jobs list --project="$PROJECT" --location="$LOCATION" --filter='name:spot-real-execution OR httpTarget.uri:spot-real-execution' --format='value(name)' | head -n1)
           test -n "$JOB"
-          STATE=$(gcloud scheduler jobs describe "$JOB" \
-            --project="$PROJECT" \
-            --location="$LOCATION" \
-            --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$LOCATION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$STATE" = "PAUSED"
           echo "Scheduler remains PAUSED: $JOB; no trading endpoint was invoked by deployment verification"
