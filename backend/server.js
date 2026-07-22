@@ -18,6 +18,7 @@ const spotPortfolioCoverageRoute = require('./routes/spotPortfolioCoverage.route
 const spotPaperRankingRoute = require('./routes/spotPaperRanking.route');
 const spotDiscoveryRoute = require('./routes/spotDiscovery.route');
 const spotShadowDecisionRoute = require('./routes/spotShadowDecision.route');
+const spotShadowGemHunterRoute = require('./routes/spotShadowGemHunter.route');
 const spotQuantResearchRoute = require('./routes/spotQuantResearch.route');
 const newSpotAssetDiscoveryRoute = require('./routes/newSpotAssetDiscovery.route');
 const spotMarketOpportunityRoute = require('./routes/spotMarketOpportunity.route');
@@ -108,6 +109,7 @@ app.use('/', spotPortfolioCoverageRoute);
 app.use('/', spotPaperRankingRoute);
 app.use('/', spotDiscoveryRoute);
 app.use('/', spotShadowDecisionRoute);
+app.use('/', spotShadowGemHunterRoute);
 app.use('/', spotQuantResearchRoute);
 app.use('/', newSpotAssetDiscoveryRoute);
 app.use('/', spotMarketOpportunityRoute);
