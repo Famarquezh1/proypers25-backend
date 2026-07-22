@@ -49,12 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          JOB=$(gcloud scheduler jobs list \
-            --project=proypers2025 \
-            --location=southamerica-east1 \
-            --filter='httpTarget.uri:spot-real-execution' \
-            --format='value(name)' | head -n1)
-          test -n "$JOB"
+          JOB="spot-real-execution"
           STATE=$(gcloud scheduler jobs describe "$JOB" \
             --project=proypers2025 \
             --location=southamerica-east1 \
@@ -131,10 +126,10 @@ jobs:
           grep -q '/internal/spot-live/evidence' <<<"$DASHBOARD"
           echo '/investments-dashboard professional view verified'
 
-          JOB=$(gcloud scheduler jobs list \
+          JOB="spot-real-execution"
+          STATE=$(gcloud scheduler jobs describe "$JOB" \
             --project=proypers2025 \
             --location=southamerica-east1 \
-            --filter='httpTarget.uri:spot-real-execution' \
-            --format='value(name)' | head -n1)
-          test "$(gcloud scheduler jobs describe "$JOB" --project=proypers2025 --location=southamerica-east1 --format='value(state)')" = "PAUSED"
+            --format='value(state)')
+          test "$STATE" = "PAUSED"
           echo 'Scheduler remains PAUSED; no trading endpoint was invoked by deployment verification'
