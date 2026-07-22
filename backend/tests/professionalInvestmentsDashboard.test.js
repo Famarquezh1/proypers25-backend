@@ -7,6 +7,12 @@ const path = require('path');
 const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'professionalInvestmentsDashboard.route.js'), 'utf8');
 
 [
+  'Vista rápida',
+  '¿Cuánto dinero tengo?',
+  '¿Cuánto ganó Proypers25?',
+  '¿Hay posiciones abiertas?',
+  '¿El sistema está sano?',
+  '¿Qué hizo el bot recientemente?',
   'Resultado Proypers25',
   'Resumen de la cuenta Binance',
   'Estado operativo',
@@ -18,7 +24,14 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'professiona
   'Capital asignado',
   'Win Rate',
   'Profit Factor',
+  'Primera compra',
+  'Precio promedio',
+  'Precio actual',
+  'Ganancia / pérdida',
   'Gestionado por Proypers25',
+  'average_cost_usdt',
+  'current_price_usdt',
+  'return_pct',
   '/internal/investments/summary',
   '/internal/spot-live/evidence'
 ].forEach((marker) => assert(source.includes(marker), `missing dashboard marker: ${marker}`));
