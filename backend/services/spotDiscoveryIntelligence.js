@@ -22,6 +22,16 @@ function latestCompletedHorizon(validation = {}) {
   return values.sort((a, b) => number(b.hours) - number(a.hours))[0] || null;
 }
 
+function classifyReaction(completed) {
+  const favorable = number(completed?.max_favorable_move_pct);
+  if (favorable >= 100) return 'EXPLOSIVE_100_PLUS';
+  if (favorable >= 50) return 'EXTRAORDINARY_50_PLUS';
+  if (favorable >= 20) return 'STRONG_20_PLUS';
+  if (favorable >= 10) return 'USEFUL_10_PLUS';
+  if (favorable >= 5) return 'POSITIVE_5_PLUS';
+  return completed ? 'NO_MAJOR_REACTION' : 'PENDING';
+}
+
 function buildDiscoveryCandidate(candidate = {}, validation = null) {
   const opportunity = number(candidate.opportunityScore ?? candidate.opportunity_score ?? candidate.score);
   const risk = number(candidate.riskScore ?? candidate.risk_score);
@@ -48,6 +58,7 @@ function buildDiscoveryCandidate(candidate = {}, validation = null) {
   );
   const asymmetry = clamp((opportunity * 0.55) + (impulse * 0.15) + (breakout * 0.15) + (accumulation * 0.15) - (risk * 0.35));
   const status = risk >= 75 ? 'REJECTED_RISK' : conviction >= 75 ? 'HIGH_CONVICTION' : conviction >= 60 ? 'WATCH_CLOSELY' : conviction >= 45 ? 'WATCH' : 'IGNORE';
+  const reaction = classifyReaction(completed);
 
   return {
     symbol: String(candidate.symbol || '').toUpperCase(),
@@ -61,6 +72,8 @@ function buildDiscoveryCandidate(candidate = {}, validation = null) {
     category: candidate.category || 'WATCHLIST',
     recommendation: candidate.recommendation || null,
     status,
+    reaction_class: reaction,
+    extraordinary_reaction: ['EXPLOSIVE_100_PLUS', 'EXTRAORDINARY_50_PLUS'].includes(reaction),
     reasons: reasons.slice(0, 8),
     warnings: warnings.slice(0, 8),
     shadow_only: true,
@@ -68,7 +81,10 @@ function buildDiscoveryCandidate(candidate = {}, validation = null) {
       horizon: completed.label || null,
       variation_pct: round(completed.variation_pct),
       max_favorable_move_pct: round(completed.max_favorable_move_pct),
-      max_adverse_move_pct: round(completed.max_adverse_move_pct)
+      max_adverse_move_pct: round(completed.max_adverse_move_pct),
+      hit_plus_20_pct: completed.hit_plus_20_pct === true,
+      hit_plus_50_pct: completed.hit_plus_50_pct === true,
+      hit_plus_100_pct: completed.hit_plus_100_pct === true
     } : null
   };
 }
@@ -110,10 +126,12 @@ async function getDiscoveryIntelligence(db, options = {}) {
       actionable: ranking.filter((item) => ['HIGH_CONVICTION', 'WATCH_CLOSELY'].includes(item.status)).length,
       high_conviction: ranking.filter((item) => item.status === 'HIGH_CONVICTION').length,
       rejected_risk: ranking.filter((item) => item.status === 'REJECTED_RISK').length,
+      extraordinary_reactions: ranking.filter((item) => item.extraordinary_reaction).length,
+      strong_20_plus_reactions: ranking.filter((item) => ['STRONG_20_PLUS', 'EXTRAORDINARY_50_PLUS', 'EXPLOSIVE_100_PLUS'].includes(item.reaction_class)).length,
       top_symbol: ranking[0]?.symbol || null,
       top_conviction: ranking[0]?.conviction_score || null
     }
   };
 }
 
-module.exports = { buildDiscoveryCandidate, getDiscoveryIntelligence };
+module.exports = { buildDiscoveryCandidate, classifyReaction, getDiscoveryIntelligence };
