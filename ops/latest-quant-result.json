@@ -1,91 +1,14 @@
 {
-  "generated_at": "2026-07-24T19:02:53Z",
-  "event_found": true,
-  "timestamp": "2026-07-24T19:02:30.563501Z",
-  "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1784919747251",
+  "generated_at": "2026-07-24T19:58:23Z",
+  "event_found": false,
+  "timestamp": null,
+  "revision": null,
+  "run_id": null,
   "promotion_eligible": false,
   "no_eligible_champion": true,
-  "selection": {
-    "accepted_symbol_count": 7,
-    "analyzed_count": 7,
-    "eligible_count": 0,
-    "failed_count": 4,
-    "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "ZECUSDT",
-    "requested_count": 7,
-    "selected_family": "TREND",
-    "selected_symbol": "ZECUSDT",
-    "valid_count": 3
-  },
-  "selected_evidence": {
-    "calibration": {
-      "brier": 0.5963636363636363,
-      "calibrated": false,
-      "samples": 11
-    },
-    "checks": {
-      "expectation_stability": true,
-      "median_test_expectancy_positive": false,
-      "probability_calibrated": true,
-      "test_drawdown": true,
-      "test_expectancy_positive": false,
-      "test_fold_consistency": false,
-      "test_min_trades": false,
-      "test_profit_factor": false,
-      "validation_expectancy_positive": false,
-      "validation_fold_consistency": false,
-      "validation_median_positive": false,
-      "validation_min_trades": true,
-      "validation_profit_factor": false
-    },
-    "consistency": {
-      "folds": 4,
-      "median_test_expectancy": -0.000875187499999929,
-      "median_validation_expectancy": -0.002245439425598661,
-      "positive_test_folds": 0,
-      "positive_validation_folds": 0,
-      "test_expectancy_std": 0.0030717850490178606,
-      "test_ratio": 0,
-      "validation_ratio": 0
-    },
-    "eligible": false,
-    "test": {
-      "averageLoss": -0.003984292213708307,
-      "averageWin": 0.009609066134004253,
-      "expectancy": -0.0027485323639162558,
-      "maxDrawdown": 0.03580203263100534,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.02994185871818067,
-      "profitFactor": 0.24117372970143655,
-      "returnStd": 0.004740248595830929,
-      "trades": 11,
-      "winRate": 0.09090909090909091
-    },
-    "validation": {
-      "averageLoss": -0.003906256558161697,
-      "averageWin": 0.009609066134004253,
-      "expectancy": -0.0026190829684316066,
-      "maxDrawdown": 0.07011380436113657,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.053816348427516925,
-      "profitFactor": 0.2589386105659854,
-      "returnStd": 0.004833346017526033,
-      "trades": 21,
-      "winRate": 0.09523809523809523
-    }
-  },
-  "strategy_families": [
-    "TREND",
-    "BREAKOUT",
-    "MOMENTUM",
-    "MEAN_REVERSION"
-  ],
-  "walk_forward_folds": 4,
-  "history": {
-    "interval": "5m",
-    "interval_ms": 300000,
-    "maximum_candles_per_symbol": 5000,
-    "requested_candles_per_symbol": 5000
-  }
+  "selection": {},
+  "selected_evidence": {},
+  "strategy_families": [],
+  "walk_forward_folds": null,
+  "history": {}
 }
