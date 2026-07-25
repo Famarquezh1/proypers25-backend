@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-25T12:18:10Z",
+  "generated_at": "2026-07-25T12:49:01Z",
   "event_found": true,
-  "timestamp": "2026-07-25T11:57:02.540418Z",
+  "timestamp": "2026-07-25T12:29:12.491905Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1784980619950",
+  "run_id": "quant_1784982550334",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
@@ -20,9 +20,9 @@
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.6992307692307693,
+      "brier": 0.6842857142857144,
       "calibrated": false,
-      "samples": 13
+      "samples": 14
     },
     "checks": {
       "expectation_stability": false,
@@ -31,7 +31,7 @@
       "test_drawdown": true,
       "test_expectancy_positive": false,
       "test_fold_consistency": false,
-      "test_min_trades": false,
+      "test_min_trades": true,
       "test_profit_factor": false,
       "validation_expectancy_positive": false,
       "validation_fold_consistency": false,
@@ -45,22 +45,22 @@
       "median_validation_expectancy": -0.008045384938633824,
       "positive_test_folds": 0,
       "positive_validation_folds": 0,
-      "test_expectancy_std": 0.006223634102163507,
+      "test_expectancy_std": 0.006210595775325361,
       "test_ratio": 0,
       "validation_ratio": 0
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.00484969241486811,
+      "averageLoss": -0.0046112833829551675,
       "averageWin": 0.013109380407614115,
-      "expectancy": -0.00346822527467717,
+      "expectancy": -0.0033455216836287905,
       "maxDrawdown": 0.05684062564160275,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.044476390618131245,
-      "profitFactor": 0.22526137203092825,
-      "returnStd": 0.007107613381364368,
-      "trades": 13,
-      "winRate": 0.07692307692307693
+      "netReturn": -0.04614891525590292,
+      "profitFactor": 0.21868399613786696,
+      "returnStd": 0.0068633415793879155,
+      "trades": 14,
+      "winRate": 0.07142857142857142
     },
     "validation": {
       "averageLoss": -0.008392413967599023,
