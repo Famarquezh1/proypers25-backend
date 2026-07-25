@@ -1,28 +1,28 @@
 {
-  "generated_at": "2026-07-25T06:16:00Z",
+  "generated_at": "2026-07-25T07:15:38Z",
   "event_found": true,
-  "timestamp": "2026-07-25T05:56:18.179303Z",
+  "timestamp": "2026-07-25T06:56:21.939305Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1784958974797",
+  "run_id": "quant_1784962578569",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
     "accepted_symbol_count": 6,
     "analyzed_count": 6,
     "eligible_count": 0,
-    "failed_count": 5,
+    "failed_count": 4,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "VANAUSDT",
     "requested_count": 6,
     "selected_family": "TREND",
     "selected_symbol": "VANAUSDT",
-    "valid_count": 1
+    "valid_count": 2
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.5926315789473686,
+      "brier": 0.5781250000000002,
       "calibrated": false,
-      "samples": 19
+      "samples": 20
     },
     "checks": {
       "expectation_stability": true,
@@ -45,22 +45,22 @@
       "median_validation_expectancy": -0.002847143924403878,
       "positive_test_folds": 0,
       "positive_validation_folds": 0,
-      "test_expectancy_std": 0.002250698380499333,
+      "test_expectancy_std": 0.002072059572924972,
       "test_ratio": 0,
       "validation_ratio": 0
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.005262858767847965,
+      "averageLoss": -0.005067720780745293,
       "averageWin": 0.006970255939587446,
-      "expectancy": -0.003975162482854763,
-      "maxDrawdown": 0.07307688189747408,
+      "expectancy": -0.003863923108712018,
+      "maxDrawdown": 0.07469934495032271,
       "medianReturn": -0.006497999999999891,
-      "netReturn": -0.07307688189747408,
-      "profitFactor": 0.15581457658515468,
-      "returnStd": 0.004646202395158265,
-      "trades": 19,
-      "winRate": 0.10526315789473684
+      "netReturn": -0.07469934495032271,
+      "profitFactor": 0.1528246949040637,
+      "returnStd": 0.004554442515914479,
+      "trades": 20,
+      "winRate": 0.1
     },
     "validation": {
       "averageLoss": -0.004640619851864153,
