@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-25T19:54:50Z",
+  "generated_at": "2026-07-25T20:19:05Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00666-rjf",
@@ -14,7 +14,7 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 0,
-    "promoted_symbol": "ZAMAUSDT",
+    "promoted_symbol": "KAITOUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "STRATEGY_NOT_PROMOTED",
@@ -23,7 +23,6 @@
       "QUANT_CHAMPION_NOT_ELIGIBLE",
       "VALIDATION_OUT_OF_SAMPLE_WEAK",
       "TEST_OUT_OF_SAMPLE_WEAK",
-      "PROBABILITY_CALIBRATION_WEAK",
       "INSUFFICIENT_PAPER_VALIDATIONS",
       "INSUFFICIENT_PAPER_SAMPLE",
       "PAPER_POSITIVE_RATE_TOO_LOW"
