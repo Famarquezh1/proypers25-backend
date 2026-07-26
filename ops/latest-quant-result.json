@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-07-26T02:16:47Z",
+  "generated_at": "2026-07-26T03:44:03Z",
   "event_found": true,
-  "timestamp": "2026-07-26T01:39:11.191221Z",
+  "timestamp": "2026-07-26T03:10:18.216177Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1785029948096",
+  "run_id": "quant_1785035415368",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 6,
-    "analyzed_count": 6,
+    "accepted_symbol_count": 7,
+    "analyzed_count": 7,
     "eligible_count": 0,
     "failed_count": 5,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "KAITOUSDT",
-    "requested_count": 6,
+    "requested_count": 7,
     "selected_family": "BREAKOUT",
     "selected_symbol": "KAITOUSDT",
-    "valid_count": 1
+    "valid_count": 2
   },
   "selected_evidence": {
     "calibration": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": -0.0017503750000000245,
-      "median_validation_expectancy": -0.0033456843817406714,
+      "median_validation_expectancy": -0.003345684381740727,
       "positive_test_folds": 1,
       "positive_validation_folds": 1,
       "test_expectancy_std": 0.003423335020737345,
@@ -63,16 +63,16 @@
       "winRate": 0.1
     },
     "validation": {
-      "averageLoss": -0.008183132939267014,
+      "averageLoss": -0.008719196100872609,
       "averageWin": 0.02230589042004627,
-      "expectancy": -0.004117929824691909,
-      "maxDrawdown": 0.06323064967221721,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.06102130728708888,
-      "profitFactor": 0.4193596113746226,
-      "returnStd": 0.01192992951573037,
-      "trades": 15,
-      "winRate": 0.13333333333333333
+      "expectancy": -0.004287040883598484,
+      "maxDrawdown": 0.061588076902325296,
+      "medianReturn": -0.0065363031452221314,
+      "netReturn": -0.059374860558639386,
+      "profitFactor": 0.426375133708598,
+      "returnStd": 0.01233126855426328,
+      "trades": 14,
+      "winRate": 0.14285714285714285
     }
   },
   "strategy_families": [
