@@ -1,7 +1,203 @@
 {
-  "generated_at": "2026-07-28T22:21:11Z",
-  "count": 100,
+  "generated_at": "2026-07-28T22:47:48Z",
+  "count": 39,
   "errors": [
+    {
+      "timestamp": "2026-07-28T22:40:08.472802Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:40:08.433255Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:40:08.233421Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:40:08.126719Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:35:03.772139Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:35:03.465756Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:35:03.343954Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:35:02.920388Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:26:12.076626Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:26:12.050304Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:26:12.025408Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:26:11.942299Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:55.037944Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:55.037720Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:55.037484Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:55.037091Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:37.679449Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:37.645015Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:37.423536Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:37.423084Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:22.161938Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:22.136068Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:22.134342Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:21.740132Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:03.079198Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:03.003144Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:02.837782Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-07-28T22:25:02.739627Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
     {
       "timestamp": "2026-07-28T22:15:10.272144Z",
       "severity": "DEFAULT",
@@ -78,629 +274,6 @@
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T22:00:26.856782Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T22:00:26.827286Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:43.103950Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:43.066694Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:42.944900Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:42.544390Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:26.963090Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:26.962867Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:26.962622Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:26.962225Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:07.743104Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:07.310472Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:06.572037Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:55:06.203610Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:50:22.598611Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:50:21.729432Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:50:20.778158Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:50:20.669717Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:54.519839Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ zhdqrrste8vJO0V7yDBo: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:52.619797Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ zJgH9TGyLX8Qtdj4ZGK4: Error=-2.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:51.119777Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ yCoqC9Dvctlul6zFimYy: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:49.219642Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ xNZIHXVdbh6fMkmWguAX: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:47.419715Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ vo6HUuCQgj075zgakcfi: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:45.519965Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ v6PiioW7nChVmDTEBxyv: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:44.219718Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ v1m3DLkAFGjn0oHMCxfQ: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:42.619620Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ uTyNQl0jhjKnlJ9eTHqB: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:39.319840Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ tXPAgluS5Aq2ejgyhe5X: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:37.720454Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ tTCEoUuYYBMddKt9Y2MQ: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:36.719588Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ tKo46Y0II3qdPbZXvdxr: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:35.019848Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ tGeYnNXcdzHyBKwaajiJ: Error=-9.54, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:33.219840Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ rHZk5dUcwfOWdonJ875r: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:30.619936Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ qpMvscqZ82JOXIgvlLLs: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:28.134990Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ qZvuJReuO4L1EQOiGrty: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:26.319938Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ qXrOm7D0fhWyFXtOpgtp: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:24.719971Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ocUpqcyJRgKV2vJyjbay: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:22.019757Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ kOubCkwnAVzUcZaPqhQC: Error=3.25, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:20.320678Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ kJFkoPxODbnj4RhjrUGs: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:19.019744Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ jpnA9ROQa1Prxgit667l: Error=-13.31, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:17.719922Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ jRSoqEomUqFHX6WupkET: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:14.319938Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ jMwJ0FnvTWyFZi1SgwNg: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:12.819952Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ iuNjxkrASoekrzYtBkyJ: Error=-10.93, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:10.719733Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ iFhfV5yd2QPOHydvlBdn: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:09.007972Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ hvn7ArHywmVsG1LsenSI: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:08.720696Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ hqhUkYX0QuiPB9VAp9vi: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:08.360526Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ hGmB0lT6eQ6QvJeEgJH1: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:08.039793Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ h1JSaQXvcJ5okgsJRyx3: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:07.815468Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ gyEcgEDH9Mxytp1UmUyF: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:07.480802Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ejKp9AMCun8n2stZM1K4: Error=-30.36, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:07.266180Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ehSvyjTzQ06IFs51uZ5O: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:06.934689Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ eckahSqc6XeZ4RV94xDA: Error=-11.84, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:06.751180Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:06.657708Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ eNhg2cG6NXnJvdgUyoJg: Error=-10.53, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:06.409281Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ eAPyJGWE97VQgfrQ9d7Z: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:06.184986Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ dw2iX0pSrT4EB14Bhxpu: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:05.835443Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ duM6TGb9ZGtju8gSmCKc: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:05.528508Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ dZlS1JKsBJqead679Zi9: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:05.302538Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ dMFOfAewQ9XgamPbEUFp: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:05.180095Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:04.954559Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ccGRypdHRfFaEJLIkO2W: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:04.720028Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ cXdIYOPUrsjnSiJlS5vi: Error=-6.31, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:45:04.442467Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ bfn3VUTLojpwffMrkHH1: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:59.019905Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ bLzcm4KCyNQ9gu5f8e4p: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:57.219976Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ bHgnb5Y0M3zXIaxboERc: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:55.135734Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ aPwmdBkmUv8rW4IhwtuZ: Error=-0.60, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:52.719939Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ Zhv2xxgjrK66P9VGrspO: Error=-13.03, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:50.919974Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ZGnG4aeUxxN3Jb9XPIip: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:48.319890Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ ZDseaqrBSjrqwSzwI6vO: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:46.219692Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ Z6nWVHKXS4wpRpkhfShE: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:43.920088Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ Z2sSWRrCKa3o0TumRBs8: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:42.129872Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ YtUK6pm9Ir0ENaeDSowV: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:39.319957Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ Yf2VlFdtgL3YTieg4Of8: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:37.119781Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ YaPM52YV036KiHOdJDRW: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:33.519885Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ YDcoC3L6vdH3lNslG3YF: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:31.919943Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ YDXJxsPOJmUw40EKXQQE: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:29.919794Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ VHoAnNdA1tEZJxXS3R8M: Error=-9.99, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:27.820720Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ UvV2Fb6akra5AGcGzwJb: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:26.119940Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ UZKKiN8vWnACKzw8kjDT: Error=-15.66, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:24.219833Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TzXPIX1pJxZe1UtuA9jT: Error=-3.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:21.420179Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TuRzhKXcbukDh43ER3Pv: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:19.619598Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TWBy0B6BbjXXKDXZ1xaw: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:15.919979Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TUUtopVMi84He0KrB3cS: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:14.319660Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TQcdLVpKdkl61UmDVwLn: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:11.619982Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ TBEap7bNERTzTt7UfXpu: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:09.219890Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ SvBlnxl8ZGScpWYmJ7XN: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:06.719680Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ Sd8hTgxnXO6OtoKQxaE7: Error=-9.28, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:04.919911Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ SWtHQPVYpi9nSxFqab99: Error=-10.68, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:02.719962Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ SKlmLDQCNW1WeITWYbaR: Error=-11.46, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:44:00.919585Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ SF6NPaf6bpLQ4XuwtAn0: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-07-28T21:43:58.619864Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✅ RrqGLZ8fGWbxJAtrvGsa: Error=NaN, Confianza=0.30"
     }
   ]
 }
