@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-07-29T23:20:36Z",
+  "generated_at": "2026-07-29T23:48:34Z",
   "event_found": true,
-  "timestamp": "2026-07-29T22:50:48.484879Z",
+  "timestamp": "2026-07-29T23:24:58.581121Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1785365445342",
+  "run_id": "quant_1785367495336",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 6,
-    "analyzed_count": 6,
+    "accepted_symbol_count": 7,
+    "analyzed_count": 7,
     "eligible_count": 0,
     "failed_count": 5,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "KAITOUSDT",
-    "requested_count": 6,
+    "requested_count": 7,
     "selected_family": "MOMENTUM",
     "selected_symbol": "KAITOUSDT",
-    "valid_count": 1
+    "valid_count": 2
   },
   "selected_evidence": {
     "calibration": {
@@ -36,7 +36,7 @@
       "validation_expectancy_positive": false,
       "validation_fold_consistency": false,
       "validation_median_positive": false,
-      "validation_min_trades": false,
+      "validation_min_trades": true,
       "validation_profit_factor": false
     },
     "consistency": {
@@ -63,16 +63,16 @@
       "winRate": 0.2
     },
     "validation": {
-      "averageLoss": -0.005067471681247416,
+      "averageLoss": -0.00479104695781012,
       "averageWin": 0.020487031270182587,
-      "expectancy": -0.001136009688719723,
+      "expectancy": -0.0011798929252397326,
       "maxDrawdown": 0.04557869710076412,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.01534859366390573,
-      "profitFactor": 0.735063757767247,
-      "returnStd": 0.010364336320625441,
-      "trades": 13,
-      "winRate": 0.15384615384615385
+      "netReturn": -0.017072102869271077,
+      "profitFactor": 0.7126845638886812,
+      "returnStd": 0.00998857761992204,
+      "trades": 14,
+      "winRate": 0.14285714285714285
     }
   },
   "strategy_families": [
