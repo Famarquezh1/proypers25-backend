@@ -1,90 +1,104 @@
 {
-  "generated_at": "2026-07-30T09:50:00Z",
-  "count": 12,
+  "generated_at": "2026-07-30T10:42:22Z",
+  "count": 14,
   "errors": [
     {
-      "timestamp": "2026-07-30T09:45:11.138556Z",
+      "timestamp": "2026-07-30T10:40:08.478021Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para XRP-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:40:09.932364Z",
+      "timestamp": "2026-07-30T10:35:07.426532Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para XRP-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:35:28.759528Z",
+      "timestamp": "2026-07-30T10:30:08.093082Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para XRP-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:32:46.359398Z",
+      "timestamp": "2026-07-30T10:25:08.825872Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para XRP-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:28:18.459824Z",
+      "timestamp": "2026-07-30T10:20:10.111740Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "Error training candlesticks ADA-USD: undefined"
     },
     {
-      "timestamp": "2026-07-30T09:25:02.852298Z",
+      "timestamp": "2026-07-30T10:20:08.998455Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:22:48.947745Z",
+      "timestamp": "2026-07-30T10:19:49.118927Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:22:34.628741Z",
+      "timestamp": "2026-07-30T10:19:38.302453Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:20:10.856355Z",
+      "timestamp": "2026-07-30T10:19:28.048930Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:16:03.559795Z",
+      "timestamp": "2026-07-30T10:15:11.956087Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:10:17.458176Z",
+      "timestamp": "2026-07-30T10:12:57.459608Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para ADA-USD' }"
     },
     {
-      "timestamp": "2026-07-30T09:05:12.850815Z",
+      "timestamp": "2026-07-30T10:08:17.259878Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para ADA-USD' }"
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-07-30T10:05:02.847547Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-07-30T10:00:08.051687Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para ADA-USD' }"
     }
   ]
 }
