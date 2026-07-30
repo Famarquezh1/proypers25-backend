@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-07-30T16:30:22Z",
+  "generated_at": "2026-07-30T17:05:52Z",
   "event_found": true,
-  "timestamp": "2026-07-30T16:05:54.702424Z",
+  "timestamp": "2026-07-30T17:03:27.740279Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1785427549994",
+  "run_id": "quant_1785431003205",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
     "accepted_symbol_count": 10,
     "analyzed_count": 10,
     "eligible_count": 0,
-    "failed_count": 8,
+    "failed_count": 9,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "ONDOUSDT",
     "requested_count": 10,
     "selected_family": "TREND",
     "selected_symbol": "ONDOUSDT",
-    "valid_count": 2
+    "valid_count": 1
   },
   "selected_evidence": {
     "calibration": {
@@ -63,16 +63,16 @@
       "winRate": 0.25
     },
     "validation": {
-      "averageLoss": -0.005403396806655231,
-      "averageWin": 0.012850770494770125,
-      "expectancy": -0.0031216258939770615,
-      "maxDrawdown": 0.06705916627384646,
-      "medianReturn": -0.004124187500000041,
-      "netReturn": -0.04916039586526055,
-      "profitFactor": 0.3397537552923362,
-      "returnStd": 0.006947089911555474,
-      "trades": 16,
-      "winRate": 0.125
+      "averageLoss": -0.006012233774431107,
+      "averageWin": 0.012294237238720696,
+      "expectancy": -0.002350939571800747,
+      "maxDrawdown": 0.05331659406136362,
+      "medianReturn": -0.006498000000000002,
+      "netReturn": -0.0351541679782027,
+      "profitFactor": 0.5112175316188535,
+      "returnStd": 0.008017035627801913,
+      "trades": 15,
+      "winRate": 0.2
     }
   },
   "strategy_families": [
