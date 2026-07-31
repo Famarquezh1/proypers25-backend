@@ -1,7 +1,280 @@
 {
-  "generated_at": "2026-07-31T18:58:38Z",
-  "count": 22,
+  "generated_at": "2026-07-31T19:35:44Z",
+  "count": 41,
   "errors": [
+    {
+      "timestamp": "2026-07-31T19:35:11.963915Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:35:10.775333Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:35:03.141738Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:35:03.070146Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:30.383034Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:30.077400Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:18.569949Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:18.461361Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:15.204867Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:14.538243Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:05.654243Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:05.348981Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:01.473731Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:34:01.059623Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:33:52.348401Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:33:52.158972Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:30:09.241353Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:30:08.945651Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:30:02.753453Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:30:02.619095Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:25:09.070032Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:25:08.541983Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:25:03.350746Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:25:03.055028Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:20:05.933272Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:20:04.514134Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:20:03.591553Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:20:02.722361Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:15:03.361206Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:15:03.318667Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:15:03.131686Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:10:04.639647Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:10:04.615301Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:10:04.264100Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:05:10.021122Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:05:09.746997Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:05:09.725638Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:00:10.612732Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-07-31T19:00:07.312614Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
     {
       "timestamp": "2026-07-31T18:53:48.012313Z",
       "severity": "DEFAULT",
@@ -15,146 +288,6 @@
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:49:15.412503Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:45:27.221591Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:40:21.554959Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:40:18.426343Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:37:37.212360Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:57.527971Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:51.764554Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:45.688425Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:37.523688Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:33.553978Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:18.004184Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:36:17.830802Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:30:20.342168Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:30:20.182728Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:25:13.600989Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:25:13.312265Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:20:23.750800Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:20:23.711867Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:15:12.236500Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-07-31T18:15:12.140351Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
     }
   ]
 }
