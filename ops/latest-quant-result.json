@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-08-01T05:03:31Z",
+  "generated_at": "2026-08-01T06:18:04Z",
   "event_found": true,
-  "timestamp": "2026-08-01T04:39:53.417883Z",
+  "timestamp": "2026-08-01T06:03:05.490397Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1785559190220",
+  "run_id": "quant_1785564183213",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 6,
-    "analyzed_count": 6,
+    "accepted_symbol_count": 4,
+    "analyzed_count": 4,
     "eligible_count": 0,
     "failed_count": 3,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "SHIBUSDT",
-    "requested_count": 6,
+    "requested_count": 4,
     "selected_family": "TREND",
     "selected_symbol": "SHIBUSDT",
-    "valid_count": 3
+    "valid_count": 1
   },
   "selected_evidence": {
     "calibration": {
@@ -33,7 +33,7 @@
       "test_fold_consistency": false,
       "test_min_trades": true,
       "test_profit_factor": true,
-      "validation_expectancy_positive": false,
+      "validation_expectancy_positive": true,
       "validation_fold_consistency": false,
       "validation_median_positive": false,
       "validation_min_trades": false,
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": -0.0023280758344207844,
-      "median_validation_expectancy": -0.003268375684641537,
+      "median_validation_expectancy": -0.0017926123534114928,
       "positive_test_folds": 2,
       "positive_validation_folds": 1,
       "test_expectancy_std": 0.006484320412097166,
@@ -63,16 +63,16 @@
       "winRate": 0.2
     },
     "validation": {
-      "averageLoss": -0.005195728512958352,
+      "averageLoss": -0.00373221431581061,
       "averageWin": 0.047475000000000156,
-      "expectancy": -0.001144134011961544,
-      "maxDrawdown": 0.05918154530388773,
+      "expectancy": 0.000535053543840286,
+      "maxDrawdown": 0.03871149815563031,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.01624115539257609,
-      "profitFactor": 0.7614427871150251,
-      "returnStd": 0.015301860870183315,
-      "trades": 13,
-      "winRate": 0.07692307692307693
+      "netReturn": 0.005163175943732279,
+      "profitFactor": 1.156393691708918,
+      "returnStd": 0.014731037661336288,
+      "trades": 12,
+      "winRate": 0.08333333333333333
     }
   },
   "strategy_families": [
