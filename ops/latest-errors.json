@@ -1,7 +1,175 @@
 {
-  "generated_at": "2026-08-01T14:07:02Z",
-  "count": 24,
+  "generated_at": "2026-08-01T14:49:14Z",
+  "count": 26,
   "errors": [
+    {
+      "timestamp": "2026-08-01T14:48:26.412722Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para DOT-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:40:10.905368Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:40:10.885448Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para DOT-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:35:08.456441Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para DOT-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:35:07.992765Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:34:30.732334Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "Error training candlesticks XRP-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-01T14:34:28.723467Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:34:28.723114Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:34:13.942112Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:34:13.927232Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:33:59.348183Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:33:59.325502Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:33:45.154057Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:33:45.099251Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:30:02.667882Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:30:02.582848Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:23:55.612626Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:20:11.605648Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:18:11.412482Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:15:11.483062Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:15:02.287131Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:14:25.012822Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:10:03.182802Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-01T14:09:08.812700Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
     {
       "timestamp": "2026-08-01T14:05:09.156546Z",
       "severity": "DEFAULT",
@@ -15,160 +183,6 @@
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:55:12.785116Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:55:12.525235Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:50:42.712614Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:50:16.594167Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:50:08.239204Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:45:24.912498Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:45:04.068597Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:44:55.112316Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:40:13.724169Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:40:13.645798Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:35:04.636268Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:35:04.544266Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:39.785614Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:39.412387Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:27.169323Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:27.149136Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:14.905605Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:33:14.884222Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:29:51.912808Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:25:47.412835Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:25:03.083291Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para XRP-USD' }"
-    },
-    {
-      "timestamp": "2026-08-01T13:24:31.512627Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para XRP-USD' }"
     }
   ]
 }
