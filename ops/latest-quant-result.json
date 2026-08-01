@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-08-01T22:17:58Z",
+  "generated_at": "2026-08-01T22:46:37Z",
   "event_found": true,
-  "timestamp": "2026-08-01T21:49:57.318694Z",
+  "timestamp": "2026-08-01T22:22:02.348189Z",
   "revision": "proypers25-backend-00666-rjf",
-  "run_id": "quant_1785620995033",
+  "run_id": "quant_1785622919395",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 5,
-    "analyzed_count": 5,
+    "accepted_symbol_count": 6,
+    "analyzed_count": 6,
     "eligible_count": 0,
     "failed_count": 4,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "MIRAUSDT",
-    "requested_count": 5,
+    "requested_count": 6,
     "selected_family": "TREND",
     "selected_symbol": "MIRAUSDT",
-    "valid_count": 1
+    "valid_count": 2
   },
   "selected_evidence": {
     "calibration": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": -0.0019237887781504781,
-      "median_validation_expectancy": -0.003355139443277212,
+      "median_validation_expectancy": -0.002120431999510479,
       "positive_test_folds": 1,
       "positive_validation_folds": 0,
       "test_expectancy_std": 0.0026591930416724153,
@@ -63,16 +63,16 @@
       "winRate": 0.16
     },
     "validation": {
-      "averageLoss": -0.004689440035839875,
-      "averageWin": 0.014231082560793862,
-      "expectancy": -0.0024189773242438268,
-      "maxDrawdown": 0.07535808030663771,
+      "averageLoss": -0.0046544486687649066,
+      "averageWin": 0.014338831559107758,
+      "expectancy": -0.001615523832305281,
+      "maxDrawdown": 0.05668411842635601,
       "medianReturn": -0.00175037500000008,
-      "netReturn": -0.059322008660600334,
-      "profitFactor": 0.4138238579765571,
-      "returnStd": 0.00697089118762294,
+      "netReturn": -0.04032418412143446,
+      "profitFactor": 0.5867947431856342,
+      "returnStd": 0.00769785792127194,
       "trades": 25,
-      "winRate": 0.12
+      "winRate": 0.16
     }
   },
   "strategy_families": [
