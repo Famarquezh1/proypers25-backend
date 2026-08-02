@@ -1,174 +1,181 @@
 {
-  "generated_at": "2026-08-02T05:03:38Z",
-  "count": 24,
+  "generated_at": "2026-08-02T06:21:39Z",
+  "count": 25,
   "errors": [
     {
-      "timestamp": "2026-08-02T04:55:09.656042Z",
+      "timestamp": "2026-08-02T06:20:10.378152Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:55:09.495940Z",
+      "timestamp": "2026-08-02T06:15:10.935594Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:10:09.904405Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:06:35.812872Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:04:03.700401Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:03:52.283967Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:03:42.954920Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "Error training candlesticks HBAR-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-02T06:03:41.698849Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:03:41.555199Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:50:08.915349Z",
+      "timestamp": "2026-08-02T06:03:29.462622Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:50:08.867812Z",
+      "timestamp": "2026-08-02T06:03:29.433794Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:45:08.060527Z",
+      "timestamp": "2026-08-02T06:03:18.310586Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T06:03:16.956837Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:45:07.938545Z",
+      "timestamp": "2026-08-02T06:03:07.611876Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:37.373567Z",
+      "timestamp": "2026-08-02T06:00:35.211899Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:37.168723Z",
+      "timestamp": "2026-08-02T06:00:26.314729Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:25.652349Z",
+      "timestamp": "2026-08-02T05:58:08.512743Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:25.594449Z",
+      "timestamp": "2026-08-02T05:54:54.012349Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:13.054853Z",
+      "timestamp": "2026-08-02T05:54:21.212333Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:40:13.037421Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:40:01.961519Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:40:01.834397Z",
+      "timestamp": "2026-08-02T05:50:03.040652Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:39:49.559955Z",
+      "timestamp": "2026-08-02T05:48:30.812898Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00666-rjf",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-02T05:45:03.744130Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:39:49.244591Z",
+      "timestamp": "2026-08-02T05:44:09.012792Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:35:02.000988Z",
+      "timestamp": "2026-08-02T05:40:03.035245Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-02T04:34:57.012296Z",
+      "timestamp": "2026-08-02T05:39:59.112369Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00666-rjf",
       "event": null,
       "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:30:11.952688Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:30:11.562037Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:25:10.390698Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:25:10.226823Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:20:05.221095Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-02T04:20:05.161301Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00666-rjf",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     }
   ]
 }
