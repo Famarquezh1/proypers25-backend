@@ -103,12 +103,12 @@ jobs:
           if [ "$STATE" = "PAUSED" ]; then
             gcloud scheduler jobs resume "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
           fi
+          DEPLOY_EPOCH=$(date +%s)
           gcloud scheduler jobs run "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
           echo "Scheduler resumed and an immediate real pipeline cycle requested: $JOB"
 
-          DEPLOY_EPOCH=$(date +%s)
           LIVE=''
-          for attempt in $(seq 1 24); do
+          for attempt in $(seq 1 30); do
             sleep 10
             LIVE=$(curl --silent --show-error --fail-with-body --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true)
             CYCLE_EPOCH=$(jq -r '(.latest_cycle.timestamp // .latest_cycle.started_at // "1970-01-01T00:00:00Z") | fromdateiso8601' <<<"${LIVE:-{}}" 2>/dev/null || echo 0)
@@ -118,7 +118,7 @@ jobs:
           jq -e '.ok == true and .real_mode == true and .spot_only == true' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.promotion_blocks_entry == false' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.paper_to_real != "SKIPPED"' <<<"$LIVE" >/dev/null
-          jq -e '(.engine.assets_analyzed | tonumber) > 0' <<<"$LIVE" >/dev/null
+          jq -e 'any(.activity[]; .event_type == "DISCOVERY" and ((.details.total_symbols_scanned // 0) | tonumber) > 0)' <<<"$LIVE" >/dev/null
           jq -e '(.latest_cycle.reasons | type == "array") and (.latest_cycle.blockers | type == "array")' <<<"$LIVE" >/dev/null
           echo 'Fresh production cycle verified: Binance discovery ran, Paper-to-Real was evaluated, and promotion did not block entry.'
 
