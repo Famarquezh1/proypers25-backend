@@ -15,7 +15,7 @@ function compactReasons(...groups) {
 
 function inferAction(entries, exits) {
   const opened = asNumber(entries?.positions_opened ?? entries?.opened_positions ?? entries?.orders_created, 0);
-  const closed = asNumber(exits?.positions_closed ?? exits?.closed_positions ?? exits?.orders_executed, 0);
+  const closed = asNumber(exits?.positions_closed ?? exits?.closed_positions ?? exits?.sold ?? exits?.orders_executed, 0);
   if (closed > 0 && opened > 0) return 'SELL_AND_BUY';
   if (closed > 0) return 'SELL';
   if (opened > 0 || entries?.order_id || entries?.executed === true) return 'BUY';
@@ -25,7 +25,6 @@ function inferAction(entries, exits) {
 function normalizeExitFailure(failure, index) {
   const source = failure && typeof failure === 'object' ? failure : { message: failure };
   const error = source.error && typeof source.error === 'object' ? source.error : {};
-
   return {
     index,
     symbol: firstNonEmpty(source.symbol, source.pair, source.position?.symbol, source.asset),
@@ -42,7 +41,6 @@ function normalizeExitFailure(failure, index) {
 function buildExitDiagnostics(exits = {}) {
   const failures = Array.isArray(exits?.failures) ? exits.failures : [];
   const normalizedFailures = failures.slice(0, 10).map(normalizeExitFailure);
-
   return {
     ok: exits?.ok !== false,
     blocked: exits?.blocked === true,
@@ -58,28 +56,21 @@ function buildExitDiagnostics(exits = {}) {
 
 function buildSpotCycleDecisionLog(input = {}) {
   const {
-    reconciliation = {},
-    exits = {},
-    autonomy = {},
-    adaptiveGate = {},
-    promotionGate = {},
-    paperGate = {},
-    entries = {},
-    openPositionsAfterCycle = 0,
-    durationMs = 0,
-    config = {}
+    reconciliation = {}, exits = {}, autonomy = {}, adaptiveGate = {}, promotionGate = {}, paperGate = {}, entries = {},
+    openPositionsAfterCycle = 0, durationMs = 0, config = {}, discovery = {}, paperValidation = {}, safetyFailures = []
   } = input;
-
-  const candidate = paperGate?.candidate || entries?.candidate || null;
+  const candidate = paperGate?.candidate || entries?.candidate || entries?.entry_diagnostic?.approved_candidate || null;
   const action = inferAction(entries, exits);
   const exitDiagnostics = buildExitDiagnostics(exits);
+  const explicitFailures = Array.isArray(entries?.failed_conditions) && entries.failed_conditions.length ? entries.failed_conditions : safetyFailures;
+  const exactFailureCodes = explicitFailures.map((failure) => failure.code || failure.condition).filter(Boolean);
   const reasons = compactReasons(
     exitDiagnostics.failure_reasons,
+    exactFailureCodes,
     entries?.reason,
     entries?.gate_reasons || [],
     paperGate?.reasons || [],
     adaptiveGate?.reasons || [],
-    promotionGate?.reasons || [],
     autonomy?.halt_reason,
     reconciliation?.entries_blocked ? 'ACCOUNT_RECONCILIATION_BLOCKED' : null,
     exits?.blocked ? 'EXIT_ENGINE_BLOCKED' : null
@@ -92,8 +83,9 @@ function buildSpotCycleDecisionLog(input = {}) {
     decision: action === 'NO_ACTION' ? 'SKIP' : 'EXECUTED',
     reason: reasons[0] || null,
     reasons,
+    failed_conditions: explicitFailures,
     candidate: candidate ? {
-      symbol: firstNonEmpty(candidate.symbol, entries?.symbol),
+      symbol: firstNonEmpty(candidate.symbol, entries?.symbol, entries?.selected_symbol),
       score: firstNonEmpty(candidate.score, candidate.opportunityScore, candidate.opportunity_score),
       category: firstNonEmpty(candidate.category),
       scan_id: firstNonEmpty(candidate.scan_id, paperGate?.latest_scan_id)
@@ -103,25 +95,42 @@ function buildSpotCycleDecisionLog(input = {}) {
       exit_engine: exits?.ok !== false && exits?.blocked !== true && exits?.exit_engine_healthy !== false ? 'PASS' : 'BLOCK',
       autonomy: autonomy?.should_halt === true ? 'BLOCK' : 'PASS',
       adaptive: adaptiveGate?.allowed === false ? 'BLOCK' : 'PASS',
-      promotion: promotionGate?.allowed === true ? 'PASS' : 'BLOCK',
-      paper_to_real: paperGate?.allowed === true ? 'PASS' : (paperGate?.skipped ? 'SKIPPED' : 'BLOCK')
+      promotion: promotionGate?.high_confidence === true ? 'CONFIDENCE_HIGH' : 'CONFIDENCE_LOW',
+      promotion_blocks_entry: false,
+      paper_to_real: paperGate?.allowed === true ? 'PASS' : 'BLOCK',
+      technical_confirmation: paperGate?.technical_confirmation?.allowed === true ? 'PASS' : paperGate?.technical_confirmation ? 'BLOCK' : 'NOT_REACHED'
     },
     market: {
-      regime: firstNonEmpty(adaptiveGate?.regime, adaptiveGate?.market_regime, adaptiveGate?.state),
+      regime: firstNonEmpty(adaptiveGate?.regime?.regime, adaptiveGate?.regime, adaptiveGate?.market_regime, adaptiveGate?.state),
       promoted_symbol: firstNonEmpty(promotionGate?.symbol),
-      promotion_state: firstNonEmpty(promotionGate?.state, promotionGate?.status)
+      promotion_state: firstNonEmpty(promotionGate?.state, promotionGate?.status),
+      promotion_indicator_only: true,
+      discovery_scan_id: discovery?.scan_id || null,
+      assets_analyzed: asNumber(discovery?.total_symbols_scanned, 0),
+      candidates_ranked: asNumber(discovery?.candidates_saved, 0),
+      top_symbol: discovery?.top_symbol || null,
+      top_score: discovery?.top_score ?? null
+    },
+    paper_validation: {
+      latest_scan_id: paperValidation?.latest_scan_id || discovery?.scan_id || null,
+      intents_created: asNumber(paperValidation?.intents_created, 0),
+      intents_rejected: asNumber(paperValidation?.intents_rejected, 0),
+      positions_closed: asNumber(paperValidation?.positions_closed, 0)
     },
     execution: {
       positions_opened: asNumber(entries?.positions_opened ?? entries?.opened_positions, 0),
-      positions_closed: asNumber(exits?.positions_closed ?? exits?.closed_positions, 0),
+      positions_closed: asNumber(exits?.positions_closed ?? exits?.closed_positions ?? exits?.sold, 0),
       open_positions_after_cycle: asNumber(openPositionsAfterCycle, 0),
       exit_failures: exitDiagnostics.failure_count,
+      order_created: entries?.order_created === true,
+      selected_symbol: entries?.selected_symbol || entries?.symbol || candidate?.symbol || null,
       duration_ms: asNumber(durationMs, 0)
     },
     exit_diagnostics: exitDiagnostics,
     safety: {
       spot_only: config?.spot_only === true,
       max_position_usdt: asNumber(config?.max_position_usdt ?? config?.max_capital_per_trade_usdt, 0),
+      max_open_positions: asNumber(config?.max_open_positions, 0),
       futures_allowed: config?.futures_allowed === true,
       margin_allowed: config?.margin_allowed === true,
       leverage_allowed: config?.leverage_allowed === true,
@@ -135,11 +144,4 @@ function logSpotCycleDecision(summary, logger = console) {
   return summary;
 }
 
-module.exports = {
-  buildSpotCycleDecisionLog,
-  buildExitDiagnostics,
-  normalizeExitFailure,
-  logSpotCycleDecision,
-  inferAction,
-  compactReasons
-};
+module.exports = { buildSpotCycleDecisionLog, buildExitDiagnostics, normalizeExitFailure, logSpotCycleDecision, inferAction, compactReasons };
