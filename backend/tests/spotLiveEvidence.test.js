@@ -18,8 +18,10 @@ const blockers = blockerDetails({
 assert.strictEqual(blockers.length, 2);
 assert.strictEqual(blockers[0].component, 'Exit Engine');
 assert.strictEqual(blockers[0].reason, 'MIN_NOTIONAL');
-assert.strictEqual(blockers[1].component, 'Strategy Promotion');
+assert.strictEqual(blockers[1].component, 'Paper → Real');
+assert.strictEqual(blockers[1].reason, 'PAPER_REAL_ENTRY_GATE_BLOCKED');
 assert.ok(blockers[1].missing_condition);
+assert.ok(!blockers.some((blocker) => blocker.component === 'Strategy Promotion'));
 assert.strictEqual(schedulerIntervalMinutes({ spot_cycle_interval_minutes: 10 }), 10);
 
 console.log('spotLiveEvidence tests passed');
