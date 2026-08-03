@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T20:53:53Z",
+  "generated_at": "2026-08-03T21:23:53Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00670-4kh",
@@ -9,7 +9,7 @@
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "TECHNICAL_VOLUME_NOT_CONFIRMED",
+    "latest_reason": "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
@@ -17,6 +17,7 @@
     "promoted_symbol": "EULUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
       "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "INSUFFICIENT_REAL_SAMPLE"
     ],
