@@ -54,6 +54,27 @@ function buildExitDiagnostics(exits = {}) {
   };
 }
 
+function summarizeCandidateAudit(paperGate = {}) {
+  const audit = Array.isArray(paperGate?.candidate_pool_audit) ? paperGate.candidate_pool_audit : [];
+  const tacticalReady = audit.filter((candidate) => candidate.tactical_allowed === true);
+  const standardReady = audit.filter((candidate) => candidate.standard_allowed === true);
+  const tacticalRejections = audit.flatMap((candidate) => candidate.tactical_reasons || []);
+  const rejectionCounts = tacticalRejections.reduce((acc, reason) => {
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    audited_candidates: audit.length,
+    standard_ready_count: standardReady.length,
+    tactical_ready_count: tacticalReady.length,
+    tactical_ready_symbols: tacticalReady.slice(0, 10).map((candidate) => candidate.symbol),
+    top_tactical_rejection_reasons: Object.entries(rejectionCounts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 5)
+      .map(([reason, count]) => ({ reason, count }))
+  };
+}
+
 function buildSpotCycleDecisionLog(input = {}) {
   const {
     reconciliation = {}, exits = {}, autonomy = {}, adaptiveGate = {}, promotionGate = {}, paperGate = {}, entries = {},
@@ -62,6 +83,7 @@ function buildSpotCycleDecisionLog(input = {}) {
   const candidate = paperGate?.candidate || entries?.candidate || entries?.entry_diagnostic?.approved_candidate || null;
   const action = inferAction(entries, exits);
   const exitDiagnostics = buildExitDiagnostics(exits);
+  const opportunityAudit = summarizeCandidateAudit(paperGate);
   const explicitFailures = Array.isArray(entries?.failed_conditions) && entries.failed_conditions.length ? entries.failed_conditions : safetyFailures;
   const exactFailureCodes = explicitFailures.map((failure) => failure.code || failure.condition).filter(Boolean);
   const reasons = compactReasons(
@@ -75,6 +97,7 @@ function buildSpotCycleDecisionLog(input = {}) {
     reconciliation?.entries_blocked ? 'ACCOUNT_RECONCILIATION_BLOCKED' : null,
     exits?.blocked ? 'EXIT_ENGINE_BLOCKED' : null
   );
+  const entryMode = firstNonEmpty(paperGate?.entry_mode, candidate?.entry_mode, entries?.entry_mode);
 
   return {
     event: 'SPOT_REAL_CYCLE_DECISION',
@@ -84,11 +107,18 @@ function buildSpotCycleDecisionLog(input = {}) {
     reason: reasons[0] || null,
     reasons,
     failed_conditions: explicitFailures,
+    entry_mode: entryMode,
+    tactical_entry: entryMode === 'TACTICAL_MOMENTUM',
     candidate: candidate ? {
       symbol: firstNonEmpty(candidate.symbol, entries?.symbol, entries?.selected_symbol),
       score: firstNonEmpty(candidate.score, candidate.opportunityScore, candidate.opportunity_score),
       category: firstNonEmpty(candidate.category),
-      scan_id: firstNonEmpty(candidate.scan_id, paperGate?.latest_scan_id)
+      scan_id: firstNonEmpty(candidate.scan_id, paperGate?.latest_scan_id),
+      entry_mode: entryMode,
+      price_change_24h: firstNonEmpty(candidate.priceChange24h, candidate.price_change_24h),
+      impulse_score: firstNonEmpty(candidate.impulseScore, candidate.impulse_score),
+      liquidity_score: firstNonEmpty(candidate.liquidityScore, candidate.liquidity_score),
+      risk_score: firstNonEmpty(candidate.riskScore, candidate.risk_score)
     } : null,
     gates: {
       reconciliation: reconciliation?.account_consistent === true && reconciliation?.entries_blocked !== true ? 'PASS' : 'BLOCK',
@@ -98,6 +128,7 @@ function buildSpotCycleDecisionLog(input = {}) {
       promotion: promotionGate?.high_confidence === true ? 'CONFIDENCE_HIGH' : 'CONFIDENCE_LOW',
       promotion_blocks_entry: false,
       paper_to_real: paperGate?.allowed === true ? 'PASS' : 'BLOCK',
+      tactical_momentum: entryMode === 'TACTICAL_MOMENTUM' ? (paperGate?.allowed === true ? 'PASS' : 'BLOCK') : 'NOT_SELECTED',
       technical_confirmation: paperGate?.technical_confirmation?.allowed === true ? 'PASS' : paperGate?.technical_confirmation ? 'BLOCK' : 'NOT_REACHED'
     },
     market: {
@@ -109,7 +140,8 @@ function buildSpotCycleDecisionLog(input = {}) {
       assets_analyzed: asNumber(discovery?.total_symbols_scanned, 0),
       candidates_ranked: asNumber(discovery?.candidates_saved, 0),
       top_symbol: discovery?.top_symbol || null,
-      top_score: discovery?.top_score ?? null
+      top_score: discovery?.top_score ?? null,
+      opportunity_audit: opportunityAudit
     },
     paper_validation: {
       latest_scan_id: paperValidation?.latest_scan_id || discovery?.scan_id || null,
@@ -124,6 +156,7 @@ function buildSpotCycleDecisionLog(input = {}) {
       exit_failures: exitDiagnostics.failure_count,
       order_created: entries?.order_created === true,
       selected_symbol: entries?.selected_symbol || entries?.symbol || candidate?.symbol || null,
+      entry_mode: entryMode,
       duration_ms: asNumber(durationMs, 0)
     },
     exit_diagnostics: exitDiagnostics,
@@ -144,4 +177,12 @@ function logSpotCycleDecision(summary, logger = console) {
   return summary;
 }
 
-module.exports = { buildSpotCycleDecisionLog, buildExitDiagnostics, normalizeExitFailure, logSpotCycleDecision, inferAction, compactReasons };
+module.exports = {
+  buildSpotCycleDecisionLog,
+  buildExitDiagnostics,
+  normalizeExitFailure,
+  logSpotCycleDecision,
+  inferAction,
+  compactReasons,
+  summarizeCandidateAudit
+};
