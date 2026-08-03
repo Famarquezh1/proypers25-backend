@@ -2,7 +2,12 @@
 
 const assert = require('assert');
 const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason } = require('../services/spotRealPipelinePolicy');
-const { validationEvidenceForSymbol } = require('../services/paperToRealEntryGate');
+const {
+  validationEvidenceForSymbol,
+  evaluateTacticalMomentumCandidate,
+  tacticalThresholds,
+  buildCandidateAudit
+} = require('../services/paperToRealEntryGate');
 
 const safeConfig = {
   enabled: true,
@@ -89,5 +94,60 @@ assert.strictEqual(evidence.positive_horizons, 2);
 assert.strictEqual(evidence.positive_paper_trades, 1);
 assert.strictEqual(evidence.positive_rate, 0.75);
 assert.strictEqual(evidence.latest_positive_validation_id, 'old_positive');
+
+const tacticalCandidate = {
+  symbol: 'BICOUSDT',
+  scan_id: 'current',
+  opportunityScore: 76,
+  quoteVolume24h: 3500000,
+  priceChange24h: 7.4,
+  impulseScore: 74,
+  liquidityScore: 71,
+  riskScore: 32,
+  category: 'MOMENTUM',
+  warnings: [],
+  recommendation: 'WATCH'
+};
+const tacticalWithoutHistory = evaluateTacticalMomentumCandidate(tacticalCandidate, { sample_size: 0, positive_rate: 0 }, {});
+assert.strictEqual(tacticalWithoutHistory.allowed, true);
+assert.strictEqual(tacticalThresholds({}).maximum_price_change_24h, 18);
+assert.strictEqual(tacticalThresholds({}).minimum_technical_score, 70);
+
+const parabolicCandidate = evaluateTacticalMomentumCandidate({
+  ...tacticalCandidate,
+  priceChange24h: 31,
+  warnings: ['parabolic_24h_move']
+}, { sample_size: 0, positive_rate: 0 }, {});
+assert.strictEqual(parabolicCandidate.allowed, false);
+assert(parabolicCandidate.reasons.includes('TACTICAL_MOVE_ALREADY_EXTENDED'));
+assert(parabolicCandidate.reasons.includes('TACTICAL_BLOCKING_WARNING'));
+
+const illiquidCandidate = evaluateTacticalMomentumCandidate({
+  ...tacticalCandidate,
+  quoteVolume24h: 120000,
+  liquidityScore: 35
+}, { sample_size: 0, positive_rate: 0 }, {});
+assert.strictEqual(illiquidCandidate.allowed, false);
+assert(illiquidCandidate.reasons.includes('TACTICAL_LIQUIDITY_VOLUME_TOO_LOW'));
+
+const negativeHistoryCandidate = evaluateTacticalMomentumCandidate(
+  tacticalCandidate,
+  { sample_size: 4, positive_rate: 0.25 },
+  {}
+);
+assert.strictEqual(negativeHistoryCandidate.allowed, false);
+assert(negativeHistoryCandidate.reasons.includes('TACTICAL_EXISTING_EVIDENCE_NEGATIVE'));
+
+const audit = buildCandidateAudit(
+  [tacticalCandidate, { ...tacticalCandidate, symbol: 'PUMPUSDT', priceChange24h: 28, warnings: ['parabolic_24h_move'] }],
+  [],
+  [],
+  'current',
+  {}
+);
+assert.strictEqual(audit.length, 2);
+assert.strictEqual(audit[0].tactical_allowed, true);
+assert.strictEqual(audit[1].tactical_allowed, false);
+assert(audit[1].tactical_reasons.includes('TACTICAL_MOVE_ALREADY_EXTENDED'));
 
 console.log('spotRealPipeline tests passed');
