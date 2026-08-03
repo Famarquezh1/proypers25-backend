@@ -3,15 +3,19 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../firebase-admin-config');
-const { getRealSpotConfig, runRealSpotExecutionCycle } = require('../services/binanceSpotRealExecutor');
+const { getRealSpotConfig } = require('../services/binanceSpotRealExecutor');
+const { executeApprovedSpotCandidate } = require('../services/approvedSpotRealExecutor');
 const { evaluateAndExecuteRealSpotExits, determineExit } = require('../services/controlledSpotExitExecutor');
 const { reconcileManagedSpotAccount } = require('../services/spotManagedQuantityRepair');
 const { enforceAutonomousSafety } = require('../services/spotAutonomyController');
 const { evaluatePaperToRealEntryGate } = require('../services/paperToRealEntryGate');
-const { getAdaptiveEntryGate, runAdaptiveSpotStrategyController } = require('../services/adaptiveSpotStrategyController');
-const { getStrategyPromotionGate } = require('../services/spotStrategyPromotionController');
+const { runAdaptiveSpotStrategyController, getAdaptiveEntryGate } = require('../services/adaptiveSpotStrategyController');
+const { evaluateStrategyPromotion, getStrategyPromotionGate } = require('../services/spotStrategyPromotionController');
+const { scanBinanceSpotOpportunities } = require('../services/binanceSpotOpportunityScanner');
+const { runSpotPaperExecutionCycle } = require('../services/binanceSpotPaperExecutor');
 const { buildSpotCycleDecisionLog, logSpotCycleDecision } = require('../services/spotCycleObservability');
 const { persistActivity, persistCycleEvidence } = require('../services/spotLiveEvidence');
+const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason } = require('../services/spotRealPipelinePolicy');
 
 const router = express.Router();
 
@@ -45,20 +49,22 @@ async function releaseReconciliationEntryGateWhenSafe(reconciliation) {
   }, { merge: true });
 }
 
+async function refreshAdaptiveAndPromotion(config) {
+  await runAdaptiveSpotStrategyController(db);
+  const adaptiveGate = await getAdaptiveEntryGate(db);
+  await evaluateStrategyPromotion(db, config);
+  const promotionGate = await getStrategyPromotionGate(db);
+  return { adaptiveGate, promotionGate };
+}
+
 router.post('/internal/cron/binance/spot-adaptive-strategy', requireCronSecret, async (_req, res) => {
-  try {
-    return res.json({ ok: true, ...(await runAdaptiveSpotStrategyController(db)) });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: 'ADAPTIVE_STRATEGY_FAILED', details: error.message });
-  }
+  try { return res.json({ ok: true, ...(await runAdaptiveSpotStrategyController(db)) }); }
+  catch (error) { return res.status(500).json({ ok: false, error: 'ADAPTIVE_STRATEGY_FAILED', details: error.message }); }
 });
 
 router.get('/spot-adaptive-strategy/status', async (_req, res) => {
-  try {
-    return res.json({ ok: true, ...(await getAdaptiveEntryGate(db)) });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message });
-  }
+  try { return res.json({ ok: true, ...(await getAdaptiveEntryGate(db)) }); }
+  catch (error) { return res.status(500).json({ ok: false, error: error.message }); }
 });
 
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
@@ -68,76 +74,89 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
   let reconciliation = {};
   let exits = {};
   let autonomy = {};
+  let discovery = {};
+  let paperValidation = {};
   let adaptiveGate = {};
   let promotionGate = {};
+  let promotionConfidence = {};
   let paperGate = {};
+  let safetyFailures = [];
   let entries = {};
+
   try {
     await persistActivity(db, { event_type: 'SCHEDULER_START', source: 'CLOUD_SCHEDULER', created_at: startedAt, route: req.path });
+
     reconciliation = await reconcileManagedSpotAccount(db);
     await releaseReconciliationEntryGateWhenSafe(reconciliation);
-
     config = await getRealSpotConfig(db);
+
     exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
-    const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
-    [adaptiveGate, promotionGate] = await Promise.all([getAdaptiveEntryGate(db), getStrategyPromotionGate(db)]);
 
-    const reconciliationBlocksEntry = reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false;
-    const exitFailures = Array.isArray(exits.failures) ? exits.failures.length : 0;
-    const exitEngineBlocksEntry = exits.blocked === true || exits.ok === false || exits.exit_engine_healthy === false || exitFailures > 0;
-    const adaptiveBlocksEntry = adaptiveGate.allowed === false;
-    const promotionBlocksEntry = promotionGate.allowed !== true;
+    // A real scheduler cycle now produces fresh Binance discovery, ranking and
+    // Paper evidence instead of consuming unrelated stale documents.
+    discovery = await scanBinanceSpotOpportunities(db, req.body?.discovery || {});
+    paperValidation = await runSpotPaperExecutionCycle(db, req.body?.paper || {});
+    ({ adaptiveGate, promotionGate } = await refreshAdaptiveAndPromotion(config));
+    promotionConfidence = buildPromotionConfidence(promotionGate);
 
-    paperGate = { allowed: false, skipped: true, reasons: ['ENTRY_PRECONDITIONS_NOT_MET'], no_order_created: true, version: 'paper_to_real_entry_gate_v1' };
-    entries = {
-      ok: true,
-      skipped: true,
-      reason: reconciliationBlocksEntry ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED' :
-        exitEngineBlocksEntry ? 'EXIT_ENGINE_NOT_HEALTHY' :
-          adaptiveBlocksEntry ? 'ADAPTIVE_STRATEGY_DEGRADED' :
-            promotionBlocksEntry ? 'STRATEGY_NOT_PROMOTED' :
-              openAfterExit.size > 0 ? 'OPEN_POSITION_REMAINS' :
-                autonomy.should_halt ? autonomy.halt_reason : 'PAPER_REAL_GATE_NOT_EVALUATED'
-    };
+    // Promotion is deliberately informational. Every fresh opportunity reaches
+    // Paper-to-Real and independent technical confirmation.
+    paperGate = await evaluatePaperToRealEntryGate(db, config);
 
-    const baseEntryConditionsMet = !reconciliationBlocksEntry && !exitEngineBlocksEntry && !adaptiveBlocksEntry && !promotionBlocksEntry && openAfterExit.size === 0 && autonomy.should_halt !== true &&
-      config.enabled === true && config.kill_switch !== true && config.new_entries_enabled === true && config.auto_order_execution === true && config.real_sells_enabled === true &&
-      config.spot_only === true && config.futures_allowed !== true && config.margin_allowed !== true && config.leverage_allowed !== true && config.withdrawals_allowed === false;
+    const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
+    safetyFailures = buildEntrySafetyFailures({
+      reconciliation,
+      exits,
+      adaptiveGate,
+      paperGate,
+      autonomy,
+      config,
+      openPositions: openAfterExit.size
+    });
 
-    if (baseEntryConditionsMet) {
-      paperGate = await evaluatePaperToRealEntryGate(db, config);
-      const promotedSymbolMatches = !promotionGate.symbol || String(paperGate.candidate?.symbol || '').toUpperCase() === String(promotionGate.symbol).toUpperCase();
-      if (paperGate.allowed === true && promotedSymbolMatches) {
-        entries = await runRealSpotExecutionCycle(db, {
-          ...req.body,
-          controlled_exit_completed: true,
-          exit_engine_healthy: true,
-          reconciliation_completed: true,
-          adaptive_strategy_gate_completed: true,
-          adaptive_strategy_snapshot: adaptiveGate,
-          strategy_promotion_gate_completed: true,
-          strategy_promotion_snapshot: promotionGate,
-          paper_real_gate_completed: true,
-          paper_real_gate_snapshot: paperGate,
-          autonomy_snapshot: autonomy
-        });
-      } else {
-        entries = {
-          ok: true,
-          skipped: true,
-          reason: paperGate.allowed !== true ? 'PAPER_REAL_ENTRY_GATE_BLOCKED' : 'PROMOTED_SYMBOL_MISMATCH',
-          candidate: paperGate.candidate || null,
-          promoted_symbol: promotionGate.symbol || null,
-          gate_reasons: paperGate.allowed !== true ? (paperGate.reasons || []) : ['PROMOTED_SYMBOL_MISMATCH']
-        };
-      }
+    if (safetyFailures.length === 0) {
+      entries = await executeApprovedSpotCandidate(db, paperGate.candidate, {
+        paper_gate: paperGate,
+        promotion_confidence: promotionConfidence,
+        strategy_metadata: {
+          strategy: 'CONTROLLED_PAPER_TO_REAL',
+          decision_reason: 'Fresh discovery, historical Paper evidence and live technical confirmation passed',
+          promotion_confidence: promotionConfidence.state
+        }
+      });
+    } else {
+      entries = {
+        ok: true,
+        skipped: true,
+        reason: firstFailureReason(safetyFailures),
+        failed_conditions: safetyFailures,
+        candidate: paperGate.candidate || null,
+        promotion_confidence: promotionConfidence,
+        no_order_created: true
+      };
     }
 
+    const finalOpenPositions = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     const durationMs = Date.now() - startedAtMs;
-    const decisionLog = buildSpotCycleDecisionLog({ reconciliation, exits, autonomy, adaptiveGate, promotionGate, paperGate, entries, openPositionsAfterCycle: openAfterExit.size, durationMs, config });
+    const decisionLog = buildSpotCycleDecisionLog({
+      reconciliation,
+      exits,
+      autonomy,
+      adaptiveGate,
+      promotionGate: promotionConfidence,
+      paperGate,
+      entries,
+      openPositionsAfterCycle: finalOpenPositions.size,
+      durationMs,
+      config,
+      discovery,
+      paperValidation,
+      safetyFailures
+    });
     logSpotCycleDecision(decisionLog);
+
     const evidence = await persistCycleEvidence(db, {
       decision: decisionLog,
       started_at: startedAt,
@@ -146,10 +165,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       exits,
       autonomy,
       adaptiveGate,
-      promotionGate,
+      promotionGate: promotionConfidence,
       paperGate,
       entries,
-      config
+      config,
+      discovery,
+      paperValidation,
+      safetyFailures
     });
 
     return res.json({
@@ -160,19 +182,22 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       margin: false,
       leverage: false,
       withdrawals: false,
+      pipeline: ['Scheduler', 'Reconciliation', 'Exit Engine', 'Discovery', 'Ranking', 'Paper Validation', 'Adaptive Strategy', 'Strategy Promotion Confidence', 'Technical Confirmation', 'Paper-to-Real', 'Safety Checks', 'Real Executor'],
+      discovery,
+      ranking: { latest_scan_id: discovery.scan_id || null, candidates_saved: discovery.candidates_saved || 0, top_symbol: discovery.top_symbol || null, top_score: discovery.top_score || null },
+      paper_validation: paperValidation,
       reconciliation,
       autonomy,
       exits,
-      exit_engine_blocks_entry: exitEngineBlocksEntry,
       adaptive_strategy_gate: adaptiveGate,
-      adaptive_strategy_blocks_entry: adaptiveBlocksEntry,
-      strategy_promotion_gate: promotionGate,
-      strategy_promotion_blocks_entry: promotionBlocksEntry,
+      strategy_promotion_confidence: promotionConfidence,
+      strategy_promotion_blocks_entry: false,
       paper_entry_gate: paperGate,
+      safety_checks: { allowed: safetyFailures.length === 0, failed_conditions: safetyFailures },
       entries,
       decision_summary: decisionLog,
       evidence_id: evidence.id,
-      open_positions_after_cycle: openAfterExit.size,
+      open_positions_after_cycle: finalOpenPositions.size,
       duration_ms: durationMs
     });
   } catch (error) {
@@ -183,6 +208,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       action: 'ERROR',
       decision: 'FAILED',
       reason: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED',
+      reasons: [error.message],
       error: error.message,
       duration_ms: durationMs
     };
@@ -196,10 +222,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
         exits,
         autonomy,
         adaptiveGate,
-        promotionGate,
+        promotionGate: promotionConfidence,
         paperGate,
         entries,
         config,
+        discovery,
+        paperValidation,
+        safetyFailures,
         error: error.message
       });
     } catch (persistError) {
