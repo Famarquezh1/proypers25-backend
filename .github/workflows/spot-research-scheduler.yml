@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
-          echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK backend=$BACKEND_URL"
+          echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK backend=$BACKEND_URL policy=FULL_FREQUENCY"
           MARKET_RESULT='{}'
 
           call_endpoint() {
@@ -113,6 +113,10 @@ jobs:
 
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
+
+          # Full-frequency policy: Discovery and Gem Radar run every 30 minutes.
+          # Economic governance measures whether trading covers costs, but it
+          # never slows down or pauses research jobs.
           run_market_opportunity
           run_gem_radar
 
@@ -125,14 +129,8 @@ jobs:
             call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
           fi
 
-          if [ "$MINUTE" = "00" ]; then
-            STATUS=$(curl --silent --show-error --fail-with-body --retry 2 --max-time 60 \
-              -H "x-cron-secret: $CRON_SECRET" \
-              "$BACKEND_URL/internal/spot-cost-governance/status" || echo '{}')
-            MODE=$(printf '%s' "$STATUS" | jq -r '.config.current_mode // "NORMAL"')
-            MULTIPLIER=$(printf '%s' "$STATUS" | jq -r '.config.research_frequency_multiplier // 1')
-            PERIOD=$((2 * MULTIPLIER))
-            if [ "$MODE" != "PAUSED" ] && [ $((10#$HOUR % PERIOD)) -eq 0 ]; then
-              run_quant_and_promotion
-            fi
+          # Quant and promotion remain fixed every two hours. No cost mode,
+          # multiplier or deficit can reduce this cadence.
+          if [ "$MINUTE" = "00" ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
+            run_quant_and_promotion
           fi
