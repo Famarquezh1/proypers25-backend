@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-04T22:53:41Z",
+  "generated_at": "2026-08-04T23:56:20Z",
   "event_found": true,
-  "timestamp": "2026-08-04T22:16:32.162552Z",
-  "revision": "proypers25-backend-00674-9z6",
-  "run_id": "quant_1785881788896",
+  "timestamp": "2026-08-04T23:34:31.795905Z",
+  "revision": "proypers25-backend-00677-k7c",
+  "run_id": "quant_1785886468556",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
@@ -20,16 +20,16 @@
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.5033333333333334,
+      "brier": 0.5045454545454546,
       "calibrated": false,
-      "samples": 12
+      "samples": 11
     },
     "checks": {
       "expectation_stability": true,
       "median_test_expectancy_positive": true,
       "probability_calibrated": true,
       "test_drawdown": true,
-      "test_expectancy_positive": false,
+      "test_expectancy_positive": true,
       "test_fold_consistency": false,
       "test_min_trades": false,
       "test_profit_factor": false,
@@ -41,26 +41,26 @@
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": 0.00010724611486381905,
+      "median_test_expectancy": 0.001077262590834461,
       "median_validation_expectancy": 0.0016706555924254091,
-      "positive_test_folds": 1,
+      "positive_test_folds": 2,
       "positive_validation_folds": 0,
-      "test_expectancy_std": 0.0026214722676765907,
-      "test_ratio": 0.25,
+      "test_expectancy_std": 0.0035672139057323976,
+      "test_ratio": 0.5,
       "validation_ratio": 0
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.007228899558108708,
-      "averageWin": 0.012690936010289202,
-      "expectancy": -0.0005889543686427376,
-      "maxDrawdown": 0.029109437263825866,
+      "averageLoss": -0.006533369337386985,
+      "averageWin": 0.013399679386178755,
+      "expectancy": 0.0007150120166369207,
+      "maxDrawdown": 0.017220148824279802,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.007713044719551476,
-      "profitFactor": 0.8777916962515884,
-      "returnStd": 0.010596170863402104,
-      "trades": 12,
-      "winRate": 0.3333333333333333
+      "netReturn": 0.007265216828092225,
+      "profitFactor": 1.1719771612218997,
+      "returnStd": 0.01065526730880211,
+      "trades": 11,
+      "winRate": 0.36363636363636365
     },
     "validation": {
       "averageLoss": -0.007366735273305946,
