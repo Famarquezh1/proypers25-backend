@@ -126,6 +126,14 @@ jobs:
           JOB="spot-real-execution"
           URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.url)')
 
+          COST=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -X POST "$URL/internal/cron/binance/spot-cost-governance" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            --data '{}')
+          jq -e '.ok == true and (.economics.cost_source | type == "string") and (.economics.infrastructure_cost_30d_usd | type == "number") and (.economics.net_after_infrastructure_30d_usd | type == "number")' <<<"$COST" >/dev/null
+          echo "Infrastructure economics recalculated: $(jq -r '.economics.cost_source' <<<"$COST")"
+
           STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           if [ "$STATE" = "PAUSED" ]; then
             gcloud scheduler jobs resume "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
@@ -189,6 +197,9 @@ jobs:
             curl --silent --show-error --max-time 30 "$URL/__version" || true
             echo
             if [ -n "${CRON_SECRET:-}" ]; then
+              echo "Current cost governance:"
+              curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-cost-governance/status" || true
+              echo
               echo "Current live evidence:"
               curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
               echo
