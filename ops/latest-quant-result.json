@@ -1,28 +1,28 @@
 {
-  "generated_at": "2026-08-04T01:00:16Z",
+  "generated_at": "2026-08-04T01:42:06Z",
   "event_found": true,
-  "timestamp": "2026-08-04T00:45:13.285767Z",
+  "timestamp": "2026-08-04T01:39:59.781407Z",
   "revision": "proypers25-backend-00670-4kh",
-  "run_id": "quant_1785804310112",
+  "run_id": "quant_1785807595203",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 6,
-    "analyzed_count": 6,
+    "accepted_symbol_count": 10,
+    "analyzed_count": 10,
     "eligible_count": 0,
-    "failed_count": 2,
+    "failed_count": 4,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "MIRAUSDT",
-    "requested_count": 6,
-    "selected_family": "TREND",
-    "selected_symbol": "MIRAUSDT",
-    "valid_count": 4
+    "observation_symbol": "SNDKBUSDT",
+    "requested_count": 10,
+    "selected_family": "MEAN_REVERSION",
+    "selected_symbol": "SNDKBUSDT",
+    "valid_count": 6
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.49034090909090916,
+      "brier": 0.5700000000000002,
       "calibrated": false,
-      "samples": 22
+      "samples": 11
     },
     "checks": {
       "expectation_stability": true,
@@ -31,48 +31,48 @@
       "test_drawdown": true,
       "test_expectancy_positive": false,
       "test_fold_consistency": false,
-      "test_min_trades": true,
+      "test_min_trades": false,
       "test_profit_factor": false,
-      "validation_expectancy_positive": false,
+      "validation_expectancy_positive": true,
       "validation_fold_consistency": false,
-      "validation_median_positive": false,
-      "validation_min_trades": true,
-      "validation_profit_factor": false
+      "validation_median_positive": true,
+      "validation_min_trades": false,
+      "validation_profit_factor": true
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": -0.002673636185805099,
-      "median_validation_expectancy": -0.002437935480236981,
+      "median_test_expectancy": -0.001967006266773128,
+      "median_validation_expectancy": 0.003945630801971136,
       "positive_test_folds": 1,
       "positive_validation_folds": 1,
-      "test_expectancy_std": 0.004337365136137416,
+      "test_expectancy_std": 0.002949817227023363,
       "test_ratio": 0.25,
       "validation_ratio": 0.25
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.0048995991191017165,
-      "averageWin": 0.012290736620567733,
-      "expectancy": -0.0017740835300709067,
-      "maxDrawdown": 0.060262785228389834,
-      "medianReturn": -0.001750374999999858,
-      "netReturn": -0.03902944131388786,
-      "profitFactor": 0.55744862756677,
-      "returnStd": 0.008233992722878045,
-      "trades": 22,
-      "winRate": 0.18181818181818182
+      "averageLoss": -0.008258174713902526,
+      "averageWin": 0.014492520509792627,
+      "expectancy": -0.002053439652894757,
+      "maxDrawdown": 0.03881932101273844,
+      "medianReturn": -0.00175037500000008,
+      "netReturn": -0.023032756751333427,
+      "profitFactor": 0.6580988389629246,
+      "returnStd": 0.01120523430033403,
+      "trades": 11,
+      "winRate": 0.2727272727272727
     },
     "validation": {
-      "averageLoss": -0.004480343896795981,
-      "averageWin": 0.011715787306034954,
-      "expectancy": -0.0014435692962651808,
-      "maxDrawdown": 0.04602294381284022,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.04602294381284022,
-      "profitFactor": 0.6034454690862137,
-      "returnStd": 0.0074535862216777125,
-      "trades": 32,
-      "winRate": 0.1875
+      "averageLoss": -0.007589052219384195,
+      "averageWin": 0.013682072936609082,
+      "expectancy": 0.0030465103586124432,
+      "maxDrawdown": 0.02258393786285785,
+      "medianReturn": 0.0052276801248361,
+      "netReturn": 0.030227168495745138,
+      "profitFactor": 1.8028697841427292,
+      "returnStd": 0.011328681533391602,
+      "trades": 10,
+      "winRate": 0.5
     }
   },
   "strategy_families": [
