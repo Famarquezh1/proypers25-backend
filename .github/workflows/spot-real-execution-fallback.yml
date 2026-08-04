@@ -1,0 +1,73 @@
+name: Spot real execution fallback
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-real-execution-fallback
+  cancel-in-progress: false
+
+jobs:
+  fallback-cycle:
+    name: Run Spot cycle only when Cloud Scheduler is paused
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: proypers2025
+
+      - name: Check primary scheduler and run fallback cycle
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CRON_SECRET"
+
+          PROJECT="proypers2025"
+          RUN_REGION="southamerica-west1"
+          SCHEDULER_REGION="southamerica-east1"
+          SERVICE="proypers25-backend"
+          JOB="spot-real-execution"
+
+          URL=$(gcloud run services describe "$SERVICE" \
+            --project="$PROJECT" \
+            --region="$RUN_REGION" \
+            --platform=managed \
+            --format='value(status.url)')
+          test -n "$URL"
+
+          STATE=$(gcloud scheduler jobs describe "$JOB" \
+            --project="$PROJECT" \
+            --location="$SCHEDULER_REGION" \
+            --format='value(state)' 2>/dev/null \
+            | tr -d '[:space:]' \
+            | tr '[:lower:]' '[:upper:]' || true)
+
+          if [ "$STATE" = "ENABLED" ]; then
+            echo "Cloud Scheduler is enabled; fallback skipped to avoid duplicate cycles."
+            exit 0
+          fi
+
+          echo "Cloud Scheduler state is ${STATE:-UNKNOWN}; running protected fallback cycle."
+          RESPONSE=$(curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-all-errors --retry-delay 5 --max-time 240 \
+            -X POST "$URL/internal/cron/binance/spot-real-execution" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            --data '{}')
+
+          jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$RESPONSE" >/dev/null
+          echo "Fallback Spot cycle completed: $(jq -r '.decision_summary.decision // .entries.reason // "completed"' <<<"$RESPONSE")"
