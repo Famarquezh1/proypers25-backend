@@ -11,6 +11,7 @@ const {
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
 
 const POSITIONS = 'real_spot_positions';
+const HARD_PROTECTED_RESERVE_ASSETS = Object.freeze(['XEC']);
 
 function diagnostic(candidate, overrides = {}) {
   return {
@@ -50,6 +51,16 @@ function resolveStrategyMetadata(candidate = {}, options = {}) {
   };
 }
 
+function isProtectedReserveSymbol(symbol, config = {}) {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized.endsWith('USDT')) return false;
+  const asset = normalized.slice(0, -4);
+  const configured = Array.isArray(config.protected_assets)
+    ? config.protected_assets.map((value) => String(value || '').toUpperCase())
+    : [];
+  return HARD_PROTECTED_RESERVE_ASSETS.includes(asset) || configured.includes(asset);
+}
+
 async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   const started = Date.now();
   const normalizedCandidate = candidate ? {
@@ -62,6 +73,14 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   const configValidation = validateRealSpotConfig(config);
   if (!configValidation.valid) return { ok: true, skipped: true, reason: configValidation.reason, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: [configValidation.reason] }) };
   if (!normalizedCandidate?.symbol || !normalizedCandidate.symbol.endsWith('USDT')) return { ok: true, skipped: true, reason: 'APPROVED_CANDIDATE_INVALID', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['APPROVED_CANDIDATE_INVALID'] }) };
+  if (isProtectedReserveSymbol(normalizedCandidate.symbol, config)) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'PROTECTED_RESERVE_ASSET',
+      entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['PROTECTED_RESERVE_ASSET'] })
+    };
+  }
 
   const [openPositions, exposure] = await Promise.all([
     db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get(),
@@ -141,4 +160,10 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   };
 }
 
-module.exports = { executeApprovedSpotCandidate, diagnostic, resolveStrategyMetadata };
+module.exports = {
+  HARD_PROTECTED_RESERVE_ASSETS,
+  executeApprovedSpotCandidate,
+  diagnostic,
+  resolveStrategyMetadata,
+  isProtectedReserveSymbol
+};
