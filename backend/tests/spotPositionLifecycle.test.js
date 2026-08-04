@@ -102,6 +102,7 @@ assert.strictEqual(unverified.net_pnl_usdt, null);
     available_usdt: 90,
     in_positions_usdt: 10,
     realized_pnl_usdt: 0,
+    paid_trading_fees_usdt: 0,
     updated_at: '2026-07-20T10:00:00.000Z',
     source: 'SPOT_LIFECYCLE_CONFIRMED'
   });
@@ -150,6 +151,53 @@ assert.strictEqual(unverified.net_pnl_usdt, null);
   assert.strictEqual(db.read('real_spot_config/balance').in_positions_usdt, 0);
   assert.strictEqual(db.read('real_spot_config/balance').realized_pnl_usdt, 0);
   console.log('spot entry/partial-close/full-close/idempotency lifecycle test passed');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+
+// Entry and exit commissions must both reduce realized PnL.
+(async () => {
+  const db = memoryFirestore({
+    'real_spot_config/balance': { available_usdt: 20, in_positions_usdt: 0, realized_pnl_usdt: 0, paid_trading_fees_usdt: 0 }
+  });
+  const intentId = 'fee-complete-intent';
+  const entry = await recordConfirmedSpotEntry(db, {
+    intentId,
+    candidate: { symbol: 'TUTUSDT', scan_id: 'scan-fee', opportunityScore: 80, category: 'MOMENTUM', entry_mode: 'TACTICAL_MOMENTUM' },
+    config: { take_profit_1_pct: 5, take_profit_2_pct: 10, stop_loss_pct: -5, timeout_hours: 24 },
+    order: {
+      orderId: 3001,
+      clientOrderId: 'fee_entry',
+      executedQty: '500',
+      cummulativeQuoteQty: '10',
+      fills: [{ price: '0.02', qty: '500', commission: '0.01', commissionAsset: 'USDT' }]
+    },
+    strategyMetadata: { strategy: 'TACTICAL_MOMENTUM', entry_mode: 'TACTICAL_MOMENTUM', runner_mode: true },
+    openedAt: '2026-08-03T19:00:00.000Z'
+  });
+  const positionRef = db.collection('real_spot_positions').doc(entry.positionId);
+  const close = await recordConfirmedSpotClose(db, {
+    positionRef,
+    position: { id: entry.positionId },
+    eventId: 'binance_order_3002',
+    reason: 'TRAILING_STOP',
+    source: 'BINANCE_ORDER',
+    executedQuantity: 500,
+    quoteReceivedUsdt: 11,
+    exitPrice: 0.022,
+    feeUsdt: 0.011,
+    closedAt: '2026-08-04T07:00:00.000Z'
+  });
+  assert.strictEqual(Number(close.netPnl.toFixed(6)), 0.979);
+  const result = db.read(`real_spot_execution_results/real_spot_result_${entry.positionId}_binance_order_3002`);
+  assert.strictEqual(result.entry_fee_allocated_usdt, 0.01);
+  assert.strictEqual(result.exit_fee_usdt, 0.011);
+  assert.strictEqual(result.total_fee_usdt, 0.021);
+  assert.strictEqual(Number(result.net_pnl_usdt.toFixed(6)), 0.979);
+  assert.strictEqual(result.fee_accounting_complete, true);
+  assert.strictEqual(db.read('real_spot_config/balance').paid_trading_fees_usdt, 0.021);
+  console.log('complete entry and exit fee accounting test passed');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
