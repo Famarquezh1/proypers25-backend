@@ -34,6 +34,7 @@ steps:
           test -f /usr/src/app/services/spotCostGovernance.js
           test -f /usr/src/app/services/spotProfitTargetGovernance.js
           test -f /usr/src/app/services/controlledSpotExitExecutor.js
+          test -f /usr/src/app/services/legacySpotRecoveryLiquidator.js
           test -f /usr/src/app/services/approvedSpotRealExecutor.js
           test -f /usr/src/app/services/spotPositionLifecycle.js
           test -f /usr/src/app/routes/admin.route.js
@@ -44,12 +45,17 @@ steps:
           grep -q "FULL_FREQUENCY" /usr/src/app/services/spotProfitTargetGovernance.js
           grep -q "TACTICAL_RUNNER_ARMED" /usr/src/app/services/controlledSpotExitExecutor.js
           grep -q "fee_accounting_complete" /usr/src/app/services/spotPositionLifecycle.js
+          grep -q "HARD_PROTECTED_ASSETS" /usr/src/app/services/legacySpotRecoveryLiquidator.js
+          grep -q "XEC" /usr/src/app/services/legacySpotRecoveryLiquidator.js
+          grep -q "PROTECTED_RESERVE_ASSET" /usr/src/app/services/approvedSpotRealExecutor.js
+          grep -q "spot-legacy-recovery" /usr/src/app/routes/controlledRealSpot.route.js
           node --check /usr/src/app/services/spotLiveEvidence.js
           node --check /usr/src/app/services/spotDustResidual.js
           node --check /usr/src/app/services/spotManagedQuantityRepair.js
           node --check /usr/src/app/services/spotCostGovernance.js
           node --check /usr/src/app/services/spotProfitTargetGovernance.js
           node --check /usr/src/app/services/controlledSpotExitExecutor.js
+          node --check /usr/src/app/services/legacySpotRecoveryLiquidator.js
           node --check /usr/src/app/services/approvedSpotRealExecutor.js
           node --check /usr/src/app/services/spotPositionLifecycle.js
           node --check /usr/src/app/routes/spotLiveDashboard.route.js
@@ -60,6 +66,8 @@ steps:
           node /usr/src/app/tests/spotCostGovernance.test.js
           node /usr/src/app/tests/spotProfitTargetGovernance.test.js
           node /usr/src/app/tests/tacticalMomentumExitPolicy.test.js
+          node /usr/src/app/tests/legacySpotRecoveryLiquidator.test.js
+          node /usr/src/app/tests/protectedReserveAsset.test.js
           node /usr/src/app/tests/spotPositionLifecycle.test.js
           node /usr/src/app/tests/controlledSpotExitExecutor.test.js
           node /usr/src/app/tests/spotCycleObservability.test.js
