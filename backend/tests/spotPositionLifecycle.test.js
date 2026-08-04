@@ -193,10 +193,10 @@ assert.strictEqual(unverified.net_pnl_usdt, null);
   const result = db.read(`real_spot_execution_results/real_spot_result_${entry.positionId}_binance_order_3002`);
   assert.strictEqual(result.entry_fee_allocated_usdt, 0.01);
   assert.strictEqual(result.exit_fee_usdt, 0.011);
-  assert.strictEqual(result.total_fee_usdt, 0.021);
+  assert.strictEqual(Number(result.total_fee_usdt.toFixed(6)), 0.021);
   assert.strictEqual(Number(result.net_pnl_usdt.toFixed(6)), 0.979);
   assert.strictEqual(result.fee_accounting_complete, true);
-  assert.strictEqual(db.read('real_spot_config/balance').paid_trading_fees_usdt, 0.021);
+  assert.strictEqual(Number(db.read('real_spot_config/balance').paid_trading_fees_usdt.toFixed(6)), 0.021);
   console.log('complete entry and exit fee accounting test passed');
 })().catch((error) => {
   console.error(error);
