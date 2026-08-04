@@ -1,0 +1,54 @@
+name: Profit target and tactical runner tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/services/spotProfitTargetGovernance.js'
+      - 'backend/services/controlledSpotExitExecutor.js'
+      - 'backend/routes/spotCostGovernance.route.js'
+      - 'backend/tests/spotProfitTargetGovernance.test.js'
+      - 'backend/tests/tacticalMomentumExitPolicy.test.js'
+      - '.github/workflows/spot-research-scheduler.yml'
+      - '.github/workflows/profit-target-and-runner-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/services/spotProfitTargetGovernance.js'
+      - 'backend/services/controlledSpotExitExecutor.js'
+      - 'backend/routes/spotCostGovernance.route.js'
+      - 'backend/tests/spotProfitTargetGovernance.test.js'
+      - 'backend/tests/tacticalMomentumExitPolicy.test.js'
+      - '.github/workflows/spot-research-scheduler.yml'
+      - '.github/workflows/profit-target-and-runner-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Syntax checks
+        run: |
+          node --check backend/services/spotProfitTargetGovernance.js
+          node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/routes/spotCostGovernance.route.js
+      - name: Profit target tests
+        run: node backend/tests/spotProfitTargetGovernance.test.js
+      - name: Tactical runner tests
+        run: node backend/tests/tacticalMomentumExitPolicy.test.js
+      - name: Existing exit regression
+        run: node backend/tests/controlledSpotExitExecutor.test.js
+      - name: Verify full-frequency scheduler policy
+        run: |
+          grep -q 'policy=FULL_FREQUENCY' .github/workflows/spot-research-scheduler.yml
+          grep -q '10#$HOUR % 2' .github/workflows/spot-research-scheduler.yml
+          ! grep -q 'research_frequency_multiplier' .github/workflows/spot-research-scheduler.yml
