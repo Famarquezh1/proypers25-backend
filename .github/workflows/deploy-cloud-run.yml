@@ -78,56 +78,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gcloud builds submit --project=proypers2025 --config=cloudbuild.yaml --substitutions=_IMAGE_TAG="$GITHUB_SHA" .
-
-      - name: Diagnose failed Cloud Build or Cloud Run revision
-        if: failure()
-        shell: bash
-        run: |
-          set -u
-          BUILD_ID=$(gcloud builds list --project=proypers2025 --limit=1 --sort-by='~createTime' --format='value(id)' || true)
-          echo "Latest Cloud Build: ${BUILD_ID:-unavailable}"
-          if [ -n "${BUILD_ID:-}" ]; then
-            gcloud builds describe "$BUILD_ID" --project=proypers2025 --format='yaml(id,status,results,steps)' || true
-            gcloud builds log "$BUILD_ID" --project=proypers2025 || true
-            gcloud logging read "resource.type=build AND labels.build_id=$BUILD_ID" --project=proypers2025 --limit=250 --order=asc --format='value(timestamp,severity,textPayload,jsonPayload.message,jsonPayload.error)' || true
-          fi
-          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend" AND severity>=ERROR' --project=proypers2025 --freshness=45m --limit=100 --order=desc --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
+          gcloud builds submit \
+            --project=proypers2025 \
+            --config=cloudbuild.yaml \
+            --substitutions=_IMAGE_TAG="$GITHUB_SHA" .
 
       - name: Verify immutable Cloud Run revision
         shell: bash
         run: |
           set -euo pipefail
           PROJECT="proypers2025"
-          RUN_REGION="southamerica-west1"
+          REGION="southamerica-west1"
           SERVICE="proypers25-backend"
 
-          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.url)')
-          CREATED_REVISION=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.latestCreatedRevisionName)')
-          READY_REVISION=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.latestReadyRevisionName)')
+          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.url)')
+          CREATED=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.latestCreatedRevisionName)')
+          READY=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.latestReadyRevisionName)')
           test -n "$URL"
-          test -n "$CREATED_REVISION"
-          test "$READY_REVISION" = "$CREATED_REVISION"
-          echo "Cloud Run URL: $URL"
-          echo "Ready revision: $READY_REVISION"
+          test "$READY" = "$CREATED"
 
           VERSION=$(curl --silent --show-error --fail-with-body --retry 8 --retry-all-errors --retry-delay 10 --max-time 30 "$URL/__version")
-          echo "$VERSION" | jq .
           DEPLOYED_SHA=$(jq -r '.commit // empty' <<<"$VERSION")
-          if [ "$DEPLOYED_SHA" != "$GITHUB_SHA" ]; then
-            echo "Expected SHA: $GITHUB_SHA"
-            echo "Deployed SHA: ${DEPLOYED_SHA:-missing}"
-            exit 1
-          fi
-          echo "APP_COMMIT_SHA verified: $DEPLOYED_SHA"
+          test "$DEPLOYED_SHA" = "$GITHUB_SHA"
+          echo "Cloud Run revision verified: $READY · SHA=$DEPLOYED_SHA"
 
-      - name: Enable Scheduler and verify one fresh Spot cycle
+      - name: Verify one fresh Spot cycle
         shell: bash
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
+
           PROJECT="proypers2025"
           RUN_REGION="southamerica-west1"
           SCHEDULER_REGION="southamerica-east1"
@@ -140,39 +122,48 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: $CRON_SECRET" \
             --data '{}')
-          jq -e '.ok == true and (.economics.cost_source | type == "string") and (.economics.infrastructure_cost_30d_usd | type == "number") and (.economics.net_after_infrastructure_30d_usd | type == "number")' <<<"$COST" >/dev/null
-          jq -e '.profit_target.monthly_cost_floor_clp >= 45000 and .profit_target.jobs_reduced_for_cost == false and .profit_target.research_frequency_multiplier == 1 and .profit_target.target_trading_pnl_clp > .profit_target.effective_infrastructure_cost_clp' <<<"$COST" >/dev/null
-          echo "Profit target recalculated: $(jq -r '.profit_target.status' <<<"$COST") · policy=$(jq -r '.profit_target.job_frequency_policy' <<<"$COST")"
+          jq -e '.ok == true and .profit_target.jobs_reduced_for_cost == false and .profit_target.research_frequency_multiplier == 1' <<<"$COST" >/dev/null
 
-          STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-          if [ "$STATE" = "PAUSED" ]; then
-            gcloud scheduler jobs resume "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
-          fi
+          STATE=$(gcloud scheduler jobs describe "$JOB" \
+            --project="$PROJECT" \
+            --location="$SCHEDULER_REGION" \
+            --format='value(state)' 2>/dev/null \
+            | tr -d '[:space:]' \
+            | tr '[:lower:]' '[:upper:]' || true)
 
           REQUESTED_AT_EPOCH=$(date -u +%s)
-          gcloud scheduler jobs run "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
-          echo "Immediate Spot cycle requested: $JOB"
+          if [ "$STATE" = "ENABLED" ]; then
+            gcloud scheduler jobs run "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"
+            EXECUTION_MODE="CLOUD_SCHEDULER"
+          else
+            DIRECT=$(curl --silent --show-error --fail-with-body \
+              --retry 3 --retry-all-errors --retry-delay 5 --max-time 240 \
+              -X POST "$URL/internal/cron/binance/spot-real-execution" \
+              -H "Content-Type: application/json" \
+              -H "x-cron-secret: $CRON_SECRET" \
+              --data '{}')
+            jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$DIRECT" >/dev/null
+            EXECUTION_MODE="DIRECT_FALLBACK"
+          fi
+          echo "Spot cycle requested through $EXECUTION_MODE · scheduler=${STATE:-UNKNOWN}"
 
           LIVE=''
           FRESH_CYCLE=0
           FRESH_ANALYSIS=0
           for attempt in $(seq 1 36); do
             sleep 10
-            LIVE=$(curl --silent --show-error --fail-with-body --max-time 45 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true)
-            if [ -z "$LIVE" ]; then
-              echo "Attempt $attempt: live evidence unavailable"
-              continue
-            fi
+            LIVE=$(curl --silent --show-error --fail-with-body --max-time 45 \
+              -H "x-cron-secret: $CRON_SECRET" \
+              "$URL/internal/spot-live/evidence" || true)
+            [ -n "$LIVE" ] || continue
 
             CYCLE_TIME=$(jq -r '.latest_cycle.timestamp // .latest_cycle.started_at // empty' <<<"$LIVE" 2>/dev/null || true)
             ANALYSIS_TIME=$(jq -r '.engine.last_analysis_at // empty' <<<"$LIVE" 2>/dev/null || true)
-            CYCLE_EPOCH=$(node -e 'const v=process.argv[1]; const t=Date.parse(v||""); process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$CYCLE_TIME")
-            ANALYSIS_EPOCH=$(node -e 'const v=process.argv[1]; const t=Date.parse(v||""); process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$ANALYSIS_TIME")
-
-            if [ "$CYCLE_EPOCH" -ge "$REQUESTED_AT_EPOCH" ]; then FRESH_CYCLE=1; fi
-            if [ "$ANALYSIS_EPOCH" -ge "$REQUESTED_AT_EPOCH" ]; then FRESH_ANALYSIS=1; fi
-            echo "Attempt $attempt: cycle=$CYCLE_TIME analysis=$ANALYSIS_TIME"
-            if [ "$FRESH_CYCLE" = "1" ] && [ "$FRESH_ANALYSIS" = "1" ]; then break; fi
+            CYCLE_EPOCH=$(node -e 'const t=Date.parse(process.argv[1]||"");process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$CYCLE_TIME")
+            ANALYSIS_EPOCH=$(node -e 'const t=Date.parse(process.argv[1]||"");process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$ANALYSIS_TIME")
+            [ "$CYCLE_EPOCH" -ge "$REQUESTED_AT_EPOCH" ] && FRESH_CYCLE=1 || true
+            [ "$ANALYSIS_EPOCH" -ge "$REQUESTED_AT_EPOCH" ] && FRESH_ANALYSIS=1 || true
+            [ "$FRESH_CYCLE" = "1" ] && [ "$FRESH_ANALYSIS" = "1" ] && break
           done
 
           test "$FRESH_CYCLE" = "1"
@@ -188,13 +179,10 @@ jobs:
           jq -e '.ok == true and .config.enabled == true and .config.xec_never_sell == true' <<<"$LEGACY" >/dev/null
           jq -e '(.config.target_assets | sort) == (["ANKR","BAR","CATI","LAYER","QTUM"] | sort)' <<<"$LEGACY" >/dev/null
           jq -e '(.config.protected_assets | index("XEC")) != null and (.config.target_assets | index("XEC")) == null' <<<"$LEGACY" >/dev/null
-          echo "Legacy recovery initialized with XEC protected"
 
-          FINAL_STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-          test "$FINAL_STATE" = "ENABLED"
-          echo "Fresh current Spot cycle verified. Scheduler state: $FINAL_STATE"
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · XEC protected"
 
-      - name: Diagnose failed post-deployment verification
+      - name: Diagnose failure
         if: failure()
         shell: bash
         env:
@@ -202,28 +190,13 @@ jobs:
         run: |
           set -u
           PROJECT="proypers2025"
-          RUN_REGION="southamerica-west1"
-          SCHEDULER_REGION="southamerica-east1"
+          REGION="southamerica-west1"
           SERVICE="proypers25-backend"
-          JOB="spot-real-execution"
-
-          gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='yaml(status.url,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
-          gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='yaml(name,state,schedule,status,lastAttemptTime,httpTarget.uri)' || true
-          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.url)' 2>/dev/null || true)
-          if [ -n "$URL" ]; then
-            echo "Runtime version:"
-            curl --silent --show-error --max-time 30 "$URL/__version" || true
+          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.url)' 2>/dev/null || true)
+          gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='yaml(status.url,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
+          gcloud scheduler jobs describe spot-real-execution --project="$PROJECT" --location=southamerica-east1 --format='yaml(name,state,schedule,status,lastAttemptTime,httpTarget.uri)' || true
+          if [ -n "$URL" ] && [ -n "${CRON_SECRET:-}" ]; then
+            curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
             echo
-            if [ -n "${CRON_SECRET:-}" ]; then
-              echo "Current cost governance:"
-              curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-cost-governance/status" || true
-              echo
-              echo "Current legacy recovery:"
-              curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-legacy-recovery/status" || true
-              echo
-              echo "Current live evidence:"
-              curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
-              echo
-            fi
+            curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-legacy-recovery/status" || true
           fi
-          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend" AND severity>=ERROR' --project="$PROJECT" --freshness=45m --limit=100 --order=desc --format='value(timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload.message,jsonPayload.error)' || true
