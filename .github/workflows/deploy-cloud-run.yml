@@ -32,6 +32,9 @@ jobs:
           node tests/spotManagedQuantityRepair.test.js
           node tests/spotDustResidual.test.js
           node tests/spotCostGovernance.test.js
+          node tests/spotProfitTargetGovernance.test.js
+          node tests/tacticalMomentumExitPolicy.test.js
+          node tests/spotPositionLifecycle.test.js
           node tests/controlledSpotExitExecutor.test.js
           node tests/controlledSpotSubmittedQuantity.test.js
           node tests/spotCycleObservability.test.js
@@ -46,9 +49,12 @@ jobs:
           node --check services/spotDustResidual.js
           node --check services/spotManagedQuantityRepair.js
           node --check services/spotCostGovernance.js
+          node --check services/spotProfitTargetGovernance.js
+          node --check services/controlledSpotExitExecutor.js
+          node --check services/approvedSpotRealExecutor.js
+          node --check services/spotPositionLifecycle.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealPipelinePolicy.js
-          node --check services/approvedSpotRealExecutor.js
           node --check services/spotCycleObservability.js
           node --check services/spotLiveEvidence.js
           node --check routes/spotCostGovernance.route.js
@@ -132,7 +138,8 @@ jobs:
             -H "x-cron-secret: $CRON_SECRET" \
             --data '{}')
           jq -e '.ok == true and (.economics.cost_source | type == "string") and (.economics.infrastructure_cost_30d_usd | type == "number") and (.economics.net_after_infrastructure_30d_usd | type == "number")' <<<"$COST" >/dev/null
-          echo "Infrastructure economics recalculated: $(jq -r '.economics.cost_source' <<<"$COST")"
+          jq -e '.profit_target.monthly_cost_floor_clp >= 45000 and .profit_target.jobs_reduced_for_cost == false and .profit_target.research_frequency_multiplier == 1 and .profit_target.target_trading_pnl_clp > .profit_target.effective_infrastructure_cost_clp' <<<"$COST" >/dev/null
+          echo "Profit target recalculated: $(jq -r '.profit_target.status' <<<"$COST") · policy=$(jq -r '.profit_target.job_frequency_policy' <<<"$COST")"
 
           STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           if [ "$STATE" = "PAUSED" ]; then
