@@ -32,21 +32,30 @@ steps:
           test -f /usr/src/app/services/spotLiveEvidence.js
           test -f /usr/src/app/services/spotDustResidual.js
           test -f /usr/src/app/services/spotCostGovernance.js
+          test -f /usr/src/app/services/spotProfitTargetGovernance.js
+          test -f /usr/src/app/services/controlledSpotExitExecutor.js
           test -f /usr/src/app/routes/admin.route.js
           grep -q "investments-dashboard" /usr/src/app/routes/investmentsSummary.route.js
           grep -q "spot-live-dashboard" /usr/src/app/routes/spotLiveDashboard.route.js
           grep -q "cost-efficiency-dashboard" /usr/src/app/routes/spotCostGovernance.route.js
           grep -q "spotLiveDashboardRoute" /usr/src/app/server.js
+          grep -q "FULL_FREQUENCY" /usr/src/app/services/spotProfitTargetGovernance.js
+          grep -q "TACTICAL_RUNNER_ARMED" /usr/src/app/services/controlledSpotExitExecutor.js
           node --check /usr/src/app/services/spotLiveEvidence.js
           node --check /usr/src/app/services/spotDustResidual.js
           node --check /usr/src/app/services/spotManagedQuantityRepair.js
           node --check /usr/src/app/services/spotCostGovernance.js
+          node --check /usr/src/app/services/spotProfitTargetGovernance.js
+          node --check /usr/src/app/services/controlledSpotExitExecutor.js
           node --check /usr/src/app/routes/spotLiveDashboard.route.js
           node --check /usr/src/app/routes/spotCostGovernance.route.js
           node --check /usr/src/app/routes/controlledRealSpot.route.js
           node /usr/src/app/tests/spotDustResidual.test.js
           node /usr/src/app/tests/spotManagedQuantityRepair.test.js
           node /usr/src/app/tests/spotCostGovernance.test.js
+          node /usr/src/app/tests/spotProfitTargetGovernance.test.js
+          node /usr/src/app/tests/tacticalMomentumExitPolicy.test.js
+          node /usr/src/app/tests/controlledSpotExitExecutor.test.js
           node /usr/src/app/tests/spotCycleObservability.test.js
           node /usr/src/app/tests/spotLiveEvidence.test.js
         '
