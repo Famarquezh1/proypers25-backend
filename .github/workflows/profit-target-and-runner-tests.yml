@@ -6,9 +6,12 @@ on:
     paths:
       - 'backend/services/spotProfitTargetGovernance.js'
       - 'backend/services/controlledSpotExitExecutor.js'
+      - 'backend/services/approvedSpotRealExecutor.js'
+      - 'backend/services/spotPositionLifecycle.js'
       - 'backend/routes/spotCostGovernance.route.js'
       - 'backend/tests/spotProfitTargetGovernance.test.js'
       - 'backend/tests/tacticalMomentumExitPolicy.test.js'
+      - 'backend/tests/spotPositionLifecycle.test.js'
       - '.github/workflows/spot-research-scheduler.yml'
       - '.github/workflows/profit-target-and-runner-tests.yml'
   push:
@@ -16,9 +19,12 @@ on:
     paths:
       - 'backend/services/spotProfitTargetGovernance.js'
       - 'backend/services/controlledSpotExitExecutor.js'
+      - 'backend/services/approvedSpotRealExecutor.js'
+      - 'backend/services/spotPositionLifecycle.js'
       - 'backend/routes/spotCostGovernance.route.js'
       - 'backend/tests/spotProfitTargetGovernance.test.js'
       - 'backend/tests/tacticalMomentumExitPolicy.test.js'
+      - 'backend/tests/spotPositionLifecycle.test.js'
       - '.github/workflows/spot-research-scheduler.yml'
       - '.github/workflows/profit-target-and-runner-tests.yml'
 
@@ -40,11 +46,15 @@ jobs:
         run: |
           node --check backend/services/spotProfitTargetGovernance.js
           node --check backend/services/controlledSpotExitExecutor.js
+          node --check backend/services/approvedSpotRealExecutor.js
+          node --check backend/services/spotPositionLifecycle.js
           node --check backend/routes/spotCostGovernance.route.js
       - name: Profit target tests
         run: node backend/tests/spotProfitTargetGovernance.test.js
       - name: Tactical runner tests
         run: node backend/tests/tacticalMomentumExitPolicy.test.js
+      - name: Complete fee accounting tests
+        run: node backend/tests/spotPositionLifecycle.test.js
       - name: Existing exit regression
         run: node backend/tests/controlledSpotExitExecutor.test.js
       - name: Verify full-frequency scheduler policy
