@@ -95,6 +95,8 @@ assert.strictEqual(trailingSale.sell, true);
 assert.strictEqual(trailingSale.reason, 'RECOVERY_TRAILING_EXIT');
 assert.ok(trailingSale.improvement_pct >= 3);
 
+// Use a price unambiguously above the -10% recovery target. Exactly 0.72/0.80
+// can become -10.000000000000009 in IEEE-754 arithmetic.
 const targetSale = evaluateRecoveryDecision({
   state: {
     baseline_price: 0.60,
@@ -105,7 +107,7 @@ const targetSale = evaluateRecoveryDecision({
     armed: true,
     highest_price_after_arm: 0.71
   },
-  currentPrice: 0.72,
+  currentPrice: 0.721,
   averageCost: 0.80,
   oneHourChangePct: 1,
   change24hPct: 4,
