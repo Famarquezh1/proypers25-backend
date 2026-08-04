@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           node tests/spotManagedQuantityRepair.test.js
+          node tests/spotDustResidual.test.js
           node tests/controlledSpotExitExecutor.test.js
           node tests/controlledSpotSubmittedQuantity.test.js
           node tests/spotCycleObservability.test.js
@@ -41,6 +42,8 @@ jobs:
           node tests/spotShadowDecisionEngine.test.js
           node tests/spotShadowGemHunter.test.js
           node tests/unifiedControlPortal.test.js
+          node --check services/spotDustResidual.js
+          node --check services/spotManagedQuantityRepair.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealPipelinePolicy.js
           node --check services/approvedSpotRealExecutor.js
