@@ -19,7 +19,8 @@ function diagnostic(candidate, overrides = {}) {
       symbol: String(candidate.symbol || '').toUpperCase(),
       scan_id: candidate.scan_id || null,
       score: Number(candidate.score ?? candidate.opportunityScore ?? 0),
-      category: candidate.category || null
+      category: candidate.category || null,
+      entry_mode: candidate.entry_mode || null
     } : null,
     order_creation_path_reached: false,
     order_created: false,
@@ -28,12 +29,34 @@ function diagnostic(candidate, overrides = {}) {
   };
 }
 
+function resolveStrategyMetadata(candidate = {}, options = {}) {
+  const entryMode = String(candidate.entry_mode || options.paper_gate?.entry_mode || '').toUpperCase();
+  const supplied = options.strategy_metadata || {};
+  if (entryMode === 'TACTICAL_MOMENTUM') {
+    return {
+      ...supplied,
+      strategy: 'TACTICAL_MOMENTUM',
+      decision_reason: supplied.decision_reason || 'Fresh tactical momentum and technical confirmation approved',
+      partial_exit: false,
+      runner_mode: true,
+      minimum_hold_policy: 'WEAKNESS_GRACE_6H',
+      entry_mode: 'TACTICAL_MOMENTUM'
+    };
+  }
+  return {
+    strategy: supplied.strategy || 'CONTROLLED_PAPER_TO_REAL',
+    ...supplied,
+    entry_mode: entryMode || 'STANDARD_PAPER_TO_REAL'
+  };
+}
+
 async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   const started = Date.now();
   const normalizedCandidate = candidate ? {
     ...candidate,
     symbol: String(candidate.symbol || '').toUpperCase(),
-    opportunityScore: Number(candidate.opportunityScore ?? candidate.score ?? 0)
+    opportunityScore: Number(candidate.opportunityScore ?? candidate.score ?? 0),
+    entry_mode: candidate.entry_mode || options.paper_gate?.entry_mode || null
   } : null;
   const config = await getRealSpotConfig(db);
   const configValidation = validateRealSpotConfig(config);
@@ -67,6 +90,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     return { ok: order.blocked !== false, skipped: true, reason, order, entry_diagnostic: diagnostic(normalizedCandidate, { order_creation_path_reached: true, rejected_reasons: [reason] }) };
   }
 
+  const strategyMetadata = resolveStrategyMetadata(normalizedCandidate, options);
   const entry = await recordConfirmedSpotEntry(db, {
     intentId: intent.id,
     candidate: {
@@ -75,14 +99,17 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
       execution_decision_snapshot: {
         executed_at: new Date().toISOString(),
         source_module: 'approvedSpotRealExecutor',
-        validation_reason: 'Paper-to-Real and Technical Confirmation approved this exact candidate',
+        validation_reason: normalizedCandidate.entry_mode === 'TACTICAL_MOMENTUM'
+          ? 'Tactical momentum and technical confirmation approved this exact candidate'
+          : 'Paper-to-Real and Technical Confirmation approved this exact candidate',
         promotion_confidence: options.promotion_confidence || null,
-        paper_gate: options.paper_gate || null
+        paper_gate: options.paper_gate || null,
+        entry_mode: normalizedCandidate.entry_mode || null
       }
     },
     config,
     order,
-    strategyMetadata: options.strategy_metadata || { strategy: 'CONTROLLED_PAPER_TO_REAL' },
+    strategyMetadata,
     openedAt: new Date().toISOString()
   });
 
@@ -90,6 +117,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     await db.doc('real_spot_config/control').set({
       entries_used_this_session: Number(config.entries_used_this_session || 0) + 1,
       last_entry_symbol: normalizedCandidate.symbol,
+      last_entry_mode: normalizedCandidate.entry_mode || null,
       last_entry_at: new Date().toISOString()
     }, { merge: true });
   }
@@ -102,6 +130,8 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     recovered_existing_order: order.recovered_existing_order === true,
     selected_symbol: normalizedCandidate.symbol,
     symbol: normalizedCandidate.symbol,
+    entry_mode: normalizedCandidate.entry_mode || null,
+    strategy: strategyMetadata.strategy,
     order_id: order.orderId || null,
     intent_id: intent.id,
     position_id: entry.positionId,
@@ -111,4 +141,4 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   };
 }
 
-module.exports = { executeApprovedSpotCandidate, diagnostic };
+module.exports = { executeApprovedSpotCandidate, diagnostic, resolveStrategyMetadata };
