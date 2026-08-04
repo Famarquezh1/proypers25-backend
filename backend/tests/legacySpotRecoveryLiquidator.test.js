@@ -54,6 +54,9 @@ assert.strictEqual(watching.sell, false);
 assert.strictEqual(watching.armed, false);
 assert.strictEqual(watching.positive_cycles, 1);
 
+// Use a value clearly above the 5-point recovery boundary. Testing exactly
+// 0.64/0.80 can produce 4.999999999999... in IEEE-754 arithmetic even though
+// the economic value is exactly five percentage points.
 const armed = evaluateRecoveryDecision({
   state: {
     baseline_price: 0.60,
@@ -62,7 +65,7 @@ const armed = evaluateRecoveryDecision({
     positive_cycles: 1,
     status: 'WATCHING'
   },
-  currentPrice: 0.64,
+  currentPrice: 0.641,
   averageCost: 0.80,
   oneHourChangePct: 1.2,
   change24hPct: 3,
