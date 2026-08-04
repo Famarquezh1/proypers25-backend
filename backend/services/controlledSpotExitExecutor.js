@@ -6,9 +6,7 @@ const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
 
 const POSITIONS = 'real_spot_positions';
-const RESULTS = 'real_spot_execution_results';
-const BALANCE_DOC = 'real_spot_config/balance';
-const SAFETY_VERSION = 'controlled_real_spot_exit_v4_normalized_quantity';
+const SAFETY_VERSION = 'controlled_real_spot_exit_v5_tactical_runner';
 
 function parseDate(value) {
   if (!value) return null;
@@ -34,6 +32,17 @@ function assertExitConfig(config) {
   if (config?.leverage_allowed === true) reasons.push('LEVERAGE_NOT_ALLOWED');
   if (config?.withdrawals_allowed !== false) reasons.push('WITHDRAWALS_MUST_BE_DISABLED');
   if (reasons.length) throw new Error(`REAL_SPOT_EXIT_BLOCKED: ${reasons.join(',')}`);
+}
+
+function isTacticalMomentumPosition(position = {}) {
+  const directMode = String(position.entry_mode || '').toUpperCase();
+  const strategy = String(position.strategy || '').toUpperCase();
+  const gate = position.execution_decision_snapshot?.paper_gate || {};
+  return directMode === 'TACTICAL_MOMENTUM' ||
+    strategy === 'TACTICAL_MOMENTUM' ||
+    gate.entry_mode === 'TACTICAL_MOMENTUM' ||
+    gate.tactical_entry === true ||
+    position.tactical_entry === true;
 }
 
 function signedQuery(params, secret) {
@@ -156,6 +165,7 @@ async function fetchRecentKlines(symbol) {
 function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Date()) {
   const entry = Number(position.entry_price || 0);
   if (!(entry > 0) || !(currentPrice > 0)) return null;
+  const tactical = isTacticalMomentumPosition(position);
   const normalizedAtr = clamp(atrPct || Number(position.entry_atr_pct || 0.01), 0.003, 0.05);
   const gainPct = (currentPrice / entry) - 1;
   const highest = Math.max(Number(position.highest_price || entry), currentPrice);
@@ -163,25 +173,43 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
   const lowest = persistedLow > 0 ? Math.min(persistedLow, currentPrice) : currentPrice;
   const originalSl = Number(position.sl_price || entry * (1 - clamp(normalizedAtr, 0.005, 0.03)));
   const originalTp = Number(position.tp1_price || entry * (1 + clamp(normalizedAtr * 2, 0.008, 0.06)));
-  const breakEvenTrigger = clamp(normalizedAtr * 1.2, 0.006, 0.025);
-  const trailingTrigger = clamp(normalizedAtr * 1.8, 0.01, 0.04);
-  const trailingDistance = clamp(normalizedAtr * 1.1, 0.006, 0.03);
+
+  const breakEvenTrigger = tactical
+    ? clamp(normalizedAtr * 2.2, 0.04, 0.06)
+    : clamp(normalizedAtr * 1.2, 0.006, 0.025);
+  const trailingTrigger = tactical
+    ? clamp(normalizedAtr * 3.5, 0.07, 0.12)
+    : clamp(normalizedAtr * 1.8, 0.01, 0.04);
+  const trailingDistance = tactical
+    ? clamp(normalizedAtr * 1.8, 0.025, 0.06)
+    : clamp(normalizedAtr * 1.1, 0.006, 0.03);
+
   let effectiveSl = originalSl;
   let mode = 'BASE';
-  if (gainPct >= breakEvenTrigger) {
+  const tacticalProfitArmed = tactical && (position.tactical_profit_armed === true || gainPct >= breakEvenTrigger);
+
+  if (tacticalProfitArmed) {
+    effectiveSl = Math.max(effectiveSl, entry * 1.002);
+    mode = 'TACTICAL_RUNNER_ARMED';
+  } else if (!tactical && gainPct >= breakEvenTrigger) {
     effectiveSl = Math.max(effectiveSl, entry * 1.0015);
     mode = 'BREAK_EVEN';
   }
+
   if (gainPct >= trailingTrigger) {
     effectiveSl = Math.max(effectiveSl, highest * (1 - trailingDistance));
-    mode = 'TRAILING';
+    mode = tactical ? 'TACTICAL_TRAILING' : 'TRAILING';
   }
+
   const openedAt = parseDate(position.opened_at) || now;
   const ageMinutes = Math.max(0, (now.getTime() - openedAt.getTime()) / 60000);
-  const timeoutMinutes = clamp(Math.round(180 + (normalizedAtr * 10000)), 180, 720);
+  const timeoutMinutes = tactical
+    ? clamp(Math.round(720 + (normalizedAtr * 14400)), 720, 1440)
+    : clamp(Math.round(180 + (normalizedAtr * 10000)), 180, 720);
   const adaptiveTimeoutAt = new Date(openedAt.getTime() + timeoutMinutes * 60000);
   const existingTimeout = parseDate(position.timeout_at);
   const effectiveTimeoutAt = existingTimeout && existingTimeout < adaptiveTimeoutAt ? existingTimeout : adaptiveTimeoutAt;
+
   return {
     highest_price: highest,
     lowest_price: lowest,
@@ -194,21 +222,76 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
     age_minutes: ageMinutes,
     break_even_trigger_pct: breakEvenTrigger,
     trailing_trigger_pct: trailingTrigger,
-    trailing_distance_pct: trailingDistance
+    trailing_distance_pct: trailingDistance,
+    tactical_entry: tactical,
+    tactical_profit_armed: tacticalProfitArmed,
+    tactical_runner_active: tacticalProfitArmed,
+    tactical_weakness_grace_minutes: tactical ? 360 : 0,
+    tactical_weakness_confirmation_cycles: tactical ? 4 : 0
   };
+}
+
+function buildTacticalWeaknessState(position = {}, now = new Date()) {
+  if (!isTacticalMomentumPosition(position)) return null;
+  const score = Number(position.current_score);
+  const scoreFloor = Number(position.exit_score_floor);
+  const momentumWeak = position.momentum_lost === true || position.exit_signal_reason === 'MOMENTUM_LOSS';
+  const scoreWeak = Number.isFinite(score) && Number.isFinite(scoreFloor) && score < scoreFloor;
+  const momentumCycles = momentumWeak ? Math.max(0, Number(position.tactical_momentum_weak_cycles || 0)) + 1 : 0;
+  const scoreCycles = scoreWeak ? Math.max(0, Number(position.tactical_score_weak_cycles || 0)) + 1 : 0;
+  return {
+    tactical_momentum_weak_cycles: momentumCycles,
+    tactical_score_weak_cycles: scoreCycles,
+    tactical_momentum_weak_first_at: momentumWeak
+      ? (position.tactical_momentum_weak_first_at || now.toISOString())
+      : null,
+    tactical_score_weak_first_at: scoreWeak
+      ? (position.tactical_score_weak_first_at || now.toISOString())
+      : null,
+    tactical_weakness_last_checked_at: now.toISOString()
+  };
+}
+
+async function persistTacticalWeaknessState(ref, position, now = new Date()) {
+  const state = buildTacticalWeaknessState(position, now);
+  if (!state) return position;
+  await ref.set(state, { merge: true });
+  return { ...position, ...state };
 }
 
 function determineExit(position, currentPrice, now = new Date()) {
   const tp = Number(position.effective_tp_price || position.tp1_price || 0);
   const sl = Number(position.effective_sl_price || position.sl_price || 0);
   const timeoutAt = parseDate(position.effective_timeout_at || position.timeout_at);
+  const tactical = isTacticalMomentumPosition(position);
+
   if (currentPrice > 0 && sl > 0 && currentPrice <= sl) {
-    if (position.protection_mode === 'TRAILING') return 'TRAILING_STOP';
-    if (position.protection_mode === 'BREAK_EVEN') return 'BREAK_EVEN_STOP';
+    if (position.protection_mode === 'TACTICAL_TRAILING' || position.protection_mode === 'TRAILING') return 'TRAILING_STOP';
+    if (position.protection_mode === 'TACTICAL_RUNNER_ARMED' || position.protection_mode === 'BREAK_EVEN') return 'BREAK_EVEN_STOP';
     return 'STOP_LOSS';
   }
-  if (currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
+
+  // A 10 USDT tactical position is kept whole because splitting it can leave
+  // both legs below Binance minimum notional. Reaching TP arms a protected
+  // runner instead of forcing an immediate full sale.
+  if (!tactical && currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
   if (timeoutAt && timeoutAt.getTime() <= now.getTime()) return 'TIMEOUT';
+
+  if (tactical) {
+    const entry = Number(position.entry_price || 0);
+    const gainPct = entry > 0 && currentPrice > 0 ? (currentPrice / entry) - 1 : 0;
+    const openedAt = parseDate(position.opened_at) || now;
+    const ageMinutes = Math.max(0, (now.getTime() - openedAt.getTime()) / 60000);
+    const weaknessConfirmed = ageMinutes >= 360 && gainPct <= -0.015;
+    if (weaknessConfirmed && Number(position.tactical_momentum_weak_cycles || 0) >= 4) {
+      return 'MOMENTUM_LOSS_CONFIRMED';
+    }
+    if (weaknessConfirmed && Number(position.tactical_score_weak_cycles || 0) >= 4) {
+      return 'SCORE_DETERIORATION_CONFIRMED';
+    }
+    return null;
+  }
+
   if (position.momentum_lost === true || position.exit_signal_reason === 'MOMENTUM_LOSS') return 'MOMENTUM_LOSS';
   const currentScore = Number(position.current_score);
   const exitScoreFloor = Number(position.exit_score_floor);
@@ -226,6 +309,11 @@ async function persistAdaptiveProtection(ref, adaptive) {
     effective_tp_price: adaptive.effective_tp_price,
     effective_timeout_at: adaptive.effective_timeout_at,
     protection_mode: adaptive.protection_mode,
+    tactical_entry: adaptive.tactical_entry,
+    tactical_profit_armed: adaptive.tactical_profit_armed,
+    tactical_runner_active: adaptive.tactical_runner_active,
+    tactical_weakness_grace_minutes: adaptive.tactical_weakness_grace_minutes,
+    tactical_weakness_confirmation_cycles: adaptive.tactical_weakness_confirmation_cycles,
     adaptive_exit_updated_at: new Date().toISOString(),
     exit_safety_version: SAFETY_VERSION
   }, { merge: true });
@@ -391,6 +479,7 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
       const currentPrice = Number(ticker.price || 0);
       const klines = options.klines?.[symbol] || await fetchRecentKlines(symbol);
       const atrPct = calculateAtrPct(klines);
+      position = await persistTacticalWeaknessState(doc.ref, position);
       const adaptive = resolveAdaptiveProtection(position, currentPrice, atrPct);
       await persistAdaptiveProtection(doc.ref, adaptive);
       position = { ...position, ...(adaptive || {}) };
@@ -399,11 +488,16 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
         outcomes.push({
           symbol,
           action: 'HOLD',
+          entry_mode: isTacticalMomentumPosition(position) ? 'TACTICAL_MOMENTUM' : 'STANDARD',
           current_price: currentPrice,
+          gain_pct: adaptive?.gain_pct ?? null,
           protection_mode: adaptive?.protection_mode || 'BASE',
+          tactical_profit_armed: adaptive?.tactical_profit_armed === true,
           effective_sl_price: adaptive?.effective_sl_price || position.sl_price || null,
           effective_tp_price: adaptive?.effective_tp_price || position.tp1_price || null,
-          effective_timeout_at: adaptive?.effective_timeout_at || position.timeout_at || null
+          effective_timeout_at: adaptive?.effective_timeout_at || position.timeout_at || null,
+          tactical_momentum_weak_cycles: position.tactical_momentum_weak_cycles || 0,
+          tactical_score_weak_cycles: position.tactical_score_weak_cycles || 0
         });
         continue;
       }
@@ -464,10 +558,12 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
 module.exports = {
   SAFETY_VERSION,
   assertExitConfig,
+  isTacticalMomentumPosition,
   buildExitClientOrderId,
   buildSellQuantityEvidence,
   calculateAtrPct,
   resolveAdaptiveProtection,
+  buildTacticalWeaknessState,
   determineExit,
   floorToStep,
   getSellableQuantity,
