@@ -1,27 +1,28 @@
 {
-  "generated_at": "2026-08-03T23:51:20Z",
+  "generated_at": "2026-08-04T00:26:00Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00670-4kh",
   "spot_real": {
     "cycles": 9,
     "opened": 0,
-    "closed": 0,
-    "exit_failures": 0,
+    "closed": 1,
+    "exit_failures": 2,
     "latest_decision": "SKIP",
-    "latest_reason": "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
+    "latest_reason": "TIMEOUT",
     "promotion_gate": "CONFIDENCE_LOW",
-    "reconciliation_gate": "PASS",
-    "exit_engine_gate": "PASS",
+    "reconciliation_gate": "BLOCK",
+    "exit_engine_gate": "BLOCK",
     "open_positions_after_cycle": 1,
     "promoted_symbol": "EULUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
-      "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
-      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_VOLUME_NOT_CONFIRMED",
+      "TIMEOUT",
+      "ACCOUNT_POSITION_RECONCILIATION_REQUIRED",
+      "NO_STANDARD_OR_TACTICAL_CANDIDATE",
       "MAX_OPEN_POSITIONS_REACHED",
-      "INSUFFICIENT_REAL_SAMPLE"
+      "NEW_ENTRIES_DISABLED",
+      "ACCOUNT_RECONCILIATION_BLOCKED"
     ],
     "safety": {
       "spot_only": true,
