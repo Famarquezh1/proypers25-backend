@@ -3,6 +3,8 @@
 const assert = require('assert');
 const {
   summarizeManagedQuantity,
+  isPartialExitPosition,
+  summarizeRemainingManagedQuantity,
   buildManagedDifference
 } = require('../services/spotManagedQuantityRepair');
 const { floorToStep } = require('../services/controlledSpotExitExecutor');
@@ -51,6 +53,34 @@ const { floorToStep } = require('../services/controlledSpotExitExecutor');
   );
   assert.strictEqual(difference.consistent, false);
   assert.strictEqual(Number(difference.managed_deficit.toFixed(2)), 273.23);
+})();
+
+(function partialExitKeepsOnlyRemainingManagedQuantity() {
+  const position = {
+    id: 'tut',
+    symbol: 'TUTUSDT',
+    quantity: 0.516,
+    managed_quantity: 483.516,
+    gross_quantity: 484,
+    base_asset_commission: 0.484,
+    exit_status: 'PARTIAL_EXIT_FILLED',
+    last_partial_exit_event_id: 'binance_order_123'
+  };
+  assert.strictEqual(isPartialExitPosition(position), true);
+  const summary = summarizeRemainingManagedQuantity(position, 0.516);
+  assert.strictEqual(summary.managed_quantity, 0.516);
+  assert.strictEqual(summary.net_quantity, 0.516);
+  assert.strictEqual(summary.source, 'stored_partial_exit_residual');
+})();
+
+(function partialExitNeverResurrectsSoldQuantity() {
+  const summary = summarizeRemainingManagedQuantity({
+    quantity: 0.516,
+    managed_quantity: 483.516,
+    exit_status: 'PARTIAL_EXIT_FILLED'
+  }, 0.516);
+  assert.notStrictEqual(summary.managed_quantity, 483.516);
+  assert.strictEqual(summary.managed_quantity, 0.516);
 })();
 
 console.log('spotManagedQuantityRepair tests passed');
