@@ -8,7 +8,8 @@ const COLLECTIONS = {
   gemPositions: 'spot_shadow_gem_positions',
   gemDecisions: 'spot_shadow_gem_decisions',
   discovery: 'spot_discovery_scans',
-  realCycles: 'real_spot_cycle_decisions'
+  realCycles: 'real_spot_cycle_decisions',
+  costGovernanceRuns: 'spot_cost_governance_runs'
 };
 
 function number(value, fallback = 0) {
@@ -127,7 +128,7 @@ async function getDocs(query) {
 
 async function getUnifiedControlPortal(db) {
   if (!db) throw new Error('unified_portal_requires_db');
-  const [corePortfolioDoc, gemPortfolioDoc, coreOpen, coreClosed, coreDecisions, gemOpen, gemClosed, gemDecisions, discoveryDocs, realCycles] = await Promise.all([
+  const [corePortfolioDoc, gemPortfolioDoc, coreOpen, coreClosed, coreDecisions, gemOpen, gemClosed, gemDecisions, discoveryDocs, realCycles, costRuns] = await Promise.all([
     db.collection(COLLECTIONS.corePortfolio).doc('discovery_default').get(),
     db.collection(COLLECTIONS.gemPortfolio).doc('gem_hunter_default').get(),
     getDocs(db.collection(COLLECTIONS.corePositions).where('status', '==', 'OPEN')),
@@ -137,11 +138,14 @@ async function getUnifiedControlPortal(db) {
     getDocs(db.collection(COLLECTIONS.gemPositions).where('status', '==', 'CLOSED').limit(200)),
     getDocs(db.collection(COLLECTIONS.gemDecisions).orderBy('created_at', 'desc').limit(100)),
     getDocs(db.collection(COLLECTIONS.discovery).orderBy('created_at', 'desc').limit(1)).catch(() => []),
-    getDocs(db.collection(COLLECTIONS.realCycles).orderBy('started_at', 'desc').limit(1)).catch(() => [])
+    getDocs(db.collection(COLLECTIONS.realCycles).orderBy('started_at', 'desc').limit(1)).catch(() => []),
+    getDocs(db.collection(COLLECTIONS.costGovernanceRuns).orderBy('created_at', 'desc').limit(1)).catch(() => [])
   ]);
   const core = buildStrategyMetrics('CORE', corePortfolioDoc.exists ? corePortfolioDoc.data() : {}, coreOpen, coreClosed, coreDecisions);
   const gem = buildStrategyMetrics('GEM_HUNTER', gemPortfolioDoc.exists ? gemPortfolioDoc.data() : {}, gemOpen, gemClosed, gemDecisions);
   const realCycle = realCycles[0] || {};
+  const costRun = costRuns[0] || null;
+  const costStatus = !costRun ? 'EMPTY' : costRun.actual_billing_connected === true ? 'MEASURED' : 'ESTIMATED';
   const modules = [
     ['CORE AI', '/dashboard/comparison', core.data_state, core.last_cycle_at],
     ['GEM Hunter', '/gem-hunter-dashboard', gem.data_state, gem.last_cycle_at],
@@ -150,6 +154,7 @@ async function getUnifiedControlPortal(db) {
     ['Shadow Portfolio', '/shadow-decision-dashboard', core.open_positions_count ? 'ACTIVE' : 'OBSERVE', core.last_cycle_at],
     ['Portfolio', '/investments-dashboard', 'AVAILABLE', realCycle.finished_at || realCycle.started_at],
     ['Binance', '/investments-dashboard', realCycle.binance_ok === true ? 'HEALTHY' : 'UNKNOWN', realCycle.finished_at || realCycle.started_at],
+    ['Costos', '/cost-efficiency-dashboard', costStatus, costRun?.created_at],
     ['Learning', '/paper-ranking-dashboard', 'OBSERVE', core.last_cycle_at],
     ['Analytics', '/paper-ranking-dashboard', 'AVAILABLE', core.last_cycle_at],
     ['Health', '/system-health-dashboard', 'AVAILABLE', null],
@@ -168,7 +173,22 @@ async function getUnifiedControlPortal(db) {
     firestoreOk: true
   });
   modules.find((item) => item.name === 'Production Gate').status = gate.status;
-  return { ok: true, generated_at: new Date().toISOString(), portal: { mode: 'CONTROL_ONLY', real_trading_changed: false }, modules, comparison: { core, gem_hunter: gem, leader: determineLeader(core, gem) }, production_gate: gate };
+  return {
+    ok: true,
+    generated_at: new Date().toISOString(),
+    portal: { mode: 'CONTROL_ONLY', real_trading_changed: false },
+    modules,
+    comparison: { core, gem_hunter: gem, leader: determineLeader(core, gem) },
+    economics: costRun ? {
+      status: costStatus,
+      cost_source: costRun.economics?.cost_source || costRun.decision?.cost_source || null,
+      infrastructure_cost_30d_usd: costRun.economics?.infrastructure_cost_30d_usd ?? null,
+      realized_pnl_30d_usd: costRun.economics?.realized_pnl_30d_usd ?? null,
+      net_after_infrastructure_30d_usd: costRun.economics?.net_after_infrastructure_30d_usd ?? null,
+      last_run_at: costRun.created_at || null
+    } : null,
+    production_gate: gate
+  };
 }
 
 module.exports = { buildStrategyMetrics, determineLeader, evaluateProductionGate, getUnifiedControlPortal };
