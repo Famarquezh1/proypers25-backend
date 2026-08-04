@@ -34,6 +34,8 @@ jobs:
           node tests/spotCostGovernance.test.js
           node tests/spotProfitTargetGovernance.test.js
           node tests/tacticalMomentumExitPolicy.test.js
+          node tests/legacySpotRecoveryLiquidator.test.js
+          node tests/protectedReserveAsset.test.js
           node tests/spotPositionLifecycle.test.js
           node tests/controlledSpotExitExecutor.test.js
           node tests/controlledSpotSubmittedQuantity.test.js
@@ -51,6 +53,7 @@ jobs:
           node --check services/spotCostGovernance.js
           node --check services/spotProfitTargetGovernance.js
           node --check services/controlledSpotExitExecutor.js
+          node --check services/legacySpotRecoveryLiquidator.js
           node --check services/approvedSpotRealExecutor.js
           node --check services/spotPositionLifecycle.js
           node --check services/paperToRealEntryGate.js
@@ -179,6 +182,14 @@ jobs:
           jq -e '.latest_cycle.gates.promotion_blocks_entry == false' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.paper_to_real == "PASS" or .latest_cycle.gates.paper_to_real == "BLOCK"' <<<"$LIVE" >/dev/null
 
+          LEGACY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/spot-legacy-recovery/status")
+          jq -e '.ok == true and .config.enabled == true and .config.xec_never_sell == true' <<<"$LEGACY" >/dev/null
+          jq -e '(.config.target_assets | sort) == (["ANKR","BAR","CATI","LAYER","QTUM"] | sort)' <<<"$LEGACY" >/dev/null
+          jq -e '(.config.protected_assets | index("XEC")) != null and (.config.target_assets | index("XEC")) == null' <<<"$LEGACY" >/dev/null
+          echo "Legacy recovery initialized with XEC protected"
+
           FINAL_STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$FINAL_STATE" = "ENABLED"
           echo "Fresh current Spot cycle verified. Scheduler state: $FINAL_STATE"
@@ -206,6 +217,9 @@ jobs:
             if [ -n "${CRON_SECRET:-}" ]; then
               echo "Current cost governance:"
               curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-cost-governance/status" || true
+              echo
+              echo "Current legacy recovery:"
+              curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-legacy-recovery/status" || true
               echo
               echo "Current live evidence:"
               curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
