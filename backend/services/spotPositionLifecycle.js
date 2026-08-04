@@ -7,7 +7,7 @@
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
 const BALANCE_DOC = 'real_spot_config/balance';
-const VERSION = 'spot_position_lifecycle_v2';
+const VERSION = 'spot_position_lifecycle_v3_complete_fee_accounting';
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -126,12 +126,16 @@ async function recordConfirmedSpotEntry(db, {
       margin: false,
       leverage: false,
       strategy: strategy.strategy || 'CONSERVATIVE',
+      entry_mode: strategy.entry_mode || candidate.entry_mode || null,
       strategy_info: strategy.strategy !== 'CONSERVATIVE' ? {
         decision_reason: strategy.decision_reason || null,
         tp_targets: strategy.tp_targets || null,
         sl_target: strategy.sl_target || null,
         timeout_hours: strategy.timeout_hours || null,
-        partial_exit: strategy.partial_exit === true
+        partial_exit: strategy.partial_exit === true,
+        runner_mode: strategy.runner_mode === true,
+        minimum_hold_policy: strategy.minimum_hold_policy || null,
+        entry_mode: strategy.entry_mode || candidate.entry_mode || null
       } : null,
       safety_version: candidate.safety_version || null,
       lifecycle_version: VERSION,
@@ -152,11 +156,13 @@ async function recordConfirmedSpotEntry(db, {
       filled_at: openedAtIso,
       executed_quantity: summary.filledQuantity,
       executed_quote_usdt: summary.quoteSpent,
+      entry_fee_usdt: summary.feeUsdt,
       lifecycle_version: VERSION
     }, { merge: true });
     tx.set(balanceRef, {
-      available_usdt: Math.max(0, number(balance.available_usdt) - summary.quoteSpent),
+      available_usdt: Math.max(0, number(balance.available_usdt) - summary.quoteSpent - summary.feeUsdt),
       in_positions_usdt: number(balance.in_positions_usdt) + summary.quoteSpent,
+      paid_trading_fees_usdt: number(balance.paid_trading_fees_usdt) + summary.feeUsdt,
       updated_at: openedAtIso,
       source: 'SPOT_LIFECYCLE_CONFIRMED'
     }, { merge: true });
@@ -216,12 +222,23 @@ async function recordConfirmedSpotClose(db, {
     const soldFraction = Math.min(1, effectiveQty / originalQty);
     const originalCapital = Math.max(0, number(latest.capital_usdt));
     const allocatedCapital = originalCapital * soldFraction;
+    const originalEntryFee = Math.max(0, number(latest.entry_fee_usdt));
+    const allocatedEntryFee = originalEntryFee * soldFraction;
+    const remainingEntryFee = Math.max(0, originalEntryFee - allocatedEntryFee);
+    const exitFee = Math.max(0, number(feeUsdt));
+    const totalFee = allocatedEntryFee + exitFee;
     const grossPnl = quote - allocatedCapital;
-    const netPnl = pnlVerified ? grossPnl - Math.max(0, number(feeUsdt)) : null;
+    const netPnl = pnlVerified ? grossPnl - totalFee : null;
     const fullyClosed = soldFraction >= 0.999999;
     const metrics = closeMetrics(latest, { exitPrice, allocatedCapital, netPnl, closedAt, finalScore });
     const balance = balanceSnap.exists ? balanceSnap.data() : {};
 
+    const feeMetadata = {
+      entry_fee_allocated_usdt: allocatedEntryFee,
+      exit_fee_usdt: exitFee,
+      total_fee_usdt: totalFee,
+      fee_accounting_complete: true
+    };
     const positionUpdate = fullyClosed ? {
       status: 'REAL_CLOSED',
       exit_status: source === 'BINANCE_ORDER' ? 'EXIT_FILLED' : 'RECONCILED',
@@ -234,16 +251,22 @@ async function recordConfirmedSpotClose(db, {
       sold_quantity: effectiveQty,
       quote_received_usdt: quote,
       exit_event_id: eventId,
+      entry_fee_usdt: 0,
+      remaining_entry_fee_usdt: 0,
       lifecycle_version: VERSION,
+      ...feeMetadata,
       ...metadata
     } : {
       quantity: Math.max(0, originalQty - effectiveQty),
       capital_usdt: Math.max(0, originalCapital - allocatedCapital),
+      entry_fee_usdt: remainingEntryFee,
       exit_status: 'PARTIAL_EXIT_FILLED',
       last_partial_exit_at: metrics.closed_at,
       last_partial_exit_reason: reason,
       last_partial_exit_source: source,
       last_partial_exit_event_id: eventId,
+      last_entry_fee_allocated_usdt: allocatedEntryFee,
+      last_exit_fee_usdt: exitFee,
       lifecycle_version: VERSION,
       ...metadata
     };
@@ -259,10 +282,14 @@ async function recordConfirmedSpotClose(db, {
       quantity: effectiveQty,
       quote_received_usdt: quote,
       gross_pnl_usdt: grossPnl,
-      actual_fee_usdt: Math.max(0, number(feeUsdt)),
+      entry_fee_allocated_usdt: allocatedEntryFee,
+      exit_fee_usdt: exitFee,
+      total_fee_usdt: totalFee,
+      actual_fee_usdt: totalFee,
       net_pnl_usdt: netPnl,
       net_pnl_pct: pnlVerified && allocatedCapital > 0 ? (netPnl / allocatedCapital) * 100 : null,
       pnl_verified: pnlVerified,
+      fee_accounting_complete: true,
       order_id: order?.orderId || order?.order_id || null,
       client_order_id: order?.clientOrderId || order?.client_order_id || null,
       order_status: order?.status || null,
@@ -276,10 +303,21 @@ async function recordConfirmedSpotClose(db, {
       available_usdt: number(balance.available_usdt) + quote,
       in_positions_usdt: Math.max(0, number(balance.in_positions_usdt) - allocatedCapital),
       realized_pnl_usdt: number(balance.realized_pnl_usdt) + (pnlVerified ? netPnl : 0),
+      paid_trading_fees_usdt: number(balance.paid_trading_fees_usdt) + exitFee,
       updated_at: metrics.closed_at,
       source: 'SPOT_LIFECYCLE_CONFIRMED'
     }, { merge: true });
-    return { idempotent: false, resultId: resultRef.id, fullyClosed, allocatedCapital, netPnl, metrics };
+    return {
+      idempotent: false,
+      resultId: resultRef.id,
+      fullyClosed,
+      allocatedCapital,
+      allocatedEntryFee,
+      exitFee,
+      totalFee,
+      netPnl,
+      metrics
+    };
   });
 }
 
