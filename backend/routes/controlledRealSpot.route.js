@@ -16,6 +16,7 @@ const { runSpotPaperExecutionCycle } = require('../services/binanceSpotPaperExec
 const { buildSpotCycleDecisionLog, logSpotCycleDecision } = require('../services/spotCycleObservability');
 const { persistActivity, persistCycleEvidence } = require('../services/spotLiveEvidence');
 const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason } = require('../services/spotRealPipelinePolicy');
+const { runLegacySpotRecoveryCycle } = require('../services/legacySpotRecoveryLiquidator');
 
 const router = express.Router();
 
@@ -57,6 +58,20 @@ async function refreshAdaptiveAndPromotion(config) {
   return { adaptiveGate, promotionGate };
 }
 
+async function runLegacyRecoverySafely(options = {}) {
+  try {
+    return await runLegacySpotRecoveryCycle(db, options);
+  } catch (error) {
+    await persistActivity(db, {
+      event_type: 'ERROR',
+      source: 'LEGACY_SPOT_RECOVERY',
+      error: error.message,
+      created_at: new Date().toISOString()
+    });
+    return { ok: false, error: 'LEGACY_SPOT_RECOVERY_FAILED', details: error.message, outcomes: [] };
+  }
+}
+
 router.post('/internal/cron/binance/spot-adaptive-strategy', requireCronSecret, async (_req, res) => {
   try { return res.json({ ok: true, ...(await runAdaptiveSpotStrategyController(db)) }); }
   catch (error) { return res.status(500).json({ ok: false, error: 'ADAPTIVE_STRATEGY_FAILED', details: error.message }); }
@@ -67,12 +82,36 @@ router.get('/spot-adaptive-strategy/status', async (_req, res) => {
   catch (error) { return res.status(500).json({ ok: false, error: error.message }); }
 });
 
+router.post('/internal/cron/binance/spot-legacy-recovery', requireCronSecret, async (req, res) => {
+  const result = await runLegacyRecoverySafely(req.body || {});
+  return res.status(result.ok === false ? 500 : 200).json(result);
+});
+
+router.get('/internal/spot-legacy-recovery/status', requireCronSecret, async (_req, res) => {
+  try {
+    const [configSnap, statesSnap, latestRun] = await Promise.all([
+      db.doc('real_spot_config/legacy_recovery').get(),
+      db.collection('legacy_spot_recovery_states').get(),
+      db.collection('legacy_spot_recovery_runs').orderBy('created_at', 'desc').limit(1).get()
+    ]);
+    return res.json({
+      ok: true,
+      config: configSnap.exists ? configSnap.data() : null,
+      states: statesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      latest_run: latestRun.empty ? null : latestRun.docs[0].data()
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'LEGACY_SPOT_RECOVERY_STATUS_FAILED', details: error.message });
+  }
+});
+
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   let config = {};
   let reconciliation = {};
   let exits = {};
+  let legacyRecovery = {};
   let autonomy = {};
   let discovery = {};
   let paperValidation = {};
@@ -91,18 +130,15 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     config = await getRealSpotConfig(db);
 
     exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
+    legacyRecovery = await runLegacyRecoverySafely(req.body?.legacy_recovery || {});
     autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
 
-    // A real scheduler cycle now produces fresh Binance discovery, ranking and
-    // Paper evidence instead of consuming unrelated stale documents.
     discovery = await scanBinanceSpotOpportunities(db, req.body?.discovery || {});
     paperValidation = await runSpotPaperExecutionCycle(db, req.body?.paper || {});
     ({ adaptiveGate, promotionGate } = await refreshAdaptiveAndPromotion(config));
     promotionConfidence = buildPromotionConfidence(promotionGate);
 
-    // Promotion is deliberately informational. Every fresh opportunity reaches
-    // Paper-to-Real and independent technical confirmation.
     paperGate = await evaluatePaperToRealEntryGate(db, config);
 
     const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
@@ -163,6 +199,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       duration_ms: durationMs,
       reconciliation,
       exits,
+      legacyRecovery,
       autonomy,
       adaptiveGate,
       promotionGate: promotionConfidence,
@@ -182,13 +219,14 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       margin: false,
       leverage: false,
       withdrawals: false,
-      pipeline: ['Scheduler', 'Reconciliation', 'Exit Engine', 'Discovery', 'Ranking', 'Paper Validation', 'Adaptive Strategy', 'Strategy Promotion Confidence', 'Technical Confirmation', 'Paper-to-Real', 'Safety Checks', 'Real Executor'],
+      pipeline: ['Scheduler', 'Reconciliation', 'Exit Engine', 'Legacy Recovery', 'Discovery', 'Ranking', 'Paper Validation', 'Adaptive Strategy', 'Strategy Promotion Confidence', 'Technical Confirmation', 'Paper-to-Real', 'Safety Checks', 'Real Executor'],
       discovery,
       ranking: { latest_scan_id: discovery.scan_id || null, candidates_saved: discovery.candidates_saved || 0, top_symbol: discovery.top_symbol || null, top_score: discovery.top_score || null },
       paper_validation: paperValidation,
       reconciliation,
       autonomy,
       exits,
+      legacy_recovery: legacyRecovery,
       adaptive_strategy_gate: adaptiveGate,
       strategy_promotion_confidence: promotionConfidence,
       strategy_promotion_blocks_entry: false,
@@ -220,6 +258,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
         duration_ms: durationMs,
         reconciliation,
         exits,
+        legacyRecovery,
         autonomy,
         adaptiveGate,
         promotionGate: promotionConfidence,
