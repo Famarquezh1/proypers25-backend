@@ -16,19 +16,19 @@ on:
           - governance
           - all
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '7,37 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: spot-research-consolidated
+  group: spot-research-consolidated-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 14
     steps:
       - name: Run productive Spot research cycle
         env:
@@ -44,23 +44,64 @@ jobs:
           call_endpoint() {
             local endpoint="$1"
             local body="$2"
-            curl --silent --show-error --fail-with-body --retry 2 --max-time 2100 \
+            local max_time="${3:-300}"
+            local label="${4:-$endpoint}"
+            local response_file error_file heartbeat_pid started_at exit_code
+
+            response_file=$(mktemp)
+            error_file=$(mktemp)
+            started_at=$(date +%s)
+
+            (
+              while true; do
+                sleep 30
+                now=$(date +%s)
+                echo "HEARTBEAT label=$label elapsed_seconds=$((now-started_at))" >&2
+              done
+            ) &
+            heartbeat_pid=$!
+
+            set +e
+            curl --silent --show-error --fail-with-body \
+              --retry 3 --retry-all-errors --retry-delay 5 \
+              --connect-timeout 20 --max-time "$max_time" \
               -X POST "$BACKEND_URL$endpoint" \
               -H "Content-Type: application/json" \
               -H "x-cron-secret: $CRON_SECRET" \
-              --data "$body"
+              --data "$body" >"$response_file" 2>"$error_file"
+            exit_code=$?
+            set -e
+
+            kill "$heartbeat_pid" 2>/dev/null || true
+            wait "$heartbeat_pid" 2>/dev/null || true
+
+            if [ "$exit_code" -ne 0 ]; then
+              echo "ENDPOINT_FAILED label=$label code=$exit_code endpoint=$endpoint" >&2
+              cat "$error_file" >&2 || true
+              rm -f "$response_file" "$error_file"
+              return "$exit_code"
+            fi
+
+            cat "$response_file"
+            rm -f "$response_file" "$error_file"
           }
 
           run_market_opportunity() {
             echo "MARKET_OPPORTUNITY_START bands=8_to_40 mode=observe_and_feed_quant"
-            MARKET_RESULT=$(call_endpoint "/internal/cron/binance/spot-market-opportunity" '{"researchLimit":10}')
+            MARKET_RESULT=$(call_endpoint "/internal/cron/binance/spot-market-opportunity" '{"researchLimit":10}' 180 "market-opportunity")
             printf '%s\n' "$MARKET_RESULT" | jq '{ok,id,version,breadth,research_symbols,top_winners:(.top_winners[:10]),learning_mode,no_order_created}'
           }
 
           run_gem_radar() {
             echo "GEM_RADAR_START universe=dynamic max_research=10 quant=v6_productive"
-            RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":5000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}')
-            printf '%s\n' "$RADAR_RESULT" | jq '{ok,duration_ms,discovery:{baseline:.discovery.baseline,universe_size:.discovery.universe_size,new_assets_detected:.discovery.new_assets_detected},radar:{id:.radar.id,version:.radar.version,universe_size:.radar.universe_size,unique_symbol_count:.radar.unique_symbol_count,research_candidate_count:.radar.research_candidate_count,research_symbols:.radar.research_symbols,quant_run_id:.radar.quant_run_id,quant_promotion_eligible:.radar.quant_promotion_eligible}}'
+            if RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":true,"quantLimit":5000,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}' 420 "gem-radar-with-quant"); then
+              RADAR_MODE="FULL_QUANT"
+            else
+              echo "GEM_RADAR_FULL_QUANT_TIMEOUT fallback=discovery_only" >&2
+              RADAR_RESULT=$(call_endpoint "/internal/cron/binance/spot-new-assets-discovery" '{"maxResearch":10,"runQuant":false,"interval":"5m","feeRate":0.001,"slippageRate":0.0005}' 180 "gem-radar-discovery-fallback")
+              RADAR_MODE="DISCOVERY_FALLBACK"
+            fi
+            printf '%s\n' "$RADAR_RESULT" | jq --arg mode "$RADAR_MODE" '{ok,duration_ms,execution_mode:$mode,discovery:{baseline:.discovery.baseline,universe_size:.discovery.universe_size,new_assets_detected:.discovery.new_assets_detected},radar:{id:.radar.id,version:.radar.version,universe_size:.radar.universe_size,unique_symbol_count:.radar.unique_symbol_count,research_candidate_count:.radar.research_candidate_count,research_symbols:.radar.research_symbols,quant_run_id:.radar.quant_run_id,quant_promotion_eligible:.radar.quant_promotion_eligible}}'
           }
 
           run_quant_and_promotion() {
@@ -70,67 +111,67 @@ jobs:
             QUANT_BODY=$(jq -nc --argjson symbols "$SYMBOLS" '{symbols:$symbols,interval:"5m",limit:5000,feeRate:0.001,slippageRate:0.0005}')
 
             echo "QUANT_START mode=productive_v6 folds=4 universe=$(printf '%s' "$SYMBOLS" | jq length) market_winners_included=$(printf '%s' "$MARKET_SYMBOLS" | jq length)"
-            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" "$QUANT_BODY")
+            QUANT_RESULT=$(call_endpoint "/internal/cron/binance/spot-quant-research" "$QUANT_BODY" 420 "quant-research")
             printf '%s\n' "$QUANT_RESULT" | jq '{ok,id,version,history,strategy_families,walk_forward_folds,safeguards,costs,promotion_eligible,no_eligible_champion,selection,selected_evidence}'
 
             ACCEPTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.accepted_symbol_count // 0')
             ANALYZED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.analyzed_count // 0')
             SELECTED=$(printf '%s' "$QUANT_RESULT" | jq -r '.selection.selected_symbol // empty')
             if [ "$ACCEPTED" -le 0 ] || [ "$ANALYZED" -le 0 ]; then
-              echo "Quant research produced no accepted/analyzed symbols" >&2
-              exit 1
+              echo "QUANT_NO_ELIGIBLE_SAMPLE accepted=$ACCEPTED analyzed=$ANALYZED; continuing without treating market conditions as infrastructure failure" >&2
             fi
 
             PAPER_SYMBOLS=$(printf '%s' "$SYMBOLS" | jq -c '.[0:5]')
             echo "PAPER_REFRESH_START selected_symbol=${SELECTED:-none} candidate_count=$(printf '%s' "$PAPER_SYMBOLS" | jq length)"
             PAPER_BODY=$(jq -nc --argjson symbols "$PAPER_SYMBOLS" --arg selected "$SELECTED" '{preferredSymbols:($symbols + (if ($selected|length)>0 then [$selected] else [] end) | unique),source:"quant_research_market_breadth_v1"}')
-            PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY")
+            PAPER_RESULT=$(call_endpoint "/internal/cron/binance/spot-paper-validation" "$PAPER_BODY" 180 "paper-validation")
             printf '%s\n' "$PAPER_RESULT" | jq '{ok,paper_only,positions_closed,intents_created,intents_rejected,opened_symbols}'
 
             echo "PROMOTION_START"
-            PROMOTION_RESULT=$(call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}')
+            PROMOTION_RESULT=$(call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' 120 "strategy-promotion")
             printf '%s\n' "$PROMOTION_RESULT" | jq '{ok,state,entry_allowed,symbol,reasons,paper,champion_run_id}'
             echo "QUANT_PAPER_PROMOTION_DONE"
           }
 
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             case "$MANUAL_TASK" in
-              governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' ;;
+              governance) call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' 120 "cost-governance" ;;
               discovery) run_market_opportunity; run_gem_radar ;;
-              adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' ;;
-              promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' ;;
+              adaptive) call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' 120 "adaptive-strategy" ;;
+              promotion) call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' 120 "strategy-promotion" ;;
               quant) run_market_opportunity; run_quant_and_promotion ;;
               all)
-                call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
+                call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' 120 "cost-governance"
                 run_market_opportunity
                 run_gem_radar
-                call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
+                call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' 120 "adaptive-strategy"
                 run_quant_and_promotion
                 ;;
             esac
+            echo "MANUAL_RESEARCH_COMPLETE task=$MANUAL_TASK"
             exit 0
           fi
 
           MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
 
-          # Full-frequency policy: Discovery and Gem Radar run every 30 minutes.
-          # Economic governance measures whether trading covers costs, but it
-          # never slows down or pauses research jobs.
+          # :07 and :37 avoid GitHub's busiest schedule boundaries while
+          # preserving two research executions per hour.
           run_market_opportunity
           run_gem_radar
 
-          if [ "$MINUTE" = "00" ]; then
-            call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}'
-            call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}'
+          # The :07 slot replaces the previous :00 slot for hourly work.
+          if [ "$MINUTE" = "07" ]; then
+            call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' 120 "adaptive-strategy"
+            call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' 120 "strategy-promotion"
           fi
 
-          if [ "$MINUTE" = "00" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
-            call_endpoint "/internal/cron/binance/spot-cost-governance" '{}'
+          if [ "$MINUTE" = "07" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
+            call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' 120 "cost-governance"
           fi
 
-          # Quant and promotion remain fixed every two hours. No cost mode,
-          # multiplier or deficit can reduce this cadence.
-          if [ "$MINUTE" = "00" ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
+          if [ "$MINUTE" = "07" ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
             run_quant_and_promotion
           fi
+
+          echo "SCHEDULED_RESEARCH_COMPLETE utc_hour=$HOUR utc_minute=$MINUTE"
