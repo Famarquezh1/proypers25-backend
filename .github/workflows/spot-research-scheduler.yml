@@ -16,7 +16,8 @@ on:
           - governance
           - all
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7 * * * *'
+    - cron: '37 * * * *'
 
 permissions:
   contents: read
@@ -35,10 +36,11 @@ jobs:
           BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           MANUAL_TASK: ${{ inputs.task || 'scheduled' }}
+          SCHEDULE_SLOT: ${{ github.event.schedule || '' }}
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
-          echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK backend=$BACKEND_URL policy=FULL_FREQUENCY"
+          echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK schedule_slot=${SCHEDULE_SLOT:-manual} backend=$BACKEND_URL policy=FULL_FREQUENCY"
           MARKET_RESULT='{}'
 
           call_endpoint() {
@@ -152,26 +154,28 @@ jobs:
             exit 0
           fi
 
-          MINUTE=$(date -u +%M)
           HOUR=$(date -u +%H)
+          TOP_HOUR_SLOT=false
+          if [ "$SCHEDULE_SLOT" = "7 * * * *" ]; then
+            TOP_HOUR_SLOT=true
+          fi
 
-          # :07 and :37 avoid GitHub's busiest schedule boundaries while
-          # preserving two research executions per hour.
+          # Discovery and Gem Radar remain at two executions per hour, now at
+          # :07 and :37 to avoid crowded GitHub scheduling boundaries.
           run_market_opportunity
           run_gem_radar
 
-          # The :07 slot replaces the previous :00 slot for hourly work.
-          if [ "$MINUTE" = "07" ]; then
+          if [ "$TOP_HOUR_SLOT" = "true" ]; then
             call_endpoint "/internal/cron/binance/spot-adaptive-strategy" '{}' 120 "adaptive-strategy"
             call_endpoint "/internal/cron/binance/spot-strategy-promotion" '{}' 120 "strategy-promotion"
           fi
 
-          if [ "$MINUTE" = "07" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
+          if [ "$TOP_HOUR_SLOT" = "true" ] && [ $((10#$HOUR % 6)) -eq 0 ]; then
             call_endpoint "/internal/cron/binance/spot-cost-governance" '{}' 120 "cost-governance"
           fi
 
-          if [ "$MINUTE" = "07" ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
+          if [ "$TOP_HOUR_SLOT" = "true" ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
             run_quant_and_promotion
           fi
 
-          echo "SCHEDULED_RESEARCH_COMPLETE utc_hour=$HOUR utc_minute=$MINUTE"
+          echo "SCHEDULED_RESEARCH_COMPLETE utc_hour=$HOUR schedule_slot=$SCHEDULE_SLOT"
