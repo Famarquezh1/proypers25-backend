@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T19:45:16Z",
+  "generated_at": "2026-08-07T20:31:50Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00677-k7c",
@@ -9,7 +9,7 @@
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "TECHNICAL_VOLUME_NOT_CONFIRMED",
+    "latest_reason": "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
@@ -17,6 +17,8 @@
     "promoted_symbol": "SPCXBUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
+      "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
       "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "NEW_ENTRIES_DISABLED"
     ],
