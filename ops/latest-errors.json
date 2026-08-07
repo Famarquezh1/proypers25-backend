@@ -1,706 +1,706 @@
 {
-  "generated_at": "2026-08-07T14:46:09Z",
+  "generated_at": "2026-08-07T15:45:29Z",
   "count": 100,
   "errors": [
     {
-      "timestamp": "2026-08-07T14:45:51.684060Z",
+      "timestamp": "2026-08-07T15:45:20.179469Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para GOOGL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:45:20.136513Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:45:19.872542Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:41:01.280722Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:41:00.781934Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para GOOGL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:41:00.726683Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:48.557518Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para GOOGL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:48.109984Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:48.074053Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:36.074666Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:35.716522Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para GOOGL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:35.587884Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:22.674732Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para GOOGL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:22.571061Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:22.489508Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:08.995810Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:08.638672Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:40:08.224376Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:58.043613Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:57.908480Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:57.825330Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:44.765974Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:44.686997Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:44.669984Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:31.721162Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:31.619815Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:31.495450Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:18.531511Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:18.223263Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:35:18.216535Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:31:20.308595Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:31:20.287738Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
       "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:45:42.308201Z",
+      "timestamp": "2026-08-07T15:31:20.023238Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:31:11.689230Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:31:11.108598Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
       "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:45:33.092570Z",
+      "timestamp": "2026-08-07T15:31:10.789805Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:59.174224Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
       "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:45:23.791087Z",
+      "timestamp": "2026-08-07T15:30:58.715819Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:58.436911Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:42.826855Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
       "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:45:14.156797Z",
+      "timestamp": "2026-08-07T15:30:42.616300Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:42.388317Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para AAPL' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:25.996552Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00677-k7c",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-07T15:30:25.935535Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
       "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:44:00.464325Z",
+      "timestamp": "2026-08-07T15:30:25.867919Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ zhdqrrste8vJO0V7yDBo: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:58.964293Z",
+      "timestamp": "2026-08-07T15:30:10.188552Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ zJgH9TGyLX8Qtdj4ZGK4: Error=-2.00, Confianza=1.00"
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:55.965022Z",
+      "timestamp": "2026-08-07T15:30:10.060309Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ yCoqC9Dvctlul6zFimYy: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:54.264279Z",
+      "timestamp": "2026-08-07T15:30:09.596956Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ xNZIHXVdbh6fMkmWguAX: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:53.364025Z",
+      "timestamp": "2026-08-07T15:25:58.471421Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ vo6HUuCQgj075zgakcfi: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:52.664040Z",
+      "timestamp": "2026-08-07T15:25:58.438709Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ v6PiioW7nChVmDTEBxyv: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:51.564198Z",
+      "timestamp": "2026-08-07T15:25:58.279066Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ v1m3DLkAFGjn0oHMCxfQ: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:49.765095Z",
+      "timestamp": "2026-08-07T15:25:47.147018Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ uTyNQl0jhjKnlJ9eTHqB: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:47.468027Z",
+      "timestamp": "2026-08-07T15:25:47.103464Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ tXPAgluS5Aq2ejgyhe5X: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:45.265094Z",
+      "timestamp": "2026-08-07T15:25:46.723090Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ tTCEoUuYYBMddKt9Y2MQ: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:44.264010Z",
+      "timestamp": "2026-08-07T15:25:35.506175Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ tKo46Y0II3qdPbZXvdxr: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:43.664214Z",
+      "timestamp": "2026-08-07T15:25:35.427722Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ tGeYnNXcdzHyBKwaajiJ: Error=-9.54, Confianza=0.30"
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:42.764435Z",
+      "timestamp": "2026-08-07T15:25:34.336218Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ rHZk5dUcwfOWdonJ875r: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:41.264028Z",
+      "timestamp": "2026-08-07T15:25:22.355881Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ qpMvscqZ82JOXIgvlLLs: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:39.764475Z",
+      "timestamp": "2026-08-07T15:25:22.176670Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ qZvuJReuO4L1EQOiGrty: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:38.364343Z",
+      "timestamp": "2026-08-07T15:25:20.521770Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ qXrOm7D0fhWyFXtOpgtp: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:33.564995Z",
+      "timestamp": "2026-08-07T15:21:21.189541Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ocUpqcyJRgKV2vJyjbay: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:32.564433Z",
+      "timestamp": "2026-08-07T15:21:20.968971Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ kOubCkwnAVzUcZaPqhQC: Error=3.25, Confianza=1.00"
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:31.064876Z",
+      "timestamp": "2026-08-07T15:21:19.248889Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ kJFkoPxODbnj4RhjrUGs: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:29.765013Z",
+      "timestamp": "2026-08-07T15:21:08.303170Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ jpnA9ROQa1Prxgit667l: Error=-13.31, Confianza=0.30"
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:26.465049Z",
+      "timestamp": "2026-08-07T15:21:07.442189Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ jRSoqEomUqFHX6WupkET: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:25.665009Z",
+      "timestamp": "2026-08-07T15:21:06.702173Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ jMwJ0FnvTWyFZi1SgwNg: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:23.664974Z",
+      "timestamp": "2026-08-07T15:20:55.299281Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ iuNjxkrASoekrzYtBkyJ: Error=-10.93, Confianza=0.30"
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:22.565057Z",
+      "timestamp": "2026-08-07T15:20:53.679893Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ iFhfV5yd2QPOHydvlBdn: Error=0.00, Confianza=1.00"
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:21.064605Z",
+      "timestamp": "2026-08-07T15:20:53.610963Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ hvn7ArHywmVsG1LsenSI: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:19.365052Z",
+      "timestamp": "2026-08-07T15:20:43.068702Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ hqhUkYX0QuiPB9VAp9vi: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:18.064017Z",
+      "timestamp": "2026-08-07T15:20:40.873306Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ hGmB0lT6eQ6QvJeEgJH1: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:16.464031Z",
+      "timestamp": "2026-08-07T15:20:40.861696Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ h1JSaQXvcJ5okgsJRyx3: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:14.265109Z",
+      "timestamp": "2026-08-07T15:20:26.848667Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ gyEcgEDH9Mxytp1UmUyF: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:13.364066Z",
+      "timestamp": "2026-08-07T15:20:26.729578Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ejKp9AMCun8n2stZM1K4: Error=-30.36, Confianza=0.30"
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:11.364075Z",
+      "timestamp": "2026-08-07T15:20:26.508357Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ehSvyjTzQ06IFs51uZ5O: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:08.964107Z",
+      "timestamp": "2026-08-07T15:20:10.771186Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ eckahSqc6XeZ4RV94xDA: Error=-11.84, Confianza=0.30"
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:07.365225Z",
+      "timestamp": "2026-08-07T15:20:10.536401Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ eNhg2cG6NXnJvdgUyoJg: Error=-10.53, Confianza=0.30"
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:06.464106Z",
+      "timestamp": "2026-08-07T15:20:10.112344Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ eAPyJGWE97VQgfrQ9d7Z: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:02.764089Z",
+      "timestamp": "2026-08-07T15:15:54.414553Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ dw2iX0pSrT4EB14Bhxpu: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:43:01.279224Z",
+      "timestamp": "2026-08-07T15:15:53.902545Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ duM6TGb9ZGtju8gSmCKc: Error=0.00, Confianza=1.00"
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:59.464018Z",
+      "timestamp": "2026-08-07T15:15:53.755359Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ dZlS1JKsBJqead679Zi9: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:56.364923Z",
+      "timestamp": "2026-08-07T15:15:40.977304Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ dMFOfAewQ9XgamPbEUFp: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:55.764221Z",
+      "timestamp": "2026-08-07T15:15:39.550670Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ccGRypdHRfFaEJLIkO2W: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:53.764902Z",
+      "timestamp": "2026-08-07T15:15:39.410642Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ cXdIYOPUrsjnSiJlS5vi: Error=-6.31, Confianza=0.30"
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:52.864272Z",
+      "timestamp": "2026-08-07T15:15:29.112944Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ bfn3VUTLojpwffMrkHH1: Error=0.00, Confianza=1.00"
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:50.864338Z",
+      "timestamp": "2026-08-07T15:15:26.859178Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ bLzcm4KCyNQ9gu5f8e4p: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:49.664060Z",
+      "timestamp": "2026-08-07T15:15:26.740747Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ bHgnb5Y0M3zXIaxboERc: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:47.564015Z",
+      "timestamp": "2026-08-07T15:15:17.024390Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ aPwmdBkmUv8rW4IhwtuZ: Error=-0.60, Confianza=1.00"
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:46.564629Z",
+      "timestamp": "2026-08-07T15:15:14.219749Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ Zhv2xxgjrK66P9VGrspO: Error=-13.03, Confianza=0.30"
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:46.064899Z",
+      "timestamp": "2026-08-07T15:15:14.183406Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ZGnG4aeUxxN3Jb9XPIip: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:44.864739Z",
+      "timestamp": "2026-08-07T15:11:39.037685Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ ZDseaqrBSjrqwSzwI6vO: Error=0.00, Confianza=1.00"
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:43.864810Z",
+      "timestamp": "2026-08-07T15:11:38.177117Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ Z6nWVHKXS4wpRpkhfShE: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:43.404565Z",
+      "timestamp": "2026-08-07T15:11:24.459996Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ Z2sSWRrCKa3o0TumRBs8: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:42.680958Z",
+      "timestamp": "2026-08-07T15:11:23.047689Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ YtUK6pm9Ir0ENaeDSowV: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:41.364148Z",
+      "timestamp": "2026-08-07T15:11:12.310737Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ Yf2VlFdtgL3YTieg4Of8: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:39.470977Z",
+      "timestamp": "2026-08-07T15:11:10.771852Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ YaPM52YV036KiHOdJDRW: Error=0.00, Confianza=1.00"
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:38.264091Z",
+      "timestamp": "2026-08-07T15:10:59.476373Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ YDcoC3L6vdH3lNslG3YF: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:37.281920Z",
+      "timestamp": "2026-08-07T15:10:59.316855Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ YDXJxsPOJmUw40EKXQQE: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:36.691938Z",
+      "timestamp": "2026-08-07T15:10:49.332904Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ VHoAnNdA1tEZJxXS3R8M: Error=-9.99, Confianza=0.30"
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para AAPL' }"
     },
     {
-      "timestamp": "2026-08-07T14:42:35.864865Z",
+      "timestamp": "2026-08-07T15:10:48.289261Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00677-k7c",
       "event": null,
-      "message": "✅ UvV2Fb6akra5AGcGzwJb: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:34.165842Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ UZKKiN8vWnACKzw8kjDT: Error=-15.66, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:32.864832Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TzXPIX1pJxZe1UtuA9jT: Error=-3.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:32.205283Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TuRzhKXcbukDh43ER3Pv: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:30.603108Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TWBy0B6BbjXXKDXZ1xaw: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:29.664769Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TUUtopVMi84He0KrB3cS: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:28.064266Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TQcdLVpKdkl61UmDVwLn: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:27.277600Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ TBEap7bNERTzTt7UfXpu: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:25.905132Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ SvBlnxl8ZGScpWYmJ7XN: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:25.164346Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ Sd8hTgxnXO6OtoKQxaE7: Error=-9.28, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:22.464066Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ SWtHQPVYpi9nSxFqab99: Error=-10.68, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:21.364481Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ SKlmLDQCNW1WeITWYbaR: Error=-11.46, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:19.864838Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ SF6NPaf6bpLQ4XuwtAn0: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:18.164388Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ RrqGLZ8fGWbxJAtrvGsa: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:16.965015Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ RagLmTdLGB6c5glr3yxx: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:14.864153Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ RDtJp1gNwy7WmhPlE676: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:13.064322Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ Qu77sFITBftIOepdLzfN: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:12.064872Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ OePqZ2LH2QfqQBliiXKu: Error=-11.03, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:11.364333Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ Oc7AK86SwZYR7CUW34v6: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:08.264019Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ OEOzTL4RGAPtK00TkGge: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:06.365126Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ NpwSKA1TTaJUvVZiBCLG: Error=-13.28, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:06.014889Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ NKyLIKVRmroPQO1oE9Br: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:05.564620Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ MlIqbKYIDvXFbATkKqC4: Error=20.00, Confianza=0.00"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:04.164830Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ MYRt9NIWIkKf4JiA2z5X: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-08-07T14:42:01.364899Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ MAEDOPQPKjZhojhEIzbm: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:59.364881Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ LuWvWCQoM5UKGwTAXE6N: Error=-27.38, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:55.864148Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ LoWftzf5uTvuPGZM5cXS: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:53.564944Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ LIYiiDRz9T969jrvHAv3: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:52.664253Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ KgvpTQlMBEADV8xuYsDm: Error=-24.81, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:50.664970Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ KAsrQNjU3UwAqXeT11kz: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:49.264776Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ K7owrlVokbmLtBZcxwLM: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:48.364764Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ JpAc60wrhP20Pu0mERRp: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:47.892634Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ JfQzEfpppFAApVkpIeDh: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:47.064027Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ Jf2Mt3fcc0JweiZVpgqm: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:46.681805Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ JTTvu8N2ItnOy1JEFiwk: Error=0.00, Confianza=1.00"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:45.675004Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ IbsnzLL8GaeYDIQrewnL: Error=-10.65, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:45.078702Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ HsrpvpEaHRfKNwfyNCQV: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:43.400983Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ Hn85gEMrKhHQQfrT2goL: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:42.780584Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ HFFCUqNzMRei2vvitlP5: Error=NaN, Confianza=0.30"
-    },
-    {
-      "timestamp": "2026-08-07T14:41:40.573910Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00677-k7c",
-      "event": null,
-      "message": "✅ HEQNwYJMvIHxv3xFPvHz: Error=NaN, Confianza=0.30"
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
     }
   ]
 }
