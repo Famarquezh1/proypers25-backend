@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-08-07T21:29:55Z",
+  "generated_at": "2026-08-07T22:07:24Z",
   "event_found": true,
-  "timestamp": "2026-08-07T20:46:26.760883Z",
+  "timestamp": "2026-08-07T21:43:20.117738Z",
   "revision": "proypers25-backend-00677-k7c",
-  "run_id": "quant_1786135582559",
+  "run_id": "quant_1786138996393",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 10,
-    "analyzed_count": 10,
+    "accepted_symbol_count": 9,
+    "analyzed_count": 9,
     "eligible_count": 0,
     "failed_count": 4,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "MMTUSDT",
-    "requested_count": 10,
+    "requested_count": 9,
     "selected_family": "MOMENTUM",
     "selected_symbol": "MMTUSDT",
-    "valid_count": 6
+    "valid_count": 5
   },
   "selected_evidence": {
     "calibration": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": 0.000045080063131272496,
-      "median_validation_expectancy": -0.001264559894402743,
+      "median_validation_expectancy": -0.0013149012770763992,
       "positive_test_folds": 1,
       "positive_validation_folds": 0,
       "test_expectancy_std": 0.001588279217537151,
@@ -63,14 +63,14 @@
       "winRate": 0.3181818181818182
     },
     "validation": {
-      "averageLoss": -0.010372451402987124,
+      "averageLoss": -0.010450760220479478,
       "averageWin": 0.02601024039198004,
-      "expectancy": -0.0012767784542453322,
-      "maxDrawdown": 0.0562466414823313,
+      "expectancy": -0.0013355100673645974,
+      "maxDrawdown": 0.057577370787728566,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.03436698658987791,
-      "profitFactor": 0.8358757051552104,
-      "returnStd": 0.019065278311243376,
+      "netReturn": -0.035728567068089245,
+      "profitFactor": 0.8296123868261741,
+      "returnStd": 0.01906447566034474,
       "trades": 24,
       "winRate": 0.25
     }
