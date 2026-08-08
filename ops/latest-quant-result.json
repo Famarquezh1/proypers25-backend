@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-08-08T10:01:24Z",
+  "generated_at": "2026-08-08T10:58:26Z",
   "event_found": true,
-  "timestamp": "2026-08-08T09:42:07.888975Z",
+  "timestamp": "2026-08-08T10:38:17.491331Z",
   "revision": "proypers25-backend-00677-k7c",
-  "run_id": "quant_1786182125029",
+  "run_id": "quant_1786185494958",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 6,
-    "analyzed_count": 6,
+    "accepted_symbol_count": 5,
+    "analyzed_count": 5,
     "eligible_count": 0,
-    "failed_count": 4,
+    "failed_count": 3,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "SPCXBUSDT",
-    "requested_count": 6,
+    "requested_count": 5,
     "selected_family": "TREND",
     "selected_symbol": "SPCXBUSDT",
     "valid_count": 2
@@ -63,16 +63,16 @@
       "winRate": 0.25
     },
     "validation": {
-      "averageLoss": -0.00799339670914375,
+      "averageLoss": -0.007812301305271797,
       "averageWin": 0.015571488568583,
-      "expectancy": -0.0025553462604375773,
-      "maxDrawdown": 0.07394731203246074,
-      "medianReturn": -0.0073539656352507015,
-      "netReturn": -0.033487813206046324,
-      "profitFactor": 0.5844132026165011,
-      "returnStd": 0.011114684865082708,
-      "trades": 13,
-      "winRate": 0.23076923076923078
+      "expectancy": -0.0019663538368080978,
+      "maxDrawdown": 0.0649490782528535,
+      "medianReturn": -0.007044504936884464,
+      "netReturn": -0.0240964440964776,
+      "profitFactor": 0.6644004099054759,
+      "returnStd": 0.011371941243461123,
+      "trades": 12,
+      "winRate": 0.25
     }
   },
   "strategy_families": [
