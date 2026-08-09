@@ -111,7 +111,7 @@ const tacticalCandidate = {
 const tacticalWithoutHistory = evaluateTacticalMomentumCandidate(tacticalCandidate, { sample_size: 0, positive_rate: 0 }, {});
 assert.strictEqual(tacticalWithoutHistory.allowed, true);
 assert.strictEqual(tacticalThresholds({}).maximum_price_change_24h, 18);
-assert.strictEqual(tacticalThresholds({}).minimum_technical_score, 70);
+assert.strictEqual(tacticalThresholds({}).minimum_technical_score, 65);
 
 const parabolicCandidate = evaluateTacticalMomentumCandidate({
   ...tacticalCandidate,
