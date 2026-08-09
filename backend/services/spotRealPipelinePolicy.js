@@ -1,11 +1,14 @@
 'use strict';
 
+const { resolveManagedSpotLimits } = require('./spotManagedAcquisitionPolicy');
+
 function condition(component, code, expected, actual = null) {
   return { component, code, expected, actual };
 }
 
 function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGate = {}, paperGate = {}, autonomy = {}, config = {}, openPositions = 0 } = {}) {
   const failures = [];
+  const managedLimits = resolveManagedSpotLimits(config);
 
   if (reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false) {
     failures.push(condition('Reconciliation', reconciliation.reason || config.entry_block_reason || 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED', 'Binance and Firestore consistent; entries_blocked=false', {
@@ -36,7 +39,14 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     for (const reason of reasons) failures.push(condition(reason.startsWith('TECHNICAL_') ? 'Technical Confirmation' : 'Paper-to-Real', reason, 'Current candidate satisfies the corresponding gate', paperGate.failed_conditions || null));
   }
 
-  if (Number(openPositions || 0) >= 1) failures.push(condition('Position Limit', 'MAX_OPEN_POSITIONS_REACHED', 'open positions < 1', Number(openPositions || 0)));
+  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) {
+    failures.push(condition(
+      'Managed Spot Assets',
+      'MAX_MANAGED_SPOT_ASSETS_REACHED',
+      `managed Spot acquisitions < ${managedLimits.max_managed_spot_assets}`,
+      Number(openPositions || 0)
+    ));
+  }
   if (autonomy.should_halt === true) failures.push(condition('Autonomy', autonomy.halt_reason || 'AUTONOMY_HALTED', 'autonomy.should_halt=false', true));
 
   const checks = [
@@ -54,8 +64,9 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
   for (const [field, expected, code] of checks) {
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
-  if (Number(config.max_position_usdt) !== 10) failures.push(condition('Position Limit', 'POSITION_LIMIT_MUST_BE_10_USDT', 'max_position_usdt=10', config.max_position_usdt));
-  if (Number(config.max_open_positions) !== 1) failures.push(condition('Position Limit', 'MAX_OPEN_POSITIONS_MUST_BE_1', 'max_open_positions=1', config.max_open_positions));
+  if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+  }
 
   return failures;
 }
