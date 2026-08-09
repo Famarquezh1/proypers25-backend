@@ -37,6 +37,7 @@ jobs:
           node tests/immediateTacticalEntryGate.test.js
           node tests/earlyMomentumRadar.test.js
           node tests/legacySpotRecoveryLiquidator.test.js
+          node tests/xecHistoricalHoldingPolicy.test.js
           node tests/protectedReserveAsset.test.js
           node tests/spotPositionLifecycle.test.js
           node tests/controlledSpotExitExecutor.test.js
@@ -56,6 +57,8 @@ jobs:
           node --check services/spotProfitTargetGovernance.js
           node --check services/controlledSpotExitExecutor.js
           node --check services/legacySpotRecoveryLiquidator.js
+          node --check services/xecHistoricalHoldingPolicy.js
+          node --check services/xecHistoricalHoldingManager.js
           node --check services/approvedSpotRealExecutor.js
           node --check services/spotPositionLifecycle.js
           node --check services/spotEarlyMomentumRadar.js
@@ -183,7 +186,14 @@ jobs:
           jq -e '(.config.target_assets | sort) == (["ANKR","BAR","CATI","LAYER","QTUM"] | sort)' <<<"$LEGACY" >/dev/null
           jq -e '(.config.protected_assets | index("XEC")) != null and (.config.target_assets | index("XEC")) == null' <<<"$LEGACY" >/dev/null
 
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · XEC protected"
+          XEC=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/spot-xec-holding/status")
+          jq -e '.ok == true and .autonomous == true and .new_entries_allowed == false' <<<"$XEC" >/dev/null
+          jq -e '.config.enabled == true and .config.xec_managed_exit_enabled == true and .config.new_xec_entries_allowed == false' <<<"$XEC" >/dev/null
+          jq -e '.state != null' <<<"$XEC" >/dev/null
+
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · XEC autonomous exit manager active"
 
       - name: Diagnose failure
         if: failure()
@@ -202,4 +212,6 @@ jobs:
             curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
             echo
             curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-legacy-recovery/status" || true
+            echo
+            curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-xec-holding/status" || true
           fi
