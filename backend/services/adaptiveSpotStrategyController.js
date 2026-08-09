@@ -1,6 +1,7 @@
 'use strict';
 
 const axios = require('axios');
+const { filterBotPerformanceResults } = require('./spotPerformanceClassification');
 
 const RESULTS = 'real_spot_execution_results';
 const RUNS = 'spot_adaptive_strategy_runs';
@@ -24,7 +25,7 @@ function stdev(values) {
 function computePerformanceMetrics(rows = []) {
   const returns = rows.map((row) => n(row.net_pnl_pct) / 100).filter(Number.isFinite);
   const wins = returns.filter((value) => value > 0);
-  const losses = returns.filter((value) => value <= 0);
+  const losses = returns.filter((value) => value < 0);
   const grossProfit = wins.reduce((sum, value) => sum + value, 0);
   const grossLoss = Math.abs(losses.reduce((sum, value) => sum + value, 0));
   let equity = 1;
@@ -101,7 +102,8 @@ async function fetchMarketRegime() {
 
 async function runAdaptiveSpotStrategyController(db) {
   const snapshot = await db.collection(RESULTS).orderBy('closed_at', 'desc').limit(100).get();
-  const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const rawRows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const rows = filterBotPerformanceResults(rawRows);
   const metrics = computePerformanceMetrics(rows);
   const regime = await fetchMarketRegime();
   const decision = decideStrategyState(metrics, regime);
@@ -112,15 +114,17 @@ async function runAdaptiveSpotStrategyController(db) {
     spot_only: true,
     no_order_created: true,
     metrics,
+    excluded_result_rows: rawRows.length - rows.length,
     regime,
     decision,
-    version: 'adaptive_spot_strategy_v1'
+    version: 'adaptive_spot_strategy_v2_performance_integrity'
   };
   await db.collection(RUNS).doc(run.id).set(run);
   await db.doc(CONTROL).set({
     updated_at: now,
     ...decision,
     metrics,
+    excluded_result_rows: run.excluded_result_rows,
     regime,
     source_run_id: run.id,
     real_entry_approval: false,
