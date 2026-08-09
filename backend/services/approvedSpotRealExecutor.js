@@ -9,6 +9,7 @@ const {
   runRealSpotPreflightCheck
 } = require('./binanceSpotRealExecutor');
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
+const { managedAcquisitionCapacity, MAX_PER_ACQUISITION_USDT } = require('./spotManagedAcquisitionPolicy');
 
 const POSITIONS = 'real_spot_positions';
 const HARD_PROTECTED_RESERVE_ASSETS = Object.freeze(['XEC']);
@@ -61,6 +62,12 @@ function isProtectedReserveSymbol(symbol, config = {}) {
   return HARD_PROTECTED_RESERVE_ASSETS.includes(asset) || configured.includes(asset);
 }
 
+function snapshotContainsManagedSymbol(snapshot, symbol) {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!snapshot?.docs || !normalized) return false;
+  return snapshot.docs.some((doc) => String(doc.data()?.symbol || '').toUpperCase() === normalized);
+}
+
 async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   const started = Date.now();
   const normalizedCandidate = candidate ? {
@@ -82,12 +89,42 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     };
   }
 
-  const [openPositions, exposure] = await Promise.all([
+  const [managedAcquisitions, exposure] = await Promise.all([
     db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get(),
     getRealSpotCapitalExposure(db)
   ]);
-  if (openPositions.size >= 1) return { ok: true, skipped: true, reason: 'MAX_OPEN_POSITIONS_REACHED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MAX_OPEN_POSITIONS_REACHED'] }) };
-  if (Number(exposure.total || 0) + 10 > Number(config.max_total_capital_usdt || 10)) return { ok: true, skipped: true, reason: 'TOTAL_CAPITAL_LIMIT_REACHED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['TOTAL_CAPITAL_LIMIT_REACHED'] }) };
+  const capacity = managedAcquisitionCapacity({
+    currentManagedAssets: managedAcquisitions.size,
+    currentManagedCapitalUsdt: Number(exposure.total || 0),
+    config
+  });
+  if (managedAcquisitions.size >= capacity.max_managed_spot_assets) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'MAX_MANAGED_SPOT_ASSETS_REACHED',
+      managed_spot_capacity: capacity,
+      entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MAX_MANAGED_SPOT_ASSETS_REACHED'] })
+    };
+  }
+  if (snapshotContainsManagedSymbol(managedAcquisitions, normalizedCandidate.symbol)) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'ASSET_ALREADY_UNDER_SPOT_MANAGEMENT',
+      managed_spot_capacity: capacity,
+      entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ASSET_ALREADY_UNDER_SPOT_MANAGEMENT'] })
+    };
+  }
+  if (Number(exposure.total || 0) + MAX_PER_ACQUISITION_USDT > capacity.max_total_managed_capital_usdt) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'MANAGED_SPOT_CAPITAL_LIMIT_REACHED',
+      managed_spot_capacity: capacity,
+      entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_CAPITAL_LIMIT_REACHED'] })
+    };
+  }
 
   const preflight = await runRealSpotPreflightCheck(db);
   if (preflight.ok !== true || preflight.credentials_valid !== true || preflight.account_accessible !== true) {
@@ -96,13 +133,13 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   }
   if (preflight.can_trade !== true) return { ok: true, skipped: true, reason: 'ACCOUNT_CANNOT_TRADE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ACCOUNT_CANNOT_TRADE'] }) };
   if (preflight.enable_withdrawals_api_key !== false) return { ok: true, skipped: true, reason: 'WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL'] }) };
-  if (Number(preflight.usdt_balance_free || 0) < 10) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
+  if (Number(preflight.usdt_balance_free || 0) < MAX_PER_ACQUISITION_USDT) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
 
-  const intent = await createRealExecutionIntent(db, normalizedCandidate, 10, config);
+  const intent = await createRealExecutionIntent(db, normalizedCandidate, MAX_PER_ACQUISITION_USDT, config);
   if (!intent?.id) return { ok: false, skipped: true, reason: 'ENTRY_INTENT_RESERVATION_FAILED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_INTENT_RESERVATION_FAILED'] }) };
   if (intent.created === false && intent.status === 'REAL_FILLED') return { ok: true, skipped: true, reason: 'ENTRY_ALREADY_FILLED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_ALREADY_FILLED'] }) };
 
-  const order = await placeSpotMarketBuy(normalizedCandidate.symbol, 10, config, preflight, intent.clientOrderId);
+  const order = await placeSpotMarketBuy(normalizedCandidate.symbol, MAX_PER_ACQUISITION_USDT, config, preflight, intent.clientOrderId);
   if (!(order.ok === true && (order.order_created === true || order.recovered_existing_order === true))) {
     const reason = order.reason || 'BINANCE_ORDER_NOT_CREATED';
     await db.collection('real_spot_execution_intents').doc(intent.id).set({ status: 'REAL_REJECTED', rejection_reason: reason, updated_at: new Date().toISOString() }, { merge: true });
@@ -123,7 +160,8 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
           : 'Paper-to-Real and Technical Confirmation approved this exact candidate',
         promotion_confidence: options.promotion_confidence || null,
         paper_gate: options.paper_gate || null,
-        entry_mode: normalizedCandidate.entry_mode || null
+        entry_mode: normalizedCandidate.entry_mode || null,
+        managed_spot_capacity_before_entry: capacity
       }
     },
     config,
@@ -135,6 +173,9 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   if (!entry.idempotent) {
     await db.doc('real_spot_config/control').set({
       entries_used_this_session: Number(config.entries_used_this_session || 0) + 1,
+      max_managed_spot_assets: capacity.max_managed_spot_assets,
+      max_managed_spot_capital_usdt: capacity.max_total_managed_capital_usdt,
+      managed_spot_terminology_version: capacity.version,
       last_entry_symbol: normalizedCandidate.symbol,
       last_entry_mode: normalizedCandidate.entry_mode || null,
       last_entry_at: new Date().toISOString()
@@ -145,6 +186,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     ok: true,
     real_mode: true,
     positions_opened: entry.idempotent ? 0 : 1,
+    managed_acquisitions_created: entry.idempotent ? 0 : 1,
     order_created: !entry.idempotent,
     recovered_existing_order: order.recovered_existing_order === true,
     selected_symbol: normalizedCandidate.symbol,
@@ -154,6 +196,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     order_id: order.orderId || null,
     intent_id: intent.id,
     position_id: entry.positionId,
+    managed_spot_capacity_before_entry: capacity,
     preflight: { credentials_valid: true, account_accessible: true, can_trade: true, withdrawals_locked: true, usdt_balance_free: preflight.usdt_balance_free },
     entry_diagnostic: diagnostic(normalizedCandidate, { order_creation_path_reached: true, order_created: !entry.idempotent }),
     duration_ms: Date.now() - started
@@ -165,5 +208,6 @@ module.exports = {
   executeApprovedSpotCandidate,
   diagnostic,
   resolveStrategyMetadata,
-  isProtectedReserveSymbol
+  isProtectedReserveSymbol,
+  snapshotContainsManagedSymbol
 };
