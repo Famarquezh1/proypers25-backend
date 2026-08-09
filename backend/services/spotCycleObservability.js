@@ -57,21 +57,27 @@ function buildExitDiagnostics(exits = {}) {
 function summarizeCandidateAudit(paperGate = {}) {
   const audit = Array.isArray(paperGate?.candidate_pool_audit) ? paperGate.candidate_pool_audit : [];
   const tacticalReady = audit.filter((candidate) => candidate.tactical_allowed === true);
+  const earlyReady = audit.filter((candidate) => candidate.early_momentum_allowed === true);
   const standardReady = audit.filter((candidate) => candidate.standard_allowed === true);
   const tacticalRejections = audit.flatMap((candidate) => candidate.tactical_reasons || []);
-  const rejectionCounts = tacticalRejections.reduce((acc, reason) => {
+  const earlyRejections = audit.flatMap((candidate) => candidate.early_momentum_reasons || []);
+  const countReasons = (reasons) => reasons.reduce((acc, reason) => {
     acc[reason] = (acc[reason] || 0) + 1;
     return acc;
   }, {});
+  const topReasons = (counts) => Object.entries(counts)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5)
+    .map(([reason, count]) => ({ reason, count }));
   return {
     audited_candidates: audit.length,
     standard_ready_count: standardReady.length,
+    early_momentum_ready_count: earlyReady.length,
+    early_momentum_ready_symbols: earlyReady.slice(0, 10).map((candidate) => candidate.symbol),
     tactical_ready_count: tacticalReady.length,
     tactical_ready_symbols: tacticalReady.slice(0, 10).map((candidate) => candidate.symbol),
-    top_tactical_rejection_reasons: Object.entries(rejectionCounts)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 5)
-      .map(([reason, count]) => ({ reason, count }))
+    top_early_momentum_rejection_reasons: topReasons(countReasons(earlyRejections)),
+    top_tactical_rejection_reasons: topReasons(countReasons(tacticalRejections))
   };
 }
 
@@ -98,6 +104,7 @@ function buildSpotCycleDecisionLog(input = {}) {
     exits?.blocked ? 'EXIT_ENGINE_BLOCKED' : null
   );
   const entryMode = firstNonEmpty(paperGate?.entry_mode, candidate?.entry_mode, entries?.entry_mode);
+  const selectionLane = firstNonEmpty(paperGate?.selection_lane, candidate?.selection_lane, entries?.selection_lane);
 
   return {
     event: 'SPOT_REAL_CYCLE_DECISION',
@@ -108,17 +115,22 @@ function buildSpotCycleDecisionLog(input = {}) {
     reasons,
     failed_conditions: explicitFailures,
     entry_mode: entryMode,
+    selection_lane: selectionLane,
     tactical_entry: entryMode === 'TACTICAL_MOMENTUM',
+    early_momentum_entry: selectionLane === 'EARLY_MOMENTUM',
     candidate: candidate ? {
       symbol: firstNonEmpty(candidate.symbol, entries?.symbol, entries?.selected_symbol),
       score: firstNonEmpty(candidate.score, candidate.opportunityScore, candidate.opportunity_score),
       category: firstNonEmpty(candidate.category),
       scan_id: firstNonEmpty(candidate.scan_id, paperGate?.latest_scan_id),
       entry_mode: entryMode,
+      selection_lane: selectionLane,
       price_change_24h: firstNonEmpty(candidate.priceChange24h, candidate.price_change_24h),
       impulse_score: firstNonEmpty(candidate.impulseScore, candidate.impulse_score),
       liquidity_score: firstNonEmpty(candidate.liquidityScore, candidate.liquidity_score),
-      risk_score: firstNonEmpty(candidate.riskScore, candidate.risk_score)
+      risk_score: firstNonEmpty(candidate.riskScore, candidate.risk_score),
+      early_momentum_score: firstNonEmpty(candidate.earlyMomentumScore, candidate.early_momentum_score),
+      early_momentum: candidate.earlyMomentum || candidate.early_momentum || null
     } : null,
     gates: {
       reconciliation: reconciliation?.account_consistent === true && reconciliation?.entries_blocked !== true ? 'PASS' : 'BLOCK',
@@ -128,6 +140,7 @@ function buildSpotCycleDecisionLog(input = {}) {
       promotion: promotionGate?.high_confidence === true ? 'CONFIDENCE_HIGH' : 'CONFIDENCE_LOW',
       promotion_blocks_entry: false,
       paper_to_real: paperGate?.allowed === true ? 'PASS' : 'BLOCK',
+      early_momentum: selectionLane === 'EARLY_MOMENTUM' ? (paperGate?.allowed === true ? 'PASS' : 'BLOCK') : 'NOT_SELECTED',
       tactical_momentum: entryMode === 'TACTICAL_MOMENTUM' ? (paperGate?.allowed === true ? 'PASS' : 'BLOCK') : 'NOT_SELECTED',
       technical_confirmation: paperGate?.technical_confirmation?.allowed === true ? 'PASS' : paperGate?.technical_confirmation ? 'BLOCK' : 'NOT_REACHED'
     },
@@ -141,6 +154,7 @@ function buildSpotCycleDecisionLog(input = {}) {
       candidates_ranked: asNumber(discovery?.candidates_saved, 0),
       top_symbol: discovery?.top_symbol || null,
       top_score: discovery?.top_score ?? null,
+      early_momentum_radar: paperGate?.early_momentum_radar || null,
       opportunity_audit: opportunityAudit
     },
     paper_validation: {
@@ -157,6 +171,7 @@ function buildSpotCycleDecisionLog(input = {}) {
       order_created: entries?.order_created === true,
       selected_symbol: entries?.selected_symbol || entries?.symbol || candidate?.symbol || null,
       entry_mode: entryMode,
+      selection_lane: selectionLane,
       duration_ms: asNumber(durationMs, 0)
     },
     exit_diagnostics: exitDiagnostics,
