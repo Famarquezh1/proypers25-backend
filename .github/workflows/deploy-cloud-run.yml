@@ -34,6 +34,8 @@ jobs:
           node tests/spotCostGovernance.test.js
           node tests/spotProfitTargetGovernance.test.js
           node tests/tacticalMomentumExitPolicy.test.js
+          node tests/immediateTacticalEntryGate.test.js
+          node tests/earlyMomentumRadar.test.js
           node tests/legacySpotRecoveryLiquidator.test.js
           node tests/protectedReserveAsset.test.js
           node tests/spotPositionLifecycle.test.js
@@ -56,6 +58,7 @@ jobs:
           node --check services/legacySpotRecoveryLiquidator.js
           node --check services/approvedSpotRealExecutor.js
           node --check services/spotPositionLifecycle.js
+          node --check services/spotEarlyMomentumRadar.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealPipelinePolicy.js
           node --check services/spotCycleObservability.js
