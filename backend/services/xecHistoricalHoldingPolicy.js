@@ -78,11 +78,17 @@ function evaluateXecHistoricalHolding({ state = {}, currentPrice, averageCost, o
     markDownsideTrimDone = true;
   } else if (policy.enabled && armed) {
     const nearCostBasis = currentDrawdownPct !== null && currentDrawdownPct >= policy.near_cost_basis_drawdown_pct;
-    if (stage >= 2 && (nearCostBasis || highRecoveryPct >= policy.final_take_min_recovery_pct) && pullbackPct >= policy.final_trailing_pullback_pct) {
+    if (stage >= 2 && nearCostBasis && pullbackPct >= policy.second_trailing_pullback_pct) {
       sell = true;
       sellFraction = 1;
       finalExit = true;
-      reason = nearCostBasis ? 'XEC_NEAR_COST_BASIS_TRAILING_EXIT' : 'XEC_STRONG_RECOVERY_FINAL_TRAILING_EXIT';
+      reason = 'XEC_NEAR_COST_BASIS_TRAILING_EXIT';
+      nextStage = 3;
+    } else if (stage >= 2 && highRecoveryPct >= policy.final_take_min_recovery_pct && pullbackPct >= policy.final_trailing_pullback_pct) {
+      sell = true;
+      sellFraction = 1;
+      finalExit = true;
+      reason = 'XEC_STRONG_RECOVERY_FINAL_TRAILING_EXIT';
       nextStage = 3;
     } else if (stage === 1 && highRecoveryPct >= policy.second_take_min_recovery_pct && pullbackPct >= policy.second_trailing_pullback_pct) {
       sell = true;
