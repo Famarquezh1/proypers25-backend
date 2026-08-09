@@ -9,7 +9,7 @@ const VALIDATIONS = 'spot_opportunity_validations';
 const PAPER_RESULTS = 'spot_paper_execution_results';
 const DECISIONS = 'real_spot_entry_gate_decisions';
 
-const TACTICAL_CATEGORIES = new Set(['MOMENTUM', 'BREAKOUT', 'VOLUME_SPIKE', 'ACCUMULATION']);
+const TACTICAL_CATEGORIES = new Set(['MOMENTUM', 'BREAKOUT', 'VOLUME_SPIKE', 'ACCUMULATION', 'NEW_OR_LOW_PRICE']);
 const TACTICAL_BLOCKING_WARNINGS = new Set(['parabolic_24h_move', 'extreme_volatility', 'high_risk_profile']);
 
 function asNumber(value, fallback = 0) {
@@ -94,17 +94,42 @@ function validationEvidenceForSymbol(validationRows, paperRows, symbol, currentS
 function tacticalThresholds(config = {}) {
   return {
     enabled: config.tactical_momentum_enabled !== false,
-    minimum_score: Math.max(asNumber(config.min_opportunity_score, 0), asNumber(config.tactical_momentum_min_score, 70)),
+    // Tactical entries are intentionally independent from the conservative
+    // standard-lane score. Otherwise a high Paper threshold silently disables
+    // the fast lane before it can inspect a fresh Binance move.
+    minimum_score: Math.max(60, asNumber(config.tactical_momentum_min_score, 68)),
     minimum_quote_volume_usdt: Math.max(100000, asNumber(config.tactical_momentum_min_quote_volume_usdt, 500000)),
     minimum_price_change_24h: Math.max(0, asNumber(config.tactical_momentum_min_price_change_24h, 2.5)),
     maximum_price_change_24h: Math.max(5, asNumber(config.tactical_momentum_max_price_change_24h, 18)),
-    minimum_impulse_score: Math.max(0, asNumber(config.tactical_momentum_min_impulse_score, 60)),
+    // Scanner impulse is deliberately conservative and rarely reaches 60 until
+    // a move is already mature. 30 still requires real acceleration, while the
+    // live 5m/15m/1h confirmation remains mandatory before a real order.
+    minimum_impulse_score: Math.max(20, asNumber(config.tactical_momentum_min_impulse_score, 30)),
     minimum_liquidity_score: Math.max(0, asNumber(config.tactical_momentum_min_liquidity_score, 50)),
     maximum_risk_score: Math.min(70, Math.max(0, asNumber(config.tactical_momentum_max_risk_score, 55))),
     minimum_existing_evidence_positive_rate: Math.max(0.25, Math.min(1, asNumber(config.tactical_momentum_min_existing_positive_rate, 0.4))),
-    minimum_technical_score: Math.max(65, asNumber(config.tactical_momentum_min_technical_score, 70)),
+    minimum_technical_score: Math.max(60, asNumber(config.tactical_momentum_min_technical_score, 65)),
     minimum_timeframe_confirmations: Math.max(2, asNumber(config.tactical_momentum_min_timeframe_confirmations, 2))
   };
+}
+
+function buildLaneCandidatePools(candidates = [], config = {}) {
+  const standardScore = asNumber(config.min_opportunity_score, 0);
+  const configuredCategories = Array.isArray(config.allowed_categories) && config.allowed_categories.length
+    ? new Set(config.allowed_categories.map((value) => String(value || '').toUpperCase()))
+    : null;
+
+  const standard = candidates
+    .filter((candidate) => candidateScore(candidate) >= standardScore)
+    .filter((candidate) => !configuredCategories || configuredCategories.has(String(candidate.category || '').toUpperCase()));
+
+  // Do NOT inherit standard score/category filters here. VOLUME_SPIKE and
+  // NEW_OR_LOW_PRICE are legitimate tactical discovery classes even when the
+  // conservative Paper lane excludes them. Tactical-specific risk, liquidity,
+  // anti-chase and technical checks are enforced later.
+  const tactical = candidates.filter((candidate) => TACTICAL_CATEGORIES.has(String(candidate.category || '').toUpperCase()));
+
+  return { standard, tactical };
 }
 
 function evaluateTacticalMomentumCandidate(candidate, evidence = null, config = {}) {
@@ -248,24 +273,21 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
 
   const candidates = candidateSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const latestUnique = uniqueLatestCandidates(candidates, latestScan?.id);
-  const scoreFiltered = latestUnique.filter((candidate) => candidateScore(candidate) >= asNumber(config.min_opportunity_score, 0));
-  const categoryFiltered = Array.isArray(config.allowed_categories) && config.allowed_categories.length
-    ? scoreFiltered.filter((candidate) => config.allowed_categories.includes(candidate.category))
-    : scoreFiltered;
+  const lanePools = buildLaneCandidatePools(latestUnique, config);
 
   const validationRows = validationSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const paperRows = paperResultSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const candidateAudit = buildCandidateAudit(categoryFiltered, validationRows, paperRows, latestScan?.id, config);
+  const candidateAudit = buildCandidateAudit(latestUnique, validationRows, paperRows, latestScan?.id, config);
 
   let predicted = null;
   let entryMode = null;
   let laneEvaluation = null;
   let validation = null;
 
-  for (let index = 0; index < categoryFiltered.length; index += 1) {
-    const candidate = categoryFiltered[index];
+  for (let index = 0; index < lanePools.standard.length; index += 1) {
+    const candidate = lanePools.standard[index];
     const evidence = validationEvidenceForSymbol(validationRows, paperRows, candidate.symbol, latestScan?.id);
-    const standard = evaluateStandardCandidate(candidate, evidence, config, categoryFiltered[index + 1] || null);
+    const standard = evaluateStandardCandidate(candidate, evidence, config, lanePools.standard[index + 1] || null);
     if (standard.allowed) {
       predicted = candidate;
       entryMode = 'STANDARD_PAPER_TO_REAL';
@@ -276,7 +298,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   }
 
   if (!predicted) {
-    for (const candidate of categoryFiltered) {
+    for (const candidate of lanePools.tactical) {
       const evidence = validationEvidenceForSymbol(validationRows, paperRows, candidate.symbol, latestScan?.id);
       const tactical = evaluateTacticalMomentumCandidate(candidate, evidence, config);
       if (tactical.allowed) {
@@ -346,6 +368,8 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     latest_scan_id: latestScan?.id || null,
     latest_scan_age_minutes: scanAgeMinutes === null ? null : Number(scanAgeMinutes.toFixed(3)),
     unique_candidates_in_latest_scan: latestUnique.length,
+    standard_lane_candidates: lanePools.standard.length,
+    tactical_lane_candidates: lanePools.tactical.length,
     candidate_pool_audit: candidateAudit,
     thresholds: {
       maximum_scan_age_minutes: maxScanAgeMinutes,
@@ -357,7 +381,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     spot_only: true,
     maximum_real_order_usdt: 10,
     no_order_created: true,
-    version: 'paper_to_real_entry_gate_v4_tactical_momentum'
+    version: 'paper_to_real_entry_gate_v5_immediate_tactical'
   };
 
   await saveDecision(db, decision);
@@ -371,6 +395,7 @@ module.exports = {
   uniqueLatestCandidates,
   validationEvidenceForSymbol,
   tacticalThresholds,
+  buildLaneCandidatePools,
   evaluateTacticalMomentumCandidate,
   evaluateStandardCandidate,
   buildCandidateAudit
