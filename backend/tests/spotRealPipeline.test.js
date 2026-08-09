@@ -27,6 +27,8 @@ const safeConfig = {
   leverage_allowed: false,
   withdrawals_allowed: false,
   max_position_usdt: 10,
+  // Legacy compatibility field. Managed Spot capacity is now governed by the
+  // dedicated four-acquisition policy instead of Futures-style position wording.
   max_open_positions: 1,
   reconciliation_required: false,
   account_consistent: true
@@ -48,6 +50,28 @@ const noFailures = buildEntrySafetyFailures({
   promotionGate: lowPromotion
 });
 assert.deepStrictEqual(noFailures, []);
+
+const threeManagedAssets = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: true },
+  paperGate: { allowed: true },
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 3
+});
+assert.deepStrictEqual(threeManagedAssets, []);
+
+const fourManagedAssets = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: true },
+  paperGate: { allowed: true },
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 4
+});
+assert(fourManagedAssets.some((item) => item.code === 'MAX_MANAGED_SPOT_ASSETS_REACHED'));
 
 const technicalFailure = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
@@ -72,7 +96,7 @@ const configurationFailures = buildEntrySafetyFailures({
   openPositions: 0
 });
 assert(configurationFailures.some((item) => item.code === 'POSITION_LIMIT_MUST_BE_10_USDT'));
-assert(configurationFailures.some((item) => item.code === 'MAX_OPEN_POSITIONS_MUST_BE_1'));
+assert(!configurationFailures.some((item) => item.code === 'MAX_OPEN_POSITIONS_MUST_BE_1'));
 
 const manualReconciliation = {
   closing_reason: 'MANUAL_RECONCILIATION',
