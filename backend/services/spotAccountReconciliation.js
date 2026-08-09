@@ -4,13 +4,17 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
+const {
+  isBotPerformanceResult,
+  buildPerformanceClassificationPatch
+} = require('./spotPerformanceClassification');
 
 const POSITIONS = 'real_spot_positions';
 const RESULTS = 'real_spot_execution_results';
 const BALANCE_PATH = 'real_spot_config/balance';
 const CONTROL_PATH = 'real_spot_config/control';
 const RECONCILIATIONS = 'real_spot_reconciliations';
-const VERSION = 'spot_account_reconciliation_v1';
+const VERSION = 'spot_account_reconciliation_v2_performance_integrity';
 const QUANTITY_TOLERANCE = 1e-8;
 
 function asNumber(value, fallback = 0) {
@@ -102,7 +106,15 @@ function buildReconciliationClose(position, reconciliation, conversion, spotSale
     exitPrice,
     realizedPnl: pnlVerified ? quoteReceived - allocatedCapital : null,
     metadata: {
-      external_conversion: Boolean(conversion),
+      // Reconciliation proves what happened in Binance but it is not a trade
+      // decision executed by Proypers25. Keep it out of bot performance.
+      performance_excluded: true,
+      performance_exclusion_reason: `RECONCILIATION_${reason}`,
+      performance_classification: 'EXTERNAL_OR_UNVERIFIED',
+      performance_classified_at: now,
+      // Backwards-compatible exclusion flag consumed by the current dashboard.
+      external_conversion: true,
+      external_operation_type: conversion ? 'CONVERT' : spotSales ? 'SPOT_SALE' : 'BALANCE_RECONCILIATION',
       external_spot_sale: Boolean(spotSales),
       conversion_trades: conversion?.trades || 0,
       conversion_order_id: conversion?.latestOrderId || null,
@@ -115,6 +127,54 @@ function buildReconciliationClose(position, reconciliation, conversion, spotSale
       reconciliation_version: VERSION
     }
   };
+}
+
+function buildReconciliationControlPatch(currentControl = {}, inconsistencies = 0, now = new Date().toISOString()) {
+  if (inconsistencies > 0) {
+    return {
+      account_consistent: false,
+      reconciliation_required: true,
+      reconciliation_last_run_at: now,
+      reconciliation_last_inconsistencies: inconsistencies,
+      new_entries_enabled: false,
+      entry_block_reason: 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED'
+    };
+  }
+
+  const manualPause = currentControl.manual_entry_pause === true || currentControl.entries_paused_manually === true;
+  const reconciliationOwnedBlock = currentControl.entry_block_reason === 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED';
+  const otherBlock = Boolean(currentControl.entry_block_reason && !reconciliationOwnedBlock);
+  const canEnableEntries = currentControl.enabled === true &&
+    currentControl.kill_switch !== true &&
+    !manualPause &&
+    !otherBlock;
+
+  return {
+    account_consistent: true,
+    reconciliation_required: false,
+    reconciliation_last_run_at: now,
+    reconciliation_last_inconsistencies: 0,
+    // A healthy reconciliation must release an orphaned false created by an
+    // earlier reconciliation. Explicit manual pauses and other blockers remain.
+    new_entries_enabled: canEnableEntries ? true : currentControl.new_entries_enabled === true,
+    entry_block_reason: reconciliationOwnedBlock ? null : (currentControl.entry_block_reason || null),
+    reconciliation_gate_released_at: reconciliationOwnedBlock && canEnableEntries ? now : (currentControl.reconciliation_gate_released_at || null)
+  };
+}
+
+async function backfillPerformanceClassification(resultsSnapshot, now = new Date().toISOString()) {
+  const writes = [];
+  for (const doc of resultsSnapshot.docs) {
+    const data = doc.data() || {};
+    const patch = buildPerformanceClassificationPatch(data, now);
+    const changed = data.performance_excluded !== patch.performance_excluded ||
+      data.performance_exclusion_reason !== patch.performance_exclusion_reason ||
+      data.performance_classification !== patch.performance_classification ||
+      data.external_conversion !== patch.external_conversion;
+    if (changed) writes.push(doc.ref.set(patch, { merge: true }));
+  }
+  await Promise.all(writes);
+  return writes.length;
 }
 
 async function findExternalConversion(position, asset) {
@@ -179,6 +239,7 @@ async function reconcileRealSpotAccount(db) {
     db.collection(RESULTS).get()
   ]);
 
+  const reclassifiedResults = await backfillPerformanceClassification(resultsSnapshot, now);
   const balances = accountBalanceMap(account);
   const usdt = balances.get('USDT') || { free: 0, locked: 0, total: 0 };
   const actions = [];
@@ -237,14 +298,20 @@ async function reconcileRealSpotAccount(db) {
       quote_received_usdt: close.quoteReceived,
       pnl_usdt: close.realizedPnl,
       pnl_verified: close.realizedPnl !== null,
+      performance_excluded: true,
       reason: close.reason
     });
   }
 
+  // Bot PnL must contain only exchange-confirmed closes that were actually
+  // executed by Proypers25. Manual conversions/sales and zombie repairs are
+  // account reconciliation evidence, not strategy profit.
   const realizedPnlUsdt = resultsSnapshot.docs.reduce((sum, doc) => {
-    const pnl = Number(doc.data()?.net_pnl_usdt);
+    const data = doc.data() || {};
+    if (!isBotPerformanceResult(data)) return sum;
+    const pnl = Number(data.net_pnl_usdt);
     return Number.isFinite(pnl) ? sum + pnl : sum;
-  }, 0) + actions.reduce((sum, action) => Number.isFinite(action.pnl_usdt) ? sum + action.pnl_usdt : sum, 0);
+  }, 0);
 
   const totalUsdt = usdt.free + usdt.locked + inPositionsUsdt;
   const balanceRef = db.doc(BALANCE_PATH);
@@ -254,6 +321,7 @@ async function reconcileRealSpotAccount(db) {
   await db.runTransaction(async (tx) => {
     const controlSnap = await tx.get(controlRef);
     const currentControl = controlSnap.exists ? controlSnap.data() : {};
+    const controlPatch = buildReconciliationControlPatch(currentControl, inconsistencies, now);
     tx.set(balanceRef, {
       available_usdt: usdt.free,
       locked_usdt: usdt.locked,
@@ -264,14 +332,7 @@ async function reconcileRealSpotAccount(db) {
       updated_at: now,
       reconciliation_version: VERSION
     }, { merge: true });
-    tx.set(controlRef, {
-      account_consistent: inconsistencies === 0,
-      reconciliation_required: inconsistencies > 0,
-      reconciliation_last_run_at: now,
-      reconciliation_last_inconsistencies: inconsistencies,
-      new_entries_enabled: inconsistencies > 0 ? false : currentControl.new_entries_enabled === true,
-      entry_block_reason: inconsistencies > 0 ? 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED' : null
-    }, { merge: true });
+    tx.set(controlRef, controlPatch, { merge: true });
     tx.set(reconciliationRef, {
       created_at: now,
       version: VERSION,
@@ -281,6 +342,9 @@ async function reconcileRealSpotAccount(db) {
       usdt_locked: usdt.locked,
       in_positions_usdt: inPositionsUsdt,
       total_usdt: totalUsdt,
+      realized_bot_pnl_usdt: realizedPnlUsdt,
+      reclassified_results: reclassifiedResults,
+      entries_released: controlPatch.new_entries_enabled === true && currentControl.new_entries_enabled !== true,
       actions
     });
   });
@@ -295,6 +359,7 @@ async function reconcileRealSpotAccount(db) {
     in_positions_usdt: inPositionsUsdt,
     total_usdt: totalUsdt,
     realized_pnl_usdt: realizedPnlUsdt,
+    reclassified_results: reclassifiedResults,
     actions,
     duration_ms: Date.now() - startedAt,
     version: VERSION
@@ -306,6 +371,8 @@ module.exports = {
   assetFromSymbol,
   calculateReconciliation,
   buildReconciliationClose,
+  buildReconciliationControlPatch,
+  backfillPerformanceClassification,
   reconcileRealSpotAccount,
   findExternalSpotSales
 };
