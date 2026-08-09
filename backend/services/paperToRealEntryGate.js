@@ -257,17 +257,22 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   const maxScanAgeMinutes = Math.max(1, asNumber(config.paper_real_max_scan_age_minutes, 15));
   const reasons = [];
 
-  const [latestScanSnapshot, candidateSnapshot, validationSnapshot, paperResultSnapshot] = await Promise.all([
+  const [latestScanSnapshot, validationSnapshot, paperResultSnapshot] = await Promise.all([
     db.collection(SCANS).orderBy('created_at', 'desc').limit(1).get(),
-    db.collection(CANDIDATES).orderBy('opportunityScore', 'desc').limit(250).get(),
     db.collection(VALIDATIONS).orderBy('observed_at', 'desc').limit(500).get(),
     db.collection(PAPER_RESULTS).orderBy('closed_at', 'desc').limit(300).get()
   ]);
 
   if (latestScanSnapshot.empty) reasons.push('NO_PAPER_SCAN');
-  if (candidateSnapshot.empty) reasons.push('NO_PAPER_CANDIDATES');
 
   const latestScan = latestScanSnapshot.empty ? null : { id: latestScanSnapshot.docs[0].id, ...latestScanSnapshot.docs[0].data() };
+  // Read the latest scan directly. The previous global top-250 query could be
+  // saturated by older high-scoring rows, making a fresh candidate invisible
+  // to the real entry gate even though the scanner had just persisted it.
+  const candidateSnapshot = latestScan
+    ? await db.collection(CANDIDATES).where('scan_id', '==', latestScan.id).get()
+    : { empty: true, docs: [] };
+  if (candidateSnapshot.empty) reasons.push('NO_PAPER_CANDIDATES');
   const scanAgeMinutes = latestScan ? (now - toMillis(latestScan.created_at)) / 60000 : null;
   if (latestScan && (!Number.isFinite(scanAgeMinutes) || scanAgeMinutes < 0 || scanAgeMinutes > maxScanAgeMinutes)) reasons.push('PAPER_SCAN_STALE');
 
