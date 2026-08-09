@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-08-09T04:43:45Z",
+  "generated_at": "2026-08-09T05:41:42Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00678-pzc",
   "spot_real": {
-    "cycles": 10,
+    "cycles": 11,
     "opened": 0,
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "TECHNICAL_VOLUME_NOT_CONFIRMED",
+    "latest_reason": "NEW_ENTRIES_DISABLED",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
@@ -17,7 +17,6 @@
     "promoted_symbol": "SPCXBUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
-      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "NEW_ENTRIES_DISABLED"
     ],
     "safety": {
