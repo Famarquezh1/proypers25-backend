@@ -8,6 +8,12 @@ const {
   tacticalThresholds,
   buildCandidateAudit
 } = require('../services/paperToRealEntryGate');
+const {
+  isBotPerformanceResult,
+  buildPerformanceClassificationPatch
+} = require('../services/spotPerformanceClassification');
+const { buildReconciliationControlPatch } = require('../services/spotAccountReconciliation');
+const { buildAutonomyControlPatch } = require('../services/spotAutonomyController');
 
 const safeConfig = {
   enabled: true,
@@ -67,6 +73,96 @@ const configurationFailures = buildEntrySafetyFailures({
 });
 assert(configurationFailures.some((item) => item.code === 'POSITION_LIMIT_MUST_BE_10_USDT'));
 assert(configurationFailures.some((item) => item.code === 'MAX_OPEN_POSITIONS_MUST_BE_1'));
+
+const manualReconciliation = {
+  closing_reason: 'MANUAL_RECONCILIATION',
+  close_source: 'BINANCE_SPOT_FILLS',
+  allocated_capital_usdt: 0.01,
+  quote_received_usdt: 9.88,
+  net_pnl_usdt: 9.87,
+  pnl_verified: true,
+  external_spot_sale: true
+};
+assert.strictEqual(isBotPerformanceResult(manualReconciliation), false);
+const manualPatch = buildPerformanceClassificationPatch(manualReconciliation, '2026-08-09T16:00:00.000Z');
+assert.strictEqual(manualPatch.performance_excluded, true);
+assert.strictEqual(manualPatch.external_conversion, true);
+
+const verifiedBotTimeout = {
+  closing_reason: 'TIMEOUT',
+  close_source: 'BINANCE_ORDER',
+  allocated_capital_usdt: 9.97,
+  quote_received_usdt: 9.88,
+  net_pnl_usdt: -0.09,
+  pnl_verified: true
+};
+assert.strictEqual(isBotPerformanceResult(verifiedBotTimeout), true);
+assert.strictEqual(buildPerformanceClassificationPatch(verifiedBotTimeout).performance_excluded, false);
+
+const unverifiableLegacyRow = {
+  closing_reason: 'TIMEOUT',
+  net_pnl_usdt: 0
+};
+assert.strictEqual(isBotPerformanceResult(unverifiableLegacyRow), false);
+
+const healthyOrphanedGate = buildReconciliationControlPatch({
+  enabled: true,
+  kill_switch: false,
+  new_entries_enabled: false,
+  entry_block_reason: null
+}, 0, '2026-08-09T16:01:00.000Z');
+assert.strictEqual(healthyOrphanedGate.new_entries_enabled, true);
+assert.strictEqual(healthyOrphanedGate.reconciliation_required, false);
+assert.strictEqual(healthyOrphanedGate.account_consistent, true);
+
+const manualPauseGate = buildReconciliationControlPatch({
+  enabled: true,
+  kill_switch: false,
+  new_entries_enabled: false,
+  manual_entry_pause: true
+}, 0);
+assert.strictEqual(manualPauseGate.new_entries_enabled, false);
+
+const otherBlockGate = buildReconciliationControlPatch({
+  enabled: true,
+  kill_switch: false,
+  new_entries_enabled: false,
+  entry_block_reason: 'OPERATOR_MAINTENANCE'
+}, 0);
+assert.strictEqual(otherBlockGate.new_entries_enabled, false);
+assert.strictEqual(otherBlockGate.entry_block_reason, 'OPERATOR_MAINTENANCE');
+
+const inconsistentGate = buildReconciliationControlPatch({ enabled: true, kill_switch: false }, 1);
+assert.strictEqual(inconsistentGate.new_entries_enabled, false);
+assert.strictEqual(inconsistentGate.entry_block_reason, 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED');
+
+const releasedAutonomy = buildAutonomyControlPatch({
+  enabled: true,
+  kill_switch: true,
+  new_entries_enabled: false,
+  autonomy_halt_reason: 'THREE_CONSECUTIVE_LOSSES',
+  reconciliation_required: false,
+  account_consistent: true
+}, {
+  should_halt: false,
+  current_stage: 'CONTROLLED_10_USDT'
+}, '2026-08-09T16:02:00.000Z');
+assert.strictEqual(releasedAutonomy.kill_switch, false);
+assert.strictEqual(releasedAutonomy.new_entries_enabled, true);
+assert.strictEqual(releasedAutonomy.autonomy_halt_reason, null);
+
+const protectedManualKill = buildAutonomyControlPatch({
+  enabled: true,
+  kill_switch: true,
+  manual_kill_switch: true,
+  new_entries_enabled: false,
+  autonomy_halt_reason: 'THREE_CONSECUTIVE_LOSSES'
+}, {
+  should_halt: false,
+  current_stage: 'CONTROLLED_10_USDT'
+});
+assert.strictEqual(protectedManualKill.kill_switch, undefined);
+assert.strictEqual(protectedManualKill.new_entries_enabled, undefined);
 
 const validations = [
   {
