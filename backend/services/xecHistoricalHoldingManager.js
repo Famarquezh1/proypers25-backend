@@ -257,8 +257,9 @@ async function runXecHistoricalHoldingCycle(db, options = {}, dependencies = {})
   await configRef.set({ ...config, last_cycle_at: new Date().toISOString() }, { merge: true });
   if (!config.enabled || !config.xec_managed_exit_enabled) return { ok: true, enabled: false, action: 'DISABLED', version: VERSION };
 
-  const managedXec = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').where('symbol', '==', SYMBOL).limit(1).get();
-  if (!managedXec.empty) {
+  const managedSnapshot = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
+  const xecManagedByRealEngine = managedSnapshot.docs.some((doc) => String(doc.data()?.symbol || '').toUpperCase() === SYMBOL);
+  if (xecManagedByRealEngine) {
     return { ok: true, enabled: true, action: 'SKIP', reason: 'XEC_MANAGED_BY_REAL_ENTRY_ENGINE', version: VERSION };
   }
 
@@ -308,7 +309,7 @@ async function runXecHistoricalHoldingCycle(db, options = {}, dependencies = {})
       updated_at: now,
       version: VERSION
     };
-    await stateRef.set(initialized, { merge: false });
+    await stateRef.set(initialized);
     const result = { ok: true, enabled: true, action: 'INITIALIZED_NO_SALE', state: initialized, version: VERSION };
     await db.collection(RUN_COLLECTION).doc(`xec_run_${Date.now()}`).set({ ...result, created_at: now });
     return result;
