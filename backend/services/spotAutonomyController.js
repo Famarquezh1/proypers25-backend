@@ -1,5 +1,7 @@
 'use strict';
 
+const { filterBotPerformanceResults } = require('./spotPerformanceClassification');
+
 const RESULTS_COLLECTION = 'real_spot_execution_results';
 const CONTROL_PATH = 'real_spot_config/control';
 
@@ -22,10 +24,9 @@ function closedAtMillis(result) {
 
 async function buildAutonomySnapshot(db) {
   const snapshot = await db.collection(RESULTS_COLLECTION).get();
-  const trades = snapshot.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((trade) => Number.isFinite(Number(trade.net_pnl_usdt)))
-    .sort((a, b) => closedAtMillis(b) - closedAtMillis(a));
+  const trades = filterBotPerformanceResults(
+    snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  ).sort((a, b) => closedAtMillis(b) - closedAtMillis(a));
 
   const recent = trades.slice(0, 30);
   const totalPnl = recent.reduce((sum, trade) => sum + asNumber(trade.net_pnl_usdt), 0);
@@ -62,13 +63,10 @@ async function buildAutonomySnapshot(db) {
   };
 }
 
-async function enforceAutonomousSafety(db, currentConfig = {}) {
-  const snapshot = await buildAutonomySnapshot(db);
-  const controlRef = db.doc(CONTROL_PATH);
-
+function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new Date().toISOString()) {
   const patch = {
     autonomy_enabled: true,
-    autonomy_stage: snapshot.current_stage,
+    autonomy_stage: snapshot.current_stage || 'CONTROLLED_10_USDT',
     adaptive_position_usdt: BASE_POSITION_USDT,
     max_position_usdt: Math.min(
       Math.max(asNumber(currentConfig.max_position_usdt, BASE_POSITION_USDT), BASE_POSITION_USDT),
@@ -81,22 +79,59 @@ async function enforceAutonomousSafety(db, currentConfig = {}) {
     margin_allowed: false,
     leverage_allowed: false,
     withdrawals_allowed: false,
-    autonomy_last_evaluated_at: new Date().toISOString(),
+    autonomy_last_evaluated_at: now,
     autonomy_snapshot: snapshot
   };
 
-  if (snapshot.should_halt) {
+  if (snapshot.should_halt === true) {
     patch.kill_switch = true;
     patch.new_entries_enabled = false;
     patch.autonomy_halt_reason = snapshot.halt_reason;
-    patch.autonomy_halted_at = new Date().toISOString();
+    patch.autonomy_halted_at = now;
+    return patch;
   }
+
+  const staleAutonomyHalt = Boolean(currentConfig.autonomy_halt_reason);
+  if (!staleAutonomyHalt) return patch;
+
+  // Release only a halt that the autonomy controller itself created. A manual
+  // kill switch remains protected when explicitly marked as manual.
+  patch.autonomy_halt_reason = null;
+  patch.autonomy_released_at = now;
+  if (currentConfig.manual_kill_switch !== true) patch.kill_switch = false;
+
+  const manualPause = currentConfig.manual_entry_pause === true || currentConfig.entries_paused_manually === true;
+  const reconciliationBlocked = currentConfig.reconciliation_required === true ||
+    currentConfig.account_consistent === false ||
+    currentConfig.entry_block_reason === 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED';
+  const otherBlock = Boolean(
+    currentConfig.entry_block_reason &&
+    currentConfig.entry_block_reason !== 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED'
+  );
+  if (
+    currentConfig.enabled === true &&
+    currentConfig.manual_kill_switch !== true &&
+    !manualPause &&
+    !reconciliationBlocked &&
+    !otherBlock
+  ) {
+    patch.new_entries_enabled = true;
+  }
+  return patch;
+}
+
+async function enforceAutonomousSafety(db, currentConfig = {}) {
+  const snapshot = await buildAutonomySnapshot(db);
+  const controlRef = db.doc(CONTROL_PATH);
+  const now = new Date().toISOString();
+  const patch = buildAutonomyControlPatch(currentConfig, snapshot, now);
 
   await controlRef.set(patch, { merge: true });
 
   return {
     ...snapshot,
     applied: true,
+    autonomy_halt_released: snapshot.should_halt !== true && Boolean(currentConfig.autonomy_halt_reason),
     effective_position_usdt: patch.max_position_usdt,
     effective_total_capital_usdt: patch.max_total_capital_usdt,
     effective_max_open_positions: patch.max_open_positions
@@ -105,6 +140,7 @@ async function enforceAutonomousSafety(db, currentConfig = {}) {
 
 module.exports = {
   buildAutonomySnapshot,
+  buildAutonomyControlPatch,
   enforceAutonomousSafety,
   BASE_POSITION_USDT,
   MAX_INITIAL_POSITION_USDT
