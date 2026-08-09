@@ -1,6 +1,11 @@
 'use strict';
 
 const { evaluateSpotTechnicalConfirmation } = require('./spotTechnicalConfirmation');
+const {
+  enrichEarlyMomentumCandidates,
+  earlyMomentumThresholds,
+  evaluateEarlyMomentumCandidate
+} = require('./spotEarlyMomentumRadar');
 const { summarizePositiveValidation } = require('../lib/spotPaperRiskRules');
 
 const SCANS = 'spot_opportunity_scans';
@@ -94,16 +99,10 @@ function validationEvidenceForSymbol(validationRows, paperRows, symbol, currentS
 function tacticalThresholds(config = {}) {
   return {
     enabled: config.tactical_momentum_enabled !== false,
-    // Tactical entries are intentionally independent from the conservative
-    // standard-lane score. Otherwise a high Paper threshold silently disables
-    // the fast lane before it can inspect a fresh Binance move.
     minimum_score: Math.max(60, asNumber(config.tactical_momentum_min_score, 68)),
     minimum_quote_volume_usdt: Math.max(100000, asNumber(config.tactical_momentum_min_quote_volume_usdt, 500000)),
     minimum_price_change_24h: Math.max(0, asNumber(config.tactical_momentum_min_price_change_24h, 2.5)),
     maximum_price_change_24h: Math.max(5, asNumber(config.tactical_momentum_max_price_change_24h, 18)),
-    // Scanner impulse is deliberately conservative and rarely reaches 60 until
-    // a move is already mature. 30 still requires real acceleration, while the
-    // live 5m/15m/1h confirmation remains mandatory before a real order.
     minimum_impulse_score: Math.max(20, asNumber(config.tactical_momentum_min_impulse_score, 30)),
     minimum_liquidity_score: Math.max(0, asNumber(config.tactical_momentum_min_liquidity_score, 50)),
     maximum_risk_score: Math.min(70, Math.max(0, asNumber(config.tactical_momentum_max_risk_score, 55))),
@@ -123,13 +122,18 @@ function buildLaneCandidatePools(candidates = [], config = {}) {
     .filter((candidate) => candidateScore(candidate) >= standardScore)
     .filter((candidate) => !configuredCategories || configuredCategories.has(String(candidate.category || '').toUpperCase()));
 
-  // Do NOT inherit standard score/category filters here. VOLUME_SPIKE and
-  // NEW_OR_LOW_PRICE are legitimate tactical discovery classes even when the
-  // conservative Paper lane excludes them. Tactical-specific risk, liquidity,
-  // anti-chase and technical checks are enforced later.
+  // The early lane is ranked by live 5m acceleration, not by the slower daily
+  // opportunity score. This is the pre-breakout radar used before a move is
+  // already obvious in Binance's 24h winners table.
+  const early = candidates
+    .filter((candidate) => candidate.early_momentum_probed === true)
+    .sort((left, right) => asNumber(right.earlyMomentumScore, 0) - asNumber(left.earlyMomentumScore, 0));
+
+  // Do not inherit standard score/category filters here. Tactical-specific risk,
+  // liquidity, anti-chase and technical checks are enforced later.
   const tactical = candidates.filter((candidate) => TACTICAL_CATEGORIES.has(String(candidate.category || '').toUpperCase()));
 
-  return { standard, tactical };
+  return { standard, early, tactical };
 }
 
 function evaluateTacticalMomentumCandidate(candidate, evidence = null, config = {}) {
@@ -211,10 +215,13 @@ function evaluateStandardCandidate(candidate, evidence, config = {}, runnerUp = 
 }
 
 function buildCandidateAudit(candidates, validationRows, paperRows, currentScanId, config = {}) {
-  return candidates.slice(0, 20).map((candidate, index) => {
+  return candidates.slice(0, 30).map((candidate, index) => {
     const symbol = String(candidate.symbol || '').toUpperCase();
     const evidence = validationEvidenceForSymbol(validationRows, paperRows, symbol, currentScanId);
     const standard = evaluateStandardCandidate(candidate, evidence, config, candidates[index + 1] || null);
+    const early = candidate.early_momentum_probed === true
+      ? evaluateEarlyMomentumCandidate(candidate, evidence, config)
+      : { allowed: false, reasons: ['EARLY_NOT_PROBED'] };
     const tactical = evaluateTacticalMomentumCandidate(candidate, evidence, config);
     return {
       symbol,
@@ -228,6 +235,11 @@ function buildCandidateAudit(candidates, validationRows, paperRows, currentScanI
       category: candidate.category || null,
       standard_allowed: standard.allowed,
       standard_reasons: standard.reasons,
+      early_momentum_probed: candidate.early_momentum_probed === true,
+      early_momentum_score: asNumber(candidate.earlyMomentumScore, 0),
+      early_momentum_allowed: early.allowed,
+      early_momentum_reasons: early.reasons,
+      early_momentum_metrics: candidate.earlyMomentum || null,
       tactical_allowed: tactical.allowed,
       tactical_reasons: tactical.reasons,
       historical_sample_size: evidence.sample_size,
@@ -246,11 +258,12 @@ async function saveDecision(db, decision) {
 }
 
 /**
- * Dual-lane entry gate:
+ * Three-lane entry gate:
  * - STANDARD requires accumulated historical Paper evidence.
- * - TACTICAL_MOMENTUM permits one controlled 10 USDT entry when a fresh move is
- *   liquid, not parabolic, low-risk and independently confirmed on Binance.
- * Neither lane can bypass reconciliation, exit health, autonomy or config gates.
+ * - EARLY_MOMENTUM probes live closed 5m candles to catch acceleration before
+ *   a symbol becomes an already-extended 24h winner.
+ * - TACTICAL_MOMENTUM remains the controlled fast lane for established fresh moves.
+ * No lane can bypass reconciliation, exit health, autonomy or config safety gates.
  */
 async function evaluatePaperToRealEntryGate(db, config = {}) {
   const now = Date.now();
@@ -266,9 +279,6 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   if (latestScanSnapshot.empty) reasons.push('NO_PAPER_SCAN');
 
   const latestScan = latestScanSnapshot.empty ? null : { id: latestScanSnapshot.docs[0].id, ...latestScanSnapshot.docs[0].data() };
-  // Read the latest scan directly. The previous global top-250 query could be
-  // saturated by older high-scoring rows, making a fresh candidate invisible
-  // to the real entry gate even though the scanner had just persisted it.
   const candidateSnapshot = latestScan
     ? await db.collection(CANDIDATES).where('scan_id', '==', latestScan.id).get()
     : { empty: true, docs: [] };
@@ -277,7 +287,11 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   if (latestScan && (!Number.isFinite(scanAgeMinutes) || scanAgeMinutes < 0 || scanAgeMinutes > maxScanAgeMinutes)) reasons.push('PAPER_SCAN_STALE');
 
   const candidates = candidateSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const latestUnique = uniqueLatestCandidates(candidates, latestScan?.id);
+  const latestUniqueBase = uniqueLatestCandidates(candidates, latestScan?.id);
+  const earlyRadar = latestUniqueBase.length
+    ? await enrichEarlyMomentumCandidates(latestUniqueBase, config)
+    : { candidates: latestUniqueBase, probed_count: 0, eligible_count: 0, eligible_symbols: [], errors: [], version: 'early_momentum_radar_v1' };
+  const latestUnique = earlyRadar.candidates;
   const lanePools = buildLaneCandidatePools(latestUnique, config);
 
   const validationRows = validationSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -286,6 +300,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
 
   let predicted = null;
   let entryMode = null;
+  let selectionLane = null;
   let laneEvaluation = null;
   let validation = null;
 
@@ -296,9 +311,27 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     if (standard.allowed) {
       predicted = candidate;
       entryMode = 'STANDARD_PAPER_TO_REAL';
+      selectionLane = 'STANDARD';
       laneEvaluation = standard;
       validation = evidence;
       break;
+    }
+  }
+
+  if (!predicted) {
+    for (const candidate of lanePools.early) {
+      const evidence = validationEvidenceForSymbol(validationRows, paperRows, candidate.symbol, latestScan?.id);
+      const early = evaluateEarlyMomentumCandidate(candidate, evidence, config);
+      if (early.allowed) {
+        predicted = candidate;
+        // Reuse the proven tactical runner lifecycle and 10 USDT executor. The
+        // selection_lane identifies that this candidate came from the earlier radar.
+        entryMode = 'TACTICAL_MOMENTUM';
+        selectionLane = 'EARLY_MOMENTUM';
+        laneEvaluation = early;
+        validation = evidence;
+        break;
+      }
     }
   }
 
@@ -309,6 +342,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
       if (tactical.allowed) {
         predicted = candidate;
         entryMode = 'TACTICAL_MOMENTUM';
+        selectionLane = 'TACTICAL_MOMENTUM';
         laneEvaluation = tactical;
         validation = evidence;
         break;
@@ -316,7 +350,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     }
   }
 
-  if (!predicted) reasons.push('NO_STANDARD_OR_TACTICAL_CANDIDATE');
+  if (!predicted) reasons.push('NO_STANDARD_EARLY_OR_TACTICAL_CANDIDATE');
 
   const symbol = String(predicted?.symbol || '').toUpperCase();
   const duplicates = latestScan && predicted
@@ -325,9 +359,10 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   if (predicted && duplicates.length > 1) reasons.push('DUPLICATE_SYMBOL_IN_LATEST_RANKING');
 
   let technical = null;
-  const structuralReasons = new Set(['PAPER_SCAN_STALE', 'DUPLICATE_SYMBOL_IN_LATEST_RANKING', 'NO_STANDARD_OR_TACTICAL_CANDIDATE']);
+  const structuralReasons = new Set(['PAPER_SCAN_STALE', 'DUPLICATE_SYMBOL_IN_LATEST_RANKING', 'NO_STANDARD_EARLY_OR_TACTICAL_CANDIDATE']);
   if (predicted && !reasons.some((reason) => structuralReasons.has(reason))) {
-    const technicalConfig = entryMode === 'TACTICAL_MOMENTUM'
+    const fastLane = selectionLane === 'EARLY_MOMENTUM' || selectionLane === 'TACTICAL_MOMENTUM';
+    const technicalConfig = fastLane
       ? {
           ...config,
           paper_real_min_technical_score: laneEvaluation.thresholds.minimum_technical_score,
@@ -346,7 +381,9 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     created_at: new Date(now).toISOString(),
     allowed: reasons.length === 0,
     entry_mode: entryMode,
+    selection_lane: selectionLane,
     tactical_entry: entryMode === 'TACTICAL_MOMENTUM',
+    early_momentum_entry: selectionLane === 'EARLY_MOMENTUM',
     reasons: [...new Set(reasons)],
     failed_conditions: [...new Set(reasons)].map((reason) => ({ condition: reason, component: reason.startsWith('TECHNICAL_') ? 'Technical Confirmation' : 'Paper-to-Real' })),
     candidate: predicted ? {
@@ -363,22 +400,35 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
       impulseScore: candidateMetric(predicted, 'impulseScore', 'impulse_score'),
       liquidityScore: candidateMetric(predicted, 'liquidityScore', 'liquidity_score'),
       riskScore: candidateMetric(predicted, 'riskScore', 'risk_score'),
+      earlyMomentumScore: asNumber(predicted.earlyMomentumScore, 0),
+      earlyMomentum: predicted.earlyMomentum || null,
       warnings: predicted.warnings || [],
       recommendation: predicted.recommendation || null,
       reasons: predicted.reasons || [],
-      entry_mode: entryMode
+      entry_mode: entryMode,
+      selection_lane: selectionLane,
+      early_momentum_entry: selectionLane === 'EARLY_MOMENTUM'
     } : null,
     validation,
     technical_confirmation: technical,
+    early_momentum_radar: {
+      version: earlyRadar.version,
+      probed_count: earlyRadar.probed_count,
+      eligible_count: earlyRadar.eligible_count,
+      eligible_symbols: earlyRadar.eligible_symbols,
+      errors: earlyRadar.errors
+    },
     latest_scan_id: latestScan?.id || null,
     latest_scan_age_minutes: scanAgeMinutes === null ? null : Number(scanAgeMinutes.toFixed(3)),
     unique_candidates_in_latest_scan: latestUnique.length,
     standard_lane_candidates: lanePools.standard.length,
+    early_momentum_lane_candidates: lanePools.early.length,
     tactical_lane_candidates: lanePools.tactical.length,
     candidate_pool_audit: candidateAudit,
     thresholds: {
       maximum_scan_age_minutes: maxScanAgeMinutes,
       standard: evaluateStandardCandidate({}, null, config).thresholds,
+      early_momentum: earlyMomentumThresholds(config),
       tactical_momentum: tacticalThresholds(config)
     },
     real_mode: true,
@@ -386,7 +436,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     spot_only: true,
     maximum_real_order_usdt: 10,
     no_order_created: true,
-    version: 'paper_to_real_entry_gate_v5_immediate_tactical'
+    version: 'paper_to_real_entry_gate_v6_early_momentum'
   };
 
   await saveDecision(db, decision);
