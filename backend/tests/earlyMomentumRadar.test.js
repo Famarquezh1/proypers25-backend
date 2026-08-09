@@ -7,6 +7,7 @@ const {
   evaluateEarlyMomentumCandidate,
   selectProbeCandidates
 } = require('../services/spotEarlyMomentumRadar');
+const { buildLaneCandidatePools } = require('../services/paperToRealEntryGate');
 
 function buildRows({ accelerating = true } = {}) {
   const rows = [];
@@ -66,6 +67,32 @@ function buildRows({ accelerating = true } = {}) {
     earlyMomentum: metrics
   }, { sample_size: 0, positive_rate: 0 }, {});
   assert.strictEqual(result.allowed, true, result.reasons.join(','));
+})();
+
+(function earlyCandidateBypassesConservativeDailyStandardPool() {
+  const metrics = analyzeEarlyMomentumCandles(buildRows());
+  const candidate = {
+    symbol: 'EARLYUSDT',
+    opportunityScore: 52,
+    quoteVolume24h: 2400000,
+    priceChange24h: 5.4,
+    impulseScore: 22,
+    liquidityScore: 70,
+    riskScore: 28,
+    category: 'WATCHLIST',
+    warnings: [],
+    earlyMomentumScore: metrics.score,
+    earlyMomentum: metrics,
+    early_momentum_probed: true
+  };
+  const pools = buildLaneCandidatePools([candidate], {
+    min_opportunity_score: 95,
+    allowed_categories: ['BREAKOUT', 'MOMENTUM']
+  });
+  assert.strictEqual(pools.standard.length, 0);
+  assert.strictEqual(pools.tactical.length, 0);
+  assert.strictEqual(pools.early.length, 1);
+  assert.strictEqual(pools.early[0].symbol, 'EARLYUSDT');
 })();
 
 (function antiChaseStillRejectsAlreadyExtendedWinner() {
