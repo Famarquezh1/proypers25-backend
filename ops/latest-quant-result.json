@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-08-09T10:23:49Z",
+  "generated_at": "2026-08-09T11:00:05Z",
   "event_found": true,
-  "timestamp": "2026-08-09T09:44:11.116307Z",
+  "timestamp": "2026-08-09T10:39:06.298549Z",
   "revision": "proypers25-backend-00678-pzc",
-  "run_id": "quant_1786268649319",
+  "run_id": "quant_1786271943636",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 3,
-    "analyzed_count": 3,
+    "accepted_symbol_count": 4,
+    "analyzed_count": 4,
     "eligible_count": 0,
     "failed_count": 1,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "PUMPUSDT",
-    "requested_count": 3,
+    "requested_count": 4,
     "selected_family": "MEAN_REVERSION",
     "selected_symbol": "PUMPUSDT",
-    "valid_count": 2
+    "valid_count": 3
   },
   "selected_evidence": {
     "calibration": {
@@ -33,11 +33,11 @@
       "test_fold_consistency": false,
       "test_min_trades": true,
       "test_profit_factor": false,
-      "validation_expectancy_positive": true,
+      "validation_expectancy_positive": false,
       "validation_fold_consistency": false,
       "validation_median_positive": false,
       "validation_min_trades": true,
-      "validation_profit_factor": true
+      "validation_profit_factor": false
     },
     "consistency": {
       "folds": 4,
@@ -64,15 +64,15 @@
     },
     "validation": {
       "averageLoss": -0.004280479079082355,
-      "averageWin": 0.013064980222863924,
-      "expectancy": 0.0007786132173186436,
+      "averageWin": 0.012708153573508851,
+      "expectancy": 0.00015133813463709137,
       "maxDrawdown": 0.03522814136358501,
       "medianReturn": -0.001750374999999858,
-      "netReturn": 0.01796387870618532,
-      "profitFactor": 1.2567980451336809,
-      "returnStd": 0.00856131589180706,
-      "trades": 24,
-      "winRate": 0.2916666666666667
+      "netReturn": 0.0027166296789671307,
+      "profitFactor": 1.0478338032117338,
+      "returnStd": 0.00818776778780251,
+      "trades": 23,
+      "winRate": 0.2608695652173913
     }
   },
   "strategy_families": [
