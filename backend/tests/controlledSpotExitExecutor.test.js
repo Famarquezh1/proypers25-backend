@@ -7,6 +7,7 @@ const {
   assertExitConfig,
   calculateAtrPct,
   resolveAdaptiveProtection,
+  isProtectedProfitableRunner,
   buildExitClientOrderId,
   recoverPendingExit
 } = require('../services/controlledSpotExitExecutor');
@@ -45,6 +46,25 @@ assert.strictEqual(
   'SCORE_DETERIORATION'
 );
 
+// A profitable position with break-even/trailing protection must not be killed
+// just because the observation timer expired. The protective stop owns the exit.
+const protectedExpired = {
+  entry_price: 100,
+  effective_sl_price: 100.15,
+  protection_mode: 'BREAK_EVEN',
+  effective_timeout_at: '2026-07-15T11:59:00.000Z'
+};
+assert.strictEqual(isProtectedProfitableRunner(protectedExpired, 102), true);
+assert.strictEqual(determineExit(protectedExpired, 102, now), null);
+assert.strictEqual(determineExit({ ...protectedExpired, protection_mode: 'BASE' }, 102, now), 'TIMEOUT');
+
+// If there is explicit deterioration at timeout, preserve the economic exit
+// reason instead of hiding it under TIMEOUT.
+assert.strictEqual(
+  determineExit({ ...protectedExpired, protection_mode: 'BASE', momentum_lost: true }, 99, now),
+  'MOMENTUM_LOSS'
+);
+
 const retryPosition = { id: 'position-1', symbol: 'XECUSDT', quantity: 100, capital_usdt: 20 };
 assert.strictEqual(buildExitClientOrderId(retryPosition), buildExitClientOrderId({ ...retryPosition }));
 
@@ -63,10 +83,13 @@ const breakEven = resolveAdaptiveProtection({
   sl_price: 96,
   tp1_price: 110,
   highest_price: 103,
-  opened_at: '2026-07-15T10:00:00.000Z'
+  opened_at: '2026-07-15T10:00:00.000Z',
+  timeout_at: '2026-07-15T10:30:00.000Z'
 }, 101.5, 0.01, now);
 assert.strictEqual(breakEven.protection_mode, 'BREAK_EVEN');
 assert.ok(breakEven.effective_sl_price > 100);
+// The adaptive timeout must extend beyond a stale/short original timeout.
+assert.ok(new Date(breakEven.effective_timeout_at) > new Date('2026-07-15T10:30:00.000Z'));
 
 const trailing = resolveAdaptiveProtection({
   entry_price: 100,
@@ -78,6 +101,19 @@ const trailing = resolveAdaptiveProtection({
 assert.strictEqual(trailing.protection_mode, 'TRAILING');
 assert.ok(trailing.effective_sl_price > 107);
 assert.ok(trailing.effective_sl_price < trailing.highest_price);
+
+// Tactical protected winners also ignore timeout and remain managed by their
+// runner stop; weak/unprotected tactical trades can still time out.
+const tacticalProtected = {
+  entry_mode: 'TACTICAL_MOMENTUM',
+  entry_price: 100,
+  effective_sl_price: 100.2,
+  protection_mode: 'TACTICAL_RUNNER_ARMED',
+  effective_timeout_at: '2026-07-15T11:00:00.000Z',
+  opened_at: '2026-07-14T20:00:00.000Z'
+};
+assert.strictEqual(determineExit(tacticalProtected, 105, now), null);
+assert.strictEqual(determineExit({ ...tacticalProtected, protection_mode: 'BASE' }, 99, now), 'TIMEOUT');
 
 assert.strictEqual(floorToStep(12.34567, '0.00100000'), 12.345);
 assert.strictEqual(floorToStep(40001215.74, '1.00000000'), 40001215);
