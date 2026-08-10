@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const db = require('../firebase-admin-config');
 const { getBinanceSpotCredentials } = require('../lib/secretManager');
+const { resolveManagedSpotLimits } = require('../services/spotManagedAcquisitionPolicy');
 
 const router = express.Router();
 const POSITIONS = 'real_spot_positions';
@@ -105,7 +106,7 @@ function toDate(value) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function buildEngineDiagnosis(config, openPositions, assets) {
+function buildEngineDiagnosis(config, openPositions, assets, limits = resolveManagedSpotLimits(config)) {
   const blockers = [];
   if (config.enabled !== true) blockers.push('Motor desactivado');
   if (config.kill_switch === true) blockers.push('Kill switch activado');
@@ -117,9 +118,14 @@ function buildEngineDiagnosis(config, openPositions, assets) {
   if (config.margin_allowed === true) blockers.push('Margen permitido');
   if (config.leverage_allowed === true) blockers.push('Apalancamiento permitido');
   if (config.withdrawals_allowed === true) blockers.push('Retiros permitidos');
-  if (Number(config.max_position_usdt || 0) > 10) blockers.push('Tamaño por posición supera US$10');
-  if (Number(config.max_open_positions || 0) > 1) blockers.push('Máximo de posiciones supera 1');
-  if (Number(config.max_total_capital_usdt || 0) > 10) blockers.push('Capital total supera US$10');
+
+  const managedCapital = openPositions.reduce((sum, position) => sum + Math.max(0, Number(position.capital_usdt || 0)), 0);
+  if (openPositions.length > limits.max_managed_spot_assets) blockers.push(`Adquisiciones gestionadas superan ${limits.max_managed_spot_assets}`);
+  if (managedCapital > limits.max_total_managed_capital_usdt + 1e-8) blockers.push(`Capital gestionado supera US$${limits.max_total_managed_capital_usdt}`);
+  if (openPositions.some((position) => Number(position.capital_usdt || 0) > limits.max_per_acquisition_usdt + 1e-8)) {
+    blockers.push(`Una adquisición supera US$${limits.max_per_acquisition_usdt}`);
+  }
+
   const balanceByAsset = new Map(assets.map((asset) => [asset.asset, asset.quantity]));
   for (const position of openPositions) {
     const symbol = String(position.symbol || '').toUpperCase();
@@ -127,10 +133,10 @@ function buildEngineDiagnosis(config, openPositions, assets) {
     const recorded = Number(position.quantity || 0);
     const actual = Number(balanceByAsset.get(asset) || 0);
     if (!asset || actual + Math.max(1e-8, recorded * 0.0001) < recorded) {
-      blockers.push(`Posición inconsistente: ${symbol || position.id}`);
+      blockers.push(`Adquisición inconsistente: ${symbol || position.id}`);
     }
   }
-  return { ready: blockers.length === 0, blockers: [...new Set(blockers)] };
+  return { ready: blockers.length === 0, blockers: [...new Set(blockers)], managed_capital_usdt: managedCapital, limits };
 }
 
 function summarizeAsset(asset, trades, conversions, accountQuantity, currentPrice) {
@@ -225,25 +231,31 @@ function summarizeAsset(asset, trades, conversions, accountQuantity, currentPric
 }
 
 async function buildSummary() {
-  const [account, prices, openSnapshot, resultSnapshot, controlSnapshot, conversions] = await Promise.all([
+  const [account, prices, openSnapshot, resultSnapshot, controlSnapshot, conversions, dustSnapshot] = await Promise.all([
     signedBinanceGet('/api/v3/account'),
     getAllPrices(),
     db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get(),
     db.collection(RESULTS).get(),
     db.collection('real_spot_config').doc('control').get(),
-    getConvertHistory()
+    getConvertHistory(),
+    db.collection('real_spot_dust_residuals').where('status', '==', 'UNMANAGED_DUST').get()
   ]);
   const openPositions = openSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const results = resultSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const dustResiduals = dustSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const dustByAsset = new Map(dustResiduals.map((item) => [String(item.asset || '').toUpperCase(), item]));
   const config = controlSnapshot.exists ? controlSnapshot.data() : {};
+  const limits = resolveManagedSpotLimits(config);
   const assets = (account.balances || []).map((balance) => {
     const free = Number(balance.free || 0);
     const locked = Number(balance.locked || 0);
     const quantity = free + locked;
     const value = valueAssetInUsdt(balance.asset, quantity, prices);
     const position = openPositions.find((item) => String(item.symbol || '').toUpperCase() === `${balance.asset}USDT`);
+    const dust = dustByAsset.get(String(balance.asset || '').toUpperCase()) || null;
     const entry = Number(position?.entry_price || 0);
     const current = Number(prices.get(`${balance.asset}USDT`) || 0);
+    const holdingClass = position ? 'MANAGED_SPOT_ACQUISITION' : dust ? 'DUST_RESIDUAL' : balance.asset === 'XEC' ? 'HISTORICAL_XEC_MANAGED_EXIT' : balance.asset === 'USDT' ? 'CASH' : 'HISTORICAL_HOLDING';
     return {
       asset: balance.asset,
       free,
@@ -252,6 +264,9 @@ async function buildSummary() {
       value_usdt: value,
       price_usdt: balance.asset === 'USDT' ? 1 : current,
       managed_by_api: Boolean(position),
+      dust_residual: Boolean(dust),
+      dust_residual_id: dust?.id || null,
+      holding_class: holdingClass,
       unrealized_pnl_usdt: position && entry > 0 ? quantity * ((current || entry) - entry) : null
     };
   }).filter((asset) => asset.quantity > 0 && (asset.value_usdt >= 0.01 || asset.asset === 'USDT'))
@@ -321,12 +336,24 @@ async function buildSummary() {
     },
     allocation: {
       api_exposure_usdt: Number(apiExposure.toFixed(6)),
-      configured_max_total_usdt: Number(config.max_total_capital_usdt || 0),
-      configured_position_size_usdt: Number(config.max_position_usdt || 0),
-      configured_max_open_positions: Number(config.max_open_positions || 0)
+      configured_max_total_usdt: limits.max_total_managed_capital_usdt,
+      configured_position_size_usdt: limits.max_per_acquisition_usdt,
+      configured_max_open_positions: limits.max_managed_spot_assets,
+      max_managed_spot_assets: limits.max_managed_spot_assets,
+      max_total_managed_capital_usdt: limits.max_total_managed_capital_usdt,
+      max_per_acquisition_usdt: limits.max_per_acquisition_usdt,
+      terminology: limits.terminology,
+      policy_version: limits.version
     },
-    engine: { ...config, open_positions: openPositions.length, diagnosis: buildEngineDiagnosis(config, openPositions, assets) },
+    engine: {
+      ...config,
+      open_positions: openPositions.length,
+      managed_spot_acquisitions: openPositions.length,
+      managed_spot_limits: limits,
+      diagnosis: buildEngineDiagnosis(config, openPositions, assets, limits)
+    },
     assets: assets.map((asset) => ({ ...asset, value_usdt: Number(asset.value_usdt.toFixed(6)) })),
+    dust_residuals: dustResiduals,
     portfolio_history: portfolioHistory,
     manual_conversions: manualConversions,
     recent_trades: recentTrades
@@ -348,7 +375,7 @@ router.get('/investments-dashboard', (req, res) => {
 </style></head><body><main class="wrap"><h1>Proypers25</h1><div class="muted">Panel privado Spot · Binance real</div><div class="top"><input id="secret" type="password" placeholder="Clave privada"><button onclick="load()">Actualizar</button></div><div id="error" class="error"></div><div id="content" hidden><section id="cards" class="grid"></section><h2>Diagnóstico del motor</h2><div id="engine" class="card"></div><h2>Activos actuales</h2><div id="assets" class="card"></div><h2>Conversiones manuales a USDT</h2><div class="card conversion"><div class="note">Se muestran como cierres manuales de oportunidad. No se confunden con ventas automáticas de la API.</div><div id="conversions"></div></div><h2>Ruta histórica por activo</h2><div id="history"></div><h2>Cierres registrados por el sistema</h2><div id="trades" class="card"></div></div><script>
 const money=n=>new Intl.NumberFormat('es-CL',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(n||0));const num=(n,d=8)=>Number(n||0).toLocaleString('es-CL',{maximumFractionDigits:d});const pct=n=>n===null||n===undefined?'—':Number(n).toFixed(2)+'%';const cls=n=>Number(n||0)>=0?'good':'bad';const date=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'—';
 async function load(){const s=secret.value;localStorage.setItem('proypers25_summary_secret',s);error.textContent='Actualizando datos reales de Binance...';try{const r=await fetch('/internal/investments/summary',{headers:{'x-investments-secret':s}});const d=await r.json();if(!r.ok)throw new Error(d.error+(d.details?' · '+d.details:''));render(d);error.textContent='';}catch(e){content.hidden=true;error.textContent=e.message;}}
-function render(d){content.hidden=false;const p=d.portfolio||{};const cards=[['Capital actual',money(d.account.total_equity_usdt),''],['USDT disponible',money(d.account.available_usdt),''],['Compras históricas',money(p.historical_buys_usdt),''],['Ventas Spot',money(p.historical_sells_usdt),''],['Conversiones a USDT',money(p.manual_conversions_received_usdt),'warn'],['Costo pendiente',money(p.remaining_tracked_cost_usdt),''],['PnL no realizado',money(p.unrealized_pnl_usdt),cls(p.unrealized_pnl_usdt)],['PnL realizado total',money(p.realized_pnl_usdt),cls(p.realized_pnl_usdt)],['PnL por conversiones',money(p.realized_conversion_pnl_usdt),cls(p.realized_conversion_pnl_usdt)],['Exposición API',money(d.allocation.api_exposure_usdt),'']];document.getElementById('cards').innerHTML=cards.map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const diag=d.engine.diagnosis;engine.innerHTML='<div class="value '+(diag.ready?'good':'warn')+'">'+(diag.ready?'LISTO SEGÚN CONFIGURACIÓN':'BLOQUEADO POR SEGURIDAD')+'</div><div>'+(diag.blockers.length?diag.blockers.map(x=>'• '+x).join('<br>'):'Spot real habilitado, ventas automáticas habilitadas y sin inconsistencias detectadas.')+'</div><div class="note">Límites actuales: '+money(d.allocation.configured_position_size_usdt)+' por posición, '+d.allocation.configured_max_open_positions+' posición y '+money(d.allocation.configured_max_total_usdt)+' de exposición total.</div>';assets.innerHTML=d.assets.map(a=>'<div class="row"><div class="wide"><b>'+a.asset+'</b><div class="mini muted">'+(a.managed_by_api?'Administrado por API':'Saldo de cuenta')+'</div></div><div><span class="label">Valor</span><br><b>'+money(a.value_usdt)+'</b></div><div><span class="label">Cantidad</span><br><b>'+num(a.quantity)+'</b></div><div><span class="label">PnL API</span><br><b class="'+cls(a.unrealized_pnl_usdt)+'">'+(a.unrealized_pnl_usdt===null?'—':money(a.unrealized_pnl_usdt))+'</b></div></div>').join('');conversions.innerHTML=(d.manual_conversions||[]).map(c=>'<div class="event"><div><span class="label">Fecha</span><br><b>'+date(c.created_at)+'</b></div><div><span class="label">Conversión</span><br><b>'+c.from_asset+' → USDT</b></div><div><span class="label">Entregado</span><br><b>'+num(c.from_amount)+' '+c.from_asset+'</b></div><div><span class="label">Recibido</span><br><b class="warn">'+money(c.to_amount)+'</b></div></div>').join('')||'<div class="muted" style="padding-top:14px">Binance no devolvió conversiones manuales en el historial consultable.</div>';history.innerHTML=(d.portfolio_history||[]).map(h=>{if(h.error)return '<div class="card bad">'+h.asset+' · '+h.error+'</div>';return '<details class="card asset-detail"><summary>'+h.asset+' · <span class="'+cls(h.total_pnl_usdt)+'">'+money(h.total_pnl_usdt)+'</span></summary><div class="grid"><div><div class="label">Comprado</div><b>'+money(h.total_bought_usdt)+'</b></div><div><div class="label">Vendido Spot</div><b>'+money(h.total_sold_usdt)+'</b></div><div><div class="label">Convertido a USDT</div><b class="warn">'+money(h.total_converted_usdt)+'</b></div><div><div class="label">PnL conversiones</div><b class="'+cls(h.realized_conversion_pnl_usdt)+'">'+money(h.realized_conversion_pnl_usdt)+'</b></div><div><div class="label">PnL pendiente</div><b class="'+cls(h.unrealized_pnl_usdt)+'">'+money(h.unrealized_pnl_usdt)+'</b></div><div><div class="label">Cobertura</div><b class="'+(h.coverage_complete?'good':'warn')+'">'+(h.coverage_complete?'Saldo reconciliado':'Revisión requerida')+'</b></div></div><div>'+h.timeline.map(t=>'<div class="event"><div>'+date(t.time)+'</div><div><b>'+(t.type==='CONVERT_TO_USDT'?'CONVERSIÓN MANUAL':t.type)+'</b></div><div>'+num(t.quantity)+' '+h.asset+'</div><div class="'+(t.type==='BUY'?'good':'warn')+'">'+money(t.quoteUsdt)+'</div></div>').join('')+'</div></details>';}).join('');trades.innerHTML=(d.recent_trades||[]).map(t=>'<div class="event"><div><b>'+String(t.symbol||'—')+'</b></div><div class="'+cls(t.net_pnl_usdt)+'">'+money(t.net_pnl_usdt)+'</div><div>'+(t.external_conversion?'Conversión manual':String(t.closing_reason||'—'))+'</div><div>'+date(t.closed_at)+'</div></div>').join('')||'<div class="muted">Aún no hay cierres registrados.</div>';}
+function render(d){content.hidden=false;const p=d.portfolio||{};const cards=[['Capital actual',money(d.account.total_equity_usdt),''],['USDT disponible',money(d.account.available_usdt),''],['Compras históricas',money(p.historical_buys_usdt),''],['Ventas Spot',money(p.historical_sells_usdt),''],['Conversiones a USDT',money(p.manual_conversions_received_usdt),'warn'],['Costo pendiente',money(p.remaining_tracked_cost_usdt),''],['PnL no realizado',money(p.unrealized_pnl_usdt),cls(p.unrealized_pnl_usdt)],['PnL realizado total',money(p.realized_pnl_usdt),cls(p.realized_pnl_usdt)],['PnL por conversiones',money(p.realized_conversion_pnl_usdt),cls(p.realized_conversion_pnl_usdt)],['Exposición API',money(d.allocation.api_exposure_usdt),'']];document.getElementById('cards').innerHTML=cards.map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="value '+x[2]+'">'+x[1]+'</div></div>').join('');const diag=d.engine.diagnosis;engine.innerHTML='<div class="value '+(diag.ready?'good':'warn')+'">'+(diag.ready?'LISTO SEGÚN CONFIGURACIÓN':'BLOQUEADO POR SEGURIDAD')+'</div><div>'+(diag.blockers.length?diag.blockers.map(x=>'• '+x).join('<br>'):'Spot real habilitado, ventas automáticas habilitadas y sin inconsistencias detectadas.')+'</div><div class="note">Límites actuales: '+money(d.allocation.configured_position_size_usdt)+' por adquisición, '+d.allocation.configured_max_open_positions+' adquisiciones simultáneas y '+money(d.allocation.configured_max_total_usdt)+' de capital administrado.</div>';assets.innerHTML=d.assets.map(a=>'<div class="row"><div class="wide"><b>'+a.asset+'</b><div class="mini muted">'+(a.holding_class==='MANAGED_SPOT_ACQUISITION'?'Adquisición Spot administrada':a.holding_class==='DUST_RESIDUAL'?'Residuo de operación / Dust':a.holding_class==='HISTORICAL_XEC_MANAGED_EXIT'?'Holding histórico · salida XEC administrada':a.holding_class==='CASH'?'Efectivo':'Holding histórico')+'</div></div><div><span class="label">Valor</span><br><b>'+money(a.value_usdt)+'</b></div><div><span class="label">Cantidad</span><br><b>'+num(a.quantity)+'</b></div><div><span class="label">PnL API</span><br><b class="'+cls(a.unrealized_pnl_usdt)+'">'+(a.unrealized_pnl_usdt===null?'—':money(a.unrealized_pnl_usdt))+'</b></div></div>').join('');conversions.innerHTML=(d.manual_conversions||[]).map(c=>'<div class="event"><div><span class="label">Fecha</span><br><b>'+date(c.created_at)+'</b></div><div><span class="label">Conversión</span><br><b>'+c.from_asset+' → USDT</b></div><div><span class="label">Entregado</span><br><b>'+num(c.from_amount)+' '+c.from_asset+'</b></div><div><span class="label">Recibido</span><br><b class="warn">'+money(c.to_amount)+'</b></div></div>').join('')||'<div class="muted" style="padding-top:14px">Binance no devolvió conversiones manuales en el historial consultable.</div>';history.innerHTML=(d.portfolio_history||[]).map(h=>{if(h.error)return '<div class="card bad">'+h.asset+' · '+h.error+'</div>';return '<details class="card asset-detail"><summary>'+h.asset+' · <span class="'+cls(h.total_pnl_usdt)+'">'+money(h.total_pnl_usdt)+'</span></summary><div class="grid"><div><div class="label">Comprado</div><b>'+money(h.total_bought_usdt)+'</b></div><div><div class="label">Vendido Spot</div><b>'+money(h.total_sold_usdt)+'</b></div><div><div class="label">Convertido a USDT</div><b class="warn">'+money(h.total_converted_usdt)+'</b></div><div><div class="label">PnL conversiones</div><b class="'+cls(h.realized_conversion_pnl_usdt)+'">'+money(h.realized_conversion_pnl_usdt)+'</b></div><div><div class="label">PnL pendiente</div><b class="'+cls(h.unrealized_pnl_usdt)+'">'+money(h.unrealized_pnl_usdt)+'</b></div><div><div class="label">Cobertura</div><b class="'+(h.coverage_complete?'good':'warn')+'">'+(h.coverage_complete?'Saldo reconciliado':'Revisión requerida')+'</b></div></div><div>'+h.timeline.map(t=>'<div class="event"><div>'+date(t.time)+'</div><div><b>'+(t.type==='CONVERT_TO_USDT'?'CONVERSIÓN MANUAL':t.type)+'</b></div><div>'+num(t.quantity)+' '+h.asset+'</div><div class="'+(t.type==='BUY'?'good':'warn')+'">'+money(t.quoteUsdt)+'</div></div>').join('')+'</div></details>';}).join('');trades.innerHTML=(d.recent_trades||[]).map(t=>'<div class="event"><div><b>'+String(t.symbol||'—')+'</b></div><div class="'+cls(t.net_pnl_usdt)+'">'+money(t.net_pnl_usdt)+'</div><div>'+(t.external_conversion?'Conversión manual':String(t.closing_reason||'—'))+'</div><div>'+date(t.closed_at)+'</div></div>').join('')||'<div class="muted">Aún no hay cierres registrados.</div>';}
 secret.value=localStorage.getItem('proypers25_summary_secret')||'';</script></main></body></html>`);
 });
 
