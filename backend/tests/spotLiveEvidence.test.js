@@ -23,5 +23,6 @@ assert.strictEqual(blockers[1].reason, 'PAPER_REAL_ENTRY_GATE_BLOCKED');
 assert.ok(blockers[1].missing_condition);
 assert.ok(!blockers.some((blocker) => blocker.component === 'Strategy Promotion'));
 assert.strictEqual(schedulerIntervalMinutes({ spot_cycle_interval_minutes: 10 }), 10);
+assert.strictEqual(schedulerIntervalMinutes({}), 5);
 
 console.log('spotLiveEvidence tests passed');
