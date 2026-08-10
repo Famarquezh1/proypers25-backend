@@ -6,7 +6,7 @@ const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
 
 const POSITIONS = 'real_spot_positions';
-const SAFETY_VERSION = 'controlled_real_spot_exit_v5_tactical_runner';
+const SAFETY_VERSION = 'controlled_real_spot_exit_v6_positive_edge_runner';
 
 function parseDate(value) {
   if (!value) return null;
@@ -206,9 +206,9 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
   const timeoutMinutes = tactical
     ? clamp(Math.round(720 + (normalizedAtr * 14400)), 720, 1440)
     : clamp(Math.round(180 + (normalizedAtr * 10000)), 180, 720);
+  // The adaptive lifecycle is authoritative. An old entry-time timeout must not
+  // force a good trade out before the volatility-aware observation window ends.
   const adaptiveTimeoutAt = new Date(openedAt.getTime() + timeoutMinutes * 60000);
-  const existingTimeout = parseDate(position.timeout_at);
-  const effectiveTimeoutAt = existingTimeout && existingTimeout < adaptiveTimeoutAt ? existingTimeout : adaptiveTimeoutAt;
 
   return {
     highest_price: highest,
@@ -216,7 +216,7 @@ function resolveAdaptiveProtection(position, currentPrice, atrPct, now = new Dat
     atr_pct: normalizedAtr,
     effective_sl_price: effectiveSl,
     effective_tp_price: originalTp,
-    effective_timeout_at: effectiveTimeoutAt.toISOString(),
+    effective_timeout_at: adaptiveTimeoutAt.toISOString(),
     protection_mode: mode,
     gain_pct: gainPct,
     age_minutes: ageMinutes,
@@ -259,6 +259,13 @@ async function persistTacticalWeaknessState(ref, position, now = new Date()) {
   return { ...position, ...state };
 }
 
+function isProtectedProfitableRunner(position = {}, currentPrice) {
+  const entry = Number(position.entry_price || 0);
+  if (!(entry > 0) || !(currentPrice > entry)) return false;
+  const mode = String(position.protection_mode || '').toUpperCase();
+  return ['BREAK_EVEN', 'TRAILING', 'TACTICAL_RUNNER_ARMED', 'TACTICAL_TRAILING'].includes(mode);
+}
+
 function determineExit(position, currentPrice, now = new Date()) {
   const tp = Number(position.effective_tp_price || position.tp1_price || 0);
   const sl = Number(position.effective_sl_price || position.sl_price || 0);
@@ -275,7 +282,6 @@ function determineExit(position, currentPrice, now = new Date()) {
   // both legs below Binance minimum notional. Reaching TP arms a protected
   // runner instead of forcing an immediate full sale.
   if (!tactical && currentPrice > 0 && tp > 0 && currentPrice >= tp) return 'TAKE_PROFIT';
-  if (timeoutAt && timeoutAt.getTime() <= now.getTime()) return 'TIMEOUT';
 
   if (tactical) {
     const entry = Number(position.entry_price || 0);
@@ -289,13 +295,21 @@ function determineExit(position, currentPrice, now = new Date()) {
     if (weaknessConfirmed && Number(position.tactical_score_weak_cycles || 0) >= 4) {
       return 'SCORE_DETERIORATION_CONFIRMED';
     }
+    if (timeoutAt && timeoutAt.getTime() <= now.getTime() && !isProtectedProfitableRunner(position, currentPrice)) return 'TIMEOUT';
     return null;
   }
 
+  // For standard positions, explicit deterioration is more informative than a
+  // clock. Record the economic reason instead of masking it as TIMEOUT.
   if (position.momentum_lost === true || position.exit_signal_reason === 'MOMENTUM_LOSS') return 'MOMENTUM_LOSS';
   const currentScore = Number(position.current_score);
   const exitScoreFloor = Number(position.exit_score_floor);
   if (Number.isFinite(currentScore) && Number.isFinite(exitScoreFloor) && currentScore < exitScoreFloor) return 'SCORE_DETERIORATION';
+
+  // Once a trade has locked break-even/trailing protection and remains in
+  // profit, the protective stop manages the winner. Do not kill recurring edge
+  // solely because an observation timer expired.
+  if (timeoutAt && timeoutAt.getTime() <= now.getTime() && !isProtectedProfitableRunner(position, currentPrice)) return 'TIMEOUT';
   return null;
 }
 
@@ -559,6 +573,7 @@ module.exports = {
   SAFETY_VERSION,
   assertExitConfig,
   isTacticalMomentumPosition,
+  isProtectedProfitableRunner,
   buildExitClientOrderId,
   buildSellQuantityEvidence,
   calculateAtrPct,
