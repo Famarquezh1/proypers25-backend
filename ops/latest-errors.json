@@ -1,706 +1,706 @@
 {
-  "generated_at": "2026-08-10T19:28:18Z",
+  "generated_at": "2026-08-10T20:08:27Z",
   "count": 100,
   "errors": [
     {
-      "timestamp": "2026-08-10T19:25:56.055552Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:55.937423Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:55.849699Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:42.759425Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:42.672774Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:42.541294Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:29.730975Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:29.115865Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:29.049158Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:16.325524Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:15.828905Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:15.532757Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:25:03.265173Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:22:42.007807Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "Error training candlesticks ETH-USD: undefined"
-    },
-    {
-      "timestamp": "2026-08-10T19:22:28.207885Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:21:45.107858Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:54.434739Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:54.362646Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:53.395573Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:42.255438Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:42.031810Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:40.152581Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:29.821753Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:29.737776Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:27.599427Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:16.652820Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:16.220010Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:20:14.454728Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:19:29.108348Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:16:19.543035Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:16:18.451729Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:16:07.339557Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:16:05.333783Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:16:05.269554Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:52.833178Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:49.577340Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:49.451514Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:39.255246Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:35.023372Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:34.866733Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:24.944266Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:19.984172Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:15:19.977890Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:56.218759Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:56.162774Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:44.521094Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:44.515379Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:33.807499Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:12:33.579478Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:11:19.409715Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:11:19.159237Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:11:08.532190Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:11:08.468324Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:58.114487Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:58.045843Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:47.635173Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:47.521081Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:35.808425Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:35.762513Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:24.049581Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:23.416915Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:12.962208Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:10:11.009240Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:06:09.935298Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:06:09.885748Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:59.364287Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:59.350539Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:47.740744Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:47.713602Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:35.909073Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:35.872006Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:22.349112Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:22.211334Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:05:11.024196Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:50.180607Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:41.144659Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:39.892753Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:30.684929Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:29.080150Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:20.542743Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:18.895128Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:10.734763Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:08.936077Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:01:00.054285Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:00:56.406573Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:00:50.613643Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:00:46.923275Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:00:40.753064Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-10T19:00:37.331911Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T18:56:51.132322Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T18:56:39.159866Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-10T18:56:28.620193Z",
+      "timestamp": "2026-08-10T20:06:22.463712Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:56:18.308907Z",
+      "timestamp": "2026-08-10T20:06:22.375694Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:06:11.800316Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:06:11.629851Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:56:08.027728Z",
+      "timestamp": "2026-08-10T20:06:01.115160Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:06:01.009684Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:55:58.159967Z",
+      "timestamp": "2026-08-10T20:05:50.741987Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:05:50.720443Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:55:48.214592Z",
+      "timestamp": "2026-08-10T20:05:40.269825Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:55:38.116341Z",
+      "timestamp": "2026-08-10T20:05:40.228640Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:05:28.966674Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "Error training candlesticks SOL-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-10T20:05:28.459542Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:05:28.382827Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:55:26.726625Z",
+      "timestamp": "2026-08-10T20:05:18.246193Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:05:17.813248Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:51:11.144107Z",
+      "timestamp": "2026-08-10T20:02:00.265444Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para ETH-USD' }"
     },
     {
-      "timestamp": "2026-08-10T18:51:01.830506Z",
+      "timestamp": "2026-08-10T20:01:59.176596Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:45.715340Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
       "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:42.394944Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:26.834221Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:26.636525Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:15.467449Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:15.439623Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:04.099694Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:01:03.784865Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:00:53.027291Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:00:52.429422Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:00:40.731125Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T20:00:40.543350Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:55.065659Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:52.875504Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para ETH-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:41.209201Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:40.085262Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "Error training candlesticks BTC-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:39.558249Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:28.970255Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:27.511478Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:15.562260Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:15.561596Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:04.740745Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:55:03.710629Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:25.713248Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:23.738261Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:14.787099Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:12.916961Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:03.679233Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:51:01.919360Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:53.119442Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:51.204689Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:42.455861Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:40.524354Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:31.559180Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:29.901087Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:18.740293Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:50:18.722137Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:27.402044Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:27.082262Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:12.253062Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:12.066206Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:00.630270Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:46:00.612003Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:49.269521Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:49.250117Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:38.292869Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:38.074582Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:27.052248Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:26.593241Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:16.381386Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:45:14.720285Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:41:06.121391Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:41:03.270382Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:53.228638Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:53.028474Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:42.577508Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:42.473581Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:41.750465Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ zhdqrrste8vJO0V7yDBo: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:41.569220Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ zJgH9TGyLX8Qtdj4ZGK4: Error=-2.00, Confianza=1.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:41.369419Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ yCoqC9Dvctlul6zFimYy: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:41.125561Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ xNZIHXVdbh6fMkmWguAX: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:40.916005Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ vo6HUuCQgj075zgakcfi: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:40.691182Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ v6PiioW7nChVmDTEBxyv: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:40.505367Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ v1m3DLkAFGjn0oHMCxfQ: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:40.293480Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ uTyNQl0jhjKnlJ9eTHqB: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:40.089657Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ tXPAgluS5Aq2ejgyhe5X: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:39.847015Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ tTCEoUuYYBMddKt9Y2MQ: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:39.642190Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ tKo46Y0II3qdPbZXvdxr: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:39.439527Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ tGeYnNXcdzHyBKwaajiJ: Error=-9.54, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:39.221283Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ rHZk5dUcwfOWdonJ875r: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:38.990200Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ qpMvscqZ82JOXIgvlLLs: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:38.803628Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ qZvuJReuO4L1EQOiGrty: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:38.599728Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ qXrOm7D0fhWyFXtOpgtp: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:38.415769Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ ocUpqcyJRgKV2vJyjbay: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:38.202657Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ kOubCkwnAVzUcZaPqhQC: Error=3.25, Confianza=1.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:37.985181Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ kJFkoPxODbnj4RhjrUGs: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:37.784572Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ jpnA9ROQa1Prxgit667l: Error=-13.31, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:37.546023Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ jRSoqEomUqFHX6WupkET: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:37.331232Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ jMwJ0FnvTWyFZi1SgwNg: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:37.109180Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ iuNjxkrASoekrzYtBkyJ: Error=-10.93, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:36.870381Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ iFhfV5yd2QPOHydvlBdn: Error=0.00, Confianza=1.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:36.676548Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ hvn7ArHywmVsG1LsenSI: Error=NaN, Confianza=0.00"
+    },
+    {
+      "timestamp": "2026-08-10T19:40:36.432983Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00683-c5z",
+      "event": null,
+      "message": "✅ hqhUkYX0QuiPB9VAp9vi: Error=NaN, Confianza=0.00"
     }
   ]
 }
