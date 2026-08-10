@@ -59,9 +59,15 @@ assert.strictEqual(determineExit(protectedExpired, 102, now), null);
 assert.strictEqual(determineExit({ ...protectedExpired, protection_mode: 'BASE' }, 102, now), 'TIMEOUT');
 
 // If there is explicit deterioration at timeout, preserve the economic exit
-// reason instead of hiding it under TIMEOUT.
+// reason instead of hiding it under TIMEOUT. Keep the price above any stop so
+// this test isolates deterioration precedence rather than stop precedence.
 assert.strictEqual(
-  determineExit({ ...protectedExpired, protection_mode: 'BASE', momentum_lost: true }, 99, now),
+  determineExit({
+    entry_price: 100,
+    protection_mode: 'BASE',
+    effective_timeout_at: '2026-07-15T11:59:00.000Z',
+    momentum_lost: true
+  }, 101, now),
   'MOMENTUM_LOSS'
 );
 
@@ -113,7 +119,8 @@ const tacticalProtected = {
   opened_at: '2026-07-14T20:00:00.000Z'
 };
 assert.strictEqual(determineExit(tacticalProtected, 105, now), null);
-assert.strictEqual(determineExit({ ...tacticalProtected, protection_mode: 'BASE' }, 99, now), 'TIMEOUT');
+assert.strictEqual(determineExit({ ...tacticalProtected, protection_mode: 'BASE' }, 99, now), 'STOP_LOSS');
+assert.strictEqual(determineExit({ ...tacticalProtected, protection_mode: 'BASE', effective_sl_price: 0 }, 99, now), 'TIMEOUT');
 
 assert.strictEqual(floorToStep(12.34567, '0.00100000'), 12.345);
 assert.strictEqual(floorToStep(40001215.74, '1.00000000'), 40001215);
