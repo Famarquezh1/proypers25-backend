@@ -10,11 +10,11 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'professiona
   'Vista rápida',
   '¿Cuánto dinero tengo?',
   '¿Cuánto ganó Proypers25?',
-  '¿Hay posiciones abiertas?',
+  '¿Cuántas adquisiciones administra?',
   '¿El sistema está sano?',
   '¿Qué hizo el bot recientemente?',
   'Resultado Proypers25',
-  'Posiciones abiertas',
+  'Adquisiciones Spot administradas',
   'Fecha compra',
   'Precio compra',
   'Precio actual',
@@ -22,28 +22,33 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'professiona
   'PnL US$',
   'Take Profit',
   'Stop Loss',
-  'Exit Engine',
   'Resumen de la cuenta Binance',
   'Estado operativo',
   'Holdings reales',
+  'Residuo de operación / Dust',
   'Actividad reciente',
   'Conversiones manuales',
   'Estas operaciones NO forman parte del rendimiento del bot',
   'Patrimonio total',
-  'Capital asignado',
+  'Capital máximo administrable',
+  'Capacidad libre',
   'Win Rate',
   'Profit Factor',
   'Primera compra',
   'Precio promedio',
   'Ganancia / pérdida',
-  'Gestionado por Proypers25',
+  'Clasificación',
   'average_price',
   'unrealized_pnl_pct',
-  'exit_engine_state',
+  'protection_mode',
   '/internal/investments/summary',
   '/internal/spot-live/evidence'
 ].forEach((marker) => assert(source.includes(marker), `missing dashboard marker: ${marker}`));
 
+assert(!source.includes('¿Hay posiciones abiertas?'), 'Spot dashboard must not use Futures-style open-position wording');
+assert(!source.includes('<h2>Posiciones abiertas</h2>'), 'Spot dashboard must use managed acquisition terminology');
+assert(source.includes('liveManaged(l)'), 'dashboard must aggregate all managed Spot acquisitions');
+assert(source.includes('dust_residual'), 'dashboard must classify dust residuals');
 assert(!source.includes('getBinanceSpotCredentials'), 'dashboard route must not access Binance directly');
 assert(!source.includes('firebase-admin-config'), 'dashboard route must not access Firestore directly');
 assert(!source.includes('runRealSpotExecutionCycle'), 'dashboard route must not execute trading logic');
