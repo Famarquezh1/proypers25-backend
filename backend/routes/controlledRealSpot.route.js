@@ -18,6 +18,7 @@ const { persistActivity, persistCycleEvidence } = require('../services/spotLiveE
 const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason } = require('../services/spotRealPipelinePolicy');
 const { runLegacySpotRecoveryCycle } = require('../services/legacySpotRecoveryLiquidator');
 const { runXecHistoricalHoldingCycle } = require('../services/xecHistoricalHoldingManager');
+const { runSpotDustSweeper } = require('../services/spotDustSweeper');
 
 const router = express.Router();
 
@@ -87,6 +88,22 @@ async function runXecHoldingSafely(options = {}) {
   }
 }
 
+async function runDustSweeperSafely(options = {}) {
+  try {
+    return await runSpotDustSweeper(db, options);
+  } catch (error) {
+    await persistActivity(db, {
+      event_type: 'ERROR',
+      source: 'SPOT_DUST_SWEEPER',
+      error: error.message,
+      created_at: new Date().toISOString()
+    });
+    // Dust cleanup is operational housekeeping. A temporary Wallet API failure
+    // must never block discovery, exits or a valid real entry.
+    return { ok: false, non_blocking: true, error: 'SPOT_DUST_SWEEPER_FAILED', details: error.message, outcomes: [] };
+  }
+}
+
 router.post('/internal/cron/binance/spot-adaptive-strategy', requireCronSecret, async (_req, res) => {
   try { return res.json({ ok: true, ...(await runAdaptiveSpotStrategyController(db)) }); }
   catch (error) { return res.status(500).json({ ok: false, error: 'ADAPTIVE_STRATEGY_FAILED', details: error.message }); }
@@ -146,6 +163,32 @@ router.get('/internal/spot-xec-holding/status', requireCronSecret, async (_req, 
   }
 });
 
+router.post('/internal/cron/binance/spot-dust-sweeper', requireCronSecret, async (req, res) => {
+  const result = await runDustSweeperSafely(req.body || {});
+  return res.status(200).json(result);
+});
+
+router.get('/internal/spot-dust-sweeper/status', requireCronSecret, async (_req, res) => {
+  try {
+    const [configSnap, pendingSnap, latestRun] = await Promise.all([
+      db.doc('real_spot_config/dust_sweeper').get(),
+      db.collection('real_spot_dust_residuals').where('status', '==', 'UNMANAGED_DUST').get(),
+      db.collection('spot_dust_sweeper_runs').orderBy('created_at', 'desc').limit(1).get()
+    ]);
+    return res.json({
+      ok: true,
+      autonomous: true,
+      target_asset: 'USDT',
+      config: configSnap.exists ? configSnap.data() : null,
+      pending_dust_count: pendingSnap.size,
+      pending_dust: pendingSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      latest_run: latestRun.empty ? null : latestRun.docs[0].data()
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'SPOT_DUST_SWEEPER_STATUS_FAILED', details: error.message });
+  }
+});
+
 router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, async (req, res) => {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
@@ -154,6 +197,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
   let exits = {};
   let xecHolding = {};
   let legacyRecovery = {};
+  let dustCleanup = {};
   let autonomy = {};
   let discovery = {};
   let paperValidation = {};
@@ -174,6 +218,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     exits = await evaluateAndExecuteRealSpotExits(db, config, req.body || {});
     xecHolding = await runXecHoldingSafely(req.body?.xec_holding || {});
     legacyRecovery = await runLegacyRecoverySafely(req.body?.legacy_recovery || {});
+    dustCleanup = await runDustSweeperSafely(req.body?.dust_sweeper || {});
     autonomy = await enforceAutonomousSafety(db, config);
     config = await getRealSpotConfig(db);
 
@@ -244,6 +289,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       exits,
       xecHolding,
       legacyRecovery,
+      dustCleanup,
       autonomy,
       adaptiveGate,
       promotionGate: promotionConfidence,
@@ -263,7 +309,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       margin: false,
       leverage: false,
       withdrawals: false,
-      pipeline: ['Scheduler', 'Reconciliation', 'Exit Engine', 'XEC Historical Holding Manager', 'Legacy Recovery', 'Discovery', 'Ranking', 'Paper Validation', 'Adaptive Strategy', 'Strategy Promotion Confidence', 'Technical Confirmation', 'Paper-to-Real', 'Safety Checks', 'Real Executor'],
+      pipeline: ['Scheduler', 'Reconciliation', 'Exit Engine', 'XEC Historical Holding Manager', 'Legacy Recovery', 'Dust Sweeper', 'Discovery', 'Ranking', 'Paper Validation', 'Adaptive Strategy', 'Strategy Promotion Confidence', 'Technical Confirmation', 'Paper-to-Real', 'Safety Checks', 'Real Executor'],
       discovery,
       ranking: { latest_scan_id: discovery.scan_id || null, candidates_saved: discovery.candidates_saved || 0, top_symbol: discovery.top_symbol || null, top_score: discovery.top_score || null },
       paper_validation: paperValidation,
@@ -272,6 +318,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       exits,
       xec_holding: xecHolding,
       legacy_recovery: legacyRecovery,
+      dust_cleanup: dustCleanup,
       adaptive_strategy_gate: adaptiveGate,
       strategy_promotion_confidence: promotionConfidence,
       strategy_promotion_blocks_entry: false,
@@ -305,6 +352,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
         exits,
         xecHolding,
         legacyRecovery,
+        dustCleanup,
         autonomy,
         adaptiveGate,
         promotionGate: promotionConfidence,
