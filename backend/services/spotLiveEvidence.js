@@ -15,8 +15,8 @@ function plain(value) {
   }));
 }
 function schedulerIntervalMinutes(config = {}) {
-  const configured = finite(config.spot_cycle_interval_minutes ?? process.env.SPOT_REAL_CYCLE_INTERVAL_MINUTES, 15);
-  return Math.max(1, configured || 15);
+  const configured = finite(config.spot_cycle_interval_minutes ?? process.env.SPOT_REAL_CYCLE_INTERVAL_MINUTES, 5);
+  return Math.max(1, configured || 5);
 }
 function addMinutes(iso, minutes) { return new Date(new Date(iso).getTime() + minutes * 60000).toISOString(); }
 
@@ -77,6 +77,9 @@ async function persistCycleEvidence(db, input) {
     blockers: blockerDetails({ ...input, startedAt: input.started_at }),
     reconciliation: input.reconciliation || null,
     exits: input.exits || null,
+    xec_holding: input.xecHolding || null,
+    legacy_recovery: input.legacyRecovery || null,
+    dust_cleanup: input.dustCleanup || null,
     entries: input.entries || null,
     discovery: input.discovery || null,
     paper_validation: input.paperValidation || null,
@@ -96,6 +99,7 @@ async function persistCycleEvidence(db, input) {
   ]);
   if (cycle.action === 'BUY' || cycle.action === 'SELL_AND_BUY') await persistActivity(db, { event_type: 'BUY', source: 'BINANCE_SPOT', created_at: completedAt, cycle_id: id, symbol: cycle.candidate?.symbol || input.entries?.symbol || null, details: input.entries || null });
   if (cycle.action === 'SELL' || cycle.action === 'SELL_AND_BUY') await persistActivity(db, { event_type: 'SELL', source: 'BINANCE_SPOT', created_at: completedAt, cycle_id: id, details: input.exits || null });
+  if (input.dustCleanup?.converted > 0) await persistActivity(db, { event_type: 'DUST_CLEANUP', source: 'BINANCE_WALLET', created_at: completedAt, cycle_id: id, result: 'CONVERTED_TO_USDT', details: input.dustCleanup });
   if (cycle.decision === 'FAILED' || input.error) await persistActivity(db, { event_type: 'ERROR', source: 'BACKEND', created_at: completedAt, cycle_id: id, error: input.error || cycle.reason || 'UNKNOWN' });
   return { id, ...cycle };
 }
