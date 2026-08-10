@@ -31,6 +31,7 @@ jobs:
           set -euo pipefail
           node tests/spotManagedQuantityRepair.test.js
           node tests/spotDustResidual.test.js
+          node tests/spotDustSweeper.test.js
           node tests/spotCostGovernance.test.js
           node tests/spotProfitTargetGovernance.test.js
           node tests/tacticalMomentumExitPolicy.test.js
@@ -52,6 +53,7 @@ jobs:
           node tests/spotShadowGemHunter.test.js
           node tests/unifiedControlPortal.test.js
           node --check services/spotDustResidual.js
+          node --check services/spotDustSweeper.js
           node --check services/spotManagedQuantityRepair.js
           node --check services/spotCostGovernance.js
           node --check services/spotProfitTargetGovernance.js
@@ -66,6 +68,9 @@ jobs:
           node --check services/spotRealPipelinePolicy.js
           node --check services/spotCycleObservability.js
           node --check services/spotLiveEvidence.js
+          node --check routes/investmentsSummary.route.js
+          node --check routes/spotLiveDashboard.route.js
+          node --check routes/professionalInvestmentsDashboard.route.js
           node --check routes/spotCostGovernance.route.js
           node --check routes/controlledRealSpot.route.js
           node --check server.js
@@ -108,6 +113,24 @@ jobs:
           test "$DEPLOYED_SHA" = "$GITHUB_SHA"
           echo "Cloud Run revision verified: $READY · SHA=$DEPLOYED_SHA"
 
+      - name: Configure five minute primary Spot cadence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="proypers2025"
+          SCHEDULER_REGION="southamerica-east1"
+          JOB="spot-real-execution"
+          gcloud scheduler jobs update http "$JOB" \
+            --project="$PROJECT" \
+            --location="$SCHEDULER_REGION" \
+            --schedule='*/5 * * * *'
+          SCHEDULE=$(gcloud scheduler jobs describe "$JOB" \
+            --project="$PROJECT" \
+            --location="$SCHEDULER_REGION" \
+            --format='value(schedule)')
+          test "$SCHEDULE" = '*/5 * * * *'
+          echo "Primary Spot scheduler cadence verified: $SCHEDULE"
+
       - name: Verify one fresh Spot cycle
         shell: bash
         env:
@@ -136,6 +159,11 @@ jobs:
             --format='value(state)' 2>/dev/null \
             | tr -d '[:space:]' \
             | tr '[:lower:]' '[:upper:]' || true)
+          SCHEDULE=$(gcloud scheduler jobs describe "$JOB" \
+            --project="$PROJECT" \
+            --location="$SCHEDULER_REGION" \
+            --format='value(schedule)' 2>/dev/null || true)
+          test "$SCHEDULE" = '*/5 * * * *'
 
           REQUESTED_AT_EPOCH=$(date -u +%s)
           if [ "$STATE" = "ENABLED" ]; then
@@ -151,7 +179,7 @@ jobs:
             jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$DIRECT" >/dev/null
             EXECUTION_MODE="DIRECT_FALLBACK"
           fi
-          echo "Spot cycle requested through $EXECUTION_MODE · scheduler=${STATE:-UNKNOWN}"
+          echo "Spot cycle requested through $EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · cadence=$SCHEDULE"
 
           LIVE=''
           FRESH_CYCLE=0
@@ -178,6 +206,7 @@ jobs:
           jq -e '.latest_cycle != null and .latest_cycle.decision != "FAILED"' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.promotion_blocks_entry == false' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.paper_to_real == "PASS" or .latest_cycle.gates.paper_to_real == "BLOCK"' <<<"$LIVE" >/dev/null
+          jq -e '(.open_positions | type) == "array"' <<<"$LIVE" >/dev/null
 
           LEGACY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
             -H "x-cron-secret: $CRON_SECRET" \
@@ -193,7 +222,19 @@ jobs:
           jq -e '.config.enabled == true and .config.xec_managed_exit_enabled == true and .config.new_xec_entries_allowed == false' <<<"$XEC" >/dev/null
           jq -e '.state != null' <<<"$XEC" >/dev/null
 
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · XEC autonomous exit manager active"
+          DUST=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/spot-dust-sweeper/status")
+          jq -e '.ok == true and .autonomous == true and .target_asset == "USDT"' <<<"$DUST" >/dev/null
+          jq -e '.config.enabled == true and .config.target_asset == "USDT" and .config.max_residual_value_usdt <= 5' <<<"$DUST" >/dev/null
+
+          SUMMARY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/investments/summary")
+          jq -e '.ok == true and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 40 and .allocation.max_per_acquisition_usdt == 10' <<<"$SUMMARY" >/dev/null
+          jq -e '.engine.diagnosis.limits.max_managed_spot_assets == 4' <<<"$SUMMARY" >/dev/null
+
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · cadence=5m · XEC manager + USDT dust sweeper active"
 
       - name: Diagnose failure
         if: failure()
@@ -214,4 +255,6 @@ jobs:
             curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-legacy-recovery/status" || true
             echo
             curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-xec-holding/status" || true
+            echo
+            curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-dust-sweeper/status" || true
           fi
