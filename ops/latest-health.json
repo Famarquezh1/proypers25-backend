@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-08-13T12:49:40Z",
+  "generated_at": "2026-08-13T14:17:02Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00683-c5z",
   "spot_real": {
-    "cycles": 9,
+    "cycles": 10,
     "opened": 0,
     "closed": 0,
     "exit_failures": 0,
@@ -14,13 +14,13 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "BLOCK",
     "open_positions_after_cycle": 1,
-    "promoted_symbol": "SPCXBUSDT",
+    "promoted_symbol": "PUMPUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE",
       "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
       "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_VOLUME_NOT_CONFIRMED",
+      "TECHNICAL_MOVE_OVEREXTENDED",
       "THREE_CONSECUTIVE_LOSSES",
       "KILL_SWITCH_ACTIVE",
       "NEW_ENTRIES_DISABLED",
