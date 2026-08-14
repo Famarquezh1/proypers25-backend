@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-08-14T01:10:51Z",
+  "generated_at": "2026-08-14T03:34:04Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00683-c5z",
   "spot_real": {
-    "cycles": 9,
+    "cycles": 10,
     "opened": 0,
     "closed": 0,
     "exit_failures": 0,
@@ -20,7 +20,6 @@
       "REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE",
       "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
       "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "THREE_CONSECUTIVE_LOSSES",
       "KILL_SWITCH_ACTIVE",
       "NEW_ENTRIES_DISABLED",
