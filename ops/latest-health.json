@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-14T06:52:05Z",
+  "generated_at": "2026-08-14T08:08:01Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00683-c5z",
@@ -14,10 +14,12 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "BLOCK",
     "open_positions_after_cycle": 1,
-    "promoted_symbol": "HOMEUSDT",
+    "promoted_symbol": "PUMPUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE",
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
+      "TECHNICAL_MOVE_OVEREXTENDED",
       "THREE_CONSECUTIVE_LOSSES",
       "KILL_SWITCH_ACTIVE",
       "NEW_ENTRIES_DISABLED",
