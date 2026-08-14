@@ -1,28 +1,28 @@
 {
-  "generated_at": "2026-08-14T05:26:13Z",
+  "generated_at": "2026-08-14T06:52:05Z",
   "event_found": true,
-  "timestamp": "2026-08-14T05:18:37.437729Z",
+  "timestamp": "2026-08-14T06:41:50.779568Z",
   "revision": "proypers25-backend-00683-c5z",
-  "run_id": "quant_1786684714637",
+  "run_id": "quant_1786689705606",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 5,
-    "analyzed_count": 5,
+    "accepted_symbol_count": 12,
+    "analyzed_count": 12,
     "eligible_count": 0,
-    "failed_count": 0,
+    "failed_count": 9,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "PUMPUSDT",
-    "requested_count": 5,
-    "selected_family": "MEAN_REVERSION",
-    "selected_symbol": "PUMPUSDT",
-    "valid_count": 5
+    "observation_symbol": "HOMEUSDT",
+    "requested_count": 12,
+    "selected_family": "BREAKOUT",
+    "selected_symbol": "HOMEUSDT",
+    "valid_count": 3
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.6180000000000001,
+      "brier": 0.7195000000000003,
       "calibrated": false,
-      "samples": 10
+      "samples": 15
     },
     "checks": {
       "expectation_stability": true,
@@ -31,48 +31,48 @@
       "test_drawdown": true,
       "test_expectancy_positive": false,
       "test_fold_consistency": false,
-      "test_min_trades": false,
+      "test_min_trades": true,
       "test_profit_factor": false,
-      "validation_expectancy_positive": true,
+      "validation_expectancy_positive": false,
       "validation_fold_consistency": false,
       "validation_median_positive": false,
       "validation_min_trades": true,
-      "validation_profit_factor": true
+      "validation_profit_factor": false
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": -0.0045408904793222335,
-      "median_validation_expectancy": 0.0022053049796455513,
-      "positive_test_folds": 0,
-      "positive_validation_folds": 2,
-      "test_expectancy_std": 0.004338563060700806,
-      "test_ratio": 0,
-      "validation_ratio": 0.5
+      "median_test_expectancy": -0.001750374999999858,
+      "median_validation_expectancy": -0.001750374999999858,
+      "positive_test_folds": 1,
+      "positive_validation_folds": 1,
+      "test_expectancy_std": 0.0021737663471270642,
+      "test_ratio": 0.25,
+      "validation_ratio": 0.25
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.007606101337752829,
-      "averageWin": 0.01565898451134884,
-      "expectancy": -0.0029530841679324947,
-      "maxDrawdown": 0.0405176317146787,
-      "medianReturn": -0.0052174680453116445,
-      "netReturn": -0.02967297764489174,
-      "profitFactor": 0.5146849817009925,
-      "returnStd": 0.01047115760679971,
-      "trades": 10,
-      "winRate": 0.2
+      "averageLoss": -0.0034030566450914865,
+      "averageWin": 0.01698729737918514,
+      "expectancy": -0.0020436997101397113,
+      "maxDrawdown": 0.030534518033247693,
+      "medianReturn": -0.001750374999999858,
+      "netReturn": -0.030534518033247693,
+      "profitFactor": 0.3565554472852126,
+      "returnStd": 0.0065645086612929225,
+      "trades": 15,
+      "winRate": 0.06666666666666667
     },
     "validation": {
-      "averageLoss": -0.004935943087165127,
-      "averageWin": 0.016920061963340432,
-      "expectancy": 0.0019659532445734703,
-      "maxDrawdown": 0.02682453719368023,
+      "averageLoss": -0.0029452783295762838,
+      "averageWin": 0.01698729737918514,
+      "expectancy": -0.0015215229218076107,
+      "maxDrawdown": 0.035981445419416835,
       "medianReturn": -0.001750374999999858,
-      "netReturn": 0.03680015150131255,
-      "profitFactor": 1.5821210313388552,
-      "returnStd": 0.011170478387471369,
-      "trades": 19,
-      "winRate": 0.3157894736842105
+      "netReturn": -0.02132143379446927,
+      "profitFactor": 0.4436644136115412,
+      "returnStd": 0.005800343158396786,
+      "trades": 14,
+      "winRate": 0.07142857142857142
     }
   },
   "strategy_families": [
