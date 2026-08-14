@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-14T08:08:01Z",
+  "generated_at": "2026-08-14T09:33:29Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00683-c5z",
@@ -20,6 +20,7 @@
       "REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE",
       "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
       "TECHNICAL_MOVE_OVEREXTENDED",
+      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "THREE_CONSECUTIVE_LOSSES",
       "KILL_SWITCH_ACTIVE",
       "NEW_ENTRIES_DISABLED",
