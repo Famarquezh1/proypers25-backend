@@ -1,482 +1,447 @@
 {
-  "generated_at": "2026-08-14T23:44:35Z",
-  "count": 68,
+  "generated_at": "2026-08-15T00:43:43Z",
+  "count": 63,
   "errors": [
     {
-      "timestamp": "2026-08-14T23:41:18.235056Z",
+      "timestamp": "2026-08-15T00:41:08.213506Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:41:06.889548Z",
+      "timestamp": "2026-08-15T00:40:59.072449Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:40:55.603100Z",
+      "timestamp": "2026-08-15T00:40:50.420976Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "Error training candlesticks LTC-USD: undefined"
     },
     {
-      "timestamp": "2026-08-14T23:40:44.310942Z",
+      "timestamp": "2026-08-15T00:40:49.983240Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:40:34.081636Z",
+      "timestamp": "2026-08-15T00:40:40.297402Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:40:24.028415Z",
+      "timestamp": "2026-08-15T00:40:30.940155Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:40:14.010620Z",
+      "timestamp": "2026-08-15T00:40:21.811711Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:40:03.236867Z",
+      "timestamp": "2026-08-15T00:40:12.072488Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:56.874211Z",
+      "timestamp": "2026-08-15T00:36:16.858226Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:47.659239Z",
+      "timestamp": "2026-08-15T00:36:06.331580Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:38.200273Z",
+      "timestamp": "2026-08-15T00:35:56.234448Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:29.022632Z",
+      "timestamp": "2026-08-15T00:35:46.447510Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:19.699611Z",
+      "timestamp": "2026-08-15T00:35:37.147839Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:35:10.018658Z",
+      "timestamp": "2026-08-15T00:35:27.944290Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:34:07.104991Z",
+      "timestamp": "2026-08-15T00:35:18.347317Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:33:46.542912Z",
+      "timestamp": "2026-08-15T00:31:13.823461Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:33:06.250426Z",
+      "timestamp": "2026-08-15T00:31:04.348311Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:52.307312Z",
+      "timestamp": "2026-08-15T00:30:54.903390Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "Error training candlesticks LINK-USD: undefined"
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:51.912571Z",
+      "timestamp": "2026-08-15T00:30:45.463293Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:42.635258Z",
+      "timestamp": "2026-08-15T00:30:36.333456Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:33.328990Z",
+      "timestamp": "2026-08-15T00:30:26.831969Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:24.096767Z",
+      "timestamp": "2026-08-15T00:28:07.960477Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:30:13.197246Z",
+      "timestamp": "2026-08-15T00:26:15.846848Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:28:56.760340Z",
+      "timestamp": "2026-08-15T00:26:02.891252Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:25:51.699428Z",
+      "timestamp": "2026-08-15T00:25:50.030226Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:25:40.386775Z",
+      "timestamp": "2026-08-15T00:25:38.987645Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:25:29.264135Z",
+      "timestamp": "2026-08-15T00:25:27.874902Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:25:18.282848Z",
+      "timestamp": "2026-08-15T00:25:15.968631Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:25:08.808891Z",
+      "timestamp": "2026-08-15T00:25:03.539658Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:23:10.057342Z",
+      "timestamp": "2026-08-15T00:20:57.140087Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:23:00.822269Z",
+      "timestamp": "2026-08-15T00:20:47.972142Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:22:51.711475Z",
+      "timestamp": "2026-08-15T00:20:38.794712Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:22:42.536273Z",
+      "timestamp": "2026-08-15T00:20:29.186308Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:22:33.366850Z",
+      "timestamp": "2026-08-15T00:20:19.602750Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:22:23.444607Z",
+      "timestamp": "2026-08-15T00:20:10.333574Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:22:14.035027Z",
+      "timestamp": "2026-08-15T00:16:05.166381Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:21:19.533704Z",
+      "timestamp": "2026-08-15T00:15:53.227260Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:21:09.048758Z",
+      "timestamp": "2026-08-15T00:15:37.549448Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:58.826147Z",
+      "timestamp": "2026-08-15T00:15:18.497032Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:48.676675Z",
+      "timestamp": "2026-08-15T00:11:19.232653Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:38.477096Z",
+      "timestamp": "2026-08-15T00:11:09.375831Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:28.581194Z",
+      "timestamp": "2026-08-15T00:11:00.221633Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:17.864979Z",
+      "timestamp": "2026-08-15T00:10:50.852414Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:20:07.367303Z",
+      "timestamp": "2026-08-15T00:10:40.492583Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:15:57.893412Z",
+      "timestamp": "2026-08-15T00:10:31.232855Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:15:46.343485Z",
+      "timestamp": "2026-08-15T00:07:20.160383Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:15:34.580393Z",
+      "timestamp": "2026-08-15T00:05:56.682427Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:15:23.257124Z",
+      "timestamp": "2026-08-15T00:05:46.643765Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:15:11.396168Z",
+      "timestamp": "2026-08-15T00:05:36.346088Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:11:02.778728Z",
+      "timestamp": "2026-08-15T00:05:26.059674Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:10:53.172735Z",
+      "timestamp": "2026-08-15T00:05:15.190628Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:10:42.756038Z",
+      "timestamp": "2026-08-15T00:05:04.834435Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:10:31.972914Z",
+      "timestamp": "2026-08-15T00:03:40.852402Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para LTC-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:10:21.386316Z",
+      "timestamp": "2026-08-15T00:03:30.433763Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "Error training candlesticks AVAX-USD: undefined"
     },
     {
-      "timestamp": "2026-08-14T23:10:10.862592Z",
+      "timestamp": "2026-08-15T00:03:29.997640Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:06:08.991019Z",
+      "timestamp": "2026-08-15T00:03:19.434946Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:05:57.064170Z",
+      "timestamp": "2026-08-15T00:03:06.794373Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:05:44.997255Z",
+      "timestamp": "2026-08-15T00:02:54.103913Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:05:32.542818Z",
+      "timestamp": "2026-08-15T00:00:55.843890Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:05:22.378534Z",
+      "timestamp": "2026-08-15T00:00:35.209210Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:05:11.612943Z",
+      "timestamp": "2026-08-15T00:00:25.721535Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:01:06.149053Z",
+      "timestamp": "2026-08-15T00:00:16.531766Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     },
     {
-      "timestamp": "2026-08-14T23:00:56.507225Z",
+      "timestamp": "2026-08-15T00:00:05.687440Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00683-c5z",
       "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-14T23:00:46.999499Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-14T23:00:37.384078Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-14T23:00:27.034704Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-14T23:00:17.219194Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-14T23:00:06.708591Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00683-c5z",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para LINK-USD' }"
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para AVAX-USD' }"
     }
   ]
 }
