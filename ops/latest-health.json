@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-08-15T10:45:42Z",
+  "generated_at": "2026-08-15T11:11:55Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
-  "cloud_run_revision": "proypers25-backend-00683-c5z",
+  "cloud_run_revision": "proypers25-backend-00684-v9v",
   "spot_real": {
     "cycles": 11,
     "opened": 0,
@@ -14,7 +14,7 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "BLOCK",
     "open_positions_after_cycle": 1,
-    "promoted_symbol": "EPICUSDT",
+    "promoted_symbol": "XPLUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE",
