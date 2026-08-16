@@ -1,23 +1,26 @@
 {
-  "generated_at": "2026-08-16T19:15:10Z",
+  "generated_at": "2026-08-16T19:41:29Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00687-sqr",
   "spot_real": {
-    "cycles": 9,
-    "opened": 0,
+    "cycles": 8,
+    "opened": 1,
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "TECHNICAL_MOVE_OVEREXTENDED",
+    "latest_reason": "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
-    "open_positions_after_cycle": 0,
+    "open_positions_after_cycle": 1,
     "promoted_symbol": "PLUMEUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
+      "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
       "TECHNICAL_MOVE_OVEREXTENDED",
+      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "INSUFFICIENT_REAL_SAMPLE"
     ],
     "safety": {
