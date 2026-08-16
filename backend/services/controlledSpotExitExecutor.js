@@ -6,7 +6,7 @@ const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
 
 const POSITIONS = 'real_spot_positions';
-const SAFETY_VERSION = 'controlled_real_spot_exit_v6_positive_edge_runner';
+const SAFETY_VERSION = 'controlled_real_spot_exit_v7_exit_always_protects';
 
 function parseDate(value) {
   if (!value) return null;
@@ -23,7 +23,9 @@ function clamp(value, min, max) {
 function assertExitConfig(config) {
   const reasons = [];
   if (config?.enabled !== true) reasons.push('REAL_SPOT_NOT_ENABLED');
-  if (config?.kill_switch === true) reasons.push('KILL_SWITCH_ACTIVE');
+  // The kill switch is an entry-risk control. Protective exits must remain
+  // available while entries are halted; real_sells_enabled is the dedicated
+  // operator control for disabling real Spot sells.
   if (config?.real_sells_enabled !== true) reasons.push('REAL_SELLS_NOT_ENABLED');
   if (config?.auto_order_execution !== true) reasons.push('AUTO_ORDER_EXECUTION_DISABLED');
   if (config?.spot_only !== true) reasons.push('NOT_SPOT_ONLY');

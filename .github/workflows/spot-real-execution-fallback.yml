@@ -82,14 +82,14 @@ jobs:
               candidate: .entries.candidate
             },
             paper_gate: {
-              allowed: .paper_gate.allowed,
-              entry_mode: .paper_gate.entry_mode,
-              selection_lane: .paper_gate.selection_lane,
-              reasons: .paper_gate.reasons,
-              candidate: .paper_gate.candidate,
-              technical_confirmation: .paper_gate.technical_confirmation,
-              early_momentum_radar: .paper_gate.early_momentum_radar,
-              candidate_pool_audit: (.paper_gate.candidate_pool_audit // [])[0:10]
+              allowed: .paper_entry_gate.allowed,
+              entry_mode: .paper_entry_gate.entry_mode,
+              selection_lane: .paper_entry_gate.selection_lane,
+              reasons: .paper_entry_gate.reasons,
+              candidate: .paper_entry_gate.candidate,
+              technical_confirmation: .paper_entry_gate.technical_confirmation,
+              early_momentum_radar: .paper_entry_gate.early_momentum_radar,
+              candidate_pool_audit: (.paper_entry_gate.candidate_pool_audit // [])[0:10]
             },
             reconciliation: {
               account_consistent: .reconciliation.account_consistent,
@@ -99,13 +99,24 @@ jobs:
             exits: {
               ok: .exits.ok,
               blocked: .exits.blocked,
+              blocked_reason: .exits.blocked_reason,
               exit_engine_healthy: .exits.exit_engine_healthy,
-              failures: .exits.failures
+              evaluated: .exits.evaluated,
+              sold: .exits.sold,
+              held: .exits.held,
+              failures: .exits.failures,
+              outcomes: .exits.outcomes
             },
             autonomy: {
               should_halt: .autonomy.should_halt,
-              halt_reason: .autonomy.halt_reason
+              halt_reason: .autonomy.halt_reason,
+              consecutive_losses: .autonomy.consecutive_losses,
+              loss_streak_cooldown_active: .autonomy.loss_streak_cooldown_active,
+              loss_streak_cooldown_until: .autonomy.loss_streak_cooldown_until,
+              autonomy_halt_released: .autonomy.autonomy_halt_released
             },
-            adaptive_gate: .adaptive_gate,
-            promotion_confidence: .promotion_confidence
+            adaptive_gate: .adaptive_strategy_gate,
+            promotion_confidence: .strategy_promotion_confidence,
+            safety_checks: .safety_checks,
+            open_positions_after_cycle: .open_positions_after_cycle
           }' <<<"$RESPONSE"

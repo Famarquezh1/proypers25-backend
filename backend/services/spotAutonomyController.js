@@ -9,6 +9,7 @@ const BASE_POSITION_USDT = 10;
 const MAX_INITIAL_POSITION_USDT = 10;
 const MAX_OPEN_POSITIONS = 1;
 const LOSS_STREAK_KILL_SWITCH = 3;
+const LOSS_STREAK_COOLDOWN_MINUTES = 180;
 const MAX_SESSION_LOSS_USDT = 3;
 
 function asNumber(value, fallback = 0) {
@@ -22,7 +23,37 @@ function closedAtMillis(result) {
   return Number.isFinite(time) ? time : 0;
 }
 
-async function buildAutonomySnapshot(db) {
+function buildAutonomyHaltState({ consecutiveLosses = 0, totalPnl = 0, latestClosedAt = 0, now = new Date() } = {}) {
+  const nowMsRaw = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const nowMs = Number.isFinite(nowMsRaw) ? nowMsRaw : Date.now();
+  const latestClosedAtMs = asNumber(latestClosedAt, 0);
+  const lossStreakTriggered = Number(consecutiveLosses) >= LOSS_STREAK_KILL_SWITCH;
+  const cooldownUntilMs = lossStreakTriggered && latestClosedAtMs > 0
+    ? latestClosedAtMs + (LOSS_STREAK_COOLDOWN_MINUTES * 60 * 1000)
+    : 0;
+  // If a legacy result has no usable close timestamp, fail safe and keep the
+  // loss-streak halt active rather than silently releasing it.
+  const lossStreakCooldownActive = lossStreakTriggered && (
+    latestClosedAtMs <= 0 || cooldownUntilMs > nowMs
+  );
+  const maxSessionLossReached = Number(totalPnl) <= -MAX_SESSION_LOSS_USDT;
+
+  return {
+    should_halt: maxSessionLossReached || lossStreakCooldownActive,
+    halt_reason: maxSessionLossReached
+      ? 'MAX_SESSION_LOSS_REACHED'
+      : lossStreakCooldownActive
+        ? 'THREE_CONSECUTIVE_LOSSES'
+        : null,
+    loss_streak_triggered: lossStreakTriggered,
+    loss_streak_cooldown_active: lossStreakCooldownActive,
+    loss_streak_cooldown_minutes: LOSS_STREAK_COOLDOWN_MINUTES,
+    loss_streak_cooldown_until: cooldownUntilMs > 0 ? new Date(cooldownUntilMs).toISOString() : null,
+    max_session_loss_reached: maxSessionLossReached
+  };
+}
+
+async function buildAutonomySnapshot(db, now = new Date()) {
   const snapshot = await db.collection(RESULTS_COLLECTION).get();
   const trades = filterBotPerformanceResults(
     snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -41,7 +72,13 @@ async function buildAutonomySnapshot(db) {
 
   const completedTrades = wins + losses;
   const winRate = completedTrades > 0 ? (wins / completedTrades) * 100 : 0;
-  const shouldHalt = consecutiveLosses >= LOSS_STREAK_KILL_SWITCH || totalPnl <= -MAX_SESSION_LOSS_USDT;
+  const latestClosedAt = recent.length ? closedAtMillis(recent[0]) : 0;
+  const haltState = buildAutonomyHaltState({
+    consecutiveLosses,
+    totalPnl,
+    latestClosedAt,
+    now
+  });
 
   return {
     completed_trades: completedTrades,
@@ -50,12 +87,8 @@ async function buildAutonomySnapshot(db) {
     win_rate_pct: Number(winRate.toFixed(2)),
     recent_net_pnl_usdt: Number(totalPnl.toFixed(8)),
     consecutive_losses: consecutiveLosses,
-    should_halt: shouldHalt,
-    halt_reason: consecutiveLosses >= LOSS_STREAK_KILL_SWITCH
-      ? 'THREE_CONSECUTIVE_LOSSES'
-      : totalPnl <= -MAX_SESSION_LOSS_USDT
-        ? 'MAX_SESSION_LOSS_REACHED'
-        : null,
+    latest_trade_closed_at: latestClosedAt > 0 ? new Date(latestClosedAt).toISOString() : null,
+    ...haltState,
     current_stage: 'CONTROLLED_10_USDT',
     recommended_position_usdt: BASE_POSITION_USDT,
     scale_up_locked: completedTrades < 10 || totalPnl <= 0 || winRate < 50,
@@ -87,7 +120,8 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
     patch.kill_switch = true;
     patch.new_entries_enabled = false;
     patch.autonomy_halt_reason = snapshot.halt_reason;
-    patch.autonomy_halted_at = now;
+    patch.autonomy_halted_at = currentConfig.autonomy_halted_at || now;
+    patch.autonomy_resume_after = snapshot.loss_streak_cooldown_until || null;
     return patch;
   }
 
@@ -98,6 +132,8 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
   // kill switch remains protected when explicitly marked as manual.
   patch.autonomy_halt_reason = null;
   patch.autonomy_released_at = now;
+  patch.autonomy_halted_at = null;
+  patch.autonomy_resume_after = null;
   if (currentConfig.manual_kill_switch !== true) patch.kill_switch = false;
 
   const manualPause = currentConfig.manual_entry_pause === true || currentConfig.entries_paused_manually === true;
@@ -121,9 +157,10 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
 }
 
 async function enforceAutonomousSafety(db, currentConfig = {}) {
-  const snapshot = await buildAutonomySnapshot(db);
+  const nowDate = new Date();
+  const snapshot = await buildAutonomySnapshot(db, nowDate);
   const controlRef = db.doc(CONTROL_PATH);
-  const now = new Date().toISOString();
+  const now = nowDate.toISOString();
   const patch = buildAutonomyControlPatch(currentConfig, snapshot, now);
 
   await controlRef.set(patch, { merge: true });
@@ -140,8 +177,10 @@ async function enforceAutonomousSafety(db, currentConfig = {}) {
 
 module.exports = {
   buildAutonomySnapshot,
+  buildAutonomyHaltState,
   buildAutonomyControlPatch,
   enforceAutonomousSafety,
   BASE_POSITION_USDT,
-  MAX_INITIAL_POSITION_USDT
+  MAX_INITIAL_POSITION_USDT,
+  LOSS_STREAK_COOLDOWN_MINUTES
 };
