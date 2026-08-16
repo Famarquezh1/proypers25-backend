@@ -1,5 +1,384 @@
 {
-  "generated_at": "2026-08-16T04:58:01Z",
-  "count": 0,
-  "errors": []
+  "generated_at": "2026-08-16T05:26:23Z",
+  "count": 54,
+  "errors": [
+    {
+      "timestamp": "2026-08-16T05:00:13.208363Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ICP-USD', accuracy: 100, avgError: 0.0114, count: 1 }"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208358Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'SOL-USD', accuracy: 100, avgError: 0.0058, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208353Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'DENT-USD', accuracy: 0, avgError: 0.0075, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208348Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'KITE-USD', accuracy: 100, avgError: 0, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208343Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'WLD-USD', accuracy: 100, avgError: 0.0002, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208338Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'TRX-USD', accuracy: 50, avgError: 0.0025, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208333Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'OP-USD', accuracy: 100, avgError: 0.002, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208328Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'XPL-USD', accuracy: 0, avgError: 0.0064, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208323Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ARB-USD', accuracy: 100, avgError: 0.0065, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208318Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'PAXG-USD', accuracy: 100, avgError: 0.0206, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208314Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'DOT-USD', accuracy: 50, avgError: 0.0046, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208309Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'OPN-USD', accuracy: 100, avgError: 0.0013, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208304Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ATOM-USD', accuracy: 100, avgError: 0.0034, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208299Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'TON-USD', accuracy: 66.67, avgError: 0.0103, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208294Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'SHIB-USD', accuracy: 100, avgError: 0.0014, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208289Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'NEAR-USD', accuracy: 50, avgError: 0.0213, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208284Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'INJ-USD', accuracy: 100, avgError: 0.0029, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208280Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'SUI-USD', accuracy: 100, avgError: 0.0054, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208274Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ZEC-USD', accuracy: 100, avgError: 0.0153, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208269Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ENJ-USD', accuracy: 100, avgError: 0.0061, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208264Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'TAO-USD', accuracy: 100, avgError: 0.384, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208259Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'DRIFT-USD', accuracy: 0, avgError: 0.0091, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208255Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'BTC-USD', accuracy: 75, avgError: 0.0376, count: 4 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208250Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'RLS-USD', accuracy: 0, avgError: 0.9798, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208245Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'AVAX-USD', accuracy: 100, avgError: 0.009, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208241Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'HUMA-USD', accuracy: 100, avgError: 0.0049, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208235Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'RESOLV-USD', accuracy: 100, avgError: 0.0025, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208231Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ETH-USD', accuracy: 75, avgError: 0.0022, count: 4 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208227Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'DOGE-USD', accuracy: 33.33, avgError: 0.0679, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208222Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'HBAR-USD', accuracy: 75, avgError: 0.0067, count: 4 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208218Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'BCH-USD', accuracy: 66.67, avgError: 0.0091, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208214Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ADA-USD', accuracy: 100, avgError: 0.0056, count: 7 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208203Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "      avgError: 0.0291,"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208178Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "      avgError: 0.0044,"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208161Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'Q-USD', accuracy: 100, avgError: 0.0142, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208156Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'LINK-USD', accuracy: 50, avgError: 0.0038, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208151Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'LTC-USD', accuracy: 100, avgError: 0.0044, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208146Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'BNB-USD', accuracy: 83.33, avgError: 0.0074, count: 6 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208142Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'ENA-USD', accuracy: 50, avgError: 0.0078, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208137Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'LYN-USD', accuracy: 0, avgError: 0.3535, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208132Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'MATIC-USD', accuracy: 100, avgError: 0.0064, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208125Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'APT-USD', accuracy: 100, avgError: 0.0067, count: 2 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208120Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'XRP-USD', accuracy: 66.67, avgError: 0.007, count: 6 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208115Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'STABLE-USD', accuracy: 100, avgError: 0.0002, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208110Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'CYS-USD', accuracy: 100, avgError: 0.0017, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208105Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'LTM', accuracy: 0, avgError: 0.0728, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208100Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'BTC', accuracy: 100, avgError: 0.9995, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208096Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'GOOGL', accuracy: 0, avgError: 0.0511, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208091Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'CL', accuracy: 100, avgError: 0.002, count: 1 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208085Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'NVDA', accuracy: 58.33, avgError: 0.0626, count: 24 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208078Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'SQM', accuracy: 0, avgError: 0.0077, count: 3 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208074Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'AAPL', accuracy: 55.56, avgError: 0.0238, count: 45 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208068Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'MSFT', accuracy: 51.61, avgError: 0.0233, count: 31 },"
+    },
+    {
+      "timestamp": "2026-08-16T05:00:13.208062Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00686-lhs",
+      "event": null,
+      "message": "    { symbol: 'TSLA', accuracy: 82.35, avgError: 0.5602, count: 17 },"
+    }
+  ]
 }
