@@ -71,3 +71,41 @@ jobs:
 
           jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$RESPONSE" >/dev/null
           echo "Fallback Spot cycle completed: $(jq -r '.decision_summary.decision // .entries.reason // "completed"' <<<"$RESPONSE")"
+          echo "REAL_SPOT_DECISION_EVIDENCE"
+          jq '{
+            decision_summary,
+            entries: {
+              ok: .entries.ok,
+              skipped: .entries.skipped,
+              reason: .entries.reason,
+              failed_conditions: .entries.failed_conditions,
+              candidate: .entries.candidate
+            },
+            paper_gate: {
+              allowed: .paper_gate.allowed,
+              entry_mode: .paper_gate.entry_mode,
+              selection_lane: .paper_gate.selection_lane,
+              reasons: .paper_gate.reasons,
+              candidate: .paper_gate.candidate,
+              technical_confirmation: .paper_gate.technical_confirmation,
+              early_momentum_radar: .paper_gate.early_momentum_radar,
+              candidate_pool_audit: (.paper_gate.candidate_pool_audit // [])[0:10]
+            },
+            reconciliation: {
+              account_consistent: .reconciliation.account_consistent,
+              entries_blocked: .reconciliation.entries_blocked,
+              inconsistencies: .reconciliation.inconsistencies
+            },
+            exits: {
+              ok: .exits.ok,
+              blocked: .exits.blocked,
+              exit_engine_healthy: .exits.exit_engine_healthy,
+              failures: .exits.failures
+            },
+            autonomy: {
+              should_halt: .autonomy.should_halt,
+              halt_reason: .autonomy.halt_reason
+            },
+            adaptive_gate: .adaptive_gate,
+            promotion_confidence: .promotion_confidence
+          }' <<<"$RESPONSE"
