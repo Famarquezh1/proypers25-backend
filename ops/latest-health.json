@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17T23:14:42Z",
+  "generated_at": "2026-08-17T23:44:32Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00687-sqr",
@@ -9,14 +9,15 @@
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "MAX_MANAGED_SPOT_ASSETS_REACHED",
+    "latest_reason": "TECHNICAL_VOLUME_NOT_CONFIRMED",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 4,
-    "promoted_symbol": "MUBUSDT",
+    "promoted_symbol": "SPCXBUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
+      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "MAX_MANAGED_SPOT_ASSETS_REACHED"
     ],
     "safety": {
