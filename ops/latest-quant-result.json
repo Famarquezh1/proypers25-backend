@@ -1,28 +1,28 @@
 {
-  "generated_at": "2026-08-18T21:45:08Z",
+  "generated_at": "2026-08-18T22:13:23Z",
   "event_found": true,
-  "timestamp": "2026-08-18T21:35:49.712492Z",
+  "timestamp": "2026-08-18T21:52:34.026250Z",
   "revision": "proypers25-backend-00687-sqr",
-  "run_id": "quant_1787088947710",
+  "run_id": "quant_1787089951374",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 3,
-    "analyzed_count": 3,
+    "accepted_symbol_count": 4,
+    "analyzed_count": 4,
     "eligible_count": 0,
     "failed_count": 2,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "XPLUSDT",
-    "requested_count": 3,
-    "selected_family": "TREND",
-    "selected_symbol": "XPLUSDT",
-    "valid_count": 1
+    "observation_symbol": "ALLOUSDT",
+    "requested_count": 4,
+    "selected_family": "MEAN_REVERSION",
+    "selected_symbol": "ALLOUSDT",
+    "valid_count": 2
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.5770588235294118,
+      "brier": 0.7650000000000003,
       "calibrated": false,
-      "samples": 17
+      "samples": 16
     },
     "checks": {
       "expectation_stability": true,
@@ -41,38 +41,38 @@
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": -0.004231092427141849,
-      "median_validation_expectancy": -0.0036596388270555085,
-      "positive_test_folds": 0,
-      "positive_validation_folds": 1,
-      "test_expectancy_std": 0.0017971209017151812,
-      "test_ratio": 0,
-      "validation_ratio": 0.25
+      "median_test_expectancy": -0.0033329166666665358,
+      "median_validation_expectancy": -0.003876713040685013,
+      "positive_test_folds": 1,
+      "positive_validation_folds": 2,
+      "test_expectancy_std": 0.002212448127809423,
+      "test_ratio": 0.25,
+      "validation_ratio": 0.5
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.004657270672525026,
-      "averageWin": 0.0019655844309272048,
-      "expectancy": -0.004267690960557248,
-      "maxDrawdown": 0.07201152796744309,
-      "medianReturn": -0.00649799999999978,
-      "netReturn": -0.07018748827473598,
-      "profitFactor": 0.026377901472998434,
-      "returnStd": 0.0027826163823682945,
-      "trades": 17,
-      "winRate": 0.058823529411764705
+      "averageLoss": -0.0038657654783137057,
+      "averageWin": 0.012189310046501813,
+      "expectancy": -0.0028623232580127353,
+      "maxDrawdown": 0.04502206160240285,
+      "medianReturn": -0.001750374999999858,
+      "netReturn": -0.04502206160240285,
+      "profitFactor": 0.21020951072315505,
+      "returnStd": 0.005046273678196447,
+      "trades": 16,
+      "winRate": 0.0625
     },
     "validation": {
-      "averageLoss": -0.0041630620189606355,
-      "averageWin": 0.004443463988383098,
-      "expectancy": -0.0031302788980793876,
-      "maxDrawdown": 0.0755415271466271,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.0755415271466271,
-      "profitFactor": 0.14554837394857356,
-      "returnStd": 0.003652335728153171,
-      "trades": 25,
-      "winRate": 0.12
+      "averageLoss": -0.006415224708648986,
+      "averageWin": 0.012189310046501813,
+      "expectancy": -0.00393462007462888,
+      "maxDrawdown": 0.07710520723702241,
+      "medianReturn": -0.006497999999999891,
+      "netReturn": -0.05777635273471238,
+      "profitFactor": 0.2923168795886981,
+      "returnStd": 0.0070834301837532565,
+      "trades": 15,
+      "winRate": 0.13333333333333333
     }
   },
   "strategy_families": [
