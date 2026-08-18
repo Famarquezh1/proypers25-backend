@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-18T11:48:02Z",
+  "generated_at": "2026-08-18T12:26:51Z",
   "event_found": true,
-  "timestamp": "2026-08-18T11:37:08.635295Z",
+  "timestamp": "2026-08-18T11:55:28.292341Z",
   "revision": "proypers25-backend-00687-sqr",
-  "run_id": "quant_1787053026500",
+  "run_id": "quant_1787054125987",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": -0.0033730383764496094,
-      "median_validation_expectancy": -0.004850018881021166,
+      "median_validation_expectancy": -0.00486466052072169,
       "positive_test_folds": 1,
       "positive_validation_folds": 1,
       "test_expectancy_std": 0.0026444400468429896,
@@ -63,14 +63,14 @@
       "winRate": 0.07692307692307693
     },
     "validation": {
-      "averageLoss": -0.005876157130143313,
+      "averageLoss": -0.005886492405226036,
       "averageWin": 0.012189310046501813,
-      "expectancy": -0.003974529006285932,
-      "maxDrawdown": 0.09065466593839322,
+      "expectancy": -0.003983776357675737,
+      "maxDrawdown": 0.09081548260603578,
       "medianReturn": -0.006497999999999891,
-      "netReturn": -0.0732346189376396,
-      "profitFactor": 0.24404324872504937,
-      "returnStd": 0.006387809822184666,
+      "netReturn": -0.07339851632038996,
+      "profitFactor": 0.2436147670531091,
+      "returnStd": 0.0063915823090639826,
       "trades": 19,
       "winRate": 0.10526315789473684
     }
