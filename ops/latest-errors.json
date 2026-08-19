@@ -1,5 +1,34 @@
 {
-  "generated_at": "2026-08-19T13:24:59Z",
-  "count": 0,
-  "errors": []
+  "generated_at": "2026-08-19T14:04:27Z",
+  "count": 4,
+  "errors": [
+    {
+      "timestamp": "2026-08-19T14:01:19.932814Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-19T14:01:07.307587Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-19T14:00:55.366782Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-19T14:00:43.427379Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
+    }
+  ]
 }
