@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-08-19T17:18:57Z",
+  "generated_at": "2026-08-19T17:48:19Z",
   "event_found": true,
-  "timestamp": "2026-08-19T16:59:41.862627Z",
+  "timestamp": "2026-08-19T17:38:28.481135Z",
   "revision": "proypers25-backend-00687-sqr",
-  "run_id": "quant_1787158777133",
+  "run_id": "quant_1787161104400",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
     "accepted_symbol_count": 10,
     "analyzed_count": 10,
     "eligible_count": 0,
-    "failed_count": 8,
+    "failed_count": 7,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "PLUMEUSDT",
     "requested_count": 10,
     "selected_family": "TREND",
     "selected_symbol": "PLUMEUSDT",
-    "valid_count": 2
+    "valid_count": 3
   },
   "selected_evidence": {
     "calibration": {
@@ -42,7 +42,7 @@
     "consistency": {
       "folds": 4,
       "median_test_expectancy": -0.0041029400242371325,
-      "median_validation_expectancy": -0.00202341159703236,
+      "median_validation_expectancy": -0.001996269588659439,
       "positive_test_folds": 1,
       "positive_validation_folds": 1,
       "test_expectancy_std": 0.0037187064115940653,
@@ -63,16 +63,16 @@
       "winRate": 0.10810810810810811
     },
     "validation": {
-      "averageLoss": -0.004563199860699776,
-      "averageWin": 0.01266417999009568,
-      "expectancy": -0.0014309489787369656,
-      "maxDrawdown": 0.07744531039715186,
+      "averageLoss": -0.004627127698442955,
+      "averageWin": 0.012664179990095703,
+      "expectancy": -0.001425033682046908,
+      "maxDrawdown": 0.07582766224144777,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.07744531039715186,
-      "profitFactor": 0.6167299934107401,
-      "returnStd": 0.008226155151776805,
-      "trades": 55,
-      "winRate": 0.18181818181818182
+      "netReturn": -0.07582766224144777,
+      "profitFactor": 0.6220322655003195,
+      "returnStd": 0.00830185794630957,
+      "trades": 54,
+      "winRate": 0.18518518518518517
     }
   },
   "strategy_families": [
