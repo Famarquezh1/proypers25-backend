@@ -1,706 +1,328 @@
 {
-  "generated_at": "2026-08-19T00:43:21Z",
-  "count": 100,
+  "generated_at": "2026-08-19T02:13:38Z",
+  "count": 46,
   "errors": [
     {
-      "timestamp": "2026-08-19T00:41:26.466007Z",
+      "timestamp": "2026-08-19T02:01:40.971321Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para AVAX-USD' }"
+      "message": "Error training candlesticks HBAR-USD: undefined"
     },
     {
-      "timestamp": "2026-08-19T00:41:25.988190Z",
+      "timestamp": "2026-08-19T02:01:40.537685Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T02:01:30.805232Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T02:01:21.276749Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T02:01:11.907927Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T02:01:02.083622Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T02:00:52.301603Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:58:33.903959Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:56:04.697734Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:55:55.088363Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:55:44.775530Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:55:34.289861Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:55:24.062154Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:55:13.463430Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:51:41.939315Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:51:29.749859Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:51:18.290842Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:51:08.110544Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:50:57.950011Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:50:46.488876Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:50:34.742645Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00687-sqr",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para HBAR-USD' }"
+    },
+    {
+      "timestamp": "2026-08-19T01:50:23.662299Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:41:13.140417Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:41:13.130523Z",
+      "timestamp": "2026-08-19T01:46:00.796944Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:40:59.454737Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:40:59.209477Z",
+      "timestamp": "2026-08-19T01:45:48.836513Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:40:45.317122Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:40:44.686261Z",
+      "timestamp": "2026-08-19T01:45:36.816096Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:40:30.251993Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:40:29.934275Z",
+      "timestamp": "2026-08-19T01:45:25.350498Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:40:15.344253Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:40:15.207473Z",
+      "timestamp": "2026-08-19T01:45:13.539778Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:36:00.606499Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:36:00.385595Z",
+      "timestamp": "2026-08-19T01:41:44.155889Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:35:49.401618Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:35:49.370533Z",
+      "timestamp": "2026-08-19T01:41:31.498677Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:35:38.558714Z",
+      "timestamp": "2026-08-19T01:41:18.699993Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:35:38.537047Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:35:27.709725Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:35:27.498057Z",
+      "timestamp": "2026-08-19T01:41:06.640425Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:35:16.780009Z",
+      "timestamp": "2026-08-19T01:40:52.677087Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:35:16.226974Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:31:31.051589Z",
+      "timestamp": "2026-08-19T01:40:38.553190Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:31:31.005896Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:31:20.303188Z",
+      "timestamp": "2026-08-19T01:40:24.992828Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:31:19.489993Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:31:09.357206Z",
+      "timestamp": "2026-08-19T01:36:01.714133Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:31:07.640454Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:30:58.112744Z",
+      "timestamp": "2026-08-19T01:35:51.892193Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:30:55.647406Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:30:44.114879Z",
+      "timestamp": "2026-08-19T01:35:42.328002Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:30:43.819455Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:30:33.001331Z",
+      "timestamp": "2026-08-19T01:35:32.787043Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:30:32.413149Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:30:21.718213Z",
+      "timestamp": "2026-08-19T01:35:23.362037Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:30:21.014352Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:30:10.427532Z",
+      "timestamp": "2026-08-19T01:35:13.806597Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:30:10.168840Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:58.912589Z",
+      "timestamp": "2026-08-19T01:35:03.551979Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:25:58.777475Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:48.978972Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:48.774158Z",
+      "timestamp": "2026-08-19T01:31:07.171898Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:25:38.409381Z",
+      "timestamp": "2026-08-19T01:30:55.611874Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:25:38.243714Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:26.991103Z",
+      "timestamp": "2026-08-19T01:30:43.938346Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:25:26.929712Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:16.245836Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:25:15.789290Z",
+      "timestamp": "2026-08-19T01:30:32.475039Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para HBAR-USD' }"
     },
     {
-      "timestamp": "2026-08-19T00:23:52.916083Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:22:24.304055Z",
+      "timestamp": "2026-08-19T01:30:20.927700Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00687-sqr",
       "event": null,
       "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:26.077428Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:25.841357Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:13.654164Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:13.624951Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:02.875808Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:21:02.787159Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:52.058467Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:52.025510Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:41.091942Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para HBAR-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:40.864211Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:30.569307Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "Error training candlesticks LTC-USD: undefined"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:29.368679Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:29.290826Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:18.495600Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:20:18.273985Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:16:07.313467Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:16:07.288497Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:55.545329Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:55.487280Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:43.656582Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:43.643749Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:31.662540Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:31.646805Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:20.150409Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:19.570166Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:06.489291Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:15:06.416419Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:28.959599Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:28.917728Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:14.653017Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:14.520601Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:01.842557Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:11:01.831041Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:51.368572Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:51.352878Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:41.014899Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:40.636132Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:29.845230Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:29.793790Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:19.084570Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para AVAX-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:10:19.011401Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:06:03.763783Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "Error training candlesticks LINK-USD: undefined"
-    },
-    {
-      "timestamp": "2026-08-19T00:06:03.351715Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:06:03.282098Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:53.376870Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:53.358092Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:43.528455Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para LINK-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:43.505967Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:33.534534Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para LTC-USD' }"
-    },
-    {
-      "timestamp": "2026-08-19T00:05:33.509061Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00687-sqr",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para LINK-USD' }"
     }
   ]
 }
