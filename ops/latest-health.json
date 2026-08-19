@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-08-19T06:28:15Z",
+  "generated_at": "2026-08-19T07:20:21Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00687-sqr",
   "spot_real": {
-    "cycles": 9,
+    "cycles": 10,
     "opened": 0,
     "closed": 0,
     "exit_failures": 0,
@@ -17,7 +17,10 @@
     "promoted_symbol": "ALLOUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
-      "DRAWDOWN_TOO_HIGH"
+      "DRAWDOWN_TOO_HIGH",
+      "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
+      "TECHNICAL_VOLUME_NOT_CONFIRMED"
     ],
     "safety": {
       "spot_only": true,
