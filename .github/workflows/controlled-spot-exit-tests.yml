@@ -12,6 +12,7 @@ on:
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
+      - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -22,6 +23,7 @@ on:
       - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
+      - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
   push:
@@ -36,6 +38,7 @@ on:
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
+      - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -46,6 +49,7 @@ on:
       - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
+      - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
 
@@ -77,6 +81,7 @@ jobs:
           node --check backend/services/adaptiveSpotStrategyController.js
           node --check backend/services/spotStrategyPromotionController.js
           node --check backend/services/spotCycleObservability.js
+          node --check backend/services/spotEarlyMomentumRadar.js
           node --check backend/routes/controlledRealSpot.route.js
           node --check backend/routes/adaptiveSpotStrategy.route.js
           node --check backend/routes/spotStrategyPromotion.route.js
@@ -89,6 +94,7 @@ jobs:
         run: |
           node -e "require('./backend/services/binanceSpotRealExecutor')"
           node -e "require('./backend/services/controlledSpotExitExecutor')"
+          node -e "require('./backend/services/spotEarlyMomentumRadar')"
 
       - name: Verify one real execution route
         run: |
@@ -106,3 +112,6 @@ jobs:
 
       - name: Spot cycle observability unit tests
         run: node backend/tests/spotCycleObservability.test.js
+
+      - name: Early momentum radar unit tests
+        run: node backend/tests/earlyMomentumRadar.test.js
