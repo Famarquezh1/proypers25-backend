@@ -5,6 +5,7 @@ const {
   analyzeEarlyMomentumCandles,
   earlyMomentumThresholds,
   evaluateEarlyMomentumCandidate,
+  probeThresholds,
   selectProbeCandidates
 } = require('../services/spotEarlyMomentumRadar');
 const { buildLaneCandidatePools } = require('../services/paperToRealEntryGate');
@@ -39,10 +40,12 @@ function buildRows({ accelerating = true } = {}) {
 
 (function defaultsKeepEarlyLaneControlled() {
   const thresholds = earlyMomentumThresholds({});
+  const probes = probeThresholds({});
   assert.strictEqual(thresholds.minimum_score, 65);
   assert.strictEqual(thresholds.maximum_price_change_24h, 18);
   assert.strictEqual(thresholds.minimum_relative_volume, 1.15);
   assert.strictEqual(thresholds.minimum_technical_score, 60);
+  assert.strictEqual(probes.limit, 60);
 })();
 
 (function acceleratingClosedCandlesProduceStrongEarlySignal() {
@@ -111,11 +114,43 @@ function buildRows({ accelerating = true } = {}) {
 
 (function probeRankingIgnoresHugeAlreadyExtendedMovesAndThinPairs() {
   const selected = selectProbeCandidates([
-    { symbol: 'GOODUSDT', priceChange24h: 4, quoteVolume24h: 1500000, riskScore: 30, liquidityScore: 65, impulseScore: 30, volumeChangeScore: 40, warnings: [] },
-    { symbol: 'TOOLATEUSDT', priceChange24h: 45, quoteVolume24h: 9000000, riskScore: 30, liquidityScore: 80, impulseScore: 90, volumeChangeScore: 90, warnings: [] },
-    { symbol: 'THINUSDT', priceChange24h: 5, quoteVolume24h: 50000, riskScore: 20, liquidityScore: 10, impulseScore: 40, volumeChangeScore: 80, warnings: [] }
+    { symbol: 'GOODUSDT', priceChange24h: 4, quoteVolume24h: 1500000, riskScore: 30, liquidityScore: 65, impulseScore: 30, volumeChangeScore: 40, breakoutScore: 55, warnings: [] },
+    { symbol: 'TOOLATEUSDT', priceChange24h: 45, quoteVolume24h: 9000000, riskScore: 30, liquidityScore: 80, impulseScore: 90, volumeChangeScore: 90, breakoutScore: 95, warnings: [] },
+    { symbol: 'THINUSDT', priceChange24h: 5, quoteVolume24h: 50000, riskScore: 20, liquidityScore: 10, impulseScore: 40, volumeChangeScore: 80, breakoutScore: 80, warnings: [] }
   ], {});
   assert.deepStrictEqual(selected.map((item) => item.symbol), ['GOODUSDT']);
+})();
+
+(function freshBreakoutKeepsAProbeSlotInCrowdedMarket() {
+  const crowded = [];
+  for (let index = 0; index < 70; index += 1) {
+    crowded.push({
+      symbol: `VISIBLE${index}USDT`,
+      priceChange24h: 5.8 + ((index % 5) * 0.1),
+      quoteVolume24h: 2500000 + (index * 1000),
+      riskScore: 24,
+      liquidityScore: 75,
+      impulseScore: 72,
+      volumeChangeScore: 60,
+      breakoutScore: 55,
+      warnings: []
+    });
+  }
+  crowded.push({
+    symbol: 'FRESHBREAKUSDT',
+    priceChange24h: 1.35,
+    quoteVolume24h: 3200000,
+    riskScore: 22,
+    liquidityScore: 88,
+    impulseScore: 38,
+    volumeChangeScore: 96,
+    breakoutScore: 97,
+    warnings: []
+  });
+
+  const selected = selectProbeCandidates(crowded, {});
+  assert.strictEqual(selected.length, 60);
+  assert.ok(selected.some((candidate) => candidate.symbol === 'FRESHBREAKUSDT'));
 })();
 
 (function flatCandlesDoNotCreateFalseEarlySignal() {
