@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-20T10:57:18Z",
+  "generated_at": "2026-08-20T11:22:38Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00687-sqr",
@@ -18,6 +18,7 @@
     "promotion_state": "OBSERVE",
     "reasons": [
       "DRAWDOWN_TOO_HIGH",
+      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
       "TECHNICAL_MOVE_OVEREXTENDED",
       "TECHNICAL_VOLUME_NOT_CONFIRMED"
     ],
