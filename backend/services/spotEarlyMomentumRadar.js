@@ -3,7 +3,7 @@
 const axios = require('axios');
 
 const BINANCE_BASE = 'https://api.binance.com';
-const DEFAULT_PROBE_LIMIT = 40;
+const DEFAULT_PROBE_LIMIT = 60;
 const DEFAULT_CONCURRENCY = 8;
 const BLOCKING_WARNINGS = new Set(['parabolic_24h_move', 'extreme_volatility', 'high_risk_profile']);
 
@@ -81,9 +81,26 @@ function seedScore(candidate = {}) {
   return (sweetSpot * 0.4) + (liquidity * 0.25) + (impulse * 0.2) + (volumeChange * 0.15);
 }
 
+function diverseProbeScore(candidate = {}, lane = 'fresh') {
+  const priceChange24h = asNumber(candidate.priceChange24h ?? candidate.price_change_24h, 0);
+  const liquidity = asNumber(candidate.liquidityScore ?? candidate.liquidity_score, 0);
+  const impulse = asNumber(candidate.impulseScore ?? candidate.impulse_score, 0);
+  const volumeChange = asNumber(candidate.volumeChangeScore ?? candidate.volume_change_score, 0);
+  const breakout = asNumber(candidate.breakoutScore ?? candidate.breakout_score, 0);
+
+  if (lane === 'volume') return (volumeChange * 0.55) + (liquidity * 0.3) + (impulse * 0.15);
+  if (lane === 'breakout') return (breakout * 0.6) + (volumeChange * 0.2) + (liquidity * 0.2);
+
+  // Give genuinely fresh moves a dedicated path into the expensive 5m probe.
+  // This prevents a crowded set of already-visible ~6% daily movers from
+  // consuming every probe slot before a 1-3% move has time to accelerate.
+  const freshSweetSpot = clamp(100 - (Math.abs(priceChange24h - 2) * 18), 0, 100);
+  return (freshSweetSpot * 0.35) + (volumeChange * 0.3) + (liquidity * 0.25) + (impulse * 0.1);
+}
+
 function selectProbeCandidates(candidates = [], config = {}) {
   const thresholds = probeThresholds(config);
-  return candidates
+  const eligible = candidates
     .filter((candidate) => {
       const priceChange24h = asNumber(candidate.priceChange24h ?? candidate.price_change_24h, 0);
       const volume = asNumber(candidate.quoteVolume24h ?? candidate.quote_volume_24h, 0);
@@ -95,9 +112,37 @@ function selectProbeCandidates(candidates = [], config = {}) {
         risk <= thresholds.maximum_risk_score &&
         !warnings.some((warning) => BLOCKING_WARNINGS.has(String(warning)));
     })
-    .map((candidate) => ({ ...candidate, earlyMomentumSeedScore: Number(seedScore(candidate).toFixed(2)) }))
-    .sort((left, right) => right.earlyMomentumSeedScore - left.earlyMomentumSeedScore)
-    .slice(0, thresholds.limit);
+    .map((candidate) => ({ ...candidate, earlyMomentumSeedScore: Number(seedScore(candidate).toFixed(2)) }));
+
+  const bySeed = [...eligible].sort((left, right) => right.earlyMomentumSeedScore - left.earlyMomentumSeedScore);
+  const byVolume = [...eligible].sort((left, right) => diverseProbeScore(right, 'volume') - diverseProbeScore(left, 'volume'));
+  const byBreakout = [...eligible].sort((left, right) => diverseProbeScore(right, 'breakout') - diverseProbeScore(left, 'breakout'));
+  const byFresh = [...eligible].sort((left, right) => diverseProbeScore(right, 'fresh') - diverseProbeScore(left, 'fresh'));
+
+  const primaryQuota = Math.max(4, Math.floor(thresholds.limit * 0.4));
+  const secondaryQuota = Math.max(2, Math.floor((thresholds.limit - primaryQuota) / 3));
+  const selected = [];
+  const seen = new Set();
+
+  function addFrom(pool, quota) {
+    let added = 0;
+    for (const candidate of pool) {
+      if (selected.length >= thresholds.limit || added >= quota) break;
+      const symbol = String(candidate.symbol || '').toUpperCase();
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      selected.push(candidate);
+      added += 1;
+    }
+  }
+
+  addFrom(bySeed, primaryQuota);
+  addFrom(byFresh, secondaryQuota);
+  addFrom(byVolume, secondaryQuota);
+  addFrom(byBreakout, thresholds.limit - selected.length);
+  addFrom(bySeed, thresholds.limit - selected.length);
+
+  return selected.slice(0, thresholds.limit);
 }
 
 function analyzeEarlyMomentumCandles(inputRows = []) {
@@ -274,6 +319,7 @@ async function enrichEarlyMomentumCandidates(candidates = [], config = {}, depen
 
 module.exports = {
   analyzeEarlyMomentumCandles,
+  diverseProbeScore,
   earlyMomentumThresholds,
   evaluateEarlyMomentumCandidate,
   enrichEarlyMomentumCandidates,
