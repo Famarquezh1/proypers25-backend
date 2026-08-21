@@ -1,7 +1,12 @@
 'use strict';
 
 const assert = require('assert');
-const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason } = require('../services/spotRealPipelinePolicy');
+const {
+  buildEntrySafetyFailures,
+  buildPromotionConfidence,
+  firstFailureReason,
+  evaluateHistoricalDrawdownRecoveryEntry
+} = require('../services/spotRealPipelinePolicy');
 const {
   validationEvidenceForSymbol,
   evaluateTacticalMomentumCandidate,
@@ -50,6 +55,96 @@ const noFailures = buildEntrySafetyFailures({
   promotionGate: lowPromotion
 });
 assert.deepStrictEqual(noFailures, []);
+
+const pythAdaptiveGate = {
+  allowed: false,
+  state: 'DEGRADED',
+  reasons: ['DRAWDOWN_TOO_HIGH'],
+  regime: { regime: 'BULL_TREND' }
+};
+const pythPaperGate = {
+  allowed: true,
+  selection_lane: 'TACTICAL_MOMENTUM',
+  candidate: { symbol: 'PYTHUSDT', selection_lane: 'TACTICAL_MOMENTUM' },
+  technical_confirmation: { allowed: true }
+};
+const pythRecovery = evaluateHistoricalDrawdownRecoveryEntry({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: pythAdaptiveGate,
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 0
+});
+assert.strictEqual(pythRecovery.allowed, true);
+assert.strictEqual(pythRecovery.policy, 'historical_drawdown_recovery');
+assert.strictEqual(pythRecovery.max_position_usdt, 10);
+
+const pythRecoveryFailures = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: pythAdaptiveGate,
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 0
+});
+assert.deepStrictEqual(pythRecoveryFailures, []);
+assert.strictEqual(pythAdaptiveGate.adaptive_recovery_entry, true);
+assert.strictEqual(pythAdaptiveGate.adaptive_recovery_policy, 'historical_drawdown_recovery');
+assert.strictEqual(pythAdaptiveGate.adaptive_recovery_max_position_usdt, 10);
+
+const bearRecoveryFailures = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BEAR_TREND' } },
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 0
+});
+assert(bearRecoveryFailures.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
+
+const recoveryTechnicalBlock = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
+  paperGate: {
+    ...pythPaperGate,
+    allowed: false,
+    reasons: ['TECHNICAL_VOLUME_NOT_CONFIRMED'],
+    technical_confirmation: { allowed: false }
+  },
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 0
+});
+assert(recoveryTechnicalBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
+assert(recoveryTechnicalBlock.some((item) => item.code === 'TECHNICAL_VOLUME_NOT_CONFIRMED'));
+
+const recoveryOpenPositionBlock = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 1
+});
+assert(recoveryOpenPositionBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
+
+const recoveryExitBlock = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: false, blocked: true, exit_engine_healthy: false, failures: [{ reason: 'EXIT_ENGINE_NOT_HEALTHY' }] },
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: safeConfig,
+  openPositions: 0
+});
+assert(recoveryExitBlock.some((item) => item.component === 'Exit Engine'));
+assert(recoveryExitBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
 
 const threeManagedAssets = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
