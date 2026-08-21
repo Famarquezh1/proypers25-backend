@@ -12,6 +12,7 @@ on:
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
+      - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/routes/controlledRealSpot.route.js"
@@ -24,6 +25,7 @@ on:
       - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
+      - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/server.js"
@@ -40,6 +42,7 @@ on:
       - "backend/services/adaptiveSpotStrategyController.js"
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
+      - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/routes/controlledRealSpot.route.js"
@@ -52,6 +55,7 @@ on:
       - "backend/tests/spotPositionLifecycle.test.js"
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
+      - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/server.js"
@@ -85,6 +89,7 @@ jobs:
           node --check backend/services/adaptiveSpotStrategyController.js
           node --check backend/services/spotStrategyPromotionController.js
           node --check backend/services/spotCycleObservability.js
+          node --check backend/services/spotLiveEvidence.js
           node --check backend/services/spotEarlyMomentumRadar.js
           node --check backend/services/spotRealPipelinePolicy.js
           node --check backend/routes/controlledRealSpot.route.js
@@ -117,6 +122,9 @@ jobs:
 
       - name: Spot cycle observability unit tests
         run: node backend/tests/spotCycleObservability.test.js
+
+      - name: Spot live evidence unit tests
+        run: node backend/tests/spotLiveEvidence.test.js
 
       - name: Early momentum radar unit tests
         run: node backend/tests/earlyMomentumRadar.test.js
