@@ -74,6 +74,10 @@ assert(quant.expected_value_pct >= safeConfig.quant_entry_min_ev_pct);
 assert.strictEqual(quant.hard_reasons.length, 0);
 assert(quant.soft_technical_reasons.includes('TECHNICAL_MOVE_OVEREXTENDED'));
 
+const quantWithDefaults = evaluateQuantEntryDecision({ paperGate: crvLikePaperGate, adaptiveGate: drawdownGate, config: {} });
+assert.strictEqual(quantWithDefaults.allowed, true);
+assert.strictEqual(quantWithDefaults.minimum_score, 72);
+
 const failuresWithOneExistingPosition = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
   exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
@@ -95,6 +99,14 @@ const hardDataFailure = evaluateQuantEntryDecision({
 });
 assert.strictEqual(hardDataFailure.allowed, false);
 assert(hardDataFailure.hard_reasons.includes('TECHNICAL_DATA_INCOMPLETE'));
+
+const nonDrawdownAdaptiveBlock = evaluateQuantEntryDecision({
+  paperGate: crvLikePaperGate,
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['BEAR_REGIME_RISK'] },
+  config: safeConfig
+});
+assert.strictEqual(nonDrawdownAdaptiveBlock.allowed, false);
+assert.strictEqual(nonDrawdownAdaptiveBlock.adaptive_compatible, false);
 
 const weakCandidate = evaluateQuantEntryDecision({
   paperGate: {
