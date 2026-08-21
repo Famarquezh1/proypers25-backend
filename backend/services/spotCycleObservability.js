@@ -92,13 +92,14 @@ function buildSpotCycleDecisionLog(input = {}) {
   const opportunityAudit = summarizeCandidateAudit(paperGate);
   const explicitFailures = Array.isArray(entries?.failed_conditions) && entries.failed_conditions.length ? entries.failed_conditions : safetyFailures;
   const exactFailureCodes = explicitFailures.map((failure) => failure.code || failure.condition).filter(Boolean);
+  const adaptiveRecoveryEntry = adaptiveGate?.adaptive_recovery_entry === true;
   const reasons = compactReasons(
     exitDiagnostics.failure_reasons,
     exactFailureCodes,
     entries?.reason,
     entries?.gate_reasons || [],
     paperGate?.reasons || [],
-    adaptiveGate?.reasons || [],
+    adaptiveRecoveryEntry ? [] : (adaptiveGate?.reasons || []),
     autonomy?.halt_reason,
     reconciliation?.entries_blocked ? 'ACCOUNT_RECONCILIATION_BLOCKED' : null,
     exits?.blocked ? 'EXIT_ENGINE_BLOCKED' : null
@@ -118,6 +119,9 @@ function buildSpotCycleDecisionLog(input = {}) {
     selection_lane: selectionLane,
     tactical_entry: entryMode === 'TACTICAL_MOMENTUM',
     early_momentum_entry: selectionLane === 'EARLY_MOMENTUM',
+    adaptive_recovery_entry: adaptiveRecoveryEntry,
+    adaptive_recovery_policy: adaptiveRecoveryEntry ? (adaptiveGate?.adaptive_recovery_policy || 'historical_drawdown_recovery') : null,
+    adaptive_risk_reasons: adaptiveGate?.reasons || [],
     candidate: candidate ? {
       symbol: firstNonEmpty(candidate.symbol, entries?.symbol, entries?.selected_symbol),
       score: firstNonEmpty(candidate.score, candidate.opportunityScore, candidate.opportunity_score),
@@ -136,7 +140,8 @@ function buildSpotCycleDecisionLog(input = {}) {
       reconciliation: reconciliation?.account_consistent === true && reconciliation?.entries_blocked !== true ? 'PASS' : 'BLOCK',
       exit_engine: exits?.ok !== false && exits?.blocked !== true && exits?.exit_engine_healthy !== false ? 'PASS' : 'BLOCK',
       autonomy: autonomy?.should_halt === true ? 'BLOCK' : 'PASS',
-      adaptive: adaptiveGate?.allowed === false ? 'BLOCK' : 'PASS',
+      adaptive: adaptiveGate?.allowed === false ? (adaptiveRecoveryEntry ? 'RECOVERY_PASS' : 'BLOCK') : 'PASS',
+      adaptive_recovery: adaptiveRecoveryEntry ? 'PASS' : 'NOT_ACTIVE',
       promotion: promotionGate?.high_confidence === true ? 'CONFIDENCE_HIGH' : 'CONFIDENCE_LOW',
       promotion_blocks_entry: false,
       paper_to_real: paperGate?.allowed === true ? 'PASS' : 'BLOCK',
@@ -172,6 +177,8 @@ function buildSpotCycleDecisionLog(input = {}) {
       selected_symbol: entries?.selected_symbol || entries?.symbol || candidate?.symbol || null,
       entry_mode: entryMode,
       selection_lane: selectionLane,
+      adaptive_recovery_entry: adaptiveRecoveryEntry,
+      adaptive_recovery_max_position_usdt: adaptiveGate?.adaptive_recovery_max_position_usdt ?? null,
       duration_ms: asNumber(durationMs, 0)
     },
     exit_diagnostics: exitDiagnostics,
