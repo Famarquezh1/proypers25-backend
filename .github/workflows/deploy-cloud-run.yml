@@ -47,6 +47,7 @@ jobs:
           node tests/spotCycleObservability.test.js
           node tests/spotLiveEvidence.test.js
           node tests/spotRealPipeline.test.js
+          node tests/spotQuantEntryDecision.test.js
           node tests/spotAutonomyCooldown.test.js
           node tests/professionalInvestmentsDashboard.test.js
           node tests/spotDiscoveryIntelligence.test.js
@@ -68,6 +69,7 @@ jobs:
           node --check services/spotEarlyMomentumRadar.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealPipelinePolicy.js
+          node --check services/spotQuantEntryDecision.js
           node --check services/spotCycleObservability.js
           node --check services/spotLiveEvidence.js
           node --check routes/investmentsSummary.route.js
@@ -86,6 +88,15 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: proypers2025
+
+      - name: Load current cron secret from Secret Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          CRON_SECRET_VALUE=$(gcloud secrets versions access latest --secret=cron-secret --project=proypers2025)
+          test -n "$CRON_SECRET_VALUE"
+          echo "::add-mask::$CRON_SECRET_VALUE"
+          echo "CRON_SECRET=$CRON_SECRET_VALUE" >> "$GITHUB_ENV"
 
       - name: Submit immutable build and deployment
         shell: bash
@@ -131,8 +142,6 @@ jobs:
 
       - name: Verify one fresh Spot cycle
         shell: bash
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
@@ -191,8 +200,6 @@ jobs:
       - name: Diagnose failure
         if: failure()
         shell: bash
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -u
           PROJECT="proypers2025"
