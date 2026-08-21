@@ -1,7 +1,21 @@
 {
-  "generated_at": "2026-08-21T10:58:36Z",
-  "count": 2,
+  "generated_at": "2026-08-21T11:25:00Z",
+  "count": 4,
   "errors": [
+    {
+      "timestamp": "2026-08-21T11:02:20.897727Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00691-vmj",
+      "event": null,
+      "message": "  error: 'The operation was aborted due to timeout'"
+    },
+    {
+      "timestamp": "2026-08-21T11:02:20.897705Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00691-vmj",
+      "event": null,
+      "message": "[EXCHANGE_INFO_WARMUP] failed {"
+    },
     {
       "timestamp": "2026-08-21T10:43:44.559986Z",
       "severity": "DEFAULT",
