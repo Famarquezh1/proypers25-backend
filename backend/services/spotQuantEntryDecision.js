@@ -32,6 +32,12 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
   const fastLane = selectionLane === 'EARLY_MOMENTUM' || selectionLane === 'TACTICAL_MOMENTUM';
   const paperReasons = Array.isArray(paperGate.reasons) ? paperGate.reasons : [];
   const hardPaperReasons = paperReasons.filter((reason) => !softTechnicalReason(reason));
+  const adaptiveReasons = Array.isArray(adaptiveGate.reasons) ? adaptiveGate.reasons : [];
+  const adaptiveCompatible = adaptiveGate.allowed !== false || (
+    adaptiveGate.state === 'DEGRADED'
+    && adaptiveReasons.length === 1
+    && adaptiveReasons[0] === 'DRAWDOWN_TOO_HIGH'
+  );
 
   const momentum = clamp(Math.max(
     asNumber(candidate.earlyMomentumScore ?? candidate.early_momentum_score, 0),
@@ -49,7 +55,7 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
   if (hasReason(paperReasons, 'TECHNICAL_VOLUME_NOT_CONFIRMED')) penalty += 3;
   if (hasReason(paperReasons, 'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION')) penalty += 4;
   if (hasReason(paperReasons, 'TECHNICAL_SCORE_BELOW_THRESHOLD', 'TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD')) penalty += 3;
-  if ((adaptiveGate.reasons || []).includes('DRAWDOWN_TOO_HIGH')) penalty += 3;
+  if (adaptiveReasons.includes('DRAWDOWN_TOO_HIGH')) penalty += 3;
 
   const score = clamp(
     (momentum * 0.30) +
@@ -68,10 +74,11 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
   const lossPct = Math.max(0.25, asNumber(config.quant_entry_loss_pct ?? config.stop_loss_pct, 1.5));
   const roundTripCostPct = Math.max(0, asNumber(config.quant_entry_round_trip_cost_pct, 0.25));
   const expectedValuePct = (modeledWinProbability * rewardPct) - ((1 - modeledWinProbability) * lossPct) - roundTripCostPct;
-  const minimumScore = Math.max(70, asNumber(config.quant_entry_min_score, 76));
+  const minimumScore = Math.max(70, asNumber(config.quant_entry_min_score, 72));
   const minimumEvPct = Math.max(0, asNumber(config.quant_entry_min_ev_pct, 0.20));
 
   const allowed = fastLane
+    && adaptiveCompatible
     && hardPaperReasons.length === 0
     && score >= minimumScore
     && expectedValuePct >= minimumEvPct;
@@ -87,6 +94,7 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
     reward_pct: rewardPct,
     loss_pct: lossPct,
     round_trip_cost_pct: roundTripCostPct,
+    adaptive_compatible: adaptiveCompatible,
     components: {
       momentum,
       technical: technicalScore,
@@ -98,6 +106,7 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
     },
     soft_technical_reasons: paperReasons.filter(softTechnicalReason),
     hard_reasons: hardPaperReasons,
+    adaptive_reasons: adaptiveReasons,
     selection_lane: selectionLane || null
   };
 }
