@@ -48,7 +48,7 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     blockers.push('EXIT_ENGINE_NOT_HEALTHY');
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
-  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) blockers.push('RECOVERY_REQUIRES_MANAGED_CAPACITY');
+  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
   if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
@@ -115,8 +115,8 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     adaptive_recovery_quant_decision: adaptiveRecovery.quant_decision
   });
 
-  if (adaptiveGate.allowed === false && adaptiveRecovery.allowed !== true) {
-    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true or controlled historical drawdown recovery policy passes', {
+  if (adaptiveGate.allowed === false && adaptiveRecovery.allowed !== true && quantDecision.allowed !== true) {
+    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true, controlled historical drawdown recovery passes, or quantitative fast-lane expected value is positive', {
       state: adaptiveGate.state,
       reasons: adaptiveGate.reasons || [],
       recovery_policy: adaptiveRecovery.policy,
