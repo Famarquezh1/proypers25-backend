@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolveManagedSpotLimits } = require('./spotManagedAcquisitionPolicy');
+const { evaluateQuantEntryDecision } = require('./spotQuantEntryDecision');
 
 const RECOVERY_ENTRY_LANES = new Set(['EARLY_MOMENTUM', 'TACTICAL_MOMENTUM']);
 const RECOVERY_BLOCKED_REGIMES = new Set(['BEAR_TREND', 'BEAR_HIGH_VOL']);
@@ -28,6 +29,8 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
   const regime = String(adaptiveGate.regime?.regime || adaptiveGate.market_regime || '').toUpperCase();
   const exitFailures = Array.isArray(exits.failures) ? exits.failures : [];
   const blockers = [];
+  const quantDecision = evaluateQuantEntryDecision({ paperGate, adaptiveGate, config });
+  const quantPass = quantDecision.allowed === true;
 
   const drawdownOnly = adaptiveGate.allowed === false
     && adaptiveGate.state === 'DEGRADED'
@@ -35,8 +38,8 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     && adaptiveReasons[0] === 'DRAWDOWN_TOO_HIGH';
   if (!drawdownOnly) blockers.push('ADAPTIVE_NOT_DRAWDOWN_ONLY');
   if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('RECOVERY_LANE_NOT_ALLOWED');
-  if (paperGate.allowed !== true) blockers.push('PAPER_TO_REAL_BLOCKED');
-  if (paperGate.technical_confirmation?.allowed !== true) blockers.push('TECHNICAL_CONFIRMATION_BLOCKED');
+  if (paperGate.allowed !== true && !quantPass) blockers.push('PAPER_TO_REAL_BLOCKED');
+  if (paperGate.technical_confirmation?.allowed !== true && !quantPass) blockers.push('TECHNICAL_CONFIRMATION_BLOCKED');
 
   if (reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false) {
     blockers.push('RECONCILIATION_BLOCKED');
@@ -45,7 +48,7 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     blockers.push('EXIT_ENGINE_NOT_HEALTHY');
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
-  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
+  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) blockers.push('RECOVERY_REQUIRES_MANAGED_CAPACITY');
   if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
@@ -62,6 +65,7 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     selection_lane: selectionLane || null,
     regime: regime || null,
     max_position_usdt: managedLimits.max_per_acquisition_usdt,
+    quant_decision: quantDecision,
     blockers: [...new Set(blockers)]
   };
 }
@@ -69,6 +73,13 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
 function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGate = {}, paperGate = {}, autonomy = {}, config = {}, openPositions = 0 } = {}) {
   const failures = [];
   const managedLimits = resolveManagedSpotLimits(config);
+  const quantDecision = evaluateQuantEntryDecision({ paperGate, adaptiveGate, config });
+  Object.assign(paperGate, {
+    quant_entry_decision: quantDecision,
+    quant_entry_allowed: quantDecision.allowed,
+    quant_entry_score: quantDecision.score,
+    quant_entry_expected_value_pct: quantDecision.expected_value_pct
+  });
 
   if (reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false) {
     failures.push(condition('Reconciliation', reconciliation.reason || config.entry_block_reason || 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED', 'Binance and Firestore consistent; entries_blocked=false', {
@@ -100,7 +111,8 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     adaptive_recovery_entry: adaptiveRecovery.allowed,
     adaptive_recovery_policy: adaptiveRecovery.policy,
     adaptive_recovery_max_position_usdt: adaptiveRecovery.max_position_usdt,
-    adaptive_recovery_blockers: adaptiveRecovery.blockers
+    adaptive_recovery_blockers: adaptiveRecovery.blockers,
+    adaptive_recovery_quant_decision: adaptiveRecovery.quant_decision
   });
 
   if (adaptiveGate.allowed === false && adaptiveRecovery.allowed !== true) {
@@ -108,13 +120,14 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
       state: adaptiveGate.state,
       reasons: adaptiveGate.reasons || [],
       recovery_policy: adaptiveRecovery.policy,
-      recovery_blockers: adaptiveRecovery.blockers
+      recovery_blockers: adaptiveRecovery.blockers,
+      quant_decision: quantDecision
     }));
   }
 
-  if (paperGate.allowed !== true) {
+  if (paperGate.allowed !== true && quantDecision.allowed !== true) {
     const reasons = Array.isArray(paperGate.reasons) && paperGate.reasons.length ? paperGate.reasons : ['PAPER_REAL_ENTRY_GATE_BLOCKED'];
-    for (const reason of reasons) failures.push(condition(reason.startsWith('TECHNICAL_') ? 'Technical Confirmation' : 'Paper-to-Real', reason, 'Current candidate satisfies the corresponding gate', paperGate.failed_conditions || null));
+    for (const reason of reasons) failures.push(condition(reason.startsWith('TECHNICAL_') ? 'Technical Confirmation' : 'Paper-to-Real', reason, 'Current candidate satisfies the corresponding gate or quantitative fast-lane policy has positive expected value', paperGate.failed_conditions || null));
   }
 
   if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) {
