@@ -1,706 +1,706 @@
 {
-  "generated_at": "2026-08-21T17:30:38Z",
+  "generated_at": "2026-08-21T18:23:52Z",
   "count": 100,
   "errors": [
     {
-      "timestamp": "2026-08-21T17:30:23.064555Z",
+      "timestamp": "2026-08-21T18:21:21.005504Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:21:20.971956Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:21:20.756451Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:21:07.881118Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:21:07.409706Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:21:07.220798Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:53.928826Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:53.884299Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:53.728911Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:41.654462Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:41.586190Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:41.421478Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:29.392806Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:29.248551Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:29.226073Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:16.566650Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:16.004629Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:15.943926Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:04.709228Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:03.599871Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:20:02.887238Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:16:00.306634Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:16:00.247727Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:16:00.007470Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:48.300139Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:48.242312Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:48.154558Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:36.606877Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:36.549129Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:36.539158Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:24.982077Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:24.958652Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:24.833165Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:13.152090Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:12.922993Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:12.840594Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:15:02.089890Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para MSFT' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:14:56.698999Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:10:59.738215Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T18:10:59.482037Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:30:21.937685Z",
+      "timestamp": "2026-08-21T18:10:48.980279Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:30:10.850393Z",
+      "timestamp": "2026-08-21T18:10:48.536298Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:30:09.813196Z",
+      "timestamp": "2026-08-21T18:10:35.980922Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:26:07.555533Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:26:05.993743Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:57.097459Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:54.891156Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:46.616539Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:44.625919Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:37.324134Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:35.364185Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:28.212932Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:26.061617Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:19.125025Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:16.705394Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:09.645714Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:25:07.000553Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:33.398423Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:30.589757Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:22.802431Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:18.572820Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:11.767907Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:07.032367Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:21:00.288692Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:55.883568Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:49.233150Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:44.707485Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:38.121172Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:33.643636Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:26.998802Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:22.484545Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:14.094951Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:11.487697Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:20:02.288239Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:15:19.240804Z",
-      "severity": "ERROR",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "Memory limit of 2048 MiB exceeded with 2048 MiB used. Consider increasing the memory limit, see https://cloud.google.com/run/docs/configuring/memory-limits"
-    },
-    {
-      "timestamp": "2026-08-21T17:15:08.887004Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:15:04.067510Z",
+      "timestamp": "2026-08-21T18:10:35.928015Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:15:03.504879Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para AAPL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:15:03.226016Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:15:01.552588Z",
-      "severity": "ERROR",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "The request failed because either the HTTP response was malformed or connection to the instance had an error. Additional troubleshooting documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#malformed-response-or-connection-error\nWhile handling this request, the container instance was found to be using too much memory and was terminated. This is likely to cause a new container instance to be used for the next request to this revision. If you see this message frequently"
-    },
-    {
-      "timestamp": "2026-08-21T17:11:07.469090Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:11:02.422070Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:11:02.348543Z",
+      "timestamp": "2026-08-21T18:10:24.419064Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:11:02.335674Z",
+      "timestamp": "2026-08-21T18:10:24.258926Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para AAPL' }"
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:55.760253Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:48.259038Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:48.255112Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para AAPL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:48.231441Z",
+      "timestamp": "2026-08-21T18:10:12.314113Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:43.721588Z",
+      "timestamp": "2026-08-21T18:10:12.177725Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para AMZN' }"
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:34.538100Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:33.999333Z",
+      "timestamp": "2026-08-21T18:06:08.938492Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:33.823906Z",
+      "timestamp": "2026-08-21T18:06:08.680949Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para AAPL' }"
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:30.092583Z",
+      "timestamp": "2026-08-21T18:05:58.614161Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para AMZN' }"
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:20.043242Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:19.846621Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para AAPL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:19.337797Z",
+      "timestamp": "2026-08-21T18:05:58.519010Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:16.094957Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:10:05.599648Z",
+      "timestamp": "2026-08-21T18:05:48.688926Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:04.614837Z",
+      "timestamp": "2026-08-21T18:05:48.649585Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para AAPL' }"
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:10:03.389200Z",
+      "timestamp": "2026-08-21T18:05:38.944261Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para GOOGL' }"
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:06:08.821916Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:06:00.315116Z",
+      "timestamp": "2026-08-21T18:05:38.929746Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:58.351225Z",
+      "timestamp": "2026-08-21T18:05:29.374572Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:57.626220Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:55.488432Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:47.222228Z",
+      "timestamp": "2026-08-21T18:05:28.571201Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:44.812876Z",
+      "timestamp": "2026-08-21T18:05:19.170127Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:44.079787Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:42.382495Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:34.398013Z",
+      "timestamp": "2026-08-21T18:05:18.148005Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:30.410026Z",
+      "timestamp": "2026-08-21T18:05:08.907382Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:29.939871Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:28.397353Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:23.309495Z",
+      "timestamp": "2026-08-21T18:05:07.599225Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:18.119639Z",
+      "timestamp": "2026-08-21T18:01:07.404476Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:15.404211Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:15.338407Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:10.934517Z",
+      "timestamp": "2026-08-21T18:01:05.879729Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:05.361815Z",
+      "timestamp": "2026-08-21T18:00:56.864807Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:05:01.867067Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:05:01.849902Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:01:07.703276Z",
+      "timestamp": "2026-08-21T18:00:55.085025Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:01:03.015341Z",
+      "timestamp": "2026-08-21T18:00:52.862090Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "  error: 'The operation was aborted due to timeout'"
     },
     {
-      "timestamp": "2026-08-21T17:00:57.482871Z",
+      "timestamp": "2026-08-21T18:00:52.862065Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para AMZN' }"
+      "message": "[EXCHANGE_INFO_WARMUP] failed {"
     },
     {
-      "timestamp": "2026-08-21T17:00:57.312661Z",
+      "timestamp": "2026-08-21T18:00:46.432464Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para GOOGL' }"
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:54.163961Z",
+      "timestamp": "2026-08-21T18:00:44.435304Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:50.528680Z",
+      "timestamp": "2026-08-21T18:00:35.896084Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:44.325906Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:43.952154Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:40.625437Z",
+      "timestamp": "2026-08-21T18:00:33.915480Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:37.402085Z",
+      "timestamp": "2026-08-21T18:00:25.476433Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:31.558003Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:30.563927Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:27.789504Z",
+      "timestamp": "2026-08-21T18:00:23.295086Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:25.725684Z",
+      "timestamp": "2026-08-21T18:00:14.768367Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para BTC-USD' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:19.202909Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para AMZN' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:16.927558Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para GOOGL' }"
-    },
-    {
-      "timestamp": "2026-08-21T17:00:14.004738Z",
+      "timestamp": "2026-08-21T18:00:12.119112Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para MSFT' }"
     },
     {
-      "timestamp": "2026-08-21T17:00:12.277823Z",
+      "timestamp": "2026-08-21T18:00:03.824942Z",
       "severity": "DEFAULT",
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para MSFT' }"
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T17:56:01.497612Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:50.050951Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:43.383083Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ zhdqrrste8vJO0V7yDBo: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:43.170991Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ zJgH9TGyLX8Qtdj4ZGK4: Error=-2.00, Confianza=1.00"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:42.964286Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ yCoqC9Dvctlul6zFimYy: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:42.737265Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ xNZIHXVdbh6fMkmWguAX: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:42.518116Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ vo6HUuCQgj075zgakcfi: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:42.335720Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ v6PiioW7nChVmDTEBxyv: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:42.120534Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ v1m3DLkAFGjn0oHMCxfQ: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:41.915185Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ uTyNQl0jhjKnlJ9eTHqB: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:41.625414Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ tXPAgluS5Aq2ejgyhe5X: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:41.383170Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ tTCEoUuYYBMddKt9Y2MQ: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:41.083977Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ tKo46Y0II3qdPbZXvdxr: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:40.867807Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ tGeYnNXcdzHyBKwaajiJ: Error=-9.54, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:40.650383Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ rHZk5dUcwfOWdonJ875r: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:40.565230Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para BTC-USD' }"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:40.408004Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ qpMvscqZ82JOXIgvlLLs: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:40.169265Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ qZvuJReuO4L1EQOiGrty: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:39.934025Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ qXrOm7D0fhWyFXtOpgtp: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:39.732858Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ ocUpqcyJRgKV2vJyjbay: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:39.526602Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ kOubCkwnAVzUcZaPqhQC: Error=3.25, Confianza=1.00"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:39.321003Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ kJFkoPxODbnj4RhjrUGs: Error=NaN, Confianza=0.30"
+    },
+    {
+      "timestamp": "2026-08-21T17:55:39.094926Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✅ jpnA9ROQa1Prxgit667l: Error=-13.31, Confianza=0.30"
     }
   ]
 }
