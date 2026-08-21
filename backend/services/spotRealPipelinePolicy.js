@@ -2,8 +2,68 @@
 
 const { resolveManagedSpotLimits } = require('./spotManagedAcquisitionPolicy');
 
+const RECOVERY_ENTRY_LANES = new Set(['EARLY_MOMENTUM', 'TACTICAL_MOMENTUM']);
+const RECOVERY_BLOCKED_REGIMES = new Set(['BEAR_TREND', 'BEAR_HIGH_VOL']);
+const SAFE_REAL_CONFIG_CHECKS = [
+  ['enabled', true, 'REAL_SPOT_NOT_ENABLED'],
+  ['kill_switch', false, 'KILL_SWITCH_ACTIVE'],
+  ['new_entries_enabled', true, 'NEW_ENTRIES_DISABLED'],
+  ['auto_order_execution', true, 'AUTO_ORDER_EXECUTION_DISABLED'],
+  ['real_sells_enabled', true, 'REAL_SELLS_NOT_ENABLED'],
+  ['spot_only', true, 'NOT_SPOT_ONLY'],
+  ['futures_allowed', false, 'FUTURES_NOT_ALLOWED'],
+  ['margin_allowed', false, 'MARGIN_NOT_ALLOWED'],
+  ['leverage_allowed', false, 'LEVERAGE_NOT_ALLOWED'],
+  ['withdrawals_allowed', false, 'WITHDRAWALS_MUST_BE_DISABLED']
+];
+
 function condition(component, code, expected, actual = null) {
   return { component, code, expected, actual };
+}
+
+function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = {}, adaptiveGate = {}, paperGate = {}, autonomy = {}, config = {}, openPositions = 0 } = {}) {
+  const managedLimits = resolveManagedSpotLimits(config);
+  const adaptiveReasons = Array.isArray(adaptiveGate.reasons) ? adaptiveGate.reasons : [];
+  const selectionLane = String(paperGate.selection_lane || paperGate.candidate?.selection_lane || '').toUpperCase();
+  const regime = String(adaptiveGate.regime?.regime || adaptiveGate.market_regime || '').toUpperCase();
+  const exitFailures = Array.isArray(exits.failures) ? exits.failures : [];
+  const blockers = [];
+
+  const drawdownOnly = adaptiveGate.allowed === false
+    && adaptiveGate.state === 'DEGRADED'
+    && adaptiveReasons.length === 1
+    && adaptiveReasons[0] === 'DRAWDOWN_TOO_HIGH';
+  if (!drawdownOnly) blockers.push('ADAPTIVE_NOT_DRAWDOWN_ONLY');
+  if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('RECOVERY_LANE_NOT_ALLOWED');
+  if (paperGate.allowed !== true) blockers.push('PAPER_TO_REAL_BLOCKED');
+  if (paperGate.technical_confirmation?.allowed !== true) blockers.push('TECHNICAL_CONFIRMATION_BLOCKED');
+
+  if (reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false) {
+    blockers.push('RECONCILIATION_BLOCKED');
+  }
+  if (exits.blocked === true || exits.ok === false || exits.exit_engine_healthy === false || exitFailures.length > 0) {
+    blockers.push('EXIT_ENGINE_NOT_HEALTHY');
+  }
+  if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
+  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
+  if (!regime) blockers.push('MARKET_REGIME_UNKNOWN');
+  else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
+
+  for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
+    if (config[field] !== expected) blockers.push(code);
+  }
+  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 10) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
+
+  return {
+    allowed: blockers.length === 0,
+    adaptive_recovery_entry: blockers.length === 0,
+    policy: 'historical_drawdown_recovery',
+    risk_signal: 'DRAWDOWN_TOO_HIGH',
+    selection_lane: selectionLane || null,
+    regime: regime || null,
+    max_position_usdt: managedLimits.max_per_acquisition_usdt,
+    blockers: [...new Set(blockers)]
+  };
 }
 
 function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGate = {}, paperGate = {}, autonomy = {}, config = {}, openPositions = 0 } = {}) {
@@ -27,10 +87,28 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     }));
   }
 
-  if (adaptiveGate.allowed === false) {
-    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true', {
+  const adaptiveRecovery = evaluateHistoricalDrawdownRecoveryEntry({
+    reconciliation,
+    exits,
+    adaptiveGate,
+    paperGate,
+    autonomy,
+    config,
+    openPositions
+  });
+  Object.assign(adaptiveGate, {
+    adaptive_recovery_entry: adaptiveRecovery.allowed,
+    adaptive_recovery_policy: adaptiveRecovery.policy,
+    adaptive_recovery_max_position_usdt: adaptiveRecovery.max_position_usdt,
+    adaptive_recovery_blockers: adaptiveRecovery.blockers
+  });
+
+  if (adaptiveGate.allowed === false && adaptiveRecovery.allowed !== true) {
+    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true or controlled historical drawdown recovery policy passes', {
       state: adaptiveGate.state,
-      reasons: adaptiveGate.reasons || []
+      reasons: adaptiveGate.reasons || [],
+      recovery_policy: adaptiveRecovery.policy,
+      recovery_blockers: adaptiveRecovery.blockers
     }));
   }
 
@@ -49,19 +127,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
   }
   if (autonomy.should_halt === true) failures.push(condition('Autonomy', autonomy.halt_reason || 'AUTONOMY_HALTED', 'autonomy.should_halt=false', true));
 
-  const checks = [
-    ['enabled', true, 'REAL_SPOT_NOT_ENABLED'],
-    ['kill_switch', false, 'KILL_SWITCH_ACTIVE'],
-    ['new_entries_enabled', true, 'NEW_ENTRIES_DISABLED'],
-    ['auto_order_execution', true, 'AUTO_ORDER_EXECUTION_DISABLED'],
-    ['real_sells_enabled', true, 'REAL_SELLS_NOT_ENABLED'],
-    ['spot_only', true, 'NOT_SPOT_ONLY'],
-    ['futures_allowed', false, 'FUTURES_NOT_ALLOWED'],
-    ['margin_allowed', false, 'MARGIN_NOT_ALLOWED'],
-    ['leverage_allowed', false, 'LEVERAGE_NOT_ALLOWED'],
-    ['withdrawals_allowed', false, 'WITHDRAWALS_MUST_BE_DISABLED']
-  ];
-  for (const [field, expected, code] of checks) {
+  for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
@@ -89,4 +155,9 @@ function firstFailureReason(failures = []) {
   return failures[0]?.code || null;
 }
 
-module.exports = { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason };
+module.exports = {
+  buildEntrySafetyFailures,
+  buildPromotionConfidence,
+  firstFailureReason,
+  evaluateHistoricalDrawdownRecoveryEntry
+};
