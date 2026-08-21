@@ -46,7 +46,7 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
   if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
-  if (!regime) blockers.push('MARKET_REGIME_UNKNOWN');
+  if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
   for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
