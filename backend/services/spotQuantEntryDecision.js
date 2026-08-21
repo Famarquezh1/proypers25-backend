@@ -45,11 +45,11 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
   const risk = clamp(candidate.riskScore ?? candidate.risk_score);
 
   let penalty = risk * 0.20;
-  if (hasReason(paperReasons, 'TECHNICAL_MOVE_OVEREXTENDED')) penalty += 10;
-  if (hasReason(paperReasons, 'TECHNICAL_VOLUME_NOT_CONFIRMED')) penalty += 7;
-  if (hasReason(paperReasons, 'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION')) penalty += 7;
-  if (hasReason(paperReasons, 'TECHNICAL_SCORE_BELOW_THRESHOLD', 'TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD')) penalty += 5;
-  if ((adaptiveGate.reasons || []).includes('DRAWDOWN_TOO_HIGH')) penalty += 6;
+  if (hasReason(paperReasons, 'TECHNICAL_MOVE_OVEREXTENDED')) penalty += 5;
+  if (hasReason(paperReasons, 'TECHNICAL_VOLUME_NOT_CONFIRMED')) penalty += 3;
+  if (hasReason(paperReasons, 'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION')) penalty += 4;
+  if (hasReason(paperReasons, 'TECHNICAL_SCORE_BELOW_THRESHOLD', 'TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD')) penalty += 3;
+  if ((adaptiveGate.reasons || []).includes('DRAWDOWN_TOO_HIGH')) penalty += 3;
 
   const score = clamp(
     (momentum * 0.30) +
