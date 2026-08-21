@@ -9,13 +9,20 @@ function clamp(value, min = 0, max = 100) {
   return Math.min(max, Math.max(min, asNumber(value, min)));
 }
 
+const SOFT_TECHNICAL_REASONS = new Set([
+  'TECHNICAL_SCORE_BELOW_THRESHOLD',
+  'TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD',
+  'TECHNICAL_MOVE_OVEREXTENDED',
+  'TECHNICAL_VOLUME_NOT_CONFIRMED',
+  'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION'
+]);
+
 function softTechnicalReason(reason) {
-  return new Set([
-    'TECHNICAL_SCORE_BELOW_THRESHOLD',
-    'TECHNICAL_MOVE_OVEREXTENDED',
-    'TECHNICAL_VOLUME_NOT_CONFIRMED',
-    'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION'
-  ]).has(String(reason || ''));
+  return SOFT_TECHNICAL_REASONS.has(String(reason || ''));
+}
+
+function hasReason(reasons, ...codes) {
+  return codes.some((code) => reasons.includes(code));
 }
 
 function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config = {} } = {}) {
@@ -38,10 +45,10 @@ function evaluateQuantEntryDecision({ paperGate = {}, adaptiveGate = {}, config 
   const risk = clamp(candidate.riskScore ?? candidate.risk_score);
 
   let penalty = risk * 0.20;
-  if (paperReasons.includes('TECHNICAL_MOVE_OVEREXTENDED')) penalty += 10;
-  if (paperReasons.includes('TECHNICAL_VOLUME_NOT_CONFIRMED')) penalty += 7;
-  if (paperReasons.includes('TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION')) penalty += 7;
-  if (paperReasons.includes('TECHNICAL_SCORE_BELOW_THRESHOLD')) penalty += 5;
+  if (hasReason(paperReasons, 'TECHNICAL_MOVE_OVEREXTENDED')) penalty += 10;
+  if (hasReason(paperReasons, 'TECHNICAL_VOLUME_NOT_CONFIRMED')) penalty += 7;
+  if (hasReason(paperReasons, 'TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION')) penalty += 7;
+  if (hasReason(paperReasons, 'TECHNICAL_SCORE_BELOW_THRESHOLD', 'TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD')) penalty += 5;
   if ((adaptiveGate.reasons || []).includes('DRAWDOWN_TOO_HIGH')) penalty += 6;
 
   const score = clamp(
