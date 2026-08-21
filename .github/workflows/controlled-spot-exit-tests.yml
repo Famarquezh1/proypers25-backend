@@ -15,6 +15,7 @@ on:
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
+      - "backend/services/spotQuantEntryDecision.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -28,6 +29,7 @@ on:
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotRealPipeline.test.js"
+      - "backend/tests/spotQuantEntryDecision.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
   push:
@@ -45,6 +47,7 @@ on:
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
+      - "backend/services/spotQuantEntryDecision.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -58,6 +61,7 @@ on:
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotRealPipeline.test.js"
+      - "backend/tests/spotQuantEntryDecision.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
 
@@ -92,6 +96,7 @@ jobs:
           node --check backend/services/spotLiveEvidence.js
           node --check backend/services/spotEarlyMomentumRadar.js
           node --check backend/services/spotRealPipelinePolicy.js
+          node --check backend/services/spotQuantEntryDecision.js
           node --check backend/routes/controlledRealSpot.route.js
           node --check backend/routes/adaptiveSpotStrategy.route.js
           node --check backend/routes/spotStrategyPromotion.route.js
@@ -105,6 +110,7 @@ jobs:
           node -e "require('./backend/services/binanceSpotRealExecutor')"
           node -e "require('./backend/services/controlledSpotExitExecutor')"
           node -e "require('./backend/services/spotEarlyMomentumRadar')"
+          node -e "require('./backend/services/spotQuantEntryDecision')"
 
       - name: Verify one real execution route
         run: |
@@ -131,3 +137,6 @@ jobs:
 
       - name: Real Spot pipeline policy unit tests
         run: node backend/tests/spotRealPipeline.test.js
+
+      - name: Quantitative fast-lane entry unit tests
+        run: node backend/tests/spotQuantEntryDecision.test.js
