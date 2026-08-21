@@ -1,26 +1,24 @@
 {
-  "generated_at": "2026-08-21T20:15:38Z",
+  "generated_at": "2026-08-21T20:46:44Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00693-fk2",
   "spot_real": {
     "cycles": 9,
-    "opened": 0,
+    "opened": 2,
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "DRAWDOWN_TOO_HIGH",
+    "latest_reason": "MAX_MANAGED_SPOT_ASSETS_REACHED",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
-    "open_positions_after_cycle": 2,
-    "promoted_symbol": "LINKUSDT",
+    "open_positions_after_cycle": 4,
+    "promoted_symbol": "NEARUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
-      "DRAWDOWN_TOO_HIGH",
-      "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
-      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_VOLUME_NOT_CONFIRMED"
+      "MAX_MANAGED_SPOT_ASSETS_REACHED",
+      "DRAWDOWN_TOO_HIGH"
     ],
     "safety": {
       "spot_only": true,
