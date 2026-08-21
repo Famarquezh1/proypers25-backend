@@ -31,15 +31,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 14
     steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: proypers2025
+
+      - name: Load current runtime config
+        shell: bash
+        run: |
+          set -euo pipefail
+          CRON_SECRET_VALUE=$(gcloud secrets versions access latest --secret=cron-secret --project=proypers2025)
+          BACKEND_URL_VALUE=$(gcloud run services describe proypers25-backend --project=proypers2025 --region=southamerica-west1 --platform=managed --format='value(status.url)')
+          test -n "$CRON_SECRET_VALUE"
+          test -n "$BACKEND_URL_VALUE"
+          echo "::add-mask::$CRON_SECRET_VALUE"
+          echo "CRON_SECRET=$CRON_SECRET_VALUE" >> "$GITHUB_ENV"
+          echo "BACKEND_URL=$BACKEND_URL_VALUE" >> "$GITHUB_ENV"
+
       - name: Run productive Spot research cycle
         env:
-          BACKEND_URL: ${{ vars.PROYPERS_BACKEND_URL || 'https://proypers25-backend-h4put26qmq-tl.a.run.app' }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           MANUAL_TASK: ${{ inputs.task || 'scheduled' }}
           SCHEDULE_SLOT: ${{ github.event.schedule || '' }}
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
+          test -n "$BACKEND_URL"
           echo "event=$GITHUB_EVENT_NAME task=$MANUAL_TASK schedule_slot=${SCHEDULE_SLOT:-manual} backend=$BACKEND_URL policy=FULL_FREQUENCY"
           MARKET_RESULT='{}'
 
