@@ -40,8 +40,8 @@ function blockerDetails({ reconciliation = {}, exits = {}, adaptiveGate = {}, pr
   const failure = Array.isArray(exits.failures) ? exits.failures[0] : null;
   push('Exit Engine', exits.blocked === true || exits.ok === false || exits.exit_engine_healthy === false || (Array.isArray(exits.failures) && exits.failures.length > 0),
     text(failure?.reason, failure?.code, failure?.message, exits.blocked_reason, 'EXIT_ENGINE_NOT_HEALTHY'), 'Una evaluación completa de salidas debe terminar sin fallos', failure?.created_at || exits.updated_at);
-  push('Adaptive Strategy', adaptiveGate.allowed === false, text(...(adaptiveGate.reasons || []), adaptiveGate.reason, 'ADAPTIVE_STRATEGY_DEGRADED'),
-    text(adaptiveGate.missing_condition, 'La estrategia adaptativa debe marcar allowed=true'), adaptiveGate.updated_at);
+  push('Adaptive Strategy', adaptiveGate.allowed === false && adaptiveGate.adaptive_recovery_entry !== true, text(...(adaptiveGate.reasons || []), adaptiveGate.reason, 'ADAPTIVE_STRATEGY_DEGRADED'),
+    text(adaptiveGate.missing_condition, 'La estrategia adaptativa debe marcar allowed=true o aprobar la recuperación controlada'), adaptiveGate.updated_at);
   // Strategy Promotion is a confidence indicator only. It is intentionally not
   // represented as an active blocker.
   push('Paper → Real', paperGate.allowed !== true, text(...(paperGate.reasons || []), paperGate.reason, 'PAPER_REAL_ENTRY_GATE_BLOCKED'),
