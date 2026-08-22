@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-08-22T20:13:02Z",
+  "generated_at": "2026-08-22T20:46:09Z",
   "event_found": true,
-  "timestamp": "2026-08-22T19:51:36.058591Z",
+  "timestamp": "2026-08-22T20:38:22.048768Z",
   "revision": "proypers25-backend-00693-fk2",
-  "run_id": "quant_1787428292220",
+  "run_id": "quant_1787431097569",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 10,
-    "analyzed_count": 10,
+    "accepted_symbol_count": 12,
+    "analyzed_count": 12,
     "eligible_count": 0,
     "failed_count": 8,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
     "observation_symbol": "PYTHUSDT",
-    "requested_count": 10,
+    "requested_count": 12,
     "selected_family": "TREND",
     "selected_symbol": "PYTHUSDT",
-    "valid_count": 2
+    "valid_count": 4
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.4480952380952382,
+      "brier": 0.4913095238095239,
       "calibrated": false,
       "samples": 21
     },
@@ -45,22 +45,22 @@
       "median_validation_expectancy": -0.0032489999999999455,
       "positive_test_folds": 1,
       "positive_validation_folds": 1,
-      "test_expectancy_std": 0.0010362461952724367,
+      "test_expectancy_std": 0.001113731822513911,
       "test_ratio": 0.25,
       "validation_ratio": 0.25
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.004884695241289725,
-      "averageWin": 0.01252421708554321,
-      "expectancy": -0.0007397161158533111,
-      "maxDrawdown": 0.048645711623838704,
+      "averageLoss": -0.004722580109312512,
+      "averageWin": 0.015554209026084176,
+      "expectancy": -0.0008603345597131419,
+      "maxDrawdown": 0.04900815358103326,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.016263938768490305,
-      "profitFactor": 0.8012409466509262,
-      "returnStd": 0.009059463735967804,
+      "netReturn": -0.018756635334664984,
+      "profitFactor": 0.7749606790731964,
+      "returnStd": 0.009070438319107928,
       "trades": 21,
-      "winRate": 0.23809523809523808
+      "winRate": 0.19047619047619047
     },
     "validation": {
       "averageLoss": -0.004824890187087288,
