@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-08-23T05:31:07Z",
+  "generated_at": "2026-08-23T06:25:30Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00693-fk2",
   "spot_real": {
-    "cycles": 8,
-    "opened": 1,
+    "cycles": 9,
+    "opened": 0,
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
@@ -13,8 +13,8 @@
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
-    "open_positions_after_cycle": 2,
-    "promoted_symbol": "ETHUSDT",
+    "open_positions_after_cycle": 1,
+    "promoted_symbol": "PUMPUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "DRAWDOWN_TOO_HIGH",
