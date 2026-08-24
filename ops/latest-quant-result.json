@@ -1,78 +1,78 @@
 {
-  "generated_at": "2026-08-24T10:29:04Z",
+  "generated_at": "2026-08-24T11:02:34Z",
   "event_found": true,
-  "timestamp": "2026-08-24T10:21:07.504180Z",
+  "timestamp": "2026-08-24T10:52:59.506988Z",
   "revision": "proypers25-backend-00693-fk2",
-  "run_id": "quant_1787566863041",
+  "run_id": "quant_1787568774732",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 10,
-    "analyzed_count": 10,
+    "accepted_symbol_count": 12,
+    "analyzed_count": 12,
     "eligible_count": 0,
     "failed_count": 0,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "XRPUSDT",
-    "requested_count": 10,
-    "selected_family": "TREND",
-    "selected_symbol": "XRPUSDT",
-    "valid_count": 10
+    "observation_symbol": "CHIPUSDT",
+    "requested_count": 12,
+    "selected_family": "MEAN_REVERSION",
+    "selected_symbol": "CHIPUSDT",
+    "valid_count": 12
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.540514705882353,
+      "brier": 0.6900000000000003,
       "calibrated": false,
-      "samples": 34
+      "samples": 22
     },
     "checks": {
       "expectation_stability": true,
       "median_test_expectancy_positive": false,
-      "probability_calibrated": false,
+      "probability_calibrated": true,
       "test_drawdown": true,
       "test_expectancy_positive": false,
       "test_fold_consistency": false,
       "test_min_trades": true,
       "test_profit_factor": false,
-      "validation_expectancy_positive": false,
+      "validation_expectancy_positive": true,
       "validation_fold_consistency": false,
       "validation_median_positive": false,
       "validation_min_trades": true,
-      "validation_profit_factor": false
+      "validation_profit_factor": true
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": -0.0007232467617940085,
-      "median_validation_expectancy": -0.000850596873499014,
+      "median_test_expectancy": -0.002896711142875448,
+      "median_validation_expectancy": 0.002247407914203883,
       "positive_test_folds": 1,
-      "positive_validation_folds": 0,
-      "test_expectancy_std": 0.0014653987596881175,
+      "positive_validation_folds": 2,
+      "test_expectancy_std": 0.0034656008992951016,
       "test_ratio": 0.25,
-      "validation_ratio": 0
+      "validation_ratio": 0.5
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.004507256660398409,
-      "averageWin": 0.016802492068327585,
-      "expectancy": -0.0007467127670938212,
-      "maxDrawdown": 0.046333092814590415,
+      "averageLoss": -0.0064008985589672,
+      "averageWin": 0.020628088313650778,
+      "expectancy": -0.00271512762179202,
+      "maxDrawdown": 0.08908844517987408,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.026493757518793237,
-      "profitFactor": 0.7988304829136055,
-      "returnStd": 0.009286016955260615,
-      "trades": 34,
-      "winRate": 0.17647058823529413
+      "netReturn": -0.059379919565336614,
+      "profitFactor": 0.5088452106894711,
+      "returnStd": 0.011323307007896438,
+      "trades": 22,
+      "winRate": 0.13636363636363635
     },
     "validation": {
-      "averageLoss": -0.004580070759108702,
-      "averageWin": 0.014492789983160023,
-      "expectancy": -0.0022913274700364543,
-      "maxDrawdown": 0.056364770240070805,
-      "medianReturn": -0.00175037500000008,
-      "netReturn": -0.056364770240070805,
-      "profitFactor": 0.4314976006053623,
-      "returnStd": 0.007318172921309254,
-      "trades": 25,
-      "winRate": 0.12
+      "averageLoss": -0.006253857995036404,
+      "averageWin": 0.029409962951798596,
+      "expectancy": 0.0039358051326307385,
+      "maxDrawdown": 0.07903640608265258,
+      "medianReturn": -0.001750374999999858,
+      "netReturn": 0.11110316700511458,
+      "profitFactor": 1.881076479519737,
+      "returnStd": 0.01840250318445546,
+      "trades": 28,
+      "winRate": 0.2857142857142857
     }
   },
   "strategy_families": [
