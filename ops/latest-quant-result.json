@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-25T09:59:11Z",
+  "generated_at": "2026-08-25T10:34:42Z",
   "event_found": true,
-  "timestamp": "2026-08-25T09:50:18.601660Z",
+  "timestamp": "2026-08-25T10:05:05.381009Z",
   "revision": "proypers25-backend-00693-fk2",
-  "run_id": "quant_1787651414438",
+  "run_id": "quant_1787652301114",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
@@ -20,9 +20,9 @@
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.5461538461538463,
+      "brier": 0.5374074074074076,
       "calibrated": false,
-      "samples": 26
+      "samples": 27
     },
     "checks": {
       "expectation_stability": false,
@@ -41,26 +41,26 @@
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": 0.0044723588129798285,
+      "median_test_expectancy": 0.0013033159464072588,
       "median_validation_expectancy": 0.0007970067671442555,
       "positive_test_folds": 2,
       "positive_validation_folds": 4,
-      "test_expectancy_std": 0.007042574997009761,
+      "test_expectancy_std": 0.00607228504356577,
       "test_ratio": 0.5,
       "validation_ratio": 1
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.0052187756644324615,
-      "averageWin": 0.02902712199287531,
-      "expectancy": 0.002684123794946254,
-      "maxDrawdown": 0.06665430937740557,
+      "averageLoss": -0.005677469702029715,
+      "averageWin": 0.024834081528670837,
+      "expectancy": 0.0011028750159037403,
+      "maxDrawdown": 0.06665430937740587,
       "medianReturn": -0.001750374999999858,
-      "netReturn": 0.06817590429103704,
-      "profitFactor": 1.6686167710199125,
-      "returnStd": 0.017165239384390924,
-      "trades": 26,
-      "winRate": 0.23076923076923078
+      "netReturn": 0.026922059988227387,
+      "profitFactor": 1.2497560071166696,
+      "returnStd": 0.015539540310788596,
+      "trades": 27,
+      "winRate": 0.2222222222222222
     },
     "validation": {
       "averageLoss": -0.005635570505072734,
