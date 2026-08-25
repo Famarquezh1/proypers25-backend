@@ -1,7 +1,483 @@
 {
-  "generated_at": "2026-08-25T20:53:16Z",
+  "generated_at": "2026-08-25T21:19:26Z",
   "count": 100,
   "errors": [
+    {
+      "timestamp": "2026-08-25T21:16:00.421748Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:55.832813Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:50.671607Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:45.921537Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:40.781119Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:36.382096Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:31.217552Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:26.901488Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:21.263426Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:12.567999Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:10.421845Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:15:02.673054Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:11:08.259252Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:11:02.661133Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:57.546442Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:52.058345Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:47.092972Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:41.631864Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:36.674848Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para XRP-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:27.243299Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:26.005578Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "Error training candlesticks ADA-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:25.555692Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:15.363593Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:10:13.438694Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:07:25.717259Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:06:10.393355Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:06:00.879407Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:57.035941Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:50.235977Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:44.942632Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:39.259582Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:27.832371Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:26.628183Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:16.077504Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:05:14.220604Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:01:05.652030Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:01:02.139345Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:55.618156Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:52.041307Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:45.289114Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:32.067473Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:23.923833Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:17.871638Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:13.914080Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "Error training candlesticks SOL-USD: undefined"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:13.515548Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:03.870214Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T21:00:00.364988Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:52.930238Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:49.102664Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:37.412827Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:37.412281Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:24.640828Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:59:23.219964Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:58:45.166982Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:56:07.370522Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:56:01.277027Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:56.928161Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:51.545432Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:47.408333Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:41.954208Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:37.756414Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:32.127019Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:28.067882Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:22.317695Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:18.171366Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:11.963153Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:07.965658Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-08-25T20:55:02.316281Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00693-fk2",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para ADA-USD' }"
+    },
     {
       "timestamp": "2026-08-25T20:51:04.035496Z",
       "severity": "DEFAULT",
@@ -225,482 +701,6 @@
       "revision": "proypers25-backend-00693-fk2",
       "event": null,
       "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:44:04.882255Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:44:04.871173Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:53.246787Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:52.883771Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:42.756134Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:39.101102Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:28.762309Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:43:26.265277Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:42:49.540942Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:41:06.797813Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:56.137776Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:56.077232Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:45.426521Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:45.388978Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:34.640452Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:34.573748Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:23.874734Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:23.849866Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:12.388516Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:40:12.253767Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:36:08.212Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:36:07.852748Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:57.618828Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para ADA-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:55.355079Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:44.378032Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "Error training candlesticks DOGE-USD: undefined"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:43.866517Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:40.996134Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:33.726676Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:30.979701Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:23.783896Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:21.216263Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:13.125721Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:35:10.360334Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:31:08.740795Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:31:06.165792Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:58.529950Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:55.680794Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:48.678389Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:45.771142Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:38.785023Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:35.642756Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:24.875462Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:24.856909Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:14.066133Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:30:13.142030Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:26:07.832148Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:26:06.273238Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para SOL-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:54.861402Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:49.888625Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "Error training candlesticks ETH-USD: undefined"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:49.469876Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:42.260868Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:37.010787Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:30.586906Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:26.296188Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:19.563848Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:14.889265Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:07.979981Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:25:02.965234Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:28.001367Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:24.537946Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:17.262034Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:13.218464Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:00.886369Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:21:00.819856Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:20:49.226730Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:20:49.190294Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:20:38.355685Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para DOGE-USD' }"
-    },
-    {
-      "timestamp": "2026-08-25T20:20:37.606870Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00693-fk2",
-      "event": null,
-      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para ETH-USD' }"
     }
   ]
 }
