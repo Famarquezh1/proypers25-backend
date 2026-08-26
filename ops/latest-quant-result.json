@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-26T03:30:59Z",
+  "generated_at": "2026-08-26T04:31:13Z",
   "event_found": true,
-  "timestamp": "2026-08-26T03:17:20.993309Z",
+  "timestamp": "2026-08-26T04:21:58.612520Z",
   "revision": "proypers25-backend-00693-fk2",
-  "run_id": "quant_1787714236783",
+  "run_id": "quant_1787718114996",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
@@ -20,9 +20,9 @@
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.49500000000000016,
+      "brier": 0.49275000000000013,
       "calibrated": false,
-      "samples": 31
+      "samples": 30
     },
     "checks": {
       "expectation_stability": true,
@@ -41,38 +41,38 @@
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": -0.001614059248269382,
-      "median_validation_expectancy": 0.0012645451842430168,
+      "median_test_expectancy": -0.0010767161581968637,
+      "median_validation_expectancy": 0.0007055308985325212,
       "positive_test_folds": 2,
       "positive_validation_folds": 2,
-      "test_expectancy_std": 0.005263326344379635,
+      "test_expectancy_std": 0.005364126551661019,
       "test_ratio": 0.5,
       "validation_ratio": 0.5
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.0060386379729336715,
+      "averageLoss": -0.0059520496168046985,
       "averageWin": 0.019405963686152643,
-      "expectancy": -0.0002930827595916008,
-      "maxDrawdown": 0.07835257127442007,
+      "expectancy": -0.0000351798461146523,
+      "maxDrawdown": 0.07835257127442001,
       "medianReturn": -0.001750374999999858,
-      "netReturn": -0.011673718744961703,
-      "profitFactor": 0.9373095004476254,
-      "returnStd": 0.013188990569484941,
-      "trades": 31,
-      "winRate": 0.22580645161290322
+      "netReturn": -0.0036730437473724287,
+      "profitFactor": 0.9922905958861356,
+      "returnStd": 0.01332988584674245,
+      "trades": 30,
+      "winRate": 0.23333333333333334
     },
     "validation": {
-      "averageLoss": -0.005281715158316598,
-      "averageWin": 0.015207425742661738,
-      "expectancy": 0.002401712679550278,
+      "averageLoss": -0.005288967163105013,
+      "averageWin": 0.015514518777668906,
+      "expectancy": 0.0019470279467293933,
       "maxDrawdown": 0.02612237073349755,
       "medianReturn": -0.001750374999999858,
-      "netReturn": 0.0570279808346188,
-      "profitFactor": 1.7275553815562468,
-      "returnStd": 0.013394261426881807,
-      "trades": 24,
-      "winRate": 0.375
+      "netReturn": 0.043606118992411735,
+      "profitFactor": 1.5644661348018394,
+      "returnStd": 0.013504886558754543,
+      "trades": 23,
+      "winRate": 0.34782608695652173
     }
   },
   "strategy_families": [
