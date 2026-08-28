@@ -145,7 +145,9 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
-    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MISMATCH', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+    // Keep the historical diagnostic code for dashboard/test compatibility. The
+    // expected value is dynamic and may be 5 USDT in recovery or 10 USDT normally.
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
   }
 
   return failures;
