@@ -8,9 +8,16 @@ const {
   LOSS_STREAK_COOLDOWN_MINUTES,
   RECOVERY_POSITION_USDT
 } = require('../services/spotAutonomyController');
+const {
+  buildLearningProfile,
+  evaluateLearnedEntry,
+  scoreBand
+} = require('../services/spotRealLearningPolicy');
 
 assert.strictEqual(LOSS_STREAK_COOLDOWN_MINUTES, 180);
 assert.strictEqual(RECOVERY_POSITION_USDT, 5);
+assert.strictEqual(scoreBand(91.73), 'SCORE_85_PLUS');
+assert.strictEqual(scoreBand(63.06), 'SCORE_50_69');
 
 const recentLossStreak = buildAutonomyHaltState({
   consecutiveLosses: 3,
@@ -41,29 +48,36 @@ const hardLossLimit = buildAutonomyHaltState({
 assert.strictEqual(hardLossLimit.should_halt, true);
 assert.strictEqual(hardLossLimit.halt_reason, 'MAX_SESSION_LOSS_REACHED');
 
-const recovery = buildPerformanceRecoveryState({
-  completedTrades: 30,
-  totalPnl: -1.43,
-  winRate: 26.79
-});
+const recovery = buildPerformanceRecoveryState({ completedTrades: 30, totalPnl: -1.43, winRate: 26.79 });
 assert.strictEqual(recovery.performance_recovery_mode, true);
 assert.strictEqual(recovery.performance_recovery_position_usdt, 5);
 assert.strictEqual(recovery.performance_recovery_reason, 'RECENT_REAL_PERFORMANCE_DEGRADED');
 
-const positiveRecovery = buildPerformanceRecoveryState({
-  completedTrades: 30,
-  totalPnl: 0.25,
-  winRate: 30
-});
+const positiveRecovery = buildPerformanceRecoveryState({ completedTrades: 30, totalPnl: 0.25, winRate: 30 });
 assert.strictEqual(positiveRecovery.performance_recovery_mode, false);
 assert.strictEqual(positiveRecovery.performance_recovery_position_usdt, 10);
 
-const insufficientSample = buildPerformanceRecoveryState({
-  completedTrades: 9,
-  totalPnl: -2,
-  winRate: 0
-});
+const insufficientSample = buildPerformanceRecoveryState({ completedTrades: 9, totalPnl: -2, winRate: 0 });
 assert.strictEqual(insufficientSample.performance_recovery_mode, false);
+
+const learningTrades = [];
+for (let index = 0; index < 20; index += 1) {
+  learningTrades.push({ entry_score: 60, net_pnl_usdt: index < 4 ? 0.05 : -0.08, closing_reason: index < 4 ? 'TRAILING_STOP' : 'STOP_LOSS' });
+}
+for (let index = 0; index < 8; index += 1) {
+  learningTrades.push({ entry_score: 90, net_pnl_usdt: index < 4 ? 0.12 : -0.04, closing_reason: index < 4 ? 'TRAILING_STOP' : 'STOP_LOSS' });
+}
+const learningProfile = buildLearningProfile(learningTrades);
+assert.strictEqual(learningProfile.active, true);
+const badBand = learningProfile.score_bands.find((item) => item.band === 'SCORE_50_69');
+assert.strictEqual(badBand.state, 'NEGATIVE_EXPECTANCY');
+const learnedBlock = evaluateLearnedEntry({ score: 63 }, learningProfile);
+assert.strictEqual(learnedBlock.allowed, false);
+assert.strictEqual(learnedBlock.reason, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
+const learnedPositive = evaluateLearnedEntry({ score: 91 }, learningProfile);
+assert.strictEqual(learnedPositive.allowed, true);
+const tinyProfile = buildLearningProfile(learningTrades.slice(0, 5));
+assert.strictEqual(evaluateLearnedEntry({ score: 63 }, tinyProfile).allowed, true);
 
 const throttledPatch = buildAutonomyControlPatch({
   enabled: true,
@@ -105,4 +119,4 @@ assert.strictEqual(releasePatch.autonomy_halt_reason, null);
 assert.strictEqual(releasePatch.autonomy_halted_at, null);
 assert.strictEqual(releasePatch.autonomy_resume_after, null);
 
-console.log('spot autonomy cooldown tests passed');
+console.log('spot autonomy cooldown and real learning tests passed');

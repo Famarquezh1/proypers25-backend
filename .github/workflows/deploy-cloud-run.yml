@@ -68,6 +68,7 @@ jobs:
           node --check services/spotPositionLifecycle.js
           node --check services/spotEarlyMomentumRadar.js
           node --check services/paperToRealEntryGate.js
+          node --check services/spotRealLearningPolicy.js
           node --check services/spotRealPipelinePolicy.js
           node --check services/spotQuantEntryDecision.js
           node --check services/spotCycleObservability.js
@@ -194,8 +195,14 @@ jobs:
           jq -e '.latest_cycle.gates.paper_to_real == "PASS" or .latest_cycle.gates.paper_to_real == "BLOCK"' <<<"$LIVE" >/dev/null
           jq -e '(.open_positions | type) == "array"' <<<"$LIVE" >/dev/null
           SUMMARY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
-          jq -e '.ok == true and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 40 and .allocation.max_per_acquisition_usdt == 10' <<<"$SUMMARY" >/dev/null
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=10 USDT"
+          jq -e '
+            .ok == true and
+            .allocation.max_managed_spot_assets == 4 and
+            .allocation.max_total_managed_capital_usdt == 40 and
+            (.allocation.max_per_acquisition_usdt == 5 or .allocation.max_per_acquisition_usdt == 10)
+          ' <<<"$SUMMARY" >/dev/null
+          ACQUISITION_USDT=$(jq -r '.allocation.max_per_acquisition_usdt' <<<"$SUMMARY")
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT"
 
       - name: Diagnose failure
         if: failure()

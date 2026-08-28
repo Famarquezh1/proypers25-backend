@@ -1,6 +1,7 @@
 'use strict';
 
 const { filterBotPerformanceResults } = require('./spotPerformanceClassification');
+const { buildLearningProfile } = require('./spotRealLearningPolicy');
 
 const RESULTS_COLLECTION = 'real_spot_execution_results';
 const CONTROL_PATH = 'real_spot_config/control';
@@ -48,8 +49,6 @@ function buildAutonomyHaltState({ consecutiveLosses = 0, totalPnl = 0, latestClo
   const cooldownUntilMs = lossStreakTriggered && latestClosedAtMs > 0
     ? latestClosedAtMs + (LOSS_STREAK_COOLDOWN_MINUTES * 60 * 1000)
     : 0;
-  // If a legacy result has no usable close timestamp, fail safe and keep the
-  // loss-streak halt active rather than silently releasing it.
   const lossStreakCooldownActive = lossStreakTriggered && (
     latestClosedAtMs <= 0 || cooldownUntilMs > nowMs
   );
@@ -90,17 +89,9 @@ async function buildAutonomySnapshot(db, now = new Date()) {
   const completedTrades = wins + losses;
   const winRate = completedTrades > 0 ? (wins / completedTrades) * 100 : 0;
   const latestClosedAt = recent.length ? closedAtMillis(recent[0]) : 0;
-  const haltState = buildAutonomyHaltState({
-    consecutiveLosses,
-    totalPnl,
-    latestClosedAt,
-    now
-  });
-  const recoveryState = buildPerformanceRecoveryState({
-    completedTrades,
-    totalPnl,
-    winRate
-  });
+  const haltState = buildAutonomyHaltState({ consecutiveLosses, totalPnl, latestClosedAt, now });
+  const recoveryState = buildPerformanceRecoveryState({ completedTrades, totalPnl, winRate });
+  const learningProfile = buildLearningProfile(trades);
 
   return {
     completed_trades: completedTrades,
@@ -112,6 +103,7 @@ async function buildAutonomySnapshot(db, now = new Date()) {
     latest_trade_closed_at: latestClosedAt > 0 ? new Date(latestClosedAt).toISOString() : null,
     ...haltState,
     ...recoveryState,
+    learning_profile: learningProfile,
     current_stage: recoveryState.performance_recovery_mode ? 'RECOVERY_5_USDT' : 'CONTROLLED_10_USDT',
     recommended_position_usdt: recoveryState.performance_recovery_position_usdt,
     scale_up_locked: completedTrades < 10 || totalPnl <= 0 || winRate < 50,
@@ -157,8 +149,6 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
   const staleAutonomyHalt = Boolean(currentConfig.autonomy_halt_reason);
   if (!staleAutonomyHalt) return patch;
 
-  // Release only a halt that the autonomy controller itself created. A manual
-  // kill switch remains protected when explicitly marked as manual.
   patch.autonomy_halt_reason = null;
   patch.autonomy_released_at = now;
   patch.autonomy_halted_at = null;
