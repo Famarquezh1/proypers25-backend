@@ -2,6 +2,7 @@
 
 const { resolveManagedSpotLimits } = require('./spotManagedAcquisitionPolicy');
 const { evaluateQuantEntryDecision } = require('./spotQuantEntryDecision');
+const { evaluateLearnedEntry } = require('./spotRealLearningPolicy');
 
 const RECOVERY_ENTRY_LANES = new Set(['EARLY_MOMENTUM', 'TACTICAL_MOMENTUM']);
 const RECOVERY_BLOCKED_REGIMES = new Set(['BEAR_TREND', 'BEAR_HIGH_VOL']);
@@ -74,12 +75,25 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
   const failures = [];
   const managedLimits = resolveManagedSpotLimits(config);
   const quantDecision = evaluateQuantEntryDecision({ paperGate, adaptiveGate, config });
+  const learningProfile = autonomy.learning_profile || config.autonomy_snapshot?.learning_profile || {};
+  const learnedDecision = evaluateLearnedEntry(paperGate.candidate || {}, learningProfile);
   Object.assign(paperGate, {
     quant_entry_decision: quantDecision,
     quant_entry_allowed: quantDecision.allowed,
     quant_entry_score: quantDecision.score,
-    quant_entry_expected_value_pct: quantDecision.expected_value_pct
+    quant_entry_expected_value_pct: quantDecision.expected_value_pct,
+    learned_entry_decision: learnedDecision,
+    learned_entry_allowed: learnedDecision.allowed
   });
+
+  if (learnedDecision.allowed !== true) {
+    failures.push(condition(
+      'Real Performance Learning',
+      learnedDecision.reason || 'LEARNED_ENTRY_BLOCKED',
+      'Candidate score band must not have statistically supported negative real expectancy',
+      learnedDecision
+    ));
+  }
 
   if (reconciliation.account_consistent !== true || reconciliation.entries_blocked === true || config.reconciliation_required === true || config.account_consistent === false) {
     failures.push(condition('Reconciliation', reconciliation.reason || config.entry_block_reason || 'ACCOUNT_POSITION_RECONCILIATION_REQUIRED', 'Binance and Firestore consistent; entries_blocked=false', {
@@ -98,15 +112,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     }));
   }
 
-  const adaptiveRecovery = evaluateHistoricalDrawdownRecoveryEntry({
-    reconciliation,
-    exits,
-    adaptiveGate,
-    paperGate,
-    autonomy,
-    config,
-    openPositions
-  });
+  const adaptiveRecovery = evaluateHistoricalDrawdownRecoveryEntry({ reconciliation, exits, adaptiveGate, paperGate, autonomy, config, openPositions });
   Object.assign(adaptiveGate, {
     adaptive_recovery_entry: adaptiveRecovery.allowed,
     adaptive_recovery_policy: adaptiveRecovery.policy,
@@ -131,12 +137,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
   }
 
   if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) {
-    failures.push(condition(
-      'Managed Spot Assets',
-      'MAX_MANAGED_SPOT_ASSETS_REACHED',
-      `managed Spot acquisitions < ${managedLimits.max_managed_spot_assets}`,
-      Number(openPositions || 0)
-    ));
+    failures.push(condition('Managed Spot Assets', 'MAX_MANAGED_SPOT_ASSETS_REACHED', `managed Spot acquisitions < ${managedLimits.max_managed_spot_assets}`, Number(openPositions || 0)));
   }
   if (autonomy.should_halt === true) failures.push(condition('Autonomy', autonomy.halt_reason || 'AUTONOMY_HALTED', 'autonomy.should_halt=false', true));
 
@@ -144,7 +145,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
-    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MISMATCH', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
   }
 
   return failures;
