@@ -1,24 +1,27 @@
 {
-  "generated_at": "2026-08-28T16:01:26.921Z",
+  "generated_at": "2026-08-28T16:03:49.254Z",
   "source": "FIRESTORE_CANONICAL_SPOT_LEDGER",
+  "performance_scope": "BOT_EXECUTION_ONLY",
   "real_mode": true,
   "spot_only": true,
   "sample_limit": 500,
+  "sampled_results": 66,
+  "excluded_results": 9,
   "summary": {
-    "verified_trades": 58,
-    "wins": 17,
+    "verified_bot_trades": 57,
+    "wins": 16,
     "losses": 41,
     "breakeven": 0,
-    "win_rate_pct": 29.3103,
-    "realized_pnl_usdt": 9.28512914,
-    "gross_profit_usdt": 22.48357143,
+    "win_rate_pct": 28.0702,
+    "realized_pnl_usdt": -0.58617465,
+    "gross_profit_usdt": 12.61226764,
     "gross_loss_abs_usdt": 13.19844229,
-    "profit_factor": 1.703502,
+    "profit_factor": 0.955588,
     "profit_factor_state": "CALCULATED",
-    "trading_fees_usdt": 0.57540379,
-    "closed_capital_usdt": 565.54325193,
-    "roi_on_closed_capital_pct": 1.6418,
-    "average_pnl_per_trade_usdt": 0.16008843,
+    "trading_fees_usdt": 0.56551195,
+    "closed_capital_usdt": 565.53260756,
+    "roi_on_closed_capital_pct": -0.1037,
+    "average_pnl_per_trade_usdt": -0.01028377,
     "last_7_days": {
       "days": 7,
       "trades": 34,
@@ -30,30 +33,32 @@
     },
     "last_30_days": {
       "days": 30,
-      "trades": 57,
-      "wins": 16,
+      "trades": 56,
+      "wins": 15,
       "losses": 41,
-      "realized_pnl_usdt": 8.43988898,
-      "win_rate_pct": 28.0702,
-      "roi_on_closed_capital_pct": 1.5192
+      "realized_pnl_usdt": -1.43141481,
+      "win_rate_pct": 26.7857,
+      "roi_on_closed_capital_pct": -0.2577
     }
   },
   "balance": {
     "available_usdt": 277.2192017,
+    "locked_usdt": 0,
     "in_positions_usdt": 0,
+    "total_usdt": 277.2192017,
     "realized_pnl_usdt": -0.5861746523416145,
     "paid_trading_fees_usdt": 0.5447640200000001,
     "updated_at": "2026-08-28T16:00:02.255Z",
     "source": "BINANCE_ACCOUNT_RECONCILED"
   },
   "reconciliation": {
-    "ledger_realized_pnl_usdt": 9.28512914,
+    "ledger_realized_pnl_usdt": -0.58617465,
     "balance_realized_pnl_usdt": -0.5861746523416145,
-    "difference_usdt": -9.87130379,
-    "consistent": false
+    "difference_usdt": 0,
+    "consistent": true
   },
   "open_positions_count": 0,
-  "recent_closed_trades": [
+  "recent_bot_closed_trades": [
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787733049224_SXTUSDT_binance_order_202828693",
       "symbol": "SXTUSDT",
@@ -75,7 +80,9 @@
       "entry_score": 37.47,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787731835870_SOLVUSDT_binance_order_410134872",
@@ -98,7 +105,9 @@
       "entry_score": 66.93,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787735441753_ZROUSDT_binance_order_1506102967",
@@ -121,7 +130,9 @@
       "entry_score": 78.04,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787618443716_ONTUSDT_binance_order_2105196647",
@@ -144,7 +155,9 @@
       "entry_score": 45.44,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787676646466_ETCUSDT_binance_order_4862725220",
@@ -167,7 +180,9 @@
       "entry_score": 37.34,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787664343475_COTIUSDT_binance_order_1993505171",
@@ -190,7 +205,9 @@
       "entry_score": 41.85,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787658043534_POLUSDT_binance_order_1125355210",
@@ -213,7 +230,9 @@
       "entry_score": 63.06,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787662543001_HOLOUSDT_binance_order_164607375",
@@ -236,7 +255,9 @@
       "entry_score": 91.73,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787660442393_PROMUSDT_binance_order_691933238",
@@ -259,7 +280,9 @@
       "entry_score": 84.94,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787604043354_HOLOUSDT_binance_order_164505688",
@@ -282,7 +305,9 @@
       "entry_score": 41.08,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787588143749_AEROUSDT_binance_order_27307761",
@@ -305,7 +330,9 @@
       "entry_score": 100,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787603742039_SPELLUSDT_binance_order_1383446733",
@@ -328,7 +355,9 @@
       "entry_score": 100,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787561441308_SAGAUSDT_binance_order_2117047676",
@@ -351,7 +380,9 @@
       "entry_score": 41.75,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787554242014_EGLDUSDT_binance_order_2188574020",
@@ -374,7 +405,9 @@
       "entry_score": 52.59,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787563242709_STXUSDT_binance_order_2587688903",
@@ -397,7 +430,9 @@
       "entry_score": 64.11,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787569842513_SUPERUSDT_binance_order_1533266073",
@@ -420,7 +455,9 @@
       "entry_score": 77.66,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787519140822_PEPEUSDT_binance_order_5400460097",
@@ -443,7 +480,9 @@
       "entry_score": 52.9,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787525742768_SUIUSDT_binance_order_8785852836",
@@ -466,7 +505,9 @@
       "entry_score": 61.46,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787511039416_FFUSDT_binance_order_494285802",
@@ -489,7 +530,9 @@
       "entry_score": 100,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787509239040_ZECUSDT_binance_order_5857445905",
@@ -512,7 +555,9 @@
       "entry_score": 81.46,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787473845187_ENAUSDT_binance_order_3352403169",
@@ -535,7 +580,9 @@
       "entry_score": 65.02,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787461540641_FFUSDT_binance_order_492296990",
@@ -558,7 +605,9 @@
       "entry_score": 100,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787415043683_DCRUSDT_binance_order_394473963",
@@ -581,7 +630,9 @@
       "entry_score": 100,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787410239261_FFUSDT_binance_order_491202770",
@@ -604,7 +655,9 @@
       "entry_score": 93.75,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
     },
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787413841674_CVXUSDT_binance_order_556203365",
@@ -627,7 +680,236 @@
       "entry_score": 97.46,
       "final_score": 0,
       "market_regime": null,
-      "model_version": "real_spot_controlled_v1"
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "BOT_EXECUTION",
+      "performance_exclusion_reason": null
+    }
+  ],
+  "recent_excluded_results": [
+    {
+      "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1785794747143_TUTUSDT_balance_absence_real_spot_pos_real_spot_intent_spot_scan_1785794747143_TUTUSDT_51600000",
+      "symbol": "TUTUSDT",
+      "closed_at": "2026-08-04T00:20:12.088Z",
+      "closing_reason": "AUTO_RECONCILED",
+      "close_source": "BINANCE_BALANCE_RECONCILIATION",
+      "fully_closed": false,
+      "quantity": 483,
+      "allocated_capital_usdt": 0.000011359483211177474,
+      "quote_received_usdt": 0,
+      "entry_price": null,
+      "exit_price": 0.020630000000000003,
+      "net_pnl_usdt": 0,
+      "net_pnl_pct": 0,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 2.229019,
+      "entry_score": 100,
+      "final_score": 0,
+      "market_regime": null,
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1785794747143_TUTUSDT_binance_spot_trade_29825772",
+      "symbol": "TUTUSDT",
+      "closed_at": "2026-08-04T00:15:07.211Z",
+      "closing_reason": "MANUAL_RECONCILIATION",
+      "close_source": "BINANCE_SPOT_FILLS",
+      "fully_closed": false,
+      "quantity": 483,
+      "allocated_capital_usdt": 0.010644364116928933,
+      "quote_received_usdt": 9.89184,
+      "entry_price": null,
+      "exit_price": 0.02048,
+      "net_pnl_usdt": 9.87130379588307,
+      "net_pnl_pct": 92737.37432735528,
+      "total_fee_usdt": 0.00989184,
+      "pnl_verified": true,
+      "fee_accounting_complete": false,
+      "duration_hours": 2.144331,
+      "entry_score": 100,
+      "final_score": 0,
+      "market_regime": null,
+      "model_version": "real_spot_controlled_v1",
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1779237424366_ANKRUSDT",
+      "symbol": "ANKRUSDT",
+      "closed_at": "2026-05-21T00:40:05.194Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.00451,
+      "exit_price": 0.00451,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.05023,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1779150982846_CATIUSDT",
+      "symbol": "CATIUSDT",
+      "closed_at": "2026-05-20T00:36:35.151Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.0511,
+      "exit_price": 0.0511,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.003418055555557,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1779150631585_ANKRUSDT",
+      "symbol": "ANKRUSDT",
+      "closed_at": "2026-05-20T00:36:34.079Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.00463,
+      "exit_price": 0.00463,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.100692777777777,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1778797534314_ANKRUSDT",
+      "symbol": "ANKRUSDT",
+      "closed_at": "2026-05-15T22:25:51.679Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.00511,
+      "exit_price": 0.00511,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.00482361111111,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1778705132117_CATIUSDT",
+      "symbol": "CATIUSDT",
+      "closed_at": "2026-05-14T20:50:04.132Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.064,
+      "exit_price": 0.064,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.075559722222224,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1778704833692_ANKRUSDT",
+      "symbol": "ANKRUSDT",
+      "closed_at": "2026-05-14T20:40:49.223Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.00509,
+      "exit_price": 0.00509,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.004314166666667,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
+    },
+    {
+      "id": "real_spot_result_real_spot_pos_1778514617046_ANKRUSDT",
+      "symbol": "ANKRUSDT",
+      "closed_at": "2026-05-12T15:55:03.759Z",
+      "closing_reason": null,
+      "close_source": null,
+      "fully_closed": false,
+      "quantity": null,
+      "allocated_capital_usdt": null,
+      "quote_received_usdt": null,
+      "entry_price": 0.0054,
+      "exit_price": 0.0054,
+      "net_pnl_usdt": null,
+      "net_pnl_pct": null,
+      "total_fee_usdt": 0,
+      "pnl_verified": false,
+      "fee_accounting_complete": false,
+      "duration_hours": 24.0796425,
+      "entry_score": null,
+      "final_score": null,
+      "market_regime": null,
+      "model_version": null,
+      "performance_classification": "EXCLUDED",
+      "performance_exclusion_reason": "EXTERNAL_CONVERSION"
     }
   ]
 }
