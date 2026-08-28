@@ -2,6 +2,12 @@ name: Export Spot realized performance
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/exportSpotPerformance.js'
+      - 'backend/tests/exportSpotPerformance.test.js'
+      - '.github/workflows/export-spot-performance.yml'
   schedule:
     - cron: '20 */6 * * *'
 
