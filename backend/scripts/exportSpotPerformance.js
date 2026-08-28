@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isBotPerformanceResult, performanceExclusionReason } = require('../services/spotPerformanceClassification');
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -16,7 +17,7 @@ function toIso(value) {
 }
 
 function summarizeTrades(trades, now = new Date()) {
-  const verified = trades.filter((trade) => trade.pnl_verified === true && Number.isFinite(Number(trade.net_pnl_usdt)));
+  const verified = trades.filter((trade) => isBotPerformanceResult(trade));
   const wins = verified.filter((trade) => number(trade.net_pnl_usdt) > 0);
   const losses = verified.filter((trade) => number(trade.net_pnl_usdt) < 0);
   const breakeven = verified.length - wins.length - losses.length;
@@ -52,7 +53,7 @@ function summarizeTrades(trades, now = new Date()) {
   };
 
   return {
-    verified_trades: verified.length,
+    verified_bot_trades: verified.length,
     wins: wins.length,
     losses: losses.length,
     breakeven,
@@ -93,7 +94,9 @@ function sanitizeTrade(trade) {
     entry_score: number(trade.entry_score, null),
     final_score: number(trade.final_score, null),
     market_regime: trade.market_regime || null,
-    model_version: trade.model_version || null
+    model_version: trade.model_version || null,
+    performance_classification: isBotPerformanceResult(trade) ? 'BOT_EXECUTION' : 'EXCLUDED',
+    performance_exclusion_reason: performanceExclusionReason(trade)
   };
 }
 
@@ -105,6 +108,8 @@ async function buildPerformanceReport(db, { limit = 500, now = new Date() } = {}
   ]);
 
   const trades = resultsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const botTrades = trades.filter(isBotPerformanceResult);
+  const excludedTrades = trades.filter((trade) => !isBotPerformanceResult(trade));
   const balance = balanceSnap.exists ? balanceSnap.data() : {};
   const summary = summarizeTrades(trades, now);
 
@@ -114,13 +119,18 @@ async function buildPerformanceReport(db, { limit = 500, now = new Date() } = {}
   return {
     generated_at: now.toISOString(),
     source: 'FIRESTORE_CANONICAL_SPOT_LEDGER',
+    performance_scope: 'BOT_EXECUTION_ONLY',
     real_mode: true,
     spot_only: true,
     sample_limit: limit,
+    sampled_results: trades.length,
+    excluded_results: excludedTrades.length,
     summary,
     balance: {
       available_usdt: number(balance.available_usdt, null),
+      locked_usdt: number(balance.locked_usdt, null),
       in_positions_usdt: number(balance.in_positions_usdt, null),
+      total_usdt: number(balance.total_usdt, null),
       realized_pnl_usdt: canonicalRealized,
       paid_trading_fees_usdt: number(balance.paid_trading_fees_usdt, null),
       updated_at: toIso(balance.updated_at),
@@ -133,7 +143,8 @@ async function buildPerformanceReport(db, { limit = 500, now = new Date() } = {}
       consistent: ledgerDelta === null ? null : Math.abs(ledgerDelta) <= 0.000001
     },
     open_positions_count: openSnap.size,
-    recent_closed_trades: trades.slice(0, 25).map(sanitizeTrade)
+    recent_bot_closed_trades: botTrades.slice(0, 25).map(sanitizeTrade),
+    recent_excluded_results: excludedTrades.slice(0, 10).map(sanitizeTrade)
   };
 }
 
