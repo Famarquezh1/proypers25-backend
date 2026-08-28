@@ -6,11 +6,14 @@ const RESULTS_COLLECTION = 'real_spot_execution_results';
 const CONTROL_PATH = 'real_spot_config/control';
 
 const BASE_POSITION_USDT = 10;
+const RECOVERY_POSITION_USDT = 5;
 const MAX_INITIAL_POSITION_USDT = 10;
 const MAX_OPEN_POSITIONS = 1;
 const LOSS_STREAK_KILL_SWITCH = 3;
 const LOSS_STREAK_COOLDOWN_MINUTES = 180;
 const MAX_SESSION_LOSS_USDT = 3;
+const PERFORMANCE_RECOVERY_MIN_TRADES = 10;
+const PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT = 35;
 
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -21,6 +24,20 @@ function closedAtMillis(result) {
   const value = result.closed_at || result.updated_at || result.created_at || 0;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function buildPerformanceRecoveryState({ completedTrades = 0, totalPnl = 0, winRate = 0 } = {}) {
+  const sampleReady = Number(completedTrades) >= PERFORMANCE_RECOVERY_MIN_TRADES;
+  const negativePnl = Number(totalPnl) < 0;
+  const weakWinRate = Number(winRate) < PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT;
+  const active = sampleReady && negativePnl && weakWinRate;
+  return {
+    performance_recovery_mode: active,
+    performance_recovery_reason: active ? 'RECENT_REAL_PERFORMANCE_DEGRADED' : null,
+    performance_recovery_min_trades: PERFORMANCE_RECOVERY_MIN_TRADES,
+    performance_recovery_max_win_rate_pct: PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT,
+    performance_recovery_position_usdt: active ? RECOVERY_POSITION_USDT : BASE_POSITION_USDT
+  };
 }
 
 function buildAutonomyHaltState({ consecutiveLosses = 0, totalPnl = 0, latestClosedAt = 0, now = new Date() } = {}) {
@@ -79,6 +96,11 @@ async function buildAutonomySnapshot(db, now = new Date()) {
     latestClosedAt,
     now
   });
+  const recoveryState = buildPerformanceRecoveryState({
+    completedTrades,
+    totalPnl,
+    winRate
+  });
 
   return {
     completed_trades: completedTrades,
@@ -89,23 +111,30 @@ async function buildAutonomySnapshot(db, now = new Date()) {
     consecutive_losses: consecutiveLosses,
     latest_trade_closed_at: latestClosedAt > 0 ? new Date(latestClosedAt).toISOString() : null,
     ...haltState,
-    current_stage: 'CONTROLLED_10_USDT',
-    recommended_position_usdt: BASE_POSITION_USDT,
+    ...recoveryState,
+    current_stage: recoveryState.performance_recovery_mode ? 'RECOVERY_5_USDT' : 'CONTROLLED_10_USDT',
+    recommended_position_usdt: recoveryState.performance_recovery_position_usdt,
     scale_up_locked: completedTrades < 10 || totalPnl <= 0 || winRate < 50,
     next_stage_requirement: '10 cierres, PnL neto positivo y win rate mínimo de 50%'
   };
 }
 
 function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new Date().toISOString()) {
+  const recoveryMode = snapshot.performance_recovery_mode === true;
+  const effectivePositionUsdt = recoveryMode ? RECOVERY_POSITION_USDT : BASE_POSITION_USDT;
   const patch = {
     autonomy_enabled: true,
-    autonomy_stage: snapshot.current_stage || 'CONTROLLED_10_USDT',
-    adaptive_position_usdt: BASE_POSITION_USDT,
-    max_position_usdt: Math.min(
-      Math.max(asNumber(currentConfig.max_position_usdt, BASE_POSITION_USDT), BASE_POSITION_USDT),
-      MAX_INITIAL_POSITION_USDT
-    ),
-    max_total_capital_usdt: MAX_INITIAL_POSITION_USDT,
+    autonomy_stage: snapshot.current_stage || (recoveryMode ? 'RECOVERY_5_USDT' : 'CONTROLLED_10_USDT'),
+    performance_recovery_mode: recoveryMode,
+    performance_recovery_reason: snapshot.performance_recovery_reason || null,
+    adaptive_position_usdt: effectivePositionUsdt,
+    max_position_usdt: recoveryMode
+      ? Math.min(Math.max(asNumber(currentConfig.max_position_usdt, effectivePositionUsdt), 0), RECOVERY_POSITION_USDT)
+      : Math.min(
+          Math.max(asNumber(currentConfig.max_position_usdt, BASE_POSITION_USDT), BASE_POSITION_USDT),
+          MAX_INITIAL_POSITION_USDT
+        ),
+    max_total_capital_usdt: effectivePositionUsdt,
     max_open_positions: MAX_OPEN_POSITIONS,
     spot_only: true,
     futures_allowed: false,
@@ -178,9 +207,13 @@ async function enforceAutonomousSafety(db, currentConfig = {}) {
 module.exports = {
   buildAutonomySnapshot,
   buildAutonomyHaltState,
+  buildPerformanceRecoveryState,
   buildAutonomyControlPatch,
   enforceAutonomousSafety,
   BASE_POSITION_USDT,
+  RECOVERY_POSITION_USDT,
   MAX_INITIAL_POSITION_USDT,
-  LOSS_STREAK_COOLDOWN_MINUTES
+  LOSS_STREAK_COOLDOWN_MINUTES,
+  PERFORMANCE_RECOVERY_MIN_TRADES,
+  PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT
 };
