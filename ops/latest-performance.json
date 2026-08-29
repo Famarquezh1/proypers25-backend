@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-29T01:47:26.444Z",
+  "generated_at": "2026-08-29T12:44:51.646Z",
   "source": "FIRESTORE_CANONICAL_SPOT_LEDGER",
   "performance_scope": "BOT_EXECUTION_ONLY",
   "real_mode": true,
@@ -24,12 +24,12 @@
     "average_pnl_per_trade_usdt": -0.01028377,
     "last_7_days": {
       "days": 7,
-      "trades": 33,
-      "wins": 9,
-      "losses": 24,
-      "realized_pnl_usdt": -2.26733751,
-      "win_rate_pct": 27.2727,
-      "roi_on_closed_capital_pct": -0.6919
+      "trades": 26,
+      "wins": 6,
+      "losses": 20,
+      "realized_pnl_usdt": -3.7451505,
+      "win_rate_pct": 23.0769,
+      "roi_on_closed_capital_pct": -1.4512
     },
     "last_30_days": {
       "days": 30,
@@ -48,7 +48,7 @@
     "total_usdt": 277.2192017,
     "realized_pnl_usdt": -0.5861746523416145,
     "paid_trading_fees_usdt": 0.5447640200000001,
-    "updated_at": "2026-08-29T01:45:03.832Z",
+    "updated_at": "2026-08-29T12:40:03.166Z",
     "source": "BINANCE_ACCOUNT_RECONCILED"
   },
   "reconciliation": {
