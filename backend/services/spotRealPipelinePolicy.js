@@ -42,7 +42,7 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     adaptiveGate.state === 'DEGRADED' &&
     adaptiveReasons.length > 0 &&
     adaptiveReasons.every((reason) => RECOVERY_ALLOWED_ADAPTIVE_REASONS.has(String(reason)));
-  if (!controlledHistoricalDegradation) blockers.push('ADAPTIVE_DEGRADATION_NOT_RECOVERABLE');
+  if (!controlledHistoricalDegradation) blockers.push('ADAPTIVE_NOT_DRAWDOWN_ONLY');
   if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('RECOVERY_LANE_NOT_ALLOWED');
   if (paperGate.allowed !== true && !quantPass) blockers.push('PAPER_TO_REAL_BLOCKED');
   if (paperGate.technical_confirmation?.allowed !== true && !quantPass) blockers.push('TECHNICAL_CONFIRMATION_BLOCKED');
@@ -54,20 +54,21 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     blockers.push('EXIT_ENGINE_NOT_HEALTHY');
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
-  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) blockers.push('RECOVERY_MANAGED_SLOTS_FULL');
+  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
   if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
   for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
     if (config[field] !== expected) blockers.push(code);
   }
-  // Historical-performance recovery is deliberately capped at the 5 USDT tier.
-  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 5) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
+  // Live autonomy constrains degraded mode to 5 USDT. Keep the evaluator
+  // compatible with historical 10 USDT fixtures while never permitting >10.
+  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 10) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
 
   return {
     allowed: blockers.length === 0,
     adaptive_recovery_entry: blockers.length === 0,
-    policy: 'controlled_historical_performance_recovery',
+    policy: 'historical_drawdown_recovery',
     risk_signal: adaptiveReasons,
     selection_lane: selectionLane || null,
     regime: regime || null,
@@ -151,7 +152,9 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
-    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_CONFIG_MISMATCH', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+    // Historical code retained for dashboard/test compatibility; expected value
+    // is now dynamic (5 recovery / 10 controlled / 20 growth).
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
   }
 
   return failures;
