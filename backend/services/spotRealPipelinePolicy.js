@@ -6,6 +6,11 @@ const { evaluateLearnedEntry } = require('./spotRealLearningPolicy');
 
 const RECOVERY_ENTRY_LANES = new Set(['EARLY_MOMENTUM', 'TACTICAL_MOMENTUM']);
 const RECOVERY_BLOCKED_REGIMES = new Set(['BEAR_TREND', 'BEAR_HIGH_VOL']);
+const RECOVERY_ALLOWED_ADAPTIVE_REASONS = new Set([
+  'NON_POSITIVE_EXPECTANCY',
+  'PROFIT_FACTOR_DEGRADED',
+  'DRAWDOWN_TOO_HIGH'
+]);
 const SAFE_REAL_CONFIG_CHECKS = [
   ['enabled', true, 'REAL_SPOT_NOT_ENABLED'],
   ['kill_switch', false, 'KILL_SWITCH_ACTIVE'],
@@ -33,11 +38,11 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
   const quantDecision = evaluateQuantEntryDecision({ paperGate, adaptiveGate, config });
   const quantPass = quantDecision.allowed === true;
 
-  const drawdownOnly = adaptiveGate.allowed === false
-    && adaptiveGate.state === 'DEGRADED'
-    && adaptiveReasons.length === 1
-    && adaptiveReasons[0] === 'DRAWDOWN_TOO_HIGH';
-  if (!drawdownOnly) blockers.push('ADAPTIVE_NOT_DRAWDOWN_ONLY');
+  const controlledHistoricalDegradation = adaptiveGate.allowed === false &&
+    adaptiveGate.state === 'DEGRADED' &&
+    adaptiveReasons.length > 0 &&
+    adaptiveReasons.every((reason) => RECOVERY_ALLOWED_ADAPTIVE_REASONS.has(String(reason)));
+  if (!controlledHistoricalDegradation) blockers.push('ADAPTIVE_DEGRADATION_NOT_RECOVERABLE');
   if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('RECOVERY_LANE_NOT_ALLOWED');
   if (paperGate.allowed !== true && !quantPass) blockers.push('PAPER_TO_REAL_BLOCKED');
   if (paperGate.technical_confirmation?.allowed !== true && !quantPass) blockers.push('TECHNICAL_CONFIRMATION_BLOCKED');
@@ -49,20 +54,21 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     blockers.push('EXIT_ENGINE_NOT_HEALTHY');
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
-  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
+  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) blockers.push('RECOVERY_MANAGED_SLOTS_FULL');
   if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
   for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
     if (config[field] !== expected) blockers.push(code);
   }
-  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 10) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
+  // Historical-performance recovery is deliberately capped at the 5 USDT tier.
+  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 5) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
 
   return {
     allowed: blockers.length === 0,
     adaptive_recovery_entry: blockers.length === 0,
-    policy: 'historical_drawdown_recovery',
-    risk_signal: 'DRAWDOWN_TOO_HIGH',
+    policy: 'controlled_historical_performance_recovery',
+    risk_signal: adaptiveReasons,
     selection_lane: selectionLane || null,
     regime: regime || null,
     max_position_usdt: managedLimits.max_per_acquisition_usdt,
@@ -122,7 +128,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
   });
 
   if (adaptiveGate.allowed === false && adaptiveRecovery.allowed !== true && quantDecision.allowed !== true) {
-    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true, controlled historical drawdown recovery passes, or quantitative fast-lane expected value is positive', {
+    failures.push(condition('Adaptive Strategy', adaptiveGate.reasons?.[0] || 'ADAPTIVE_STRATEGY_DEGRADED', 'Adaptive strategy entry_allowed=true, controlled historical-performance recovery passes, or quantitative fast-lane expected value is positive', {
       state: adaptiveGate.state,
       reasons: adaptiveGate.reasons || [],
       recovery_policy: adaptiveRecovery.policy,
@@ -145,9 +151,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
-    // Keep the historical diagnostic code for dashboard/test compatibility. The
-    // expected value is dynamic and may be 5 USDT in recovery or 10 USDT normally.
-    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_CONFIG_MISMATCH', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
   }
 
   return failures;
@@ -175,5 +179,6 @@ module.exports = {
   buildEntrySafetyFailures,
   buildPromotionConfidence,
   firstFailureReason,
-  evaluateHistoricalDrawdownRecoveryEntry
+  evaluateHistoricalDrawdownRecoveryEntry,
+  RECOVERY_ALLOWED_ADAPTIVE_REASONS
 };
