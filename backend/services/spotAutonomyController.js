@@ -8,13 +8,18 @@ const CONTROL_PATH = 'real_spot_config/control';
 
 const BASE_POSITION_USDT = 10;
 const RECOVERY_POSITION_USDT = 5;
-const MAX_INITIAL_POSITION_USDT = 10;
-const MAX_OPEN_POSITIONS = 1;
+const GROWTH_POSITION_USDT = 20;
+const MAX_INITIAL_POSITION_USDT = 20;
+const MAX_OPEN_POSITIONS = 4;
 const LOSS_STREAK_KILL_SWITCH = 3;
 const LOSS_STREAK_COOLDOWN_MINUTES = 180;
 const MAX_SESSION_LOSS_USDT = 3;
+const SESSION_WINDOW_HOURS = 24;
 const PERFORMANCE_RECOVERY_MIN_TRADES = 10;
 const PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT = 35;
+const GROWTH_MIN_TRADES = 12;
+const GROWTH_MIN_WIN_RATE_PCT = 45;
+const GROWTH_MIN_PROFIT_FACTOR = 1.15;
 
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -38,6 +43,21 @@ function buildPerformanceRecoveryState({ completedTrades = 0, totalPnl = 0, winR
     performance_recovery_min_trades: PERFORMANCE_RECOVERY_MIN_TRADES,
     performance_recovery_max_win_rate_pct: PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT,
     performance_recovery_position_usdt: active ? RECOVERY_POSITION_USDT : BASE_POSITION_USDT
+  };
+}
+
+function buildGrowthState({ completedTrades = 0, totalPnl = 0, winRate = 0, profitFactor = 0, recoveryMode = false } = {}) {
+  const active = recoveryMode !== true &&
+    Number(completedTrades) >= GROWTH_MIN_TRADES &&
+    Number(totalPnl) > 0 &&
+    Number(winRate) >= GROWTH_MIN_WIN_RATE_PCT &&
+    Number(profitFactor) >= GROWTH_MIN_PROFIT_FACTOR;
+  return {
+    growth_mode: active,
+    growth_position_usdt: active ? GROWTH_POSITION_USDT : BASE_POSITION_USDT,
+    growth_min_trades: GROWTH_MIN_TRADES,
+    growth_min_win_rate_pct: GROWTH_MIN_WIN_RATE_PCT,
+    growth_min_profit_factor: GROWTH_MIN_PROFIT_FACTOR
   };
 }
 
@@ -76,9 +96,12 @@ async function buildAutonomySnapshot(db, now = new Date()) {
   ).sort((a, b) => closedAtMillis(b) - closedAtMillis(a));
 
   const recent = trades.slice(0, 30);
-  const totalPnl = recent.reduce((sum, trade) => sum + asNumber(trade.net_pnl_usdt), 0);
+  const recentTotalPnl = recent.reduce((sum, trade) => sum + asNumber(trade.net_pnl_usdt), 0);
   const wins = recent.filter((trade) => asNumber(trade.net_pnl_usdt) > 0).length;
   const losses = recent.filter((trade) => asNumber(trade.net_pnl_usdt) < 0).length;
+  const grossProfit = recent.reduce((sum, trade) => sum + Math.max(0, asNumber(trade.net_pnl_usdt)), 0);
+  const grossLoss = Math.abs(recent.reduce((sum, trade) => sum + Math.min(0, asNumber(trade.net_pnl_usdt)), 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99 : 0;
 
   let consecutiveLosses = 0;
   for (const trade of recent) {
@@ -89,44 +112,67 @@ async function buildAutonomySnapshot(db, now = new Date()) {
   const completedTrades = wins + losses;
   const winRate = completedTrades > 0 ? (wins / completedTrades) * 100 : 0;
   const latestClosedAt = recent.length ? closedAtMillis(recent[0]) : 0;
-  const haltState = buildAutonomyHaltState({ consecutiveLosses, totalPnl, latestClosedAt, now });
-  const recoveryState = buildPerformanceRecoveryState({ completedTrades, totalPnl, winRate });
+  const nowMsRaw = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const nowMs = Number.isFinite(nowMsRaw) ? nowMsRaw : Date.now();
+  const sessionCutoff = nowMs - (SESSION_WINDOW_HOURS * 60 * 60 * 1000);
+  const sessionTrades = trades.filter((trade) => closedAtMillis(trade) >= sessionCutoff);
+  const sessionPnl = sessionTrades.reduce((sum, trade) => sum + asNumber(trade.net_pnl_usdt), 0);
+  const haltState = buildAutonomyHaltState({ consecutiveLosses, totalPnl: sessionPnl, latestClosedAt, now });
+  const recoveryState = buildPerformanceRecoveryState({ completedTrades, totalPnl: recentTotalPnl, winRate });
+  const growthState = buildGrowthState({ completedTrades, totalPnl: recentTotalPnl, winRate, profitFactor, recoveryMode: recoveryState.performance_recovery_mode });
   const learningProfile = buildLearningProfile(trades);
+  const currentStage = recoveryState.performance_recovery_mode
+    ? 'RECOVERY_5_USDT'
+    : growthState.growth_mode
+      ? 'GROWTH_20_USDT'
+      : 'CONTROLLED_10_USDT';
+  const recommendedPosition = recoveryState.performance_recovery_mode
+    ? RECOVERY_POSITION_USDT
+    : growthState.growth_mode
+      ? GROWTH_POSITION_USDT
+      : BASE_POSITION_USDT;
 
   return {
     completed_trades: completedTrades,
     wins,
     losses,
     win_rate_pct: Number(winRate.toFixed(2)),
-    recent_net_pnl_usdt: Number(totalPnl.toFixed(8)),
+    recent_net_pnl_usdt: Number(recentTotalPnl.toFixed(8)),
+    recent_profit_factor: Number(profitFactor.toFixed(4)),
+    session_window_hours: SESSION_WINDOW_HOURS,
+    session_trade_count: sessionTrades.length,
+    session_net_pnl_usdt: Number(sessionPnl.toFixed(8)),
     consecutive_losses: consecutiveLosses,
     latest_trade_closed_at: latestClosedAt > 0 ? new Date(latestClosedAt).toISOString() : null,
     ...haltState,
     ...recoveryState,
+    ...growthState,
     learning_profile: learningProfile,
-    current_stage: recoveryState.performance_recovery_mode ? 'RECOVERY_5_USDT' : 'CONTROLLED_10_USDT',
-    recommended_position_usdt: recoveryState.performance_recovery_position_usdt,
-    scale_up_locked: completedTrades < 10 || totalPnl <= 0 || winRate < 50,
-    next_stage_requirement: '10 cierres, PnL neto positivo y win rate mínimo de 50%'
+    current_stage: currentStage,
+    recommended_position_usdt: recommendedPosition,
+    scale_up_locked: growthState.growth_mode !== true,
+    next_stage_requirement: `${GROWTH_MIN_TRADES} cierres recientes, PnL neto positivo, win rate >= ${GROWTH_MIN_WIN_RATE_PCT}% y profit factor >= ${GROWTH_MIN_PROFIT_FACTOR}`
   };
 }
 
 function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new Date().toISOString()) {
   const recoveryMode = snapshot.performance_recovery_mode === true;
-  const effectivePositionUsdt = recoveryMode ? RECOVERY_POSITION_USDT : BASE_POSITION_USDT;
+  const growthMode = snapshot.growth_mode === true && !recoveryMode;
+  const effectivePositionUsdt = recoveryMode
+    ? RECOVERY_POSITION_USDT
+    : growthMode
+      ? GROWTH_POSITION_USDT
+      : BASE_POSITION_USDT;
+  const effectiveTotalCapitalUsdt = effectivePositionUsdt * MAX_OPEN_POSITIONS;
   const patch = {
     autonomy_enabled: true,
-    autonomy_stage: snapshot.current_stage || (recoveryMode ? 'RECOVERY_5_USDT' : 'CONTROLLED_10_USDT'),
+    autonomy_stage: snapshot.current_stage || (recoveryMode ? 'RECOVERY_5_USDT' : growthMode ? 'GROWTH_20_USDT' : 'CONTROLLED_10_USDT'),
     performance_recovery_mode: recoveryMode,
     performance_recovery_reason: snapshot.performance_recovery_reason || null,
+    growth_mode: growthMode,
     adaptive_position_usdt: effectivePositionUsdt,
-    max_position_usdt: recoveryMode
-      ? Math.min(Math.max(asNumber(currentConfig.max_position_usdt, effectivePositionUsdt), 0), RECOVERY_POSITION_USDT)
-      : Math.min(
-          Math.max(asNumber(currentConfig.max_position_usdt, BASE_POSITION_USDT), BASE_POSITION_USDT),
-          MAX_INITIAL_POSITION_USDT
-        ),
-    max_total_capital_usdt: effectivePositionUsdt,
+    max_position_usdt: Math.min(MAX_INITIAL_POSITION_USDT, effectivePositionUsdt),
+    max_total_capital_usdt: effectiveTotalCapitalUsdt,
     max_open_positions: MAX_OPEN_POSITIONS,
     spot_only: true,
     futures_allowed: false,
@@ -198,12 +244,19 @@ module.exports = {
   buildAutonomySnapshot,
   buildAutonomyHaltState,
   buildPerformanceRecoveryState,
+  buildGrowthState,
   buildAutonomyControlPatch,
   enforceAutonomousSafety,
   BASE_POSITION_USDT,
   RECOVERY_POSITION_USDT,
+  GROWTH_POSITION_USDT,
   MAX_INITIAL_POSITION_USDT,
+  MAX_OPEN_POSITIONS,
   LOSS_STREAK_COOLDOWN_MINUTES,
+  SESSION_WINDOW_HOURS,
   PERFORMANCE_RECOVERY_MIN_TRADES,
-  PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT
+  PERFORMANCE_RECOVERY_MAX_WIN_RATE_PCT,
+  GROWTH_MIN_TRADES,
+  GROWTH_MIN_WIN_RATE_PCT,
+  GROWTH_MIN_PROFIT_FACTOR
 };
