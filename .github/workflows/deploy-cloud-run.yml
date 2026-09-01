@@ -49,6 +49,8 @@ jobs:
           node tests/spotRealPipeline.test.js
           node tests/spotQuantEntryDecision.test.js
           node tests/spotAutonomyCooldown.test.js
+          node tests/managedSpotAcquisitionPolicy.test.js
+          node tests/adaptiveSpotStrategyController.test.js
           node tests/professionalInvestmentsDashboard.test.js
           node tests/spotDiscoveryIntelligence.test.js
           node tests/spotDiscoveryLongHorizon.test.js
@@ -58,6 +60,7 @@ jobs:
           node --check services/spotDustResidual.js
           node --check services/spotDustSweeper.js
           node --check services/spotManagedQuantityRepair.js
+          node --check services/spotManagedAcquisitionPolicy.js
           node --check services/spotCostGovernance.js
           node --check services/spotProfitTargetGovernance.js
           node --check services/controlledSpotExitExecutor.js
@@ -71,6 +74,8 @@ jobs:
           node --check services/spotRealLearningPolicy.js
           node --check services/spotRealPipelinePolicy.js
           node --check services/spotQuantEntryDecision.js
+          node --check services/spotAutonomyController.js
+          node --check services/adaptiveSpotStrategyController.js
           node --check services/spotCycleObservability.js
           node --check services/spotLiveEvidence.js
           node --check routes/investmentsSummary.route.js
@@ -198,11 +203,13 @@ jobs:
           jq -e '
             .ok == true and
             .allocation.max_managed_spot_assets == 4 and
-            .allocation.max_total_managed_capital_usdt == 40 and
-            (.allocation.max_per_acquisition_usdt == 5 or .allocation.max_per_acquisition_usdt == 10)
+            (.allocation.max_per_acquisition_usdt == 5 or .allocation.max_per_acquisition_usdt == 10 or .allocation.max_per_acquisition_usdt == 20) and
+            (.allocation.max_total_managed_capital_usdt == (.allocation.max_per_acquisition_usdt * 4)) and
+            .allocation.max_total_managed_capital_usdt <= 80
           ' <<<"$SUMMARY" >/dev/null
           ACQUISITION_USDT=$(jq -r '.allocation.max_per_acquisition_usdt' <<<"$SUMMARY")
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT"
+          MANAGED_CAPITAL_USDT=$(jq -r '.allocation.max_total_managed_capital_usdt' <<<"$SUMMARY")
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT · managed capital=${MANAGED_CAPITAL_USDT} USDT"
 
       - name: Diagnose failure
         if: failure()

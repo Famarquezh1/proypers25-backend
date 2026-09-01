@@ -9,7 +9,7 @@ const {
   runRealSpotPreflightCheck
 } = require('./binanceSpotRealExecutor');
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
-const { managedAcquisitionCapacity } = require('./spotManagedAcquisitionPolicy');
+const { managedAcquisitionCapacity, MAX_PER_ACQUISITION_USDT } = require('./spotManagedAcquisitionPolicy');
 
 const POSITIONS = 'real_spot_positions';
 const HARD_PROTECTED_RESERVE_ASSETS = Object.freeze(['XEC']);
@@ -94,7 +94,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     config
   });
   const acquisitionUsdt = Number(capacity.max_per_acquisition_usdt || 0);
-  if (!(acquisitionUsdt > 0 && acquisitionUsdt <= 10)) {
+  if (!(acquisitionUsdt > 0 && acquisitionUsdt <= MAX_PER_ACQUISITION_USDT)) {
     return { ok: true, skipped: true, reason: 'MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID'] }) };
   }
   if (managedAcquisitions.size >= capacity.max_managed_spot_assets) {

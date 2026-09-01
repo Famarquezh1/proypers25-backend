@@ -1,9 +1,9 @@
 'use strict';
 
-const MANAGED_SPOT_POLICY_VERSION = 'managed_spot_acquisition_policy_v1';
+const MANAGED_SPOT_POLICY_VERSION = 'managed_spot_acquisition_policy_v2_staged_growth';
 const MAX_MANAGED_SPOT_ASSETS = 4;
-const MAX_MANAGED_CAPITAL_USDT = 40;
-const MAX_PER_ACQUISITION_USDT = 10;
+const MAX_MANAGED_CAPITAL_USDT = 80;
+const MAX_PER_ACQUISITION_USDT = 20;
 
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -11,12 +11,20 @@ function asNumber(value, fallback = 0) {
 }
 
 function resolveManagedSpotLimits(config = {}) {
-  const configuredPerAcquisition = asNumber(config.max_position_usdt, MAX_PER_ACQUISITION_USDT);
+  const configuredPerAcquisition = asNumber(config.max_position_usdt, 10);
+  const perAcquisition = Math.min(MAX_PER_ACQUISITION_USDT, Math.max(0, configuredPerAcquisition || 10));
+  const configuredTotalCapital = asNumber(config.max_total_capital_usdt, perAcquisition * MAX_MANAGED_SPOT_ASSETS);
+  const totalCapital = Math.min(
+    MAX_MANAGED_CAPITAL_USDT,
+    Math.max(perAcquisition, configuredTotalCapital || perAcquisition * MAX_MANAGED_SPOT_ASSETS)
+  );
   return {
     version: MANAGED_SPOT_POLICY_VERSION,
     max_managed_spot_assets: MAX_MANAGED_SPOT_ASSETS,
-    max_total_managed_capital_usdt: MAX_MANAGED_CAPITAL_USDT,
-    max_per_acquisition_usdt: Math.min(MAX_PER_ACQUISITION_USDT, Math.max(0, configuredPerAcquisition || MAX_PER_ACQUISITION_USDT)),
+    max_total_managed_capital_usdt: totalCapital,
+    hard_max_managed_capital_usdt: MAX_MANAGED_CAPITAL_USDT,
+    max_per_acquisition_usdt: perAcquisition,
+    hard_max_per_acquisition_usdt: MAX_PER_ACQUISITION_USDT,
     legacy_max_open_positions: asNumber(config.max_open_positions, 0) || null,
     terminology: 'managed_spot_acquisitions'
   };
