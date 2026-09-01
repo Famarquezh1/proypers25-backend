@@ -4,9 +4,13 @@ const assert = require('assert');
 const {
   buildAutonomyHaltState,
   buildPerformanceRecoveryState,
+  buildGrowthState,
   buildAutonomyControlPatch,
   LOSS_STREAK_COOLDOWN_MINUTES,
-  RECOVERY_POSITION_USDT
+  RECOVERY_POSITION_USDT,
+  GROWTH_POSITION_USDT,
+  MAX_OPEN_POSITIONS,
+  SESSION_WINDOW_HOURS
 } = require('../services/spotAutonomyController');
 const {
   buildLearningProfile,
@@ -16,6 +20,9 @@ const {
 
 assert.strictEqual(LOSS_STREAK_COOLDOWN_MINUTES, 180);
 assert.strictEqual(RECOVERY_POSITION_USDT, 5);
+assert.strictEqual(GROWTH_POSITION_USDT, 20);
+assert.strictEqual(MAX_OPEN_POSITIONS, 4);
+assert.strictEqual(SESSION_WINDOW_HOURS, 24);
 assert.strictEqual(scoreBand(91.73), 'SCORE_85_PLUS');
 assert.strictEqual(scoreBand(63.06), 'SCORE_50_69');
 
@@ -48,6 +55,14 @@ const hardLossLimit = buildAutonomyHaltState({
 assert.strictEqual(hardLossLimit.should_halt, true);
 assert.strictEqual(hardLossLimit.halt_reason, 'MAX_SESSION_LOSS_REACHED');
 
+const staleHistoricalLoss = buildAutonomyHaltState({
+  consecutiveLosses: 0,
+  totalPnl: 0,
+  latestClosedAt: Date.parse('2026-08-14T08:00:00.000Z'),
+  now: '2026-08-16T13:00:00.000Z'
+});
+assert.strictEqual(staleHistoricalLoss.should_halt, false);
+
 const recovery = buildPerformanceRecoveryState({ completedTrades: 30, totalPnl: -1.43, winRate: 26.79 });
 assert.strictEqual(recovery.performance_recovery_mode, true);
 assert.strictEqual(recovery.performance_recovery_position_usdt, 5);
@@ -59,6 +74,12 @@ assert.strictEqual(positiveRecovery.performance_recovery_position_usdt, 10);
 
 const insufficientSample = buildPerformanceRecoveryState({ completedTrades: 9, totalPnl: -2, winRate: 0 });
 assert.strictEqual(insufficientSample.performance_recovery_mode, false);
+
+const growth = buildGrowthState({ completedTrades: 18, totalPnl: 2.4, winRate: 55, profitFactor: 1.4, recoveryMode: false });
+assert.strictEqual(growth.growth_mode, true);
+assert.strictEqual(growth.growth_position_usdt, 20);
+const blockedGrowth = buildGrowthState({ completedTrades: 18, totalPnl: -0.1, winRate: 55, profitFactor: 1.4, recoveryMode: false });
+assert.strictEqual(blockedGrowth.growth_mode, false);
 
 const learningTrades = [];
 for (let index = 0; index < 20; index += 1) {
@@ -91,10 +112,26 @@ const throttledPatch = buildAutonomyControlPatch({
   current_stage: 'RECOVERY_5_USDT'
 }, '2026-08-28T16:00:00.000Z');
 assert.strictEqual(throttledPatch.max_position_usdt, 5);
-assert.strictEqual(throttledPatch.max_total_capital_usdt, 5);
+assert.strictEqual(throttledPatch.max_total_capital_usdt, 20);
+assert.strictEqual(throttledPatch.max_open_positions, 4);
 assert.strictEqual(throttledPatch.adaptive_position_usdt, 5);
 assert.strictEqual(throttledPatch.kill_switch, undefined);
 assert.strictEqual(throttledPatch.new_entries_enabled, undefined);
+
+const growthPatch = buildAutonomyControlPatch({
+  enabled: true,
+  max_position_usdt: 10,
+  new_entries_enabled: true,
+  kill_switch: false
+}, {
+  should_halt: false,
+  performance_recovery_mode: false,
+  growth_mode: true,
+  current_stage: 'GROWTH_20_USDT'
+}, '2026-08-28T16:00:00.000Z');
+assert.strictEqual(growthPatch.max_position_usdt, 20);
+assert.strictEqual(growthPatch.max_total_capital_usdt, 80);
+assert.strictEqual(growthPatch.max_open_positions, 4);
 
 const releasePatch = buildAutonomyControlPatch({
   enabled: true,
@@ -114,7 +151,7 @@ const releasePatch = buildAutonomyControlPatch({
 assert.strictEqual(releasePatch.kill_switch, false);
 assert.strictEqual(releasePatch.new_entries_enabled, true);
 assert.strictEqual(releasePatch.max_position_usdt, 5);
-assert.strictEqual(releasePatch.max_total_capital_usdt, 5);
+assert.strictEqual(releasePatch.max_total_capital_usdt, 20);
 assert.strictEqual(releasePatch.autonomy_halt_reason, null);
 assert.strictEqual(releasePatch.autonomy_halted_at, null);
 assert.strictEqual(releasePatch.autonomy_resume_after, null);
