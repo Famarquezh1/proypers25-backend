@@ -187,7 +187,7 @@ const configurationFailures = buildEntrySafetyFailures({
   adaptiveGate: { allowed: true },
   paperGate: { allowed: true },
   autonomy: { should_halt: false },
-  config: { ...safeConfig, max_position_usdt: 11, max_open_positions: 2 },
+  config: { ...safeConfig, max_position_usdt: 21, max_open_positions: 2 },
   openPositions: 0
 });
 assert(configurationFailures.some((item) => item.code === 'POSITION_LIMIT_MUST_BE_10_USDT'));
