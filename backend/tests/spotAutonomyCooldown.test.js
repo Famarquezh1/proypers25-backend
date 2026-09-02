@@ -17,6 +17,10 @@ const {
   evaluateLearnedEntry,
   scoreBand
 } = require('../services/spotRealLearningPolicy');
+const {
+  buildEntrySafetyFailures,
+  evaluateLearnedRecoveryOverride
+} = require('../services/spotRealPipelinePolicy');
 
 assert.strictEqual(LOSS_STREAK_COOLDOWN_MINUTES, 180);
 assert.strictEqual(RECOVERY_POSITION_USDT, 5);
@@ -99,6 +103,218 @@ const learnedPositive = evaluateLearnedEntry({ score: 91 }, learningProfile);
 assert.strictEqual(learnedPositive.allowed, true);
 const tinyProfile = buildLearningProfile(learningTrades.slice(0, 5));
 assert.strictEqual(evaluateLearnedEntry({ score: 63 }, tinyProfile).allowed, true);
+
+const recoveryLearningConfig = {
+  enabled: true,
+  kill_switch: false,
+  new_entries_enabled: true,
+  auto_order_execution: true,
+  real_sells_enabled: true,
+  spot_only: true,
+  futures_allowed: false,
+  margin_allowed: false,
+  leverage_allowed: false,
+  withdrawals_allowed: false,
+  max_position_usdt: 5,
+  max_total_capital_usdt: 20,
+  max_open_positions: 4,
+  reconciliation_required: false,
+  account_consistent: true,
+  autonomy_stage: 'RECOVERY_5_USDT'
+};
+const recoveryLearningCandidate = {
+  symbol: 'ARBUSDT',
+  score: 65.2,
+  selection_lane: 'EARLY_MOMENTUM',
+  earlyMomentumScore: 88.08,
+  earlyMomentum: {
+    valid: true,
+    score: 88.08,
+    change_5m_pct: 0.9848,
+    change_15m_pct: 2.9197,
+    change_1h_pct: 2.8259,
+    relative_volume_15m: 2.163,
+    confirmations: 3,
+    accelerating: true
+  }
+};
+const recoveryLearningAdaptiveGate = {
+  allowed: false,
+  state: 'DEGRADED',
+  reasons: ['DRAWDOWN_TOO_HIGH'],
+  regime: { regime: 'BULL_TREND' }
+};
+const recoveryLearningPaperGate = {
+  allowed: true,
+  reasons: [],
+  selection_lane: 'EARLY_MOMENTUM',
+  candidate: recoveryLearningCandidate,
+  technical_confirmation: { allowed: true, score: 82, confirmations: 3 }
+};
+const recoveryLearningAutonomy = {
+  should_halt: false,
+  current_stage: 'RECOVERY_5_USDT',
+  learning_profile: learningProfile
+};
+const healthyReconciliation = { account_consistent: true, entries_blocked: false };
+const healthyExits = { ok: true, blocked: false, exit_engine_healthy: true, failures: [] };
+const recoveryNegativeLearning = evaluateLearnedEntry(recoveryLearningCandidate, learningProfile);
+assert.strictEqual(recoveryNegativeLearning.allowed, false);
+assert.strictEqual(recoveryNegativeLearning.reason, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
+
+const learnedRecoveryOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(learnedRecoveryOverride.allowed, true);
+assert.strictEqual(learnedRecoveryOverride.learning_remains_active, true);
+assert.strictEqual(learnedRecoveryOverride.risk_signal, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
+assert.strictEqual(learnedRecoveryOverride.max_position_usdt, 5);
+assert.strictEqual(learnedRecoveryOverride.metrics.early_momentum_score, 88.08);
+assert.strictEqual(learnedRecoveryOverride.metrics.confirmations, 3);
+assert.strictEqual(learnedRecoveryOverride.metrics.relative_volume_15m, 2.163);
+
+const recoveryLearningFailures = buildEntrySafetyFailures({
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: { ...recoveryLearningAdaptiveGate, regime: { regime: 'BULL_TREND' } },
+  paperGate: { ...recoveryLearningPaperGate, candidate: { ...recoveryLearningCandidate, earlyMomentum: { ...recoveryLearningCandidate.earlyMomentum } } },
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.deepStrictEqual(recoveryLearningFailures, []);
+
+const annotatedRecoveryPaperGate = { ...recoveryLearningPaperGate, candidate: { ...recoveryLearningCandidate, earlyMomentum: { ...recoveryLearningCandidate.earlyMomentum } } };
+buildEntrySafetyFailures({
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: { ...recoveryLearningAdaptiveGate, regime: { regime: 'BULL_TREND' } },
+  paperGate: annotatedRecoveryPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_raw_allowed, false);
+assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_allowed, true);
+assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_risk_signal, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
+assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_recovery_override.allowed, true);
+
+const controlledStageOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: { ...recoveryLearningAutonomy, current_stage: 'CONTROLLED_10_USDT' },
+  config: { ...recoveryLearningConfig, autonomy_stage: 'CONTROLLED_10_USDT', max_position_usdt: 10, max_total_capital_usdt: 40 },
+  openPositions: 0
+});
+assert.strictEqual(controlledStageOverride.allowed, false);
+assert(controlledStageOverride.blockers.includes('LEARNING_OVERRIDE_REQUIRES_RECOVERY_5_USDT'));
+
+const weakMomentumOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: {
+    ...recoveryLearningPaperGate,
+    candidate: {
+      ...recoveryLearningCandidate,
+      earlyMomentumScore: 84.99,
+      earlyMomentum: { ...recoveryLearningCandidate.earlyMomentum, score: 84.99 }
+    }
+  },
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(weakMomentumOverride.allowed, false);
+assert(weakMomentumOverride.blockers.includes('LEARNING_OVERRIDE_MOMENTUM_BELOW_85'));
+
+const weakVolumeOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: {
+    ...recoveryLearningPaperGate,
+    candidate: {
+      ...recoveryLearningCandidate,
+      earlyMomentum: { ...recoveryLearningCandidate.earlyMomentum, relative_volume_15m: 1.49 }
+    }
+  },
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(weakVolumeOverride.allowed, false);
+assert(weakVolumeOverride.blockers.includes('LEARNING_OVERRIDE_RELATIVE_VOLUME_TOO_LOW'));
+
+const insufficientConfirmationsOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: {
+    ...recoveryLearningPaperGate,
+    candidate: {
+      ...recoveryLearningCandidate,
+      earlyMomentum: { ...recoveryLearningCandidate.earlyMomentum, confirmations: 2 }
+    }
+  },
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(insufficientConfirmationsOverride.allowed, false);
+assert(insufficientConfirmationsOverride.blockers.includes('LEARNING_OVERRIDE_CONFIRMATIONS_BELOW_3'));
+
+const bearRegimeOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: { ...recoveryLearningAdaptiveGate, regime: { regime: 'BEAR_TREND' } },
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(bearRegimeOverride.allowed, false);
+assert(bearRegimeOverride.blockers.includes('LEARNING_OVERRIDE_MARKET_REGIME_BLOCKED'));
+
+const unhealthyExitOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: { ok: false, blocked: true, exit_engine_healthy: false, failures: [{ reason: 'EXIT_ENGINE_NOT_HEALTHY' }] },
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(unhealthyExitOverride.allowed, false);
+assert(unhealthyExitOverride.blockers.includes('LEARNING_OVERRIDE_EXIT_ENGINE_NOT_HEALTHY'));
+
+const reconciliationBlockedOverride = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: { account_consistent: false, entries_blocked: true },
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 0
+});
+assert.strictEqual(reconciliationBlockedOverride.allowed, false);
+assert(reconciliationBlockedOverride.blockers.includes('LEARNING_OVERRIDE_RECONCILIATION_NOT_PASS'));
 
 const throttledPatch = buildAutonomyControlPatch({
   enabled: true,
