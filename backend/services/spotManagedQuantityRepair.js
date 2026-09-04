@@ -12,7 +12,7 @@ const {
 
 const POSITIONS = 'real_spot_positions';
 const CONTROL_PATH = 'real_spot_config/control';
-const VERSION = 'spot_managed_quantity_v2_dust_residual';
+const VERSION = 'spot_managed_quantity_v3_all_residuals';
 const TOLERANCE = 1e-8;
 
 function number(value, fallback = 0) {
@@ -143,6 +143,28 @@ async function getDustMarketContext(symbol, dependencies = {}) {
   };
 }
 
+async function classifyAndCloseDustIfNeeded(db, doc, position, summary, dependencies = {}) {
+  let dustClassification = null;
+  let dustClassificationError = null;
+  try {
+    const context = await getDustMarketContext(String(position.symbol || '').toUpperCase(), dependencies);
+    dustClassification = classifyDustResidual({
+      residualQuantity: summary.managed_quantity,
+      currentPrice: context.currentPrice,
+      marketRules: context.marketRules
+    });
+  } catch (error) {
+    dustClassificationError = error.message;
+  }
+
+  if (dustClassification?.dust !== true) {
+    return { closed: false, classification: dustClassification, error: dustClassificationError };
+  }
+
+  const closed = await closeSpotPositionAsDust(db, doc.ref, position, dustClassification);
+  return { closed: true, classification: dustClassification, result: closed, error: null };
+}
+
 async function repairManagedSpotQuantities(db, dependencies = {}) {
   const request = dependencies.privateRequest || privateRequest;
   const [account, snapshot] = await Promise.all([
@@ -167,36 +189,22 @@ async function repairManagedSpotQuantities(db, dependencies = {}) {
 
     const accountTotal = balances.get(baseAsset) || 0;
 
-    // After a confirmed partial sell, `quantity` is the remaining managed
-    // balance. Never rebuild it from the original BUY fills because that would
-    // resurrect the quantity that was already sold.
     if (isPartialExitPosition(position)) {
       const summary = summarizeRemainingManagedQuantity(position, accountTotal);
-      let dustClassification = null;
-      let dustClassificationError = null;
-      try {
-        const context = await getDustMarketContext(symbol, dependencies);
-        dustClassification = classifyDustResidual({
-          residualQuantity: summary.managed_quantity,
-          currentPrice: context.currentPrice,
-          marketRules: context.marketRules
-        });
-      } catch (error) {
-        dustClassificationError = error.message;
-      }
+      const dust = await classifyAndCloseDustIfNeeded(db, doc, position, summary, dependencies);
 
-      if (dustClassification?.dust === true) {
-        const closed = await closeSpotPositionAsDust(db, doc.ref, position, dustClassification);
-        dustPositionsClosed += closed.idempotent === true ? 0 : 1;
+      if (dust.closed) {
+        dustPositionsClosed += dust.result.idempotent === true ? 0 : 1;
         differences.push({
           position_id: doc.id,
           symbol,
           consistent: true,
           closed_as_dust: true,
-          dust_id: closed.dustId || null,
-          residual_quantity: dustClassification.residual_quantity,
-          residual_value_usdt: dustClassification.residual_value_usdt,
-          dust_reasons: dustClassification.reasons,
+          residual_classification: dust.classification.below_minimum_notional ? 'SUB_MIN_NOTIONAL_RESIDUAL' : 'DUST_RESIDUAL',
+          dust_id: dust.result.dustId || null,
+          residual_quantity: dust.classification.residual_quantity,
+          residual_value_usdt: dust.classification.residual_value_usdt,
+          dust_reasons: dust.classification.reasons,
           quantity_source: summary.source
         });
         continue;
@@ -205,9 +213,9 @@ async function repairManagedSpotQuantities(db, dependencies = {}) {
       const difference = buildManagedDifference(position, accountTotal, summary);
       differences.push({
         ...difference,
-        dust_checked: dustClassification !== null,
-        dust_classification: dustClassification,
-        dust_classification_error: dustClassificationError
+        dust_checked: dust.classification !== null,
+        dust_classification: dust.classification,
+        dust_classification_error: dust.error
       });
       await doc.ref.set({
         managed_quantity: summary.managed_quantity,
@@ -232,8 +240,31 @@ async function repairManagedSpotQuantities(db, dependencies = {}) {
     }
 
     const summary = summarizeManagedQuantity(position, trades, baseAsset);
+    const dust = await classifyAndCloseDustIfNeeded(db, doc, position, summary, dependencies);
+    if (dust.closed) {
+      dustPositionsClosed += dust.result.idempotent === true ? 0 : 1;
+      differences.push({
+        position_id: doc.id,
+        symbol,
+        consistent: true,
+        closed_as_dust: true,
+        residual_classification: dust.classification.below_minimum_notional ? 'SUB_MIN_NOTIONAL_RESIDUAL' : 'DUST_RESIDUAL',
+        dust_id: dust.result.dustId || null,
+        residual_quantity: dust.classification.residual_quantity,
+        residual_value_usdt: dust.classification.residual_value_usdt,
+        dust_reasons: dust.classification.reasons,
+        quantity_source: summary.source
+      });
+      continue;
+    }
+
     const difference = buildManagedDifference(position, accountTotal, summary);
-    differences.push(difference);
+    differences.push({
+      ...difference,
+      dust_checked: dust.classification !== null,
+      dust_classification: dust.classification,
+      dust_classification_error: dust.error
+    });
     await doc.ref.set({
       gross_quantity: summary.gross_quantity,
       base_asset_commission: summary.base_asset_commission,
@@ -294,6 +325,7 @@ module.exports = {
   summarizeRemainingManagedQuantity,
   buildManagedDifference,
   getDustMarketContext,
+  classifyAndCloseDustIfNeeded,
   repairManagedSpotQuantities,
   reconcileManagedSpotAccount
 };
