@@ -7,10 +7,12 @@ const RESULTS_COLLECTION = 'real_spot_execution_results';
 const CONTROL_PATH = 'real_spot_config/control';
 
 const BASE_POSITION_USDT = 10;
-const RECOVERY_POSITION_USDT = 5;
+const RECOVERY_POSITION_USDT = 25;
 const GROWTH_POSITION_USDT = 20;
-const MAX_INITIAL_POSITION_USDT = 20;
+const MAX_INITIAL_POSITION_USDT = 25;
 const MAX_OPEN_POSITIONS = 4;
+const RECOVERY_MAX_OPEN_POSITIONS = 2;
+const RECOVERY_MAX_TOTAL_CAPITAL_USDT = 50;
 const LOSS_STREAK_KILL_SWITCH = 3;
 const LOSS_STREAK_COOLDOWN_MINUTES = 180;
 const MAX_SESSION_LOSS_USDT = 3;
@@ -122,7 +124,7 @@ async function buildAutonomySnapshot(db, now = new Date()) {
   const growthState = buildGrowthState({ completedTrades, totalPnl: recentTotalPnl, winRate, profitFactor, recoveryMode: recoveryState.performance_recovery_mode });
   const learningProfile = buildLearningProfile(trades);
   const currentStage = recoveryState.performance_recovery_mode
-    ? 'RECOVERY_5_USDT'
+    ? 'RECOVERY_25_USDT'
     : growthState.growth_mode
       ? 'GROWTH_20_USDT'
       : 'CONTROLLED_10_USDT';
@@ -163,17 +165,20 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
     : growthMode
       ? GROWTH_POSITION_USDT
       : BASE_POSITION_USDT;
-  const effectiveTotalCapitalUsdt = effectivePositionUsdt * MAX_OPEN_POSITIONS;
+  const effectiveMaxOpenPositions = recoveryMode ? RECOVERY_MAX_OPEN_POSITIONS : MAX_OPEN_POSITIONS;
+  const effectiveTotalCapitalUsdt = recoveryMode
+    ? RECOVERY_MAX_TOTAL_CAPITAL_USDT
+    : effectivePositionUsdt * effectiveMaxOpenPositions;
   const patch = {
     autonomy_enabled: true,
-    autonomy_stage: snapshot.current_stage || (recoveryMode ? 'RECOVERY_5_USDT' : growthMode ? 'GROWTH_20_USDT' : 'CONTROLLED_10_USDT'),
+    autonomy_stage: snapshot.current_stage || (recoveryMode ? 'RECOVERY_25_USDT' : growthMode ? 'GROWTH_20_USDT' : 'CONTROLLED_10_USDT'),
     performance_recovery_mode: recoveryMode,
     performance_recovery_reason: snapshot.performance_recovery_reason || null,
     growth_mode: growthMode,
     adaptive_position_usdt: effectivePositionUsdt,
     max_position_usdt: Math.min(MAX_INITIAL_POSITION_USDT, effectivePositionUsdt),
     max_total_capital_usdt: effectiveTotalCapitalUsdt,
-    max_open_positions: MAX_OPEN_POSITIONS,
+    max_open_positions: effectiveMaxOpenPositions,
     spot_only: true,
     futures_allowed: false,
     margin_allowed: false,
@@ -252,6 +257,8 @@ module.exports = {
   GROWTH_POSITION_USDT,
   MAX_INITIAL_POSITION_USDT,
   MAX_OPEN_POSITIONS,
+  RECOVERY_MAX_OPEN_POSITIONS,
+  RECOVERY_MAX_TOTAL_CAPITAL_USDT,
   LOSS_STREAK_COOLDOWN_MINUTES,
   SESSION_WINDOW_HOURS,
   PERFORMANCE_RECOVERY_MIN_TRADES,

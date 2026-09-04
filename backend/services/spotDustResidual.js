@@ -2,7 +2,7 @@
 
 const BALANCE_DOC = 'real_spot_config/balance';
 const DUST_COLLECTION = 'real_spot_dust_residuals';
-const VERSION = 'spot_dust_residual_v1';
+const VERSION = 'spot_dust_residual_v2_sub_notional';
 const EPSILON = 1e-12;
 
 function number(value, fallback = 0) {
@@ -60,6 +60,10 @@ function classifyDustResidual({ residualQuantity, currentPrice, symbolInfo, mark
   return {
     dust,
     cleared,
+    below_step_size: belowStep,
+    below_minimum_quantity: belowMinimumQuantity,
+    below_minimum_notional: belowMinimumNotional,
+    residual_classification: belowMinimumNotional ? 'SUB_MIN_NOTIONAL_RESIDUAL' : dust ? 'DUST_RESIDUAL' : null,
     reasons,
     residual_quantity: residual,
     residual_value_usdt: residualValue,
@@ -96,13 +100,15 @@ async function closeSpotPositionAsDust(db, positionRef, position, classification
     const balance = balanceSnap.exists ? balanceSnap.data() : {};
     const residualQuantity = Math.max(0, number(classification.residual_quantity));
     const residualValue = Math.max(0, number(classification.residual_value_usdt));
+    const residualClassification = classification.residual_classification || 'DUST_RESIDUAL';
     const originalExitReason = latest.last_partial_exit_reason || latest.exit_reason_pending || latest.closing_reason || null;
 
     tx.update(positionRef, {
       status: 'REAL_CLOSED',
       exit_status: 'DUST_RESIDUAL',
-      closing_reason: originalExitReason || 'DUST_RESIDUAL',
-      logical_closing_reason: 'DUST_RESIDUAL',
+      residual_classification: residualClassification,
+      closing_reason: originalExitReason || residualClassification,
+      logical_closing_reason: residualClassification,
       close_source: 'BINANCE_BALANCE_RECONCILIATION',
       closed_at: now,
       quantity: 0,
@@ -130,6 +136,7 @@ async function closeSpotPositionAsDust(db, positionRef, position, classification
       symbol: latest.symbol || position.symbol || null,
       asset: classification.base_asset || String(latest.symbol || '').replace(/USDT$/i, ''),
       status: residualQuantity > EPSILON ? 'UNMANAGED_DUST' : 'CLEARED',
+      residual_classification: residualClassification,
       residual_quantity: residualQuantity,
       residual_value_usdt: residualValue,
       residual_cost_usdt: remainingCapital,
@@ -156,6 +163,7 @@ async function closeSpotPositionAsDust(db, positionRef, position, classification
       idempotent: false,
       dustId: dustRef.id,
       positionId: position.id,
+      residualClassification,
       residualQuantity,
       residualValue,
       residualCost: remainingCapital

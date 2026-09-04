@@ -62,25 +62,27 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     blockers.push('EXIT_ENGINE_NOT_HEALTHY');
   }
   if (autonomy.should_halt === true) blockers.push('AUTONOMY_HALTED');
-  if (Number(openPositions || 0) !== 0) blockers.push('RECOVERY_REQUIRES_ZERO_OPEN_POSITIONS');
+  if (Number(openPositions || 0) >= managedLimits.max_managed_spot_assets) blockers.push('RECOVERY_MAX_MANAGED_SPOT_ASSETS_REACHED');
   if (!regime || regime === 'UNKNOWN') blockers.push('MARKET_REGIME_UNKNOWN');
   else if (RECOVERY_BLOCKED_REGIMES.has(regime)) blockers.push('RECOVERY_BLOCKED_BEAR_REGIME');
 
   for (const [field, expected, code] of SAFE_REAL_CONFIG_CHECKS) {
     if (config[field] !== expected) blockers.push(code);
   }
-  // Live autonomy constrains degraded mode to 5 USDT. Keep the evaluator
-  // compatible with historical 10 USDT fixtures while never permitting >10.
-  if (managedLimits.max_per_acquisition_usdt <= 0 || managedLimits.max_per_acquisition_usdt > 10) blockers.push('RECOVERY_POSITION_LIMIT_UNSAFE');
+  if (managedLimits.max_per_acquisition_usdt !== 25) blockers.push('RECOVERY_POSITION_LIMIT_MUST_BE_25_USDT');
+  if (managedLimits.max_managed_spot_assets > 2) blockers.push('RECOVERY_MAX_POSITIONS_MUST_BE_2');
+  if (managedLimits.max_total_managed_capital_usdt > 50) blockers.push('RECOVERY_MANAGED_CAPITAL_ABOVE_50_USDT');
 
   return {
     allowed: blockers.length === 0,
     adaptive_recovery_entry: blockers.length === 0,
-    policy: 'historical_drawdown_recovery',
+    policy: 'historical_drawdown_recovery_25_usdt',
     risk_signal: adaptiveReasons,
     selection_lane: selectionLane || null,
     regime: regime || null,
     max_position_usdt: managedLimits.max_per_acquisition_usdt,
+    max_managed_spot_assets: managedLimits.max_managed_spot_assets,
+    max_total_managed_capital_usdt: managedLimits.max_total_managed_capital_usdt,
     quant_decision: quantDecision,
     blockers: [...new Set(blockers)]
   };
@@ -119,8 +121,10 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
   if (learnedDecision.allowed !== false || learnedDecision.reason !== 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY') {
     blockers.push('LEARNING_NEGATIVE_EXPECTANCY_NOT_PRESENT');
   }
-  if (stage !== 'RECOVERY_5_USDT') blockers.push('LEARNING_OVERRIDE_REQUIRES_RECOVERY_5_USDT');
-  if (managedLimits.max_per_acquisition_usdt !== 5) blockers.push('LEARNING_OVERRIDE_REQUIRES_5_USDT_LIMIT');
+  if (stage !== 'RECOVERY_25_USDT') blockers.push('LEARNING_OVERRIDE_REQUIRES_RECOVERY_25_USDT');
+  if (managedLimits.max_per_acquisition_usdt !== 25) blockers.push('LEARNING_OVERRIDE_REQUIRES_25_USDT_LIMIT');
+  if (managedLimits.max_managed_spot_assets !== 2) blockers.push('LEARNING_OVERRIDE_REQUIRES_2_POSITION_LIMIT');
+  if (managedLimits.max_total_managed_capital_usdt > 50) blockers.push('LEARNING_OVERRIDE_REQUIRES_50_USDT_CAP');
   if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('LEARNING_OVERRIDE_LANE_NOT_ALLOWED');
   if (earlyMomentumScore < minimumMomentumScore) blockers.push('LEARNING_OVERRIDE_MOMENTUM_BELOW_85');
   if (confirmations < RECOVERY_LEARNING_MIN_CONFIRMATIONS) blockers.push('LEARNING_OVERRIDE_CONFIRMATIONS_BELOW_3');
@@ -139,7 +143,7 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
 
   return {
     allowed: blockers.length === 0,
-    policy: 'learned_negative_expectancy_recovery_override_v1',
+    policy: 'learned_negative_expectancy_recovery_override_v2_25_usdt',
     learning_remains_active: true,
     risk_signal: learnedDecision.reason || null,
     candidate_score: learnedDecision.candidate_score ?? asNumber(candidate.opportunityScore ?? candidate.score, 0),
@@ -205,7 +209,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     failures.push(condition(
       'Real Performance Learning',
       learnedDecision.reason || 'LEARNED_ENTRY_BLOCKED',
-      'Candidate score band must not have statistically supported negative real expectancy unless the strict RECOVERY_5_USDT momentum exception passes',
+      'Candidate score band must not have statistically supported negative real expectancy unless the strict RECOVERY_25_USDT momentum exception passes',
       {
         learned_decision: learnedDecision,
         recovery_override: learnedRecoveryOverride
@@ -262,9 +266,7 @@ function buildEntrySafetyFailures({ reconciliation = {}, exits = {}, adaptiveGat
     if (config[field] !== expected) failures.push(condition('Configuration', code, `${field}=${expected}`, config[field]));
   }
   if (Number(config.max_position_usdt) !== managedLimits.max_per_acquisition_usdt) {
-    // Historical code retained for dashboard/test compatibility; expected value
-    // is now dynamic (5 recovery / 10 controlled / 20 growth).
-    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_MUST_BE_10_USDT', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
+    failures.push(condition('Managed Spot Assets', 'POSITION_LIMIT_CONFIG_MISMATCH', `max_position_usdt=${managedLimits.max_per_acquisition_usdt}`, config.max_position_usdt));
   }
 
   return failures;

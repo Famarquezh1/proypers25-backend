@@ -10,6 +10,8 @@ const {
   RECOVERY_POSITION_USDT,
   GROWTH_POSITION_USDT,
   MAX_OPEN_POSITIONS,
+  RECOVERY_MAX_OPEN_POSITIONS,
+  RECOVERY_MAX_TOTAL_CAPITAL_USDT,
   SESSION_WINDOW_HOURS
 } = require('../services/spotAutonomyController');
 const {
@@ -23,9 +25,11 @@ const {
 } = require('../services/spotRealPipelinePolicy');
 
 assert.strictEqual(LOSS_STREAK_COOLDOWN_MINUTES, 180);
-assert.strictEqual(RECOVERY_POSITION_USDT, 5);
+assert.strictEqual(RECOVERY_POSITION_USDT, 25);
 assert.strictEqual(GROWTH_POSITION_USDT, 20);
 assert.strictEqual(MAX_OPEN_POSITIONS, 4);
+assert.strictEqual(RECOVERY_MAX_OPEN_POSITIONS, 2);
+assert.strictEqual(RECOVERY_MAX_TOTAL_CAPITAL_USDT, 50);
 assert.strictEqual(SESSION_WINDOW_HOURS, 24);
 assert.strictEqual(scoreBand(91.73), 'SCORE_85_PLUS');
 assert.strictEqual(scoreBand(63.06), 'SCORE_50_69');
@@ -69,7 +73,7 @@ assert.strictEqual(staleHistoricalLoss.should_halt, false);
 
 const recovery = buildPerformanceRecoveryState({ completedTrades: 30, totalPnl: -1.43, winRate: 26.79 });
 assert.strictEqual(recovery.performance_recovery_mode, true);
-assert.strictEqual(recovery.performance_recovery_position_usdt, 5);
+assert.strictEqual(recovery.performance_recovery_position_usdt, 25);
 assert.strictEqual(recovery.performance_recovery_reason, 'RECENT_REAL_PERFORMANCE_DEGRADED');
 
 const positiveRecovery = buildPerformanceRecoveryState({ completedTrades: 30, totalPnl: 0.25, winRate: 30 });
@@ -115,12 +119,12 @@ const recoveryLearningConfig = {
   margin_allowed: false,
   leverage_allowed: false,
   withdrawals_allowed: false,
-  max_position_usdt: 5,
-  max_total_capital_usdt: 20,
-  max_open_positions: 4,
+  max_position_usdt: 25,
+  max_total_capital_usdt: 50,
+  max_open_positions: 2,
   reconciliation_required: false,
   account_consistent: true,
-  autonomy_stage: 'RECOVERY_5_USDT'
+  autonomy_stage: 'RECOVERY_25_USDT'
 };
 const recoveryLearningCandidate = {
   symbol: 'ARBUSDT',
@@ -153,7 +157,7 @@ const recoveryLearningPaperGate = {
 };
 const recoveryLearningAutonomy = {
   should_halt: false,
-  current_stage: 'RECOVERY_5_USDT',
+  current_stage: 'RECOVERY_25_USDT',
   learning_profile: learningProfile
 };
 const healthyReconciliation = { account_consistent: true, entries_blocked: false };
@@ -175,7 +179,7 @@ const learnedRecoveryOverride = evaluateLearnedRecoveryOverride({
 assert.strictEqual(learnedRecoveryOverride.allowed, true);
 assert.strictEqual(learnedRecoveryOverride.learning_remains_active, true);
 assert.strictEqual(learnedRecoveryOverride.risk_signal, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
-assert.strictEqual(learnedRecoveryOverride.max_position_usdt, 5);
+assert.strictEqual(learnedRecoveryOverride.max_position_usdt, 25);
 assert.strictEqual(learnedRecoveryOverride.metrics.early_momentum_score, 88.08);
 assert.strictEqual(learnedRecoveryOverride.metrics.confirmations, 3);
 assert.strictEqual(learnedRecoveryOverride.metrics.relative_volume_15m, 2.163);
@@ -206,6 +210,31 @@ assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_allowed, true);
 assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_risk_signal, 'LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY');
 assert.strictEqual(annotatedRecoveryPaperGate.learned_entry_recovery_override.allowed, true);
 
+const oneOpenRecovery = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 1
+});
+assert.strictEqual(oneOpenRecovery.allowed, true);
+
+const twoOpenRecovery = evaluateLearnedRecoveryOverride({
+  learnedDecision: recoveryNegativeLearning,
+  reconciliation: healthyReconciliation,
+  exits: healthyExits,
+  adaptiveGate: recoveryLearningAdaptiveGate,
+  paperGate: recoveryLearningPaperGate,
+  autonomy: recoveryLearningAutonomy,
+  config: recoveryLearningConfig,
+  openPositions: 2
+});
+assert.strictEqual(twoOpenRecovery.allowed, false);
+assert(twoOpenRecovery.adaptive_recovery.blockers.includes('RECOVERY_MAX_MANAGED_SPOT_ASSETS_REACHED'));
+
 const controlledStageOverride = evaluateLearnedRecoveryOverride({
   learnedDecision: recoveryNegativeLearning,
   reconciliation: healthyReconciliation,
@@ -213,11 +242,11 @@ const controlledStageOverride = evaluateLearnedRecoveryOverride({
   adaptiveGate: recoveryLearningAdaptiveGate,
   paperGate: recoveryLearningPaperGate,
   autonomy: { ...recoveryLearningAutonomy, current_stage: 'CONTROLLED_10_USDT' },
-  config: { ...recoveryLearningConfig, autonomy_stage: 'CONTROLLED_10_USDT', max_position_usdt: 10, max_total_capital_usdt: 40 },
+  config: { ...recoveryLearningConfig, autonomy_stage: 'CONTROLLED_10_USDT', max_position_usdt: 10, max_total_capital_usdt: 40, max_open_positions: 4 },
   openPositions: 0
 });
 assert.strictEqual(controlledStageOverride.allowed, false);
-assert(controlledStageOverride.blockers.includes('LEARNING_OVERRIDE_REQUIRES_RECOVERY_5_USDT'));
+assert(controlledStageOverride.blockers.includes('LEARNING_OVERRIDE_REQUIRES_RECOVERY_25_USDT'));
 
 const weakMomentumOverride = evaluateLearnedRecoveryOverride({
   learnedDecision: recoveryNegativeLearning,
@@ -325,12 +354,12 @@ const throttledPatch = buildAutonomyControlPatch({
   should_halt: false,
   performance_recovery_mode: true,
   performance_recovery_reason: 'RECENT_REAL_PERFORMANCE_DEGRADED',
-  current_stage: 'RECOVERY_5_USDT'
+  current_stage: 'RECOVERY_25_USDT'
 }, '2026-08-28T16:00:00.000Z');
-assert.strictEqual(throttledPatch.max_position_usdt, 5);
-assert.strictEqual(throttledPatch.max_total_capital_usdt, 20);
-assert.strictEqual(throttledPatch.max_open_positions, 4);
-assert.strictEqual(throttledPatch.adaptive_position_usdt, 5);
+assert.strictEqual(throttledPatch.max_position_usdt, 25);
+assert.strictEqual(throttledPatch.max_total_capital_usdt, 50);
+assert.strictEqual(throttledPatch.max_open_positions, 2);
+assert.strictEqual(throttledPatch.adaptive_position_usdt, 25);
 assert.strictEqual(throttledPatch.kill_switch, undefined);
 assert.strictEqual(throttledPatch.new_entries_enabled, undefined);
 
@@ -361,13 +390,14 @@ const releasePatch = buildAutonomyControlPatch({
   should_halt: false,
   performance_recovery_mode: true,
   performance_recovery_reason: 'RECENT_REAL_PERFORMANCE_DEGRADED',
-  current_stage: 'RECOVERY_5_USDT',
+  current_stage: 'RECOVERY_25_USDT',
   loss_streak_cooldown_until: '2026-08-10T02:25:00.000Z'
 }, '2026-08-16T13:00:00.000Z');
 assert.strictEqual(releasePatch.kill_switch, false);
 assert.strictEqual(releasePatch.new_entries_enabled, true);
-assert.strictEqual(releasePatch.max_position_usdt, 5);
-assert.strictEqual(releasePatch.max_total_capital_usdt, 20);
+assert.strictEqual(releasePatch.max_position_usdt, 25);
+assert.strictEqual(releasePatch.max_total_capital_usdt, 50);
+assert.strictEqual(releasePatch.max_open_positions, 2);
 assert.strictEqual(releasePatch.autonomy_halt_reason, null);
 assert.strictEqual(releasePatch.autonomy_halted_at, null);
 assert.strictEqual(releasePatch.autonomy_resume_after, null);
