@@ -1,7 +1,266 @@
 {
-  "generated_at": "2026-09-04T20:33:01Z",
-  "count": 70,
+  "generated_at": "2026-09-04T21:04:18Z",
+  "count": 68,
   "errors": [
+    {
+      "timestamp": "2026-09-04T21:01:02.019558Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para DOGE-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T21:00:43.298616Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "Error training candlesticks SOL-USD: undefined"
+    },
+    {
+      "timestamp": "2026-09-04T21:00:42.814762Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T21:00:25.015653Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T21:00:12.440608Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:56:18.349721Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 47: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:56:04.046830Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 46: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:55:50.686473Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 45: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:55:37.535256Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 44: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:55:24.493378Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 43: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:55:11.147715Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 42: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:51:06.817880Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 41: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:50:55.783208Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 40: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:50:44.616064Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 39: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:50:32.761280Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 38: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:50:20.995912Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 37: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:50:08.521434Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:46:15.909421Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:46:03.267480Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:45:52.133288Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:45:41.259417Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:45:30.442936Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:45:19.488390Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:45:08.338325Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:42:05.779343Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:41:54.857339Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:41:42.780837Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:41:31.829923Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:40:56.881849Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:40:42.201903Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:40:27.287803Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:40:13.215023Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:36:06.519549Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:35:53.094739Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:35:39.587726Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:35:26.263172Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
+    {
+      "timestamp": "2026-09-04T20:35:12.767997Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00698-qm8",
+      "event": null,
+      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para SOL-USD' }"
+    },
     {
       "timestamp": "2026-09-04T20:31:17.981512Z",
       "severity": "DEFAULT",
@@ -218,279 +477,6 @@
       "revision": "proypers25-backend-00698-qm8",
       "event": null,
       "message": "✔️ Intento 36: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:19:03.858883Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 35: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:15:57.450194Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 34: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:15:46.367726Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 33: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:15:35.620281Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 32: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:15:24.677386Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 31: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:15:13.680923Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 30: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:14:40.957729Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 29: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:11:13.725091Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 28: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:11:02.550281Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 27: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:10:51.771487Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 26: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:10:40.951424Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 25: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:10:29.856426Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 24: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:10:18.812626Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 23: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:10:07.756385Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 22: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:06:01.510952Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 21: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:05:50.377512Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 20: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:05:39.400078Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 19: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:05:28.431847Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 18: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:05:17.446636Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 17: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:05:06.261458Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 16: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:01:03.208507Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 15: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:00:51.953903Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 14: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:00:40.805082Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 13: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:00:29.851064Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 12: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:00:18.632625Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 11: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T20:00:07.382244Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 10: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:56:12.721315Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 9: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:55:59.389225Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 8: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:55:46.381952Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 7: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:55:33.613110Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 6: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:55:20.782798Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 5: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:55:08.146312Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 4: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:51:00.063417Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 3: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:50:48.242086Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 2: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:50:36.054698Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 1: { error: 'No se pudieron obtener datos para ETH-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:50:24.248257Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "Error training candlesticks BTC-USD: undefined"
-    },
-    {
-      "timestamp": "2026-09-04T19:50:23.783549Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 50: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:50:12.678680Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 49: { error: 'No se pudieron obtener datos para BTC-USD' }"
-    },
-    {
-      "timestamp": "2026-09-04T19:49:18.757791Z",
-      "severity": "DEFAULT",
-      "revision": "proypers25-backend-00698-qm8",
-      "event": null,
-      "message": "✔️ Intento 48: { error: 'No se pudieron obtener datos para BTC-USD' }"
     }
   ]
 }
