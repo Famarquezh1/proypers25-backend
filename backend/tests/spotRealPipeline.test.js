@@ -32,11 +32,18 @@ const safeConfig = {
   leverage_allowed: false,
   withdrawals_allowed: false,
   max_position_usdt: 10,
-  // Legacy compatibility field. Managed Spot capacity is now governed by the
-  // dedicated four-acquisition policy instead of Futures-style position wording.
-  max_open_positions: 1,
+  max_total_capital_usdt: 40,
+  max_open_positions: 4,
   reconciliation_required: false,
   account_consistent: true
+};
+
+const recoveryConfig = {
+  ...safeConfig,
+  max_position_usdt: 25,
+  max_total_capital_usdt: 50,
+  max_open_positions: 2,
+  autonomy_stage: 'RECOVERY_25_USDT'
 };
 
 const lowPromotion = buildPromotionConfidence({ allowed: false, state: 'OBSERVE', symbol: 'BTCUSDT', reasons: ['QUANT_CHAMPION_NOT_ELIGIBLE'] });
@@ -74,12 +81,14 @@ const pythRecovery = evaluateHistoricalDrawdownRecoveryEntry({
   adaptiveGate: pythAdaptiveGate,
   paperGate: pythPaperGate,
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 0
 });
 assert.strictEqual(pythRecovery.allowed, true);
-assert.strictEqual(pythRecovery.policy, 'historical_drawdown_recovery');
-assert.strictEqual(pythRecovery.max_position_usdt, 10);
+assert.strictEqual(pythRecovery.policy, 'historical_drawdown_recovery_25_usdt');
+assert.strictEqual(pythRecovery.max_position_usdt, 25);
+assert.strictEqual(pythRecovery.max_managed_spot_assets, 2);
+assert.strictEqual(pythRecovery.max_total_managed_capital_usdt, 50);
 
 const pythRecoveryFailures = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
@@ -87,13 +96,13 @@ const pythRecoveryFailures = buildEntrySafetyFailures({
   adaptiveGate: pythAdaptiveGate,
   paperGate: pythPaperGate,
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 0
 });
 assert.deepStrictEqual(pythRecoveryFailures, []);
 assert.strictEqual(pythAdaptiveGate.adaptive_recovery_entry, true);
-assert.strictEqual(pythAdaptiveGate.adaptive_recovery_policy, 'historical_drawdown_recovery');
-assert.strictEqual(pythAdaptiveGate.adaptive_recovery_max_position_usdt, 10);
+assert.strictEqual(pythAdaptiveGate.adaptive_recovery_policy, 'historical_drawdown_recovery_25_usdt');
+assert.strictEqual(pythAdaptiveGate.adaptive_recovery_max_position_usdt, 25);
 
 const bearRecoveryFailures = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
@@ -101,7 +110,7 @@ const bearRecoveryFailures = buildEntrySafetyFailures({
   adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BEAR_TREND' } },
   paperGate: pythPaperGate,
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 0
 });
 assert(bearRecoveryFailures.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
@@ -117,22 +126,34 @@ const recoveryTechnicalBlock = buildEntrySafetyFailures({
     technical_confirmation: { allowed: false }
   },
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 0
 });
 assert(recoveryTechnicalBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
 assert(recoveryTechnicalBlock.some((item) => item.code === 'TECHNICAL_VOLUME_NOT_CONFIRMED'));
 
-const recoveryOpenPositionBlock = buildEntrySafetyFailures({
+const recoveryWithOneManagedPosition = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
   exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
   adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
   paperGate: pythPaperGate,
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 1
 });
-assert(recoveryOpenPositionBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
+assert.deepStrictEqual(recoveryWithOneManagedPosition, []);
+
+const recoveryTwoPositionBlock = buildEntrySafetyFailures({
+  reconciliation: { account_consistent: true, entries_blocked: false },
+  exits: { ok: true, blocked: false, exit_engine_healthy: true, failures: [] },
+  adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
+  paperGate: pythPaperGate,
+  autonomy: { should_halt: false },
+  config: recoveryConfig,
+  openPositions: 2
+});
+assert(recoveryTwoPositionBlock.some((item) => item.code === 'MAX_MANAGED_SPOT_ASSETS_REACHED'));
+assert(recoveryTwoPositionBlock.some((item) => item.code === 'DRAWDOWN_TOO_HIGH'));
 
 const recoveryExitBlock = buildEntrySafetyFailures({
   reconciliation: { account_consistent: true, entries_blocked: false },
@@ -140,7 +161,7 @@ const recoveryExitBlock = buildEntrySafetyFailures({
   adaptiveGate: { allowed: false, state: 'DEGRADED', reasons: ['DRAWDOWN_TOO_HIGH'], regime: { regime: 'BULL_TREND' } },
   paperGate: pythPaperGate,
   autonomy: { should_halt: false },
-  config: safeConfig,
+  config: recoveryConfig,
   openPositions: 0
 });
 assert(recoveryExitBlock.some((item) => item.component === 'Exit Engine'));
@@ -187,11 +208,10 @@ const configurationFailures = buildEntrySafetyFailures({
   adaptiveGate: { allowed: true },
   paperGate: { allowed: true },
   autonomy: { should_halt: false },
-  config: { ...safeConfig, max_position_usdt: 21, max_open_positions: 2 },
+  config: { ...safeConfig, max_position_usdt: 30, max_open_positions: 2 },
   openPositions: 0
 });
-assert(configurationFailures.some((item) => item.code === 'POSITION_LIMIT_MUST_BE_10_USDT'));
-assert(!configurationFailures.some((item) => item.code === 'MAX_OPEN_POSITIONS_MUST_BE_1'));
+assert(configurationFailures.some((item) => item.code === 'POSITION_LIMIT_CONFIG_MISMATCH'));
 
 const manualReconciliation = {
   closing_reason: 'MANUAL_RECONCILIATION',
