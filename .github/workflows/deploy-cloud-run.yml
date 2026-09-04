@@ -58,6 +58,7 @@ jobs:
           node tests/spotShadowGemHunter.test.js
           node tests/unifiedControlPortal.test.js
           node --check services/spotDustResidual.js
+          node --check services/spotEntryMarketSafety.js
           node --check services/spotDustSweeper.js
           node --check services/spotManagedQuantityRepair.js
           node --check services/spotManagedAcquisitionPolicy.js
@@ -199,17 +200,20 @@ jobs:
           jq -e '.latest_cycle.gates.promotion_blocks_entry == false' <<<"$LIVE" >/dev/null
           jq -e '.latest_cycle.gates.paper_to_real == "PASS" or .latest_cycle.gates.paper_to_real == "BLOCK"' <<<"$LIVE" >/dev/null
           jq -e '(.open_positions | type) == "array"' <<<"$LIVE" >/dev/null
+          jq -e 'all(.open_positions[]?; (.residual_classification // "") != "SUB_MIN_NOTIONAL_RESIDUAL")' <<<"$LIVE" >/dev/null
           SUMMARY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
           jq -e '
             .ok == true and
-            .allocation.max_managed_spot_assets == 4 and
-            (.allocation.max_per_acquisition_usdt == 5 or .allocation.max_per_acquisition_usdt == 10 or .allocation.max_per_acquisition_usdt == 20) and
-            (.allocation.max_total_managed_capital_usdt == (.allocation.max_per_acquisition_usdt * 4)) and
-            .allocation.max_total_managed_capital_usdt <= 80
+            (
+              (.allocation.max_per_acquisition_usdt == 25 and .allocation.max_managed_spot_assets == 2 and .allocation.max_total_managed_capital_usdt == 50) or
+              (.allocation.max_per_acquisition_usdt == 10 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 40) or
+              (.allocation.max_per_acquisition_usdt == 20 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 80)
+            )
           ' <<<"$SUMMARY" >/dev/null
           ACQUISITION_USDT=$(jq -r '.allocation.max_per_acquisition_usdt' <<<"$SUMMARY")
           MANAGED_CAPITAL_USDT=$(jq -r '.allocation.max_total_managed_capital_usdt' <<<"$SUMMARY")
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT · managed capital=${MANAGED_CAPITAL_USDT} USDT"
+          MANAGED_ASSETS=$(jq -r '.allocation.max_managed_spot_assets' <<<"$SUMMARY")
+          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT · managed assets=${MANAGED_ASSETS} · managed capital=${MANAGED_CAPITAL_USDT} USDT"
 
       - name: Diagnose failure
         if: failure()
