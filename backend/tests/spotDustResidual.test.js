@@ -54,7 +54,31 @@ const tutInfo = {
   });
   const result = classifyDustResidual({ residualQuantity: 2, currentPrice: 1, marketRules: rules });
   assert.strictEqual(result.dust, true);
+  assert.strictEqual(result.below_minimum_notional, true);
+  assert.strictEqual(result.residual_classification, 'SUB_MIN_NOTIONAL_RESIDUAL');
   assert(result.reasons.includes('RESIDUAL_BELOW_MINIMUM_NOTIONAL'));
+})();
+
+(function sushiProductionEquivalentIsResidualNotFailure() {
+  const sushiInfo = {
+    symbol: 'SUSHIUSDT',
+    baseAsset: 'SUSHI',
+    status: 'TRADING',
+    isSpotTradingAllowed: true,
+    filters: [
+      { filterType: 'LOT_SIZE', minQty: '0.1', maxQty: '9000000', stepSize: '0.1' },
+      { filterType: 'NOTIONAL', minNotional: '5' }
+    ]
+  };
+  const result = classifyDustResidual({
+    residualQuantity: 24.975,
+    currentPrice: 4.80 / 24.975,
+    symbolInfo: sushiInfo
+  });
+  assert.strictEqual(result.dust, true);
+  assert.strictEqual(result.below_minimum_notional, true);
+  assert.strictEqual(result.residual_classification, 'SUB_MIN_NOTIONAL_RESIDUAL');
+  assert(result.normalized_sellable_value_usdt < 5);
 })();
 
 (function decimalFloorIsStable() {
