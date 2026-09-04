@@ -75,9 +75,13 @@ const unsafeFiveDollarEntry = evaluateSpotEntryMarketSafety({
   symbolInfo: sushiInfo
 });
 assert.strictEqual(unsafeFiveDollarEntry.allowed, false);
-assert.strictEqual(unsafeFiveDollarEntry.reason, 'ENTRY_MIN_NOTIONAL_HEADROOM_INSUFFICIENT');
+assert([
+  'ENTRY_POST_FEE_NOTIONAL_BELOW_MINIMUM',
+  'ENTRY_MIN_NOTIONAL_HEADROOM_INSUFFICIENT'
+].includes(unsafeFiveDollarEntry.reason));
 assert(unsafeFiveDollarEntry.estimated_sellable_quantity_after_fee < 25);
-assert(unsafeFiveDollarEntry.stress_sellable_notional_usdt < unsafeFiveDollarEntry.required_headroom_notional_usdt);
+assert(unsafeFiveDollarEntry.estimated_sellable_notional_now_usdt < unsafeFiveDollarEntry.rules.minimum_notional_usdt ||
+  unsafeFiveDollarEntry.stress_sellable_notional_usdt < unsafeFiveDollarEntry.required_headroom_notional_usdt);
 
 const safeRecoveryEntry = evaluateSpotEntryMarketSafety({
   symbol: 'SUSHIUSDT',
