@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-05T00:59:57.719Z",
+  "generated_at": "2026-09-05T06:39:34.342Z",
   "source": "FIRESTORE_CANONICAL_SPOT_LEDGER",
   "performance_scope": "BOT_EXECUTION_ONLY",
   "real_mode": true,
@@ -42,13 +42,13 @@
     }
   },
   "balance": {
-    "available_usdt": 251.8650565,
+    "available_usdt": 226.8660265,
     "locked_usdt": 0,
-    "in_positions_usdt": 24.9997,
+    "in_positions_usdt": 49.99873,
     "total_usdt": 276.8647565,
     "realized_pnl_usdt": -0.5861746523416145,
     "paid_trading_fees_usdt": 0.5447640200000001,
-    "updated_at": "2026-09-05T00:55:04.356Z",
+    "updated_at": "2026-09-05T06:35:04.678Z",
     "source": "BINANCE_ACCOUNT_RECONCILED"
   },
   "reconciliation": {
@@ -57,7 +57,7 @@
     "difference_usdt": 0,
     "consistent": true
   },
-  "open_positions_count": 1,
+  "open_positions_count": 2,
   "recent_bot_closed_trades": [
     {
       "id": "real_spot_result_real_spot_pos_real_spot_intent_spot_scan_1787733049224_SXTUSDT_binance_order_202828693",
