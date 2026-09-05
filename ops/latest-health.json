@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-05T04:05:29Z",
+  "generated_at": "2026-09-05T04:35:31Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00699-vsr",
   "spot_real": {
     "cycles": 9,
-    "opened": 1,
+    "opened": 0,
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
@@ -14,7 +14,7 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 2,
-    "promoted_symbol": "SNDKBUSDT",
+    "promoted_symbol": "DASHUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "NON_POSITIVE_EXPECTANCY",
