@@ -36,8 +36,18 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function recoveryCapacityRules(config = {}) {
+  const productivity = config.recovery_productivity_capacity_enabled === true;
+  return {
+    productivity,
+    max_positions: productivity ? 3 : 2,
+    max_capital_usdt: productivity ? 75 : 50
+  };
+}
+
 function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = {}, adaptiveGate = {}, paperGate = {}, autonomy = {}, config = {}, openPositions = 0 } = {}) {
   const managedLimits = resolveManagedSpotLimits(config);
+  const capacity = recoveryCapacityRules(config);
   const adaptiveReasons = Array.isArray(adaptiveGate.reasons) ? adaptiveGate.reasons : [];
   const selectionLane = String(paperGate.selection_lane || paperGate.candidate?.selection_lane || '').toUpperCase();
   const regime = String(adaptiveGate.regime?.regime || adaptiveGate.market_regime || '').toUpperCase();
@@ -70,19 +80,20 @@ function evaluateHistoricalDrawdownRecoveryEntry({ reconciliation = {}, exits = 
     if (config[field] !== expected) blockers.push(code);
   }
   if (managedLimits.max_per_acquisition_usdt !== 25) blockers.push('RECOVERY_POSITION_LIMIT_MUST_BE_25_USDT');
-  if (managedLimits.max_managed_spot_assets > 2) blockers.push('RECOVERY_MAX_POSITIONS_MUST_BE_2');
-  if (managedLimits.max_total_managed_capital_usdt > 50) blockers.push('RECOVERY_MANAGED_CAPITAL_ABOVE_50_USDT');
+  if (managedLimits.max_managed_spot_assets > capacity.max_positions) blockers.push(`RECOVERY_MAX_POSITIONS_MUST_BE_${capacity.max_positions}`);
+  if (managedLimits.max_total_managed_capital_usdt > capacity.max_capital_usdt) blockers.push(`RECOVERY_MANAGED_CAPITAL_ABOVE_${capacity.max_capital_usdt}_USDT`);
 
   return {
     allowed: blockers.length === 0,
     adaptive_recovery_entry: blockers.length === 0,
-    policy: 'historical_drawdown_recovery_25_usdt',
+    policy: capacity.productivity ? 'historical_drawdown_recovery_25_usdt_productivity_3x75' : 'historical_drawdown_recovery_25_usdt',
     risk_signal: adaptiveReasons,
     selection_lane: selectionLane || null,
     regime: regime || null,
     max_position_usdt: managedLimits.max_per_acquisition_usdt,
     max_managed_spot_assets: managedLimits.max_managed_spot_assets,
     max_total_managed_capital_usdt: managedLimits.max_total_managed_capital_usdt,
+    recovery_productivity_capacity: capacity.productivity,
     quant_decision: quantDecision,
     blockers: [...new Set(blockers)]
   };
@@ -94,6 +105,7 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
   const selectionLane = String(paperGate.selection_lane || candidate.selection_lane || '').toUpperCase();
   const stage = String(autonomy.current_stage || config.autonomy_stage || config.autonomy_snapshot?.current_stage || '').toUpperCase();
   const managedLimits = resolveManagedSpotLimits(config);
+  const capacity = recoveryCapacityRules(config);
   const earlyMomentumScore = asNumber(candidate.earlyMomentumScore ?? candidate.early_momentum_score ?? metrics.score, 0);
   const confirmations = asNumber(metrics.confirmations, 0);
   const relativeVolume = asNumber(metrics.relative_volume_15m, 0);
@@ -123,8 +135,8 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
   }
   if (stage !== 'RECOVERY_25_USDT') blockers.push('LEARNING_OVERRIDE_REQUIRES_RECOVERY_25_USDT');
   if (managedLimits.max_per_acquisition_usdt !== 25) blockers.push('LEARNING_OVERRIDE_REQUIRES_25_USDT_LIMIT');
-  if (managedLimits.max_managed_spot_assets !== 2) blockers.push('LEARNING_OVERRIDE_REQUIRES_2_POSITION_LIMIT');
-  if (managedLimits.max_total_managed_capital_usdt > 50) blockers.push('LEARNING_OVERRIDE_REQUIRES_50_USDT_CAP');
+  if (managedLimits.max_managed_spot_assets !== capacity.max_positions) blockers.push(`LEARNING_OVERRIDE_REQUIRES_${capacity.max_positions}_POSITION_LIMIT`);
+  if (managedLimits.max_total_managed_capital_usdt > capacity.max_capital_usdt) blockers.push(`LEARNING_OVERRIDE_REQUIRES_${capacity.max_capital_usdt}_USDT_CAP`);
   if (!RECOVERY_ENTRY_LANES.has(selectionLane)) blockers.push('LEARNING_OVERRIDE_LANE_NOT_ALLOWED');
   if (earlyMomentumScore < minimumMomentumScore) blockers.push('LEARNING_OVERRIDE_MOMENTUM_BELOW_85');
   if (confirmations < RECOVERY_LEARNING_MIN_CONFIRMATIONS) blockers.push('LEARNING_OVERRIDE_CONFIRMATIONS_BELOW_3');
@@ -143,7 +155,7 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
 
   return {
     allowed: blockers.length === 0,
-    policy: 'learned_negative_expectancy_recovery_override_v2_25_usdt',
+    policy: capacity.productivity ? 'learned_negative_expectancy_recovery_override_v3_25_usdt_productivity' : 'learned_negative_expectancy_recovery_override_v2_25_usdt',
     learning_remains_active: true,
     risk_signal: learnedDecision.reason || null,
     candidate_score: learnedDecision.candidate_score ?? asNumber(candidate.opportunityScore ?? candidate.score, 0),
@@ -151,6 +163,7 @@ function evaluateLearnedRecoveryOverride({ learnedDecision = {}, reconciliation 
     selection_lane: selectionLane || null,
     recovery_stage: stage || null,
     max_position_usdt: managedLimits.max_per_acquisition_usdt,
+    recovery_productivity_capacity: capacity.productivity,
     thresholds: {
       minimum_early_momentum_score: minimumMomentumScore,
       minimum_confirmations: RECOVERY_LEARNING_MIN_CONFIRMATIONS,
@@ -296,6 +309,7 @@ module.exports = {
   firstFailureReason,
   evaluateHistoricalDrawdownRecoveryEntry,
   evaluateLearnedRecoveryOverride,
+  recoveryCapacityRules,
   RECOVERY_ALLOWED_ADAPTIVE_REASONS,
   RECOVERY_LEARNING_MIN_EARLY_MOMENTUM_SCORE,
   RECOVERY_LEARNING_MIN_CONFIRMATIONS,
