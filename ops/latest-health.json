@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-06T20:05:33Z",
+  "generated_at": "2026-09-06T20:32:05Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00699-vsr",
@@ -14,12 +14,10 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 2,
-    "promoted_symbol": "DASHUSDT",
+    "promoted_symbol": "ARBUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "PROFIT_FACTOR_DEGRADED",
-      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "MAX_MANAGED_SPOT_ASSETS_REACHED",
       "DRAWDOWN_TOO_HIGH"
     ],
