@@ -50,6 +50,7 @@ jobs:
           node tests/spotQuantEntryDecision.test.js
           node tests/spotAutonomyCooldown.test.js
           node tests/managedSpotAcquisitionPolicy.test.js
+          node tests/spotRecoveryProductivityCapacity.test.js
           node tests/adaptiveSpotStrategyController.test.js
           node tests/professionalInvestmentsDashboard.test.js
           node tests/spotDiscoveryIntelligence.test.js
@@ -205,6 +206,7 @@ jobs:
           jq -e '
             .ok == true and
             (
+              (.allocation.max_per_acquisition_usdt == 25 and .allocation.max_managed_spot_assets == 3 and .allocation.max_total_managed_capital_usdt == 75) or
               (.allocation.max_per_acquisition_usdt == 25 and .allocation.max_managed_spot_assets == 2 and .allocation.max_total_managed_capital_usdt == 50) or
               (.allocation.max_per_acquisition_usdt == 10 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 40) or
               (.allocation.max_per_acquisition_usdt == 20 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 80)
