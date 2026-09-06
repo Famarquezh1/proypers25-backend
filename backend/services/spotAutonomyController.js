@@ -13,6 +13,9 @@ const MAX_INITIAL_POSITION_USDT = 25;
 const MAX_OPEN_POSITIONS = 4;
 const RECOVERY_MAX_OPEN_POSITIONS = 2;
 const RECOVERY_MAX_TOTAL_CAPITAL_USDT = 50;
+const RECOVERY_PRODUCTIVITY_MAX_OPEN_POSITIONS = 3;
+const RECOVERY_PRODUCTIVITY_MAX_TOTAL_CAPITAL_USDT = 75;
+const RECOVERY_PRODUCTIVITY_CAPACITY_VERSION = 'recovery_productivity_capacity_v1_25x3';
 const LOSS_STREAK_KILL_SWITCH = 3;
 const LOSS_STREAK_COOLDOWN_MINUTES = 180;
 const MAX_SESSION_LOSS_USDT = 3;
@@ -160,14 +163,17 @@ async function buildAutonomySnapshot(db, now = new Date()) {
 function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new Date().toISOString()) {
   const recoveryMode = snapshot.performance_recovery_mode === true;
   const growthMode = snapshot.growth_mode === true && !recoveryMode;
+  const recoveryProductivityCapacityEnabled = recoveryMode && currentConfig.recovery_productivity_capacity_enabled === true;
   const effectivePositionUsdt = recoveryMode
     ? RECOVERY_POSITION_USDT
     : growthMode
       ? GROWTH_POSITION_USDT
       : BASE_POSITION_USDT;
-  const effectiveMaxOpenPositions = recoveryMode ? RECOVERY_MAX_OPEN_POSITIONS : MAX_OPEN_POSITIONS;
+  const effectiveMaxOpenPositions = recoveryMode
+    ? (recoveryProductivityCapacityEnabled ? RECOVERY_PRODUCTIVITY_MAX_OPEN_POSITIONS : RECOVERY_MAX_OPEN_POSITIONS)
+    : MAX_OPEN_POSITIONS;
   const effectiveTotalCapitalUsdt = recoveryMode
-    ? RECOVERY_MAX_TOTAL_CAPITAL_USDT
+    ? (recoveryProductivityCapacityEnabled ? RECOVERY_PRODUCTIVITY_MAX_TOTAL_CAPITAL_USDT : RECOVERY_MAX_TOTAL_CAPITAL_USDT)
     : effectivePositionUsdt * effectiveMaxOpenPositions;
   const patch = {
     autonomy_enabled: true,
@@ -179,6 +185,9 @@ function buildAutonomyControlPatch(currentConfig = {}, snapshot = {}, now = new 
     max_position_usdt: Math.min(MAX_INITIAL_POSITION_USDT, effectivePositionUsdt),
     max_total_capital_usdt: effectiveTotalCapitalUsdt,
     max_open_positions: effectiveMaxOpenPositions,
+    recovery_productivity_capacity_enabled: true,
+    recovery_productivity_capacity_version: RECOVERY_PRODUCTIVITY_CAPACITY_VERSION,
+    recovery_productivity_capacity_active: recoveryProductivityCapacityEnabled,
     spot_only: true,
     futures_allowed: false,
     margin_allowed: false,
@@ -241,7 +250,8 @@ async function enforceAutonomousSafety(db, currentConfig = {}) {
     autonomy_halt_released: snapshot.should_halt !== true && Boolean(currentConfig.autonomy_halt_reason),
     effective_position_usdt: patch.max_position_usdt,
     effective_total_capital_usdt: patch.max_total_capital_usdt,
-    effective_max_open_positions: patch.max_open_positions
+    effective_max_open_positions: patch.max_open_positions,
+    recovery_productivity_capacity_active: patch.recovery_productivity_capacity_active === true
   };
 }
 
@@ -259,6 +269,9 @@ module.exports = {
   MAX_OPEN_POSITIONS,
   RECOVERY_MAX_OPEN_POSITIONS,
   RECOVERY_MAX_TOTAL_CAPITAL_USDT,
+  RECOVERY_PRODUCTIVITY_MAX_OPEN_POSITIONS,
+  RECOVERY_PRODUCTIVITY_MAX_TOTAL_CAPITAL_USDT,
+  RECOVERY_PRODUCTIVITY_CAPACITY_VERSION,
   LOSS_STREAK_COOLDOWN_MINUTES,
   SESSION_WINDOW_HOURS,
   PERFORMANCE_RECOVERY_MIN_TRADES,
