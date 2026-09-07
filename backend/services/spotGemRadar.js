@@ -9,9 +9,17 @@ const CATALOG = 'spot_asset_catalog';
 const RADAR_RUNS = 'spot_gem_radar_runs';
 const RADAR_CURRENT = 'spot_gem_radar';
 const MAX_RESEARCH_SYMBOLS = 10;
+const RADAR_VERSION = 'spot_gem_radar_v3_productive_diversification';
 
 const EXCLUDED_BASE_ASSETS = new Set([
   'USDT', 'USDC', 'FDUSD', 'TUSD', 'DAI', 'USDP', 'BUSD', 'EUR', 'AEUR', 'TRY', 'BRL'
+]);
+const HARD_RESEARCH_RISKS = new Set([
+  'EXTREME_24H_MOVE',
+  'EXCESSIVE_INTRADAY_RANGE',
+  'SHARP_NEGATIVE_MOVE',
+  'LOW_LIQUIDITY',
+  'LOW_MARKET_ACTIVITY'
 ]);
 
 function n(value, fallback = 0) {
@@ -41,7 +49,7 @@ function isEligibleSymbol(symbol = {}) {
 async function getJson(path) {
   const response = await axios.get(`${BINANCE_API}${path}`, {
     timeout: 15000,
-    headers: { 'User-Agent': 'Proypers25-Spot-Gem-Radar/2.0' }
+    headers: { 'User-Agent': 'Proypers25-Spot-Gem-Radar/3.0' }
   });
   return response.data;
 }
@@ -190,6 +198,92 @@ function deduplicateRankedAssets(items = []) {
   return [...bySymbol.values()];
 }
 
+function isProductiveResearchCandidate(asset = {}) {
+  const risks = Array.isArray(asset.risks) ? asset.risks : [];
+  const change = n(asset.price_change_24h_pct);
+  return n(asset.gem_score) >= 60 &&
+    n(asset.quote_volume_24h) >= 5000000 &&
+    n(asset.trades_24h) >= 10000 &&
+    change >= 0.5 && change <= 18 &&
+    !risks.some((risk) => HARD_RESEARCH_RISKS.has(String(risk)));
+}
+
+function researchLaneScore(asset = {}, lane = 'core') {
+  const score = n(asset.gem_score);
+  const change = n(asset.price_change_24h_pct);
+  const volume = n(asset.quote_volume_24h);
+  const trades = n(asset.trades_24h);
+  const age = asset.age_days === null || asset.age_days === undefined ? 9999 : n(asset.age_days, 9999);
+  const liquidity = clamp(logScore(volume, 5000000, 150000000, 100));
+  const activity = clamp(logScore(trades, 10000, 500000, 100));
+
+  if (lane === 'fresh') {
+    const fresh = clamp(100 - Math.abs(change - 2.5) * 24, 0, 100);
+    return fresh * 0.45 + liquidity * 0.25 + activity * 0.15 + score * 0.15;
+  }
+  if (lane === 'momentum') {
+    const momentum = clamp(100 - Math.abs(change - 7) * 11, 0, 100);
+    return momentum * 0.4 + score * 0.25 + liquidity * 0.2 + activity * 0.15;
+  }
+  if (lane === 'activity') return activity * 0.45 + liquidity * 0.35 + score * 0.2;
+  if (lane === 'novelty') {
+    const novelty = age <= 7 ? 100 : age <= 30 ? 80 : age <= 90 ? 45 : 0;
+    return novelty * 0.5 + score * 0.25 + liquidity * 0.15 + activity * 0.1;
+  }
+  return score * 0.65 + liquidity * 0.2 + activity * 0.15;
+}
+
+function selectProductiveResearchCandidates(ranked = [], requested = MAX_RESEARCH_SYMBOLS) {
+  const limit = Math.max(1, Math.min(MAX_RESEARCH_SYMBOLS, Math.floor(n(requested, MAX_RESEARCH_SYMBOLS))));
+  const pool = ranked.filter((asset) => asset.research_eligible === true || isProductiveResearchCandidate(asset));
+  const selected = [];
+  const seen = new Set();
+
+  const lanes = {
+    fresh: pool.filter((asset) => n(asset.price_change_24h_pct) >= 0.5 && n(asset.price_change_24h_pct) <= 5),
+    momentum: pool.filter((asset) => n(asset.price_change_24h_pct) >= 3 && n(asset.price_change_24h_pct) <= 12),
+    activity: [...pool],
+    novelty: pool.filter((asset) => asset.age_days !== null && asset.age_days !== undefined && n(asset.age_days, 9999) <= 30),
+    core: [...pool]
+  };
+
+  for (const lane of Object.keys(lanes)) {
+    lanes[lane].sort((a, b) => researchLaneScore(b, lane) - researchLaneScore(a, lane));
+  }
+
+  const quotas = {
+    fresh: Math.min(limit, Math.max(2, Math.floor(limit * 0.3))),
+    momentum: Math.min(limit, Math.max(1, Math.floor(limit * 0.2))),
+    activity: Math.min(limit, Math.max(1, Math.floor(limit * 0.2))),
+    novelty: Math.min(limit, Math.max(1, Math.floor(limit * 0.1)))
+  };
+
+  function add(poolItems, quota, lane) {
+    let added = 0;
+    for (const asset of poolItems) {
+      if (selected.length >= limit || added >= quota) break;
+      const symbol = String(asset.symbol || '').toUpperCase();
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      selected.push({
+        ...asset,
+        research_lane: lane,
+        research_exploration_only: asset.research_eligible !== true,
+        research_productive_candidate: isProductiveResearchCandidate(asset)
+      });
+      added += 1;
+    }
+  }
+
+  add(lanes.fresh, quotas.fresh, 'FRESH_EARLY');
+  add(lanes.momentum, quotas.momentum, 'CONSTRUCTIVE_MOMENTUM');
+  add(lanes.activity, quotas.activity, 'LIQUID_ACTIVITY');
+  add(lanes.novelty, quotas.novelty, 'RECENT_LISTING');
+  add(lanes.core, limit - selected.length, 'CORE_RANKING');
+
+  return selected.slice(0, limit);
+}
+
 async function commitInChunks(db, operations, chunkSize = 400) {
   for (let index = 0; index < operations.length; index += chunkSize) {
     const batch = db.batch();
@@ -233,7 +327,7 @@ async function runSpotGemRadar(db, options = {}) {
       requires_paper_validation: true,
       requires_runtime_gate: true,
       active: true,
-      version: 'spot_gem_radar_v2'
+      version: RADAR_VERSION
     };
   });
 
@@ -241,9 +335,7 @@ async function runSpotGemRadar(db, options = {}) {
     .sort((left, right) => right.gem_score - left.gem_score || right.quote_volume_24h - left.quote_volume_24h);
 
   const requested = Math.max(1, Math.min(MAX_RESEARCH_SYMBOLS, n(options.maxResearch, 10)));
-  const researchCandidates = ranked
-    .filter((asset) => asset.research_eligible)
-    .slice(0, requested);
+  const researchCandidates = selectProductiveResearchCandidates(ranked, requested);
 
   const operations = ranked.flatMap((asset) => [
     (batch) => batch.set(db.collection(REGISTRY).doc(asset.symbol), {
@@ -275,6 +367,9 @@ async function runSpotGemRadar(db, options = {}) {
         quant_promotion_eligible: Boolean(result?.promotion_eligible),
         quant_family: result?.champion?.config?.family || null,
         quant_score: n(result?.champion?.score, null),
+        research_lane: asset.research_lane || null,
+        research_exploration_only: asset.research_exploration_only === true,
+        research_productive_candidate: asset.research_productive_candidate === true,
         state: result?.promotion_eligible ? 'PAPER' : 'RESEARCH',
         real_entry_approved: false,
         updated_at: createdAt
@@ -290,13 +385,21 @@ async function runSpotGemRadar(db, options = {}) {
     unique_symbol_count: ranked.length,
     research_candidate_count: researchCandidates.length,
     research_symbols: researchCandidates.map((asset) => asset.symbol),
+    research_lanes: researchCandidates.map((asset) => ({
+      symbol: asset.symbol,
+      lane: asset.research_lane,
+      exploration_only: asset.research_exploration_only === true
+    })),
+    research_exploration_count: researchCandidates.filter((asset) => asset.research_exploration_only === true).length,
     top_candidates: ranked.slice(0, 30),
     quant_run_id: quant?.id || null,
     quant_promotion_eligible: Boolean(quant?.promotion_eligible),
     spot_only: true,
     no_order_created: true,
     real_entry_approved: false,
-    version: 'spot_gem_radar_v2'
+    research_budget_unchanged: true,
+    max_research_symbols: MAX_RESEARCH_SYMBOLS,
+    version: RADAR_VERSION
   };
 
   await Promise.all([
@@ -312,6 +415,8 @@ async function runSpotGemRadar(db, options = {}) {
     unique_symbol_count: run.unique_symbol_count,
     research_candidate_count: run.research_candidate_count,
     research_symbols: run.research_symbols,
+    research_lanes: run.research_lanes,
+    research_exploration_count: run.research_exploration_count,
     quant_run_id: run.quant_run_id,
     quant_promotion_eligible: run.quant_promotion_eligible
   }));
@@ -320,10 +425,15 @@ async function runSpotGemRadar(db, options = {}) {
 }
 
 module.exports = {
+  RADAR_VERSION,
+  MAX_RESEARCH_SYMBOLS,
   fetchSpotUniverse,
   isEligibleSymbol,
   scoreGemCandidate,
   preserveProtectedState,
   deduplicateRankedAssets,
+  isProductiveResearchCandidate,
+  researchLaneScore,
+  selectProductiveResearchCandidates,
   runSpotGemRadar
 };
