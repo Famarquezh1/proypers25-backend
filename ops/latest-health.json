@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-07T22:32:18Z",
+  "generated_at": "2026-09-07T23:05:03Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00701-762",
@@ -14,12 +14,10 @@
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 4,
-    "promoted_symbol": "AEROUSDT",
+    "promoted_symbol": "WLDUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
       "DRAWDOWN_TOO_HIGH",
-      "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
-      "TECHNICAL_MOVE_OVEREXTENDED",
       "TECHNICAL_VOLUME_NOT_CONFIRMED",
       "MAX_MANAGED_SPOT_ASSETS_REACHED"
     ],
