@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-07T11:04:58Z",
+  "generated_at": "2026-09-07T11:33:16Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00700-gcw",
@@ -9,7 +9,7 @@
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "DRAWDOWN_TOO_HIGH",
+    "latest_reason": "LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
@@ -17,6 +17,7 @@
     "promoted_symbol": "UNIUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
+      "LEARNED_SCORE_BAND_NEGATIVE_EXPECTANCY",
       "DRAWDOWN_TOO_HIGH",
       "TECHNICAL_INSUFFICIENT_TIMEFRAME_CONFIRMATION",
       "TECHNICAL_TECHNICAL_SCORE_BELOW_THRESHOLD",
