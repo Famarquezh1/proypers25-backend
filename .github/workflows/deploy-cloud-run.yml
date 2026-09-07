@@ -37,6 +37,7 @@ jobs:
           node tests/tacticalMomentumExitPolicy.test.js
           node tests/immediateTacticalEntryGate.test.js
           node tests/earlyMomentumRadar.test.js
+          node tests/spotGemRadarProductiveSelection.test.js
           node tests/legacySpotRecoveryLiquidator.test.js
           node tests/xecHistoricalHoldingPolicy.test.js
           node tests/protectedReserveAsset.test.js
@@ -72,6 +73,7 @@ jobs:
           node --check services/approvedSpotRealExecutor.js
           node --check services/spotPositionLifecycle.js
           node --check services/spotEarlyMomentumRadar.js
+          node --check services/spotGemRadar.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealLearningPolicy.js
           node --check services/spotRealPipelinePolicy.js

@@ -35,6 +35,7 @@ steps:
           test -f /usr/src/app/services/spotManagedAcquisitionPolicy.js
           test -f /usr/src/app/services/spotCostGovernance.js
           test -f /usr/src/app/services/spotProfitTargetGovernance.js
+          test -f /usr/src/app/services/spotGemRadar.js
           test -f /usr/src/app/services/controlledSpotExitExecutor.js
           test -f /usr/src/app/services/legacySpotRecoveryLiquidator.js
           test -f /usr/src/app/services/approvedSpotRealExecutor.js
@@ -45,6 +46,8 @@ steps:
           grep -q "cost-efficiency-dashboard" /usr/src/app/routes/spotCostGovernance.route.js
           grep -q "spotLiveDashboardRoute" /usr/src/app/server.js
           grep -q "FULL_FREQUENCY" /usr/src/app/services/spotProfitTargetGovernance.js
+          grep -q "spot_gem_radar_v3_productive_diversification" /usr/src/app/services/spotGemRadar.js
+          grep -q "research_budget_unchanged" /usr/src/app/services/spotGemRadar.js
           grep -q "TACTICAL_RUNNER_ARMED" /usr/src/app/services/controlledSpotExitExecutor.js
           grep -q "fee_accounting_complete" /usr/src/app/services/spotPositionLifecycle.js
           grep -q "HARD_PROTECTED_ASSETS" /usr/src/app/services/legacySpotRecoveryLiquidator.js
@@ -61,6 +64,7 @@ steps:
           node --check /usr/src/app/services/spotManagedQuantityRepair.js
           node --check /usr/src/app/services/spotCostGovernance.js
           node --check /usr/src/app/services/spotProfitTargetGovernance.js
+          node --check /usr/src/app/services/spotGemRadar.js
           node --check /usr/src/app/services/controlledSpotExitExecutor.js
           node --check /usr/src/app/services/legacySpotRecoveryLiquidator.js
           node --check /usr/src/app/services/approvedSpotRealExecutor.js
@@ -76,6 +80,7 @@ steps:
           node /usr/src/app/tests/spotAutonomyCooldown.test.js
           node /usr/src/app/tests/spotCostGovernance.test.js
           node /usr/src/app/tests/spotProfitTargetGovernance.test.js
+          node /usr/src/app/tests/spotGemRadarProductiveSelection.test.js
           node /usr/src/app/tests/tacticalMomentumExitPolicy.test.js
           node /usr/src/app/tests/legacySpotRecoveryLiquidator.test.js
           node /usr/src/app/tests/protectedReserveAsset.test.js
