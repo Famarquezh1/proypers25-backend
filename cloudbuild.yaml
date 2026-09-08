@@ -29,6 +29,7 @@ steps:
           test -f /usr/src/app/routes/investmentsSummary.route.js
           test -f /usr/src/app/routes/spotLiveDashboard.route.js
           test -f /usr/src/app/routes/spotCostGovernance.route.js
+          test -f /usr/src/app/routes/newSpotAssetDiscovery.route.js
           test -f /usr/src/app/services/spotLiveEvidence.js
           test -f /usr/src/app/services/spotDustResidual.js
           test -f /usr/src/app/services/spotEntryMarketSafety.js
@@ -36,6 +37,7 @@ steps:
           test -f /usr/src/app/services/spotCostGovernance.js
           test -f /usr/src/app/services/spotProfitTargetGovernance.js
           test -f /usr/src/app/services/spotGemRadar.js
+          test -f /usr/src/app/services/spotLocalQuboOptimizer.js
           test -f /usr/src/app/services/controlledSpotExitExecutor.js
           test -f /usr/src/app/services/legacySpotRecoveryLiquidator.js
           test -f /usr/src/app/services/approvedSpotRealExecutor.js
@@ -48,6 +50,9 @@ steps:
           grep -q "FULL_FREQUENCY" /usr/src/app/services/spotProfitTargetGovernance.js
           grep -q "spot_gem_radar_v3_productive_diversification" /usr/src/app/services/spotGemRadar.js
           grep -q "research_budget_unchanged" /usr/src/app/services/spotGemRadar.js
+          grep -q "spot_local_qubo_v1" /usr/src/app/services/spotLocalQuboOptimizer.js
+          grep -q "SHADOW_ONLY" /usr/src/app/services/spotLocalQuboOptimizer.js
+          grep -q "external_credentials_required: false" /usr/src/app/services/spotLocalQuboOptimizer.js
           grep -q "TACTICAL_RUNNER_ARMED" /usr/src/app/services/controlledSpotExitExecutor.js
           grep -q "fee_accounting_complete" /usr/src/app/services/spotPositionLifecycle.js
           grep -q "HARD_PROTECTED_ASSETS" /usr/src/app/services/legacySpotRecoveryLiquidator.js
@@ -65,6 +70,7 @@ steps:
           node --check /usr/src/app/services/spotCostGovernance.js
           node --check /usr/src/app/services/spotProfitTargetGovernance.js
           node --check /usr/src/app/services/spotGemRadar.js
+          node --check /usr/src/app/services/spotLocalQuboOptimizer.js
           node --check /usr/src/app/services/controlledSpotExitExecutor.js
           node --check /usr/src/app/services/legacySpotRecoveryLiquidator.js
           node --check /usr/src/app/services/approvedSpotRealExecutor.js
@@ -74,6 +80,7 @@ steps:
           node --check /usr/src/app/routes/spotLiveDashboard.route.js
           node --check /usr/src/app/routes/spotCostGovernance.route.js
           node --check /usr/src/app/routes/controlledRealSpot.route.js
+          node --check /usr/src/app/routes/newSpotAssetDiscovery.route.js
           node /usr/src/app/tests/spotDustResidual.test.js
           node /usr/src/app/tests/spotManagedQuantityRepair.test.js
           node /usr/src/app/tests/managedSpotAcquisitionPolicy.test.js
@@ -81,6 +88,7 @@ steps:
           node /usr/src/app/tests/spotCostGovernance.test.js
           node /usr/src/app/tests/spotProfitTargetGovernance.test.js
           node /usr/src/app/tests/spotGemRadarProductiveSelection.test.js
+          node /usr/src/app/tests/spotLocalQuboOptimizer.test.js
           node /usr/src/app/tests/tacticalMomentumExitPolicy.test.js
           node /usr/src/app/tests/legacySpotRecoveryLiquidator.test.js
           node /usr/src/app/tests/protectedReserveAsset.test.js
