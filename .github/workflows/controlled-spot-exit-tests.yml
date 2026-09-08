@@ -17,6 +17,8 @@ on:
       - "backend/services/spotGemRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/services/spotQuantEntryDecision.js"
+      - "backend/services/legacyTrainingPolicy.js"
+      - "backend/scripts/entrenamientoLSTM.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -32,6 +34,7 @@ on:
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/tests/spotQuantEntryDecision.test.js"
+      - "backend/tests/legacyTrainingPolicy.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
   push:
@@ -51,6 +54,8 @@ on:
       - "backend/services/spotGemRadar.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/services/spotQuantEntryDecision.js"
+      - "backend/services/legacyTrainingPolicy.js"
+      - "backend/scripts/entrenamientoLSTM.js"
       - "backend/routes/controlledRealSpot.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
@@ -66,6 +71,7 @@ on:
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/tests/spotQuantEntryDecision.test.js"
+      - "backend/tests/legacyTrainingPolicy.test.js"
       - "backend/server.js"
       - ".github/workflows/controlled-spot-exit-tests.yml"
 
@@ -102,6 +108,8 @@ jobs:
           node --check backend/services/spotGemRadar.js
           node --check backend/services/spotRealPipelinePolicy.js
           node --check backend/services/spotQuantEntryDecision.js
+          node --check backend/services/legacyTrainingPolicy.js
+          node --check backend/scripts/entrenamientoLSTM.js
           node --check backend/routes/controlledRealSpot.route.js
           node --check backend/routes/adaptiveSpotStrategy.route.js
           node --check backend/routes/spotStrategyPromotion.route.js
@@ -143,6 +151,9 @@ jobs:
 
       - name: Productive gem discovery unit tests
         run: node backend/tests/spotGemRadarProductiveSelection.test.js
+
+      - name: Legacy training cost guard unit tests
+        run: node backend/tests/legacyTrainingPolicy.test.js
 
       - name: Real Spot pipeline policy unit tests
         run: node backend/tests/spotRealPipeline.test.js
