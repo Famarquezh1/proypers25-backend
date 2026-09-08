@@ -1,33 +1,33 @@
 {
-  "generated_at": "2026-09-08T02:39:05Z",
+  "generated_at": "2026-09-08T03:06:13Z",
   "event_found": true,
-  "timestamp": "2026-09-08T02:32:52.537912Z",
-  "revision": "proypers25-backend-00704-2jj",
-  "run_id": "quant_1788834767976",
+  "timestamp": "2026-09-08T02:50:50.465958Z",
+  "revision": "proypers25-backend-00705-vld",
+  "run_id": "quant_1788835845750",
   "promotion_eligible": false,
   "no_eligible_champion": true,
   "selection": {
-    "accepted_symbol_count": 12,
-    "analyzed_count": 12,
+    "accepted_symbol_count": 10,
+    "analyzed_count": 10,
     "eligible_count": 0,
-    "failed_count": 4,
+    "failed_count": 3,
     "mode": "OBSERVATION_ONLY_PRODUCTIVE",
-    "observation_symbol": "AEROUSDT",
-    "requested_count": 12,
+    "observation_symbol": "ZECUSDT",
+    "requested_count": 10,
     "selected_family": "TREND",
-    "selected_symbol": "AEROUSDT",
-    "valid_count": 8
+    "selected_symbol": "ZECUSDT",
+    "valid_count": 7
   },
   "selected_evidence": {
     "calibration": {
-      "brier": 0.5486764705882353,
+      "brier": 0.5522826086956524,
       "calibrated": false,
-      "samples": 34
+      "samples": 23
     },
     "checks": {
       "expectation_stability": true,
-      "median_test_expectancy_positive": true,
-      "probability_calibrated": false,
+      "median_test_expectancy_positive": false,
+      "probability_calibrated": true,
       "test_drawdown": true,
       "test_expectancy_positive": false,
       "test_fold_consistency": false,
@@ -41,38 +41,38 @@
     },
     "consistency": {
       "folds": 4,
-      "median_test_expectancy": 0.00020296014196640485,
-      "median_validation_expectancy": -0.004100052276184973,
+      "median_test_expectancy": -0.0033401906709402307,
+      "median_validation_expectancy": -0.0028949378173583045,
       "positive_test_folds": 1,
-      "positive_validation_folds": 0,
-      "test_expectancy_std": 0.004722890911982575,
+      "positive_validation_folds": 1,
+      "test_expectancy_std": 0.004462582891374281,
       "test_ratio": 0.25,
-      "validation_ratio": 0
+      "validation_ratio": 0.25
     },
     "eligible": false,
     "test": {
-      "averageLoss": -0.005068668891265896,
-      "averageWin": 0.015635484560775507,
-      "expectancy": -0.0008060490629044311,
-      "maxDrawdown": 0.0963523820713831,
-      "medianReturn": -0.001750374999999969,
-      "netReturn": -0.028931511495707163,
-      "profitFactor": 0.7997453044074947,
-      "returnStd": 0.010786944715904176,
-      "trades": 34,
-      "winRate": 0.20588235294117646
+      "averageLoss": -0.004998900456002825,
+      "averageWin": 0.015482670444935287,
+      "expectancy": -0.0014368881254048919,
+      "maxDrawdown": 0.0670956497166563,
+      "medianReturn": -0.00175037500000008,
+      "netReturn": -0.03358432693440305,
+      "profitFactor": 0.652045303970933,
+      "returnStd": 0.009773185079738535,
+      "trades": 23,
+      "winRate": 0.17391304347826086
     },
     "validation": {
-      "averageLoss": -0.00587611655561642,
-      "averageWin": 0.007932525967508932,
-      "expectancy": -0.003830391737375628,
-      "maxDrawdown": 0.09880494111010218,
-      "medianReturn": -0.006498000000000002,
-      "netReturn": -0.09880494111010218,
-      "profitFactor": 0.2347757605592787,
-      "returnStd": 0.005532037383066601,
-      "trades": 27,
-      "winRate": 0.14814814814814814
+      "averageLoss": -0.003772530250601461,
+      "averageWin": 0.016666325507944835,
+      "expectancy": -0.000056374658138497354,
+      "maxDrawdown": 0.03258998172064065,
+      "medianReturn": -0.001750374999999858,
+      "netReturn": -0.0021903401270396694,
+      "profitFactor": 0.981735770061468,
+      "returnStd": 0.009363306725652516,
+      "trades": 22,
+      "winRate": 0.18181818181818182
     }
   },
   "strategy_families": [
@@ -86,6 +86,6 @@
     "interval": "5m",
     "interval_ms": 300000,
     "maximum_candles_per_symbol": 5000,
-    "requested_candles_per_symbol": 5000
+    "requested_candles_per_symbol": 4000
   }
 }
