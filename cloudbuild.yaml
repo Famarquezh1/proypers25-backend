@@ -27,9 +27,11 @@ steps:
         docker run --rm --entrypoint sh "$$IMAGE" -c '
           test -f /usr/src/app/server.js
           test -f /usr/src/app/routes/investmentsSummary.route.js
+          test -f /usr/src/app/routes/spotQuboDashboard.route.js
           test -f /usr/src/app/routes/spotLiveDashboard.route.js
           test -f /usr/src/app/routes/spotCostGovernance.route.js
           test -f /usr/src/app/routes/newSpotAssetDiscovery.route.js
+          test -f /usr/src/app/services/spotQuboDashboardData.js
           test -f /usr/src/app/services/spotLiveEvidence.js
           test -f /usr/src/app/services/spotDustResidual.js
           test -f /usr/src/app/services/spotEntryMarketSafety.js
@@ -44,6 +46,8 @@ steps:
           test -f /usr/src/app/services/spotPositionLifecycle.js
           test -f /usr/src/app/routes/admin.route.js
           grep -q "investments-dashboard" /usr/src/app/routes/investmentsSummary.route.js
+          grep -q "qubo-status" /usr/src/app/routes/spotQuboDashboard.route.js
+          grep -q "spotQuboDashboardRoute" /usr/src/app/server.js
           grep -q "spot-live-dashboard" /usr/src/app/routes/spotLiveDashboard.route.js
           grep -q "cost-efficiency-dashboard" /usr/src/app/routes/spotCostGovernance.route.js
           grep -q "spotLiveDashboardRoute" /usr/src/app/server.js
@@ -62,6 +66,9 @@ steps:
           grep -q "RECOVERY_25_USDT" /usr/src/app/services/spotAutonomyController.js
           grep -q "SUB_MIN_NOTIONAL_RESIDUAL" /usr/src/app/services/spotDustResidual.js
           grep -q "spot-legacy-recovery" /usr/src/app/routes/controlledRealSpot.route.js
+          node --check /usr/src/app/server.js
+          node --check /usr/src/app/routes/spotQuboDashboard.route.js
+          node --check /usr/src/app/services/spotQuboDashboardData.js
           node --check /usr/src/app/services/spotLiveEvidence.js
           node --check /usr/src/app/services/spotDustResidual.js
           node --check /usr/src/app/services/spotEntryMarketSafety.js
@@ -126,6 +133,8 @@ steps:
       - 'server.js'
       - '--set-env-vars'
       - 'APP_COMMIT_SHA=${_IMAGE_TAG}'
+      - '--set-secrets'
+      - 'CRON_SECRET=cron-secret:latest,INVESTMENTS_SUMMARY_SECRET=cron-secret:latest'
 
   - id: route-traffic-to-latest
     name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
