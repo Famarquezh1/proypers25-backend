@@ -15,11 +15,13 @@ on:
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotGemRadar.js"
+      - "backend/services/spotLocalQuboOptimizer.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/services/spotQuantEntryDecision.js"
       - "backend/services/legacyTrainingPolicy.js"
       - "backend/scripts/entrenamientoLSTM.js"
       - "backend/routes/controlledRealSpot.route.js"
+      - "backend/routes/newSpotAssetDiscovery.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
       - "backend/routes/systemHealth.route.js"
@@ -32,6 +34,7 @@ on:
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
+      - "backend/tests/spotLocalQuboOptimizer.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/tests/spotQuantEntryDecision.test.js"
       - "backend/tests/legacyTrainingPolicy.test.js"
@@ -52,11 +55,13 @@ on:
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotGemRadar.js"
+      - "backend/services/spotLocalQuboOptimizer.js"
       - "backend/services/spotRealPipelinePolicy.js"
       - "backend/services/spotQuantEntryDecision.js"
       - "backend/services/legacyTrainingPolicy.js"
       - "backend/scripts/entrenamientoLSTM.js"
       - "backend/routes/controlledRealSpot.route.js"
+      - "backend/routes/newSpotAssetDiscovery.route.js"
       - "backend/routes/adaptiveSpotStrategy.route.js"
       - "backend/routes/spotStrategyPromotion.route.js"
       - "backend/routes/systemHealth.route.js"
@@ -69,6 +74,7 @@ on:
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
+      - "backend/tests/spotLocalQuboOptimizer.test.js"
       - "backend/tests/spotRealPipeline.test.js"
       - "backend/tests/spotQuantEntryDecision.test.js"
       - "backend/tests/legacyTrainingPolicy.test.js"
@@ -106,11 +112,13 @@ jobs:
           node --check backend/services/spotLiveEvidence.js
           node --check backend/services/spotEarlyMomentumRadar.js
           node --check backend/services/spotGemRadar.js
+          node --check backend/services/spotLocalQuboOptimizer.js
           node --check backend/services/spotRealPipelinePolicy.js
           node --check backend/services/spotQuantEntryDecision.js
           node --check backend/services/legacyTrainingPolicy.js
           node --check backend/scripts/entrenamientoLSTM.js
           node --check backend/routes/controlledRealSpot.route.js
+          node --check backend/routes/newSpotAssetDiscovery.route.js
           node --check backend/routes/adaptiveSpotStrategy.route.js
           node --check backend/routes/spotStrategyPromotion.route.js
           node --check backend/routes/systemHealth.route.js
@@ -124,6 +132,7 @@ jobs:
           node -e "require('./backend/services/controlledSpotExitExecutor')"
           node -e "require('./backend/services/spotEarlyMomentumRadar')"
           node -e "require('./backend/services/spotGemRadar')"
+          node -e "require('./backend/services/spotLocalQuboOptimizer')"
           node -e "require('./backend/services/spotQuantEntryDecision')"
 
       - name: Verify one real execution route
@@ -151,6 +160,9 @@ jobs:
 
       - name: Productive gem discovery unit tests
         run: node backend/tests/spotGemRadarProductiveSelection.test.js
+
+      - name: Local QUBO optimizer unit tests
+        run: node backend/tests/spotLocalQuboOptimizer.test.js
 
       - name: Legacy training cost guard unit tests
         run: node backend/tests/legacyTrainingPolicy.test.js
