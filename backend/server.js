@@ -37,6 +37,7 @@ const ejecutarAutoaprendizaje = require('./scripts/autoaprendizaje');
 const entrenarLSTM = require('./scripts/entrenamientoLSTM');
 const entrenamientoMultiple = require('./scripts/entrenamientoMultiple');
 const reevaluarValidacion = require('./scripts/reevaluar_validacion');
+const { legacyBackgroundTrainingEnabled } = require('./services/legacyTrainingPolicy');
 
 const modelosRoute = require('./routes/modelos.route');
 const analizarRoute = require('./routes/analizar.route');
@@ -52,6 +53,7 @@ const LEARNING_MODE = process.env.LEARNING_MODE || 'observe';
 const LEARNING_LOG = process.env.LEARNING_LOG === 'true';
 const EXCHANGE_INFO_WARMUP_ENABLED = String(process.env.EXCHANGE_INFO_WARMUP_ENABLED || 'true').toLowerCase() === 'true';
 const EXCHANGE_INFO_WARMUP_INTERVAL_MS = Math.max(60000, Number(process.env.EXCHANGE_INFO_WARMUP_INTERVAL_MS || 15 * 60 * 1000));
+const LEGACY_BACKGROUND_TRAINING_ENABLED = legacyBackgroundTrainingEnabled(process.env);
 
 const db = require('./firebase-admin-config');
 
@@ -171,32 +173,36 @@ function esHorarioHabil() {
   }
 })();
 
-cron.schedule('0 * * * *', async () => {
-  if (!esHorarioHabil()) {
-    console.log('⏳ Entrenamiento LSTM saltado: fuera de horario hábil.');
-    return;
-  }
-  console.log('🔁 Ejecutando entrenamiento y autoaprendizaje...');
-  try {
-    await entrenarLSTM('MSFT', 50);
-    await ejecutarAutoaprendizaje();
-  } catch (error) {
-    console.error('❌ Error durante entrenamiento/autoaprendizaje:', error);
-  }
-});
+if (LEGACY_BACKGROUND_TRAINING_ENABLED) {
+  cron.schedule('0 * * * *', async () => {
+    if (!esHorarioHabil()) {
+      console.log('⏳ Entrenamiento LSTM saltado: fuera de horario hábil.');
+      return;
+    }
+    console.log('🔁 Ejecutando entrenamiento y autoaprendizaje heredado...');
+    try {
+      await entrenarLSTM('MSFT', 50);
+      await ejecutarAutoaprendizaje();
+    } catch (error) {
+      console.error('❌ Error durante entrenamiento/autoaprendizaje heredado:', error);
+    }
+  });
 
-cron.schedule('15 * * * *', async () => {
-  if (!esHorarioHabil()) {
-    console.log('⏳ Entrenamiento múltiple saltado: fuera de horario hábil.');
-    return;
-  }
-  console.log('🧠 Entrenamiento múltiple iniciado...');
-  try {
-    await entrenamientoMultiple();
-  } catch (err) {
-    console.error('❌ Error durante entrenamiento múltiple:', err);
-  }
-});
+  cron.schedule('15 * * * *', async () => {
+    if (!esHorarioHabil()) {
+      console.log('⏳ Entrenamiento múltiple saltado: fuera de horario hábil.');
+      return;
+    }
+    console.log('🧠 Entrenamiento múltiple heredado iniciado...');
+    try {
+      await entrenamientoMultiple();
+    } catch (err) {
+      console.error('❌ Error durante entrenamiento múltiple heredado:', err);
+    }
+  });
+} else {
+  console.log('[COST_GOVERNANCE] Legacy background LSTM/multi-asset training disabled; Spot research and manual training routes remain available.');
+}
 
 cron.schedule('0 5 * * *', async () => {
   try {

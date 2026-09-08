@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const admin = require('firebase-admin');
 const db = require('../firebase-admin-config');
+const { deterministicTrainingDataFailure } = require('../services/legacyTrainingPolicy');
 
 // Inicializa Firebase si no está inicializado
 if (!admin.apps.length) {
@@ -75,35 +76,55 @@ async function registrarEntrenamiento(simbolo, data) {
 }
 
 module.exports = async function entrenarVariasVeces(simbolo = 'MSFT', intentos = 50) {
+  const requestedAttempts = Math.max(1, Number.parseInt(intentos, 10) || 1);
   console.log(`🧠 Entrenamiento múltiple LSTM para ${simbolo} usando ${PYTHON_CMD}`);
 
   const scriptPath = path.join(__dirname, '..', 'quantum-backend', 'lstm_model.py');
+  let completedAttempts = 0;
+  let stoppedEarly = false;
+  let stopReason = null;
 
-  for (let i = 1; i <= intentos; i++) {
-    await new Promise((resolve) => {
+  for (let i = 1; i <= requestedAttempts; i++) {
+    const outcome = await new Promise((resolve) => {
       exec(`${PYTHON_CMD} ${scriptPath} ${simbolo}`, async (error, stdout, stderr) => {
         if (error) {
           console.error(`❌ Error en intento ${i}:`, stderr || error.message);
-          return resolve();
+          return resolve({ ok: false, stop: false, reason: 'PROCESS_ERROR' });
         }
 
         try {
           const data = JSON.parse(stdout);
+          const deterministicFailure = deterministicTrainingDataFailure(data);
+          if (deterministicFailure) {
+            console.warn(`[LEGACY_LSTM_CIRCUIT_BREAKER] ${simbolo}: ${deterministicFailure.message}`);
+            return resolve({ ok: false, ...deterministicFailure });
+          }
+
           console.log(`✔️ Intento ${i}:`, data);
           await registrarEntrenamiento(simbolo, data);
+          return resolve({ ok: true, stop: false });
         } catch (e) {
           console.error(`❌ Error al procesar stdout:`, e.message);
+          return resolve({ ok: false, stop: false, reason: 'INVALID_STDOUT' });
         }
-
-        resolve();
       });
     });
+
+    if (outcome.ok) completedAttempts += 1;
+    if (outcome.stop) {
+      stoppedEarly = true;
+      stopReason = outcome.reason || 'CIRCUIT_BREAKER';
+      break;
+    }
   }
 
-  console.log('✅ Entrenamiento completado para', simbolo);
+  const summary = {
+    simbolo,
+    requested_attempts: requestedAttempts,
+    completed_attempts: completedAttempts,
+    stopped_early: stoppedEarly,
+    stop_reason: stopReason
+  };
+  console.log('✅ Entrenamiento finalizado para', simbolo, summary);
+  return summary;
 };
-
-
-
-
-
