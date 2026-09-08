@@ -38,6 +38,7 @@ jobs:
           node tests/immediateTacticalEntryGate.test.js
           node tests/earlyMomentumRadar.test.js
           node tests/spotGemRadarProductiveSelection.test.js
+          node tests/spotLocalQuboOptimizer.test.js
           node tests/legacySpotRecoveryLiquidator.test.js
           node tests/xecHistoricalHoldingPolicy.test.js
           node tests/protectedReserveAsset.test.js
@@ -74,6 +75,7 @@ jobs:
           node --check services/spotPositionLifecycle.js
           node --check services/spotEarlyMomentumRadar.js
           node --check services/spotGemRadar.js
+          node --check services/spotLocalQuboOptimizer.js
           node --check services/paperToRealEntryGate.js
           node --check services/spotRealLearningPolicy.js
           node --check services/spotRealPipelinePolicy.js
@@ -87,6 +89,7 @@ jobs:
           node --check routes/professionalInvestmentsDashboard.route.js
           node --check routes/spotCostGovernance.route.js
           node --check routes/controlledRealSpot.route.js
+          node --check routes/newSpotAssetDiscovery.route.js
           node --check server.js
 
       - name: Authenticate to Google Cloud
