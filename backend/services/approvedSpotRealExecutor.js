@@ -10,10 +10,17 @@ const {
 } = require('./binanceSpotRealExecutor');
 const { validateSpotEntryMarketSafety } = require('./spotEntryMarketSafety');
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
-const { managedAcquisitionCapacity, MAX_PER_ACQUISITION_USDT } = require('./spotManagedAcquisitionPolicy');
+const {
+  managedAcquisitionCapacity,
+  ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT,
+  MIN_ADAPTIVE_ACQUISITION_USDT
+} = require('./spotManagedAcquisitionPolicy');
 
 const POSITIONS = 'real_spot_positions';
-const HARD_PROTECTED_RESERVE_ASSETS = Object.freeze(['XEC']);
+// No asset is permanently reserved from the opportunity engine. Historical
+// holdings keep their provenance, but once capital is released to USDT the
+// same asset can be selected again by the normal ranking/paper/technical gates.
+const HARD_PROTECTED_RESERVE_ASSETS = Object.freeze([]);
 
 function diagnostic(candidate, overrides = {}) {
   return {
@@ -57,6 +64,10 @@ function isProtectedReserveSymbol(symbol, config = {}) {
   const normalized = String(symbol || '').toUpperCase();
   if (!normalized.endsWith('USDT')) return false;
   const asset = normalized.slice(0, -4);
+  // XEC used to be a hard protected reserve. That was contrary to the actual
+  // portfolio strategy: XEC may be sold to USDT and later bought again if it
+  // independently qualifies as the best opportunity.
+  if (asset === 'XEC') return false;
   const configured = Array.isArray(config.protected_assets)
     ? config.protected_assets.map((value) => String(value || '').toUpperCase())
     : [];
@@ -85,17 +96,33 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     return { ok: true, skipped: true, reason: 'PROTECTED_RESERVE_ASSET', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['PROTECTED_RESERVE_ASSET'] }) };
   }
 
-  const [managedAcquisitions, exposure] = await Promise.all([
+  const [managedAcquisitions, exposure, preflight] = await Promise.all([
     db.collection(POSITIONS).where('status', '==', 'REAL_OPEN').get(),
-    getRealSpotCapitalExposure(db)
+    getRealSpotCapitalExposure(db),
+    runRealSpotPreflightCheck(db)
   ]);
+
+  if (preflight.ok !== true || preflight.credentials_valid !== true || preflight.account_accessible !== true) {
+    const reason = preflight.error || 'BINANCE_PREFLIGHT_FAILED';
+    return { ok: true, skipped: true, reason, preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: [reason] }) };
+  }
+  if (preflight.can_trade !== true) return { ok: true, skipped: true, reason: 'ACCOUNT_CANNOT_TRADE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ACCOUNT_CANNOT_TRADE'] }) };
+  if (preflight.enable_withdrawals_api_key !== false) return { ok: true, skipped: true, reason: 'WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL'] }) };
+
+  // Operational capital is the capital the real engine can actually rotate now:
+  // free USDT plus capital already deployed in managed Spot acquisitions. A
+  // historical asset such as XEC joins this pool automatically when it is sold.
+  const operationalCapitalUsdt = Math.max(0, Number(preflight.usdt_balance_free || 0)) + Math.max(0, Number(exposure.total || 0));
   const capacity = managedAcquisitionCapacity({
     currentManagedAssets: managedAcquisitions.size,
     currentManagedCapitalUsdt: Number(exposure.total || 0),
-    config
+    config,
+    operationalCapitalUsdt,
+    adaptive: true
   });
-  const acquisitionUsdt = Number(capacity.max_per_acquisition_usdt || 0);
-  if (!(acquisitionUsdt > 0 && acquisitionUsdt <= MAX_PER_ACQUISITION_USDT)) {
+  const acquisitionUsdt = Number(capacity.next_acquisition_usdt || capacity.max_per_acquisition_usdt || 0);
+
+  if (!(acquisitionUsdt >= MIN_ADAPTIVE_ACQUISITION_USDT && acquisitionUsdt <= ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT)) {
     return { ok: true, skipped: true, reason: 'MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID'] }) };
   }
   if (managedAcquisitions.size >= capacity.max_managed_spot_assets) {
@@ -104,18 +131,10 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   if (snapshotContainsManagedSymbol(managedAcquisitions, normalizedCandidate.symbol)) {
     return { ok: true, skipped: true, reason: 'ASSET_ALREADY_UNDER_SPOT_MANAGEMENT', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ASSET_ALREADY_UNDER_SPOT_MANAGEMENT'] }) };
   }
-  if (Number(exposure.total || 0) + acquisitionUsdt > capacity.max_total_managed_capital_usdt) {
+  if (Number(exposure.total || 0) + acquisitionUsdt > capacity.max_total_managed_capital_usdt + 1e-8) {
     return { ok: true, skipped: true, reason: 'MANAGED_SPOT_CAPITAL_LIMIT_REACHED', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_CAPITAL_LIMIT_REACHED'] }) };
   }
-
-  const preflight = await runRealSpotPreflightCheck(db);
-  if (preflight.ok !== true || preflight.credentials_valid !== true || preflight.account_accessible !== true) {
-    const reason = preflight.error || 'BINANCE_PREFLIGHT_FAILED';
-    return { ok: true, skipped: true, reason, preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: [reason] }) };
-  }
-  if (preflight.can_trade !== true) return { ok: true, skipped: true, reason: 'ACCOUNT_CANNOT_TRADE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ACCOUNT_CANNOT_TRADE'] }) };
-  if (preflight.enable_withdrawals_api_key !== false) return { ok: true, skipped: true, reason: 'WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['WITHDRAWALS_MUST_BE_LOCKED_AT_API_KEY_LEVEL'] }) };
-  if (Number(preflight.usdt_balance_free || 0) < acquisitionUsdt) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
+  if (Number(preflight.usdt_balance_free || 0) < acquisitionUsdt) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
 
   const marketSafety = await validateSpotEntryMarketSafety(normalizedCandidate.symbol, acquisitionUsdt, options.market_safety_dependencies || {});
   if (marketSafety.allowed !== true) {
@@ -159,6 +178,8 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
         entry_mode: normalizedCandidate.entry_mode || null,
         managed_spot_capacity_before_entry: capacity,
         acquisition_usdt: acquisitionUsdt,
+        operational_capital_usdt: operationalCapitalUsdt,
+        sizing_mode: capacity.sizing_mode,
         market_safety: marketSafety
       }
     },
@@ -174,6 +195,8 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
       max_managed_spot_assets: capacity.max_managed_spot_assets,
       max_managed_spot_capital_usdt: capacity.max_total_managed_capital_usdt,
       managed_spot_terminology_version: capacity.version,
+      dynamic_position_sizing_active: capacity.sizing_mode === 'ADAPTIVE_OPERATIONAL_CAPITAL',
+      operational_capital_usdt: operationalCapitalUsdt,
       last_entry_symbol: normalizedCandidate.symbol,
       last_entry_mode: normalizedCandidate.entry_mode || null,
       last_entry_amount_usdt: acquisitionUsdt,
@@ -191,6 +214,8 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     selected_symbol: normalizedCandidate.symbol,
     symbol: normalizedCandidate.symbol,
     acquisition_usdt: acquisitionUsdt,
+    operational_capital_usdt: operationalCapitalUsdt,
+    sizing_mode: capacity.sizing_mode,
     entry_mode: normalizedCandidate.entry_mode || null,
     strategy: strategyMetadata.strategy,
     order_id: order.orderId || null,
