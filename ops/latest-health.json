@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T14:35:43Z",
+  "generated_at": "2026-09-09T15:05:03Z",
   "window_minutes": 45,
   "service": "proypers25-backend",
   "cloud_run_revision": "proypers25-backend-00715-zgh",
@@ -9,16 +9,16 @@
     "closed": 0,
     "exit_failures": 0,
     "latest_decision": "SKIP",
-    "latest_reason": "ORDER_EXCEEDS_POSITION_LIMIT",
+    "latest_reason": "DRAWDOWN_TOO_HIGH",
     "promotion_gate": "CONFIDENCE_LOW",
     "reconciliation_gate": "PASS",
     "exit_engine_gate": "PASS",
     "open_positions_after_cycle": 2,
-    "promoted_symbol": "MINAUSDT",
+    "promoted_symbol": "NEARUSDT",
     "promotion_state": "OBSERVE",
     "reasons": [
-      "ORDER_EXCEEDS_POSITION_LIMIT",
-      "DRAWDOWN_TOO_HIGH"
+      "DRAWDOWN_TOO_HIGH",
+      "TECHNICAL_VOLUME_NOT_CONFIRMED"
     ],
     "safety": {
       "spot_only": true,
