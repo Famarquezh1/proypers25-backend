@@ -45,7 +45,9 @@ function buildRows({ accelerating = true } = {}) {
   assert.strictEqual(thresholds.maximum_price_change_24h, 18);
   assert.strictEqual(thresholds.minimum_relative_volume, 1.15);
   assert.strictEqual(thresholds.minimum_technical_score, 60);
-  assert.strictEqual(probes.limit, 60);
+  assert.strictEqual(probes.limit, 100);
+  assert.strictEqual(probes.minimum_price_change_24h, 0.1);
+  assert.strictEqual(probes.minimum_quote_volume_usdt, 200000);
 })();
 
 (function acceleratingClosedCandlesProduceStrongEarlySignal() {
@@ -123,7 +125,7 @@ function buildRows({ accelerating = true } = {}) {
 
 (function freshBreakoutKeepsAProbeSlotInCrowdedMarket() {
   const crowded = [];
-  for (let index = 0; index < 70; index += 1) {
+  for (let index = 0; index < 130; index += 1) {
     crowded.push({
       symbol: `VISIBLE${index}USDT`,
       priceChange24h: 5.8 + ((index % 5) * 0.1),
@@ -149,8 +151,40 @@ function buildRows({ accelerating = true } = {}) {
   });
 
   const selected = selectProbeCandidates(crowded, {});
-  assert.strictEqual(selected.length, 60);
+  assert.strictEqual(selected.length, 100);
   assert.ok(selected.some((candidate) => candidate.symbol === 'FRESHBREAKUSDT'));
+})();
+
+(function surgeLaneKeepsRisingWinnerCandidateInProbeSet() {
+  const crowded = [];
+  for (let index = 0; index < 130; index += 1) {
+    crowded.push({
+      symbol: `FRESH${index}USDT`,
+      priceChange24h: 1.5 + ((index % 4) * 0.1),
+      quoteVolume24h: 1800000 + (index * 1000),
+      riskScore: 20,
+      liquidityScore: 72,
+      impulseScore: 35,
+      volumeChangeScore: 75,
+      breakoutScore: 50,
+      warnings: []
+    });
+  }
+  crowded.push({
+    symbol: 'IGNITIONUSDT',
+    priceChange24h: 9.2,
+    quoteVolume24h: 5500000,
+    riskScore: 25,
+    liquidityScore: 90,
+    impulseScore: 94,
+    volumeChangeScore: 91,
+    breakoutScore: 90,
+    warnings: []
+  });
+
+  const selected = selectProbeCandidates(crowded, {});
+  assert.strictEqual(selected.length, 100);
+  assert.ok(selected.some((candidate) => candidate.symbol === 'IGNITIONUSDT'));
 })();
 
 (function flatCandlesDoNotCreateFalseEarlySignal() {
