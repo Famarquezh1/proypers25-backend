@@ -3,10 +3,13 @@
 const assert = require('assert');
 const {
   resolveManagedSpotLimits,
+  resolveAdaptiveManagedSpotLimits,
   managedAcquisitionCapacity,
   MAX_MANAGED_SPOT_ASSETS,
   MAX_MANAGED_CAPITAL_USDT,
-  MAX_PER_ACQUISITION_USDT
+  MAX_PER_ACQUISITION_USDT,
+  ADAPTIVE_HARD_MAX_MANAGED_CAPITAL_USDT,
+  ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT
 } = require('../services/spotManagedAcquisitionPolicy');
 const { buildEntrySafetyFailures } = require('../services/spotRealPipelinePolicy');
 const { evaluateSpotEntryMarketSafety } = require('../services/spotEntryMarketSafety');
@@ -15,11 +18,14 @@ const limits = resolveManagedSpotLimits({ max_position_usdt: 10, max_open_positi
 assert.strictEqual(MAX_MANAGED_SPOT_ASSETS, 4);
 assert.strictEqual(MAX_MANAGED_CAPITAL_USDT, 80);
 assert.strictEqual(MAX_PER_ACQUISITION_USDT, 25);
+assert.strictEqual(ADAPTIVE_HARD_MAX_MANAGED_CAPITAL_USDT, 500);
+assert.strictEqual(ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT, 100);
 assert.strictEqual(limits.max_managed_spot_assets, 4);
 assert.strictEqual(limits.max_total_managed_capital_usdt, 40);
 assert.strictEqual(limits.max_per_acquisition_usdt, 10);
 assert.strictEqual(limits.legacy_max_open_positions, 4);
 
+// Static/recovery paths preserve their historical limits.
 const recoveryLimits = resolveManagedSpotLimits({ max_position_usdt: 25, max_open_positions: 2, max_total_capital_usdt: 50 });
 assert.strictEqual(recoveryLimits.max_per_acquisition_usdt, 25);
 assert.strictEqual(recoveryLimits.max_managed_spot_assets, 2);
@@ -29,6 +35,35 @@ const growthLimits = resolveManagedSpotLimits({ max_position_usdt: 20, max_open_
 assert.strictEqual(growthLimits.max_per_acquisition_usdt, 20);
 assert.strictEqual(growthLimits.max_managed_spot_assets, 4);
 assert.strictEqual(growthLimits.max_total_managed_capital_usdt, 80);
+
+// The live executor now sizes from operational capital rather than the legacy
+// US$10/US$40 config. At US$280 operational capital the default policy deploys
+// up to 75% and caps a new acquisition at 15%.
+const adaptive280 = resolveAdaptiveManagedSpotLimits({
+  config: { max_position_usdt: 10, max_open_positions: 4, max_total_capital_usdt: 40 },
+  operationalCapitalUsdt: 280
+});
+assert.strictEqual(adaptive280.sizing_mode, 'ADAPTIVE_OPERATIONAL_CAPITAL');
+assert.strictEqual(adaptive280.max_total_managed_capital_usdt, 210);
+assert.strictEqual(adaptive280.max_per_acquisition_usdt, 42);
+assert.strictEqual(adaptive280.max_managed_spot_assets, 4);
+
+// When historical XEC is converted to USDT, the larger liquid pool raises the
+// permissible size automatically, still under hard caps.
+const adaptive550 = resolveAdaptiveManagedSpotLimits({
+  config: { max_position_usdt: 10, max_open_positions: 4, max_total_capital_usdt: 40 },
+  operationalCapitalUsdt: 550
+});
+assert.strictEqual(adaptive550.max_total_managed_capital_usdt, 412.5);
+assert.strictEqual(adaptive550.max_per_acquisition_usdt, 82.5);
+
+const adaptiveDisabled = resolveAdaptiveManagedSpotLimits({
+  config: { dynamic_position_sizing_enabled: false, max_position_usdt: 10, max_open_positions: 4, max_total_capital_usdt: 40 },
+  operationalCapitalUsdt: 550
+});
+assert.strictEqual(adaptiveDisabled.sizing_mode, 'STATIC_COMPATIBILITY');
+assert.strictEqual(adaptiveDisabled.max_total_managed_capital_usdt, 40);
+assert.strictEqual(adaptiveDisabled.max_per_acquisition_usdt, 10);
 
 const oneRecoveryManaged = managedAcquisitionCapacity({
   currentManagedAssets: 1,
@@ -55,6 +90,18 @@ const capitalExhausted = managedAcquisitionCapacity({
 });
 assert.strictEqual(capitalExhausted.can_acquire, false);
 assert.strictEqual(capitalExhausted.managed_capital_remaining_usdt, 20);
+
+const adaptiveCapacity = managedAcquisitionCapacity({
+  currentManagedAssets: 2,
+  currentManagedCapitalUsdt: 40,
+  config: { max_position_usdt: 10, max_total_capital_usdt: 40, max_open_positions: 4 },
+  operationalCapitalUsdt: 280,
+  adaptive: true
+});
+assert.strictEqual(adaptiveCapacity.can_acquire, true);
+assert.strictEqual(adaptiveCapacity.slots_remaining, 2);
+assert.strictEqual(adaptiveCapacity.next_acquisition_usdt, 42);
+assert.strictEqual(adaptiveCapacity.managed_capital_remaining_usdt, 170);
 
 const sushiInfo = {
   symbol: 'SUSHIUSDT',
