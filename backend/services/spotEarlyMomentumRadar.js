@@ -3,8 +3,8 @@
 const axios = require('axios');
 
 const BINANCE_BASE = 'https://api.binance.com';
-const DEFAULT_PROBE_LIMIT = 60;
-const DEFAULT_CONCURRENCY = 8;
+const DEFAULT_PROBE_LIMIT = 100;
+const DEFAULT_CONCURRENCY = 10;
 const BLOCKING_WARNINGS = new Set(['parabolic_24h_move', 'extreme_volatility', 'high_risk_profile']);
 
 function asNumber(value, fallback = 0) {
@@ -64,11 +64,11 @@ function earlyMomentumThresholds(config = {}) {
 
 function probeThresholds(config = {}) {
   return {
-    minimum_quote_volume_usdt: Math.max(100000, asNumber(config.early_momentum_probe_min_quote_volume_usdt, 300000)),
-    minimum_price_change_24h: asNumber(config.early_momentum_probe_min_price_change_24h, 0.25),
+    minimum_quote_volume_usdt: Math.max(100000, asNumber(config.early_momentum_probe_min_quote_volume_usdt, 200000)),
+    minimum_price_change_24h: asNumber(config.early_momentum_probe_min_price_change_24h, 0.1),
     maximum_price_change_24h: Math.max(5, asNumber(config.early_momentum_probe_max_price_change_24h, 18)),
     maximum_risk_score: Math.min(75, Math.max(0, asNumber(config.early_momentum_probe_max_risk_score, 65))),
-    limit: Math.max(10, Math.min(60, asNumber(config.early_momentum_probe_limit, DEFAULT_PROBE_LIMIT)))
+    limit: Math.max(20, Math.min(120, asNumber(config.early_momentum_probe_limit, DEFAULT_PROBE_LIMIT)))
   };
 }
 
@@ -90,11 +90,15 @@ function diverseProbeScore(candidate = {}, lane = 'fresh') {
 
   if (lane === 'volume') return (volumeChange * 0.55) + (liquidity * 0.3) + (impulse * 0.15);
   if (lane === 'breakout') return (breakout * 0.6) + (volumeChange * 0.2) + (liquidity * 0.2);
+  if (lane === 'surge') {
+    const surgeSweetSpot = clamp(100 - (Math.abs(priceChange24h - 9) * 7), 0, 100);
+    return (surgeSweetSpot * 0.35) + (impulse * 0.3) + (volumeChange * 0.2) + (liquidity * 0.15);
+  }
 
   // Give genuinely fresh moves a dedicated path into the expensive 5m probe.
-  // This prevents a crowded set of already-visible ~6% daily movers from
-  // consuming every probe slot before a 1-3% move has time to accelerate.
-  const freshSweetSpot = clamp(100 - (Math.abs(priceChange24h - 2) * 18), 0, 100);
+  // This prevents a crowded set of already-visible movers from consuming every
+  // probe slot before a 0.1-3% move has time to accelerate.
+  const freshSweetSpot = clamp(100 - (Math.abs(priceChange24h - 1.8) * 20), 0, 100);
   return (freshSweetSpot * 0.35) + (volumeChange * 0.3) + (liquidity * 0.25) + (impulse * 0.1);
 }
 
@@ -118,9 +122,15 @@ function selectProbeCandidates(candidates = [], config = {}) {
   const byVolume = [...eligible].sort((left, right) => diverseProbeScore(right, 'volume') - diverseProbeScore(left, 'volume'));
   const byBreakout = [...eligible].sort((left, right) => diverseProbeScore(right, 'breakout') - diverseProbeScore(left, 'breakout'));
   const byFresh = [...eligible].sort((left, right) => diverseProbeScore(right, 'fresh') - diverseProbeScore(left, 'fresh'));
+  const bySurge = [...eligible].sort((left, right) => diverseProbeScore(right, 'surge') - diverseProbeScore(left, 'surge'));
 
-  const primaryQuota = Math.max(4, Math.floor(thresholds.limit * 0.4));
-  const secondaryQuota = Math.max(2, Math.floor((thresholds.limit - primaryQuota) / 3));
+  const quotas = {
+    seed: Math.max(8, Math.floor(thresholds.limit * 0.30)),
+    fresh: Math.max(6, Math.floor(thresholds.limit * 0.25)),
+    volume: Math.max(4, Math.floor(thresholds.limit * 0.15)),
+    breakout: Math.max(4, Math.floor(thresholds.limit * 0.15)),
+    surge: Math.max(4, Math.floor(thresholds.limit * 0.15))
+  };
   const selected = [];
   const seen = new Set();
 
@@ -136,10 +146,13 @@ function selectProbeCandidates(candidates = [], config = {}) {
     }
   }
 
-  addFrom(bySeed, primaryQuota);
-  addFrom(byFresh, secondaryQuota);
-  addFrom(byVolume, secondaryQuota);
-  addFrom(byBreakout, thresholds.limit - selected.length);
+  addFrom(byFresh, quotas.fresh);
+  addFrom(bySurge, quotas.surge);
+  addFrom(byVolume, quotas.volume);
+  addFrom(byBreakout, quotas.breakout);
+  addFrom(bySeed, quotas.seed);
+  addFrom(byFresh, thresholds.limit - selected.length);
+  addFrom(bySurge, thresholds.limit - selected.length);
   addFrom(bySeed, thresholds.limit - selected.length);
 
   return selected.slice(0, thresholds.limit);
@@ -269,12 +282,12 @@ async function enrichEarlyMomentumCandidates(candidates = [], config = {}, depen
       eligible_count: 0,
       eligible_symbols: [],
       errors: [],
-      version: 'early_momentum_radar_v1'
+      version: 'early_momentum_radar_v2_winner_ignition'
     };
   }
 
   const seeds = selectProbeCandidates(candidates, config);
-  const concurrency = Math.max(1, Math.min(12, asNumber(config.early_momentum_probe_concurrency, DEFAULT_CONCURRENCY)));
+  const concurrency = Math.max(1, Math.min(16, asNumber(config.early_momentum_probe_concurrency, DEFAULT_CONCURRENCY)));
   const results = await mapWithConcurrency(seeds, concurrency, async (candidate) => {
     const rows = await fetchFiveMinuteKlines(String(candidate.symbol || '').toUpperCase(), dependencies);
     return { candidate, metrics: analyzeEarlyMomentumCandles(rows) };
@@ -313,7 +326,7 @@ async function enrichEarlyMomentumCandidates(candidates = [], config = {}, depen
     eligible_count: eligibleSymbols.length,
     eligible_symbols: eligibleSymbols,
     errors: errors.slice(0, 10),
-    version: 'early_momentum_radar_v1'
+    version: 'early_momentum_radar_v2_winner_ignition'
   };
 }
 
