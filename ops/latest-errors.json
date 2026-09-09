@@ -1,5 +1,20 @@
 {
-  "generated_at": "2026-09-09T17:32:35Z",
-  "count": 0,
-  "errors": []
+  "generated_at": "2026-09-09T18:06:30Z",
+  "count": 2,
+  "errors": [
+    {
+      "timestamp": "2026-09-09T17:56:17.627345Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00716-frq",
+      "event": null,
+      "message": "  error: 'The operation was aborted due to timeout'"
+    },
+    {
+      "timestamp": "2026-09-09T17:56:17.627332Z",
+      "severity": "DEFAULT",
+      "revision": "proypers25-backend-00716-frq",
+      "event": null,
+      "message": "[EXCHANGE_INFO_WARMUP] failed {"
+    }
+  ]
 }
