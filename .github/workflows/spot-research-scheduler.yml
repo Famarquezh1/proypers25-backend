@@ -30,6 +30,8 @@ jobs:
   research:
     runs-on: ubuntu-latest
     timeout-minutes: 14
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -45,13 +47,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CRON_SECRET_VALUE=$(gcloud secrets versions access latest --secret=cron-secret --project=proypers2025)
+          test -n "$CRON_SECRET"
           BACKEND_URL_VALUE=$(gcloud run services describe proypers25-backend --project=proypers2025 --region=southamerica-west1 --platform=managed --format='value(status.url)')
-          test -n "$CRON_SECRET_VALUE"
           test -n "$BACKEND_URL_VALUE"
-          echo "::add-mask::$CRON_SECRET_VALUE"
-          echo "CRON_SECRET=$CRON_SECRET_VALUE" >> "$GITHUB_ENV"
+          echo "::add-mask::$CRON_SECRET"
           echo "BACKEND_URL=$BACKEND_URL_VALUE" >> "$GITHUB_ENV"
+          echo "Runtime config loaded without Secret Manager dependency."
 
       - name: Run productive Spot research cycle
         env:
@@ -181,8 +182,6 @@ jobs:
             TOP_HOUR_SLOT=true
           fi
 
-          # Discovery and Gem Radar remain at two executions per hour, now at
-          # :07 and :37 to avoid crowded GitHub scheduling boundaries.
           run_market_opportunity
           run_gem_radar
 
