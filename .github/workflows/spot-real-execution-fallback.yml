@@ -1,128 +1,13 @@
-name: Spot real execution fallback
+name: Spot real execution fallback — GCP disabled
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: spot-real-execution-fallback
-  cancel-in-progress: false
-
 jobs:
-  fallback-cycle:
-    name: Run Spot cycle only when Cloud Scheduler is paused
+  disabled:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: proypers2025
-
-      - name: Check primary scheduler and run fallback cycle
-        shell: bash
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          test -n "$CRON_SECRET"
-
-          PROJECT="proypers2025"
-          RUN_REGION="southamerica-west1"
-          SCHEDULER_REGION="southamerica-east1"
-          SERVICE="proypers25-backend"
-          JOB="spot-real-execution"
-
-          STATE=$(gcloud scheduler jobs describe "$JOB" \
-            --project="$PROJECT" \
-            --location="$SCHEDULER_REGION" \
-            --format='value(state)' 2>/dev/null \
-            | tr -d '[:space:]' \
-            | tr '[:lower:]' '[:upper:]' || true)
-
-          if [ "$STATE" = "ENABLED" ]; then
-            echo "Cloud Scheduler is enabled; fallback skipped to avoid duplicate cycles."
-            exit 0
-          fi
-
-          if [ "$STATE" != "PAUSED" ]; then
-            echo "::error::Cloud Scheduler state is ${STATE:-UNKNOWN}. Fallback will not claim success because primary execution state cannot be verified."
-            exit 1
-          fi
-
-          echo "Cloud Scheduler is explicitly PAUSED; running protected fallback cycle."
-
-          URL=$(gcloud run services describe "$SERVICE" \
-            --project="$PROJECT" \
-            --region="$RUN_REGION" \
-            --platform=managed \
-            --format='value(status.url)')
-          test -n "$URL"
-
-          RESPONSE=$(curl --silent --show-error --fail-with-body \
-            --retry 3 --retry-all-errors --retry-delay 5 --max-time 240 \
-            -X POST "$URL/internal/cron/binance/spot-real-execution" \
-            -H "Content-Type: application/json" \
-            -H "x-cron-secret: $CRON_SECRET" \
-            --data '{}')
-
-          jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$RESPONSE" >/dev/null
-          echo "Fallback Spot cycle completed: $(jq -r '.decision_summary.decision // .entries.reason // "completed"' <<<"$RESPONSE")"
-          echo "REAL_SPOT_DECISION_EVIDENCE"
-          jq '{
-            decision_summary,
-            entries: {
-              ok: .entries.ok,
-              skipped: .entries.skipped,
-              reason: .entries.reason,
-              failed_conditions: .entries.failed_conditions,
-              candidate: .entries.candidate
-            },
-            paper_gate: {
-              allowed: .paper_entry_gate.allowed,
-              entry_mode: .paper_entry_gate.entry_mode,
-              selection_lane: .paper_entry_gate.selection_lane,
-              reasons: .paper_entry_gate.reasons,
-              candidate: .paper_entry_gate.candidate,
-              technical_confirmation: .paper_entry_gate.technical_confirmation,
-              early_momentum_radar: .paper_entry_gate.early_momentum_radar,
-              candidate_pool_audit: (.paper_entry_gate.candidate_pool_audit // [])[0:10]
-            },
-            reconciliation: {
-              account_consistent: .reconciliation.account_consistent,
-              entries_blocked: .reconciliation.entries_blocked,
-              inconsistencies: .reconciliation.inconsistencies
-            },
-            exits: {
-              ok: .exits.ok,
-              blocked: .exits.blocked,
-              blocked_reason: .exits.blocked_reason,
-              exit_engine_healthy: .exits.exit_engine_healthy,
-              evaluated: .exits.evaluated,
-              sold: .exits.sold,
-              held: .exits.held,
-              failures: .exits.failures,
-              outcomes: .exits.outcomes
-            },
-            autonomy: {
-              should_halt: .autonomy.should_halt,
-              halt_reason: .autonomy.halt_reason,
-              consecutive_losses: .autonomy.consecutive_losses,
-              loss_streak_cooldown_active: .autonomy.loss_streak_cooldown_active,
-              loss_streak_cooldown_until: .autonomy.loss_streak_cooldown_until,
-              autonomy_halt_released: .autonomy.autonomy_halt_released
-            },
-            adaptive_gate: .adaptive_strategy_gate,
-            promotion_confidence: .strategy_promotion_confidence,
-            safety_checks: .safety_checks,
-            open_positions_after_cycle: .open_positions_after_cycle
-          }' <<<"$RESPONSE"
+      - run: echo "GCP integration disabled. GitHub-native Spot flow is active instead."
