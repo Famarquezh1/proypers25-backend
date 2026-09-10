@@ -2,15 +2,6 @@ name: Spot Manual Approval
 
 on:
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Modo de aprobación'
-        required: true
-        default: test
-        type: choice
-        options:
-          - test
-          - real
 
 permissions:
   contents: read
@@ -21,43 +12,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  approve:
-    name: Validate latest signal and execute only after manual Run workflow
+  prepare:
+    name: Resolve latest production Spot signal
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
+    outputs:
+      issue_number: ${{ steps.signal.outputs.issue_number }}
+      symbol: ${{ steps.signal.outputs.symbol }}
+      pct: ${{ steps.signal.outputs.pct }}
+      price: ${{ steps.signal.outputs.price }}
+      created_at: ${{ steps.signal.outputs.created_at }}
     env:
       GH_TOKEN: ${{ github.token }}
-      BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
-      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Resolve latest signal
+      - name: Resolve latest production signal
         id: signal
         shell: bash
-        env:
-          MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          if [ "$MODE" = "test" ]; then
-            JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'SPOT SIGNAL TEST in:title' --limit 20 --json number,title,body,createdAt --jq 'sort_by(.createdAt) | reverse | .[0]')
-            test -n "$JSON" && test "$JSON" != "null"
-            NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
-            CREATED=$(printf '%s' "$JSON" | jq -r '.createdAt')
-            echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
-            echo 'symbol=TESTUSDT' >> "$GITHUB_OUTPUT"
-            echo 'pct=4.20' >> "$GITHUB_OUTPUT"
-            echo 'price=0.12345' >> "$GITHUB_OUTPUT"
-            echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
-            echo 'test=true' >> "$GITHUB_OUTPUT"
-            echo 'SIGNAL_SYMBOL=TESTUSDT' >> "$GITHUB_ENV"
-            echo 'SIGNAL_PCT=4.20' >> "$GITHUB_ENV"
-            echo 'SIGNAL_PRICE=0.12345' >> "$GITHUB_ENV"
-            echo "SIGNAL_CREATED_AT=$CREATED" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
           JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '[SPOT SIGNAL] in:title' --limit 50 --json number,title,body,createdAt --jq '[.[] | select(.title | startswith("[SPOT SIGNAL] "))] | sort_by(.createdAt) | reverse | .[0]')
           test -n "$JSON" && test "$JSON" != "null"
           NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
@@ -73,44 +45,43 @@ jobs:
           echo "pct=$PCT" >> "$GITHUB_OUTPUT"
           echo "price=$PRICE" >> "$GITHUB_OUTPUT"
           echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
-          echo 'test=false' >> "$GITHUB_OUTPUT"
-          echo "SIGNAL_SYMBOL=$SYMBOL" >> "$GITHUB_ENV"
-          echo "SIGNAL_PCT=$PCT" >> "$GITHUB_ENV"
-          echo "SIGNAL_PRICE=$PRICE" >> "$GITHUB_ENV"
-          echo "SIGNAL_CREATED_AT=$CREATED" >> "$GITHUB_ENV"
 
-      - name: Confirm test approval path
-        if: steps.signal.outputs.test == 'true'
-        shell: bash
-        run: |
-          echo 'TEST_APPROVAL_OK: manual Run workflow reached the approval job. No Binance order was sent.'
-          gh issue comment "${{ steps.signal.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --body '✅ Prueba de aprobación manual completada desde **Spot Manual Approval**. No se envió ninguna orden a Binance.'
+  execute:
+    name: Execute approved Spot order from Chile PC
+    needs: prepare
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    env:
+      BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+      SIGNAL_SYMBOL: ${{ needs.prepare.outputs.symbol }}
+      SIGNAL_PCT: ${{ needs.prepare.outputs.pct }}
+      SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
+      SIGNAL_CREATED_AT: ${{ needs.prepare.outputs.created_at }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        if: steps.signal.outputs.test != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Revalidate and execute real Spot order
-        if: steps.signal.outputs.test != 'true'
         working-directory: backend
         run: node scripts/github-spot-manual-execution.js
 
-      - name: Mark real signal executed
-        if: success() && steps.signal.outputs.test != 'true'
+  mark:
+    name: Mark executed signal
+    needs: [prepare, execute]
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Close executed signal
         shell: bash
         run: |
-          gh issue comment "${{ steps.signal.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --body '✅ Operación Spot aprobada manualmente mediante **Run workflow** y enviada por el puente GitHub → Binance. Revisa el log de este workflow y Binance para el orderId.'
-          gh issue close "${{ steps.signal.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --reason completed
-
-      - name: Summary
-        if: always()
-        shell: bash
-        run: |
-          echo '### Spot Manual Approval' >> "$GITHUB_STEP_SUMMARY"
-          echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Activación: exclusivamente workflow_dispatch (Run workflow)' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Modo: ${{ inputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Símbolo: ${{ steps.signal.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Issue: #${{ steps.signal.outputs.issue_number || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          gh issue comment "${{ needs.prepare.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --body '✅ Operación Spot aprobada mediante **Run workflow** y procesada por el runner local. Revisa Binance y el log de la ejecución para el orderId.'
+          gh issue close "${{ needs.prepare.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --reason completed
