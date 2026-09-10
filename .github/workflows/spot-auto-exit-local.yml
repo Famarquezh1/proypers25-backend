@@ -1,0 +1,37 @@
+name: Spot Auto Exit Local
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-auto-exit-local
+  cancel-in-progress: false
+
+jobs:
+  exit:
+    name: Monitor and sell managed Spot positions
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    env:
+      BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Monitor positions and execute protective Spot sells
+        working-directory: backend
+        shell: powershell
+        run: node scripts/github-spot-auto-exit.js
