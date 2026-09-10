@@ -31,13 +31,6 @@ jobs:
           TEST_NOTIFICATION: ${{ inputs.test_notification || 'false' }}
         run: |
           set -euo pipefail
-          DATA=$(curl --fail --silent --show-error --max-time 30 'https://api.binance.com/api/v3/ticker/24hr')
-          CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
-            | select(.symbol | endswith("USDT"))
-            | select(.symbol | test("(UP|DOWN|BULL|BEAR)USDT$") | not)
-            | . + {pct:(.priceChangePercent|tonumber), qv:(.quoteVolume|tonumber)}
-            | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
-            | sort_by(.pct) | reverse | .[0] // null')
 
           if [ "$TEST_NOTIFICATION" = "true" ]; then
             echo 'notify=true' >> "$GITHUB_OUTPUT"
@@ -49,8 +42,18 @@ jobs:
             exit 0
           fi
 
+          DATA=$(curl --fail --silent --show-error --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 30 'https://data-api.binance.vision/api/v3/ticker/24hr')
+          CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
+            | select(.symbol | endswith("USDT"))
+            | select((.symbol | test("(UP|DOWN|BULL|BEAR)USDT$")) | not)
+            | . + {pct:(.priceChangePercent|tonumber), qv:(.quoteVolume|tonumber)}
+            | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
+            | sort_by(.pct) | reverse | .[0] // null')
+
           if [ "$CANDIDATE" = "null" ]; then
             echo 'notify=false' >> "$GITHUB_OUTPUT"
+            echo 'test=false' >> "$GITHUB_OUTPUT"
+            echo 'symbol=none' >> "$GITHUB_OUTPUT"
             echo 'No qualifying early-momentum candidate.'
             exit 0
           fi
@@ -76,8 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SINCE=$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
-          COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "[SPOT SIGNAL] $SYMBOL in:title created:>=$SINCE" --json number --jq 'length')
+          COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "[SPOT SIGNAL] $SYMBOL in:title" --limit 20 --json number,createdAt --jq '[.[] | select((.createdAt | fromdateiso8601) >= (now - 1200))] | length')
           if [ "$COUNT" -gt 0 ]; then
             echo 'duplicate=true' >> "$GITHUB_OUTPUT"
           else
@@ -101,29 +103,23 @@ jobs:
             BODY='Prueba de notificación de Proypers25 desde GitHub Actions. No representa una operación real. Si recibiste esta alerta, el canal GitHub → usuario funciona sin GCP.'
           else
             TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-            BODY=$(cat <<EOF
-          Proypers25 GitHub Radar detectó una oportunidad Spot sin usar GCP.
-
-          - Símbolo: $SYMBOL
-          - Cambio 24h: +${PCT}%
-          - Precio: $PRICE
-          - Volumen quote 24h: $QV USDT
-          - Banda Early Momentum: 1% a <18%
-          - Liquidez mínima aplicada: 200,000 USDT
-
-          Acción: abre GitHub Actions y ejecuta el workflow manual de aprobación correspondiente si deseas continuar.
-
-          Esta alerta no crea ni envía ninguna orden a Binance.
-          EOF
-          )
+            BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s' \
+              'Proypers25 GitHub Radar detectó una oportunidad Spot sin usar GCP.' \
+              "- Símbolo: $SYMBOL" \
+              "- Cambio 24h: +${PCT}%" \
+              "- Precio: $PRICE" \
+              "- Volumen quote 24h: $QV USDT" \
+              'Acción: abre GitHub Actions y ejecuta el workflow manual de aprobación correspondiente si deseas continuar.' \
+              'Esta alerta no crea ni envía ninguna orden a Binance.')
           fi
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
 
       - name: Summary
+        if: always()
         shell: bash
         run: |
           echo "### Spot GitHub Radar" >> "$GITHUB_STEP_SUMMARY"
           echo "- GCP usado: no" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Binance endpoint: public Spot ticker" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Notificación: ${{ steps.scan.outputs.notify }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fuente Binance: data-api.binance.vision" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Notificación solicitada: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
