@@ -42,13 +42,6 @@ jobs:
           SERVICE="proypers25-backend"
           JOB="spot-real-execution"
 
-          URL=$(gcloud run services describe "$SERVICE" \
-            --project="$PROJECT" \
-            --region="$RUN_REGION" \
-            --platform=managed \
-            --format='value(status.url)')
-          test -n "$URL"
-
           STATE=$(gcloud scheduler jobs describe "$JOB" \
             --project="$PROJECT" \
             --location="$SCHEDULER_REGION" \
@@ -61,7 +54,20 @@ jobs:
             exit 0
           fi
 
-          echo "Cloud Scheduler state is ${STATE:-UNKNOWN}; running protected fallback cycle."
+          if [ "$STATE" != "PAUSED" ]; then
+            echo "Cloud Scheduler state is ${STATE:-UNKNOWN}; fallback skipped because PAUSED was not explicitly confirmed."
+            exit 0
+          fi
+
+          echo "Cloud Scheduler is explicitly PAUSED; running protected fallback cycle."
+
+          URL=$(gcloud run services describe "$SERVICE" \
+            --project="$PROJECT" \
+            --region="$RUN_REGION" \
+            --platform=managed \
+            --format='value(status.url)')
+          test -n "$URL"
+
           RESPONSE=$(curl --silent --show-error --fail-with-body \
             --retry 3 --retry-all-errors --retry-delay 5 --max-time 240 \
             -X POST "$URL/internal/cron/binance/spot-real-execution" \
