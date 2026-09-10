@@ -93,7 +93,9 @@ jobs:
             "- Utility: $UTILITY | Objetivo QUBO: $QUBO_OBJECTIVE" \
             "- Selección QUBO: $QUBO_SELECTED" \
             'Acción: abre GitHub Actions → Spot Manual Approval → Run workflow → mode=real.')
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
+          ISSUE_URL=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1)
+          ISSUE_NUMBER=$(basename "$ISSUE_URL")
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body '@Famarquezh1 ⚠️ Señal Spot nueva. Revisa esta oportunidad y, si sigue vigente, apruébala en **Actions → Spot Manual Approval → Run workflow**.'
 
       - name: Summary
         if: always()
