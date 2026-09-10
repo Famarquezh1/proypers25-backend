@@ -29,7 +29,7 @@ function fail(message) {
 
 function validateInputs() {
   if (!API_KEY || !API_SECRET) fail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');
-  if (!/^[A-Z0-9]{3,20}USDT$/.test(SYMBOL)) fail('Invalid or missing signal symbol');
+  if (!/^[A-Z0-9]{1,20}USDT$/.test(SYMBOL)) fail('Invalid or missing signal symbol');
   if (!(SIGNAL_PRICE > 0)) fail('Invalid signal price');
   if (!(SIGNAL_PCT >= 1 && SIGNAL_PCT < 18)) fail('Signal is outside Early Momentum band');
   const created = Date.parse(SIGNAL_CREATED_AT);
