@@ -13,6 +13,8 @@ on:
         required: true
         default: "3"
         type: string
+  schedule:
+    - cron: '25 4 * * *'
 
 permissions:
   contents: read
@@ -34,8 +36,8 @@ jobs:
 
       - name: List and optionally delete old images
         env:
-          EXECUTE: ${{ inputs.execute }}
-          KEEP: ${{ inputs.keep }}
+          EXECUTE: ${{ github.event_name == 'schedule' && 'true' || inputs.execute }}
+          KEEP: ${{ github.event_name == 'schedule' && '3' || inputs.keep }}
           IMAGE: southamerica-west1-docker.pkg.dev/proypers2025/backend-repo/backend-image
         run: |
           set -euo pipefail
