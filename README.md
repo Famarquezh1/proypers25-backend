@@ -1,6 +1,6 @@
 # Proypers25 Observability
 
-Rama generada automáticamente cada 30 minutos desde Cloud Logging.
+Rama generada automáticamente cada hora desde Cloud Logging.
 
 Solo contiene campos sanitizados y permitidos. No publica encabezados HTTP, secretos, API keys, cuerpos completos ni variables de entorno.
 
