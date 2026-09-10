@@ -11,7 +11,6 @@ steps:
     args:
       - 'build'
       - '--pull'
-      - '--no-cache'
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_IMAGE_TAG}'
       - '.'
@@ -127,6 +126,8 @@ steps:
       - '--region'
       - '${_REGION}'
       - '--allow-unauthenticated'
+      - '--max-instances'
+      - '2'
       - '--command'
       - 'node'
       - '--args'
