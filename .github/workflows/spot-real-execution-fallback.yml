@@ -55,8 +55,8 @@ jobs:
           fi
 
           if [ "$STATE" != "PAUSED" ]; then
-            echo "Cloud Scheduler state is ${STATE:-UNKNOWN}; fallback skipped because PAUSED was not explicitly confirmed."
-            exit 0
+            echo "::error::Cloud Scheduler state is ${STATE:-UNKNOWN}. Fallback will not claim success because primary execution state cannot be verified."
+            exit 1
           fi
 
           echo "Cloud Scheduler is explicitly PAUSED; running protected fallback cycle."
