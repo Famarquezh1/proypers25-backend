@@ -4,10 +4,10 @@ const crypto = require('crypto');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
-const SYMBOL = String(process.env.SIGNAL_SYMBOL || '').toUpperCase();
-const SIGNAL_PRICE = Number(process.env.SIGNAL_PRICE || 0);
-const SIGNAL_PCT = Number(process.env.SIGNAL_PCT || 0);
-const SIGNAL_CREATED_AT = process.env.SIGNAL_CREATED_AT || '';
+let SYMBOL = String(process.env.SIGNAL_SYMBOL || '').toUpperCase();
+let SIGNAL_PRICE = Number(process.env.SIGNAL_PRICE || 0);
+let SIGNAL_PCT = Number(process.env.SIGNAL_PCT || 0);
+let SIGNAL_CREATED_AT = process.env.SIGNAL_CREATED_AT || '';
 
 const MIN_USDT = 10;
 const MAX_USDT = 100;
@@ -27,9 +27,47 @@ function fail(message) {
   process.exit(2);
 }
 
+function parseSignalIssue(issue) {
+  const title = String(issue?.title || '');
+  const body = String(issue?.body || '');
+  const symbol = (title.match(/^\[SPOT SIGNAL\]\s+([A-Z0-9]+USDT)\b/i) || [])[1] || '';
+  const pct = Number((body.match(/^- Cambio 24h:\s*\+?([0-9.-]+)%/m) || [])[1] || NaN);
+  const price = Number((body.match(/^- Precio:\s*([0-9.eE+-]+)/m) || [])[1] || NaN);
+  const createdAt = issue?.created_at || issue?.createdAt || '';
+  return { symbol: symbol.toUpperCase(), pct, price, createdAt };
+}
+
+async function resolveLatestSignalFromGitHub() {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+  const repo = process.env.GITHUB_REPOSITORY || '';
+  if (!token || !repo) return false;
+
+  const response = await fetch(`https://api.github.com/repos/${repo}/issues?state=open&per_page=50&sort=created&direction=desc`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'proypers25-spot-runner'
+    }
+  });
+  if (!response.ok) return false;
+  const issues = await response.json();
+  const issue = (issues || []).find((x) => !x.pull_request && String(x.title || '').startsWith('[SPOT SIGNAL] '));
+  if (!issue) return false;
+
+  const parsed = parseSignalIssue(issue);
+  if (!parsed.symbol || !Number.isFinite(parsed.pct) || !Number.isFinite(parsed.price) || !parsed.createdAt) return false;
+  SYMBOL = parsed.symbol;
+  SIGNAL_PCT = parsed.pct;
+  SIGNAL_PRICE = parsed.price;
+  SIGNAL_CREATED_AT = parsed.createdAt;
+  console.log(`SIGNAL_RESOLVED_ON_RUNNER issue=${issue.number} symbol=${SYMBOL}`);
+  return true;
+}
+
 function validateInputs() {
   if (!API_KEY || !API_SECRET) fail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');
-  if (!/^[A-Z0-9]{1,20}USDT$/.test(SYMBOL)) fail('Invalid or missing signal symbol');
+  if (!/^[A-Z0-9]{2,20}USDT$/.test(SYMBOL)) fail('Invalid or missing signal symbol');
   if (!(SIGNAL_PRICE > 0)) fail('Invalid signal price');
   if (!(SIGNAL_PCT >= 1 && SIGNAL_PCT < 18)) fail('Signal is outside Early Momentum band');
   const created = Date.parse(SIGNAL_CREATED_AT);
@@ -80,6 +118,9 @@ function freeBalance(account, asset) {
 }
 
 async function main() {
+  if (!SYMBOL || !(SIGNAL_PRICE > 0) || !(SIGNAL_PCT > 0) || !SIGNAL_CREATED_AT) {
+    await resolveLatestSignalFromGitHub();
+  }
   validateInputs();
   const base = await chooseBase();
 
