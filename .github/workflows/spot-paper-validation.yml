@@ -3,7 +3,7 @@ name: Spot paper signal validation
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: read
@@ -43,6 +43,6 @@ jobs:
         env:
           GOOGLE_CLOUD_PROJECT: proypers2025
           GCLOUD_PROJECT: proypers2025
-          BINANCE_SPOT_PAPER_MAX_DOCS: '250'
+          BINANCE_SPOT_PAPER_MAX_DOCS: '150'
           BINANCE_SPOT_PAPER_TIMEOUT_MS: '12000'
         run: node scripts/run-spot-paper-validation.js
