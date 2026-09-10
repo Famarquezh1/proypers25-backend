@@ -2,12 +2,6 @@ name: Spot GitHub Radar
 
 on:
   workflow_dispatch:
-    inputs:
-      test_notification:
-        description: 'Crear notificación de prueba'
-        required: false
-        default: false
-        type: boolean
   schedule:
     - cron: '*/5 * * * *'
 
@@ -24,83 +18,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Scan Spot market without GCP
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run production Spot QUBO radar without GCP
         id: scan
         shell: bash
-        env:
-          TEST_NOTIFICATION: ${{ inputs.test_notification || 'false' }}
         run: |
           set -euo pipefail
-
-          if [ "$TEST_NOTIFICATION" = "true" ]; then
-            echo 'notify=true' >> "$GITHUB_OUTPUT"
-            echo 'test=true' >> "$GITHUB_OUTPUT"
-            echo 'symbol=TESTUSDT' >> "$GITHUB_OUTPUT"
-            echo 'pct=4.20' >> "$GITHUB_OUTPUT"
-            echo 'price=0.12345' >> "$GITHUB_OUTPUT"
-            echo 'quote_volume=1000000' >> "$GITHUB_OUTPUT"
-            echo 'source=TEST' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          fetch_json() {
-            local url="$1"
-            curl --silent --show-error --fail --retry 1 --retry-delay 1 --connect-timeout 8 --max-time 25 "$url" 2>/dev/null
-          }
-
-          DATA=''
-          SOURCE=''
-
-          if DATA=$(fetch_json 'https://data-api.binance.vision/api/v3/ticker/24hr'); then
-            SOURCE='BINANCE_VISION'
-            CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
-              | select(.symbol | endswith("USDT"))
-              | select((.symbol | test("(UP|DOWN|BULL|BEAR)USDT$")) | not)
-              | . + {pct:(.priceChangePercent|tonumber), qv:(.quoteVolume|tonumber)}
-              | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
-              | sort_by(.pct) | reverse | .[0] // null')
-          elif DATA=$(fetch_json 'https://api.binance.com/api/v3/ticker/24hr'); then
-            SOURCE='BINANCE_API'
-            CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
-              | select(.symbol | endswith("USDT"))
-              | select((.symbol | test("(UP|DOWN|BULL|BEAR)USDT$")) | not)
-              | . + {pct:(.priceChangePercent|tonumber), qv:(.quoteVolume|tonumber)}
-              | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
-              | sort_by(.pct) | reverse | .[0] // null')
-          else
-            SOURCE='COINGECKO_FALLBACK'
-            DATA=$(fetch_json 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h')
-            CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
-              | select(.symbol != null and .current_price != null and .price_change_percentage_24h != null and .total_volume != null)
-              | {symbol:((.symbol|ascii_upcase)+"USDT"), pct:(.price_change_percentage_24h|tonumber), lastPrice:(.current_price|tostring), qv:(.total_volume|tonumber)}
-              | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
-              | sort_by(.pct) | reverse | .[0] // null')
-          fi
-
-          if [ "$CANDIDATE" = "null" ]; then
-            echo 'notify=false' >> "$GITHUB_OUTPUT"
-            echo 'test=false' >> "$GITHUB_OUTPUT"
+          RESULT=$(node backend/scripts/github-spot-production-radar.js)
+          printf '%s\n' "$RESULT"
+          NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
+          echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
+          if [ "$NOTIFY" != "true" ]; then
             echo 'symbol=none' >> "$GITHUB_OUTPUT"
-            echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
-            echo "No qualifying early-momentum candidate. source=$SOURCE"
             exit 0
           fi
-
-          SYMBOL=$(printf '%s' "$CANDIDATE" | jq -r '.symbol')
-          PCT=$(printf '%s' "$CANDIDATE" | jq -r '.pct')
-          PRICE=$(printf '%s' "$CANDIDATE" | jq -r '.lastPrice')
-          QV=$(printf '%s' "$CANDIDATE" | jq -r '.qv')
-
-          echo 'notify=true' >> "$GITHUB_OUTPUT"
-          echo 'test=false' >> "$GITHUB_OUTPUT"
-          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
-          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
-          echo "price=$PRICE" >> "$GITHUB_OUTPUT"
-          echo "quote_volume=$QV" >> "$GITHUB_OUTPUT"
-          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          echo "symbol=$(printf '%s' "$RESULT" | jq -r '.symbol')" >> "$GITHUB_OUTPUT"
+          echo "pct=$(printf '%s' "$RESULT" | jq -r '.pct')" >> "$GITHUB_OUTPUT"
+          echo "price=$(printf '%s' "$RESULT" | jq -r '.price')" >> "$GITHUB_OUTPUT"
+          echo "quote_volume=$(printf '%s' "$RESULT" | jq -r '.quote_volume')" >> "$GITHUB_OUTPUT"
+          echo "source=$(printf '%s' "$RESULT" | jq -r '.source')" >> "$GITHUB_OUTPUT"
+          echo "utility=$(printf '%s' "$RESULT" | jq -r '.utility')" >> "$GITHUB_OUTPUT"
+          echo "qubo_method=$(printf '%s' "$RESULT" | jq -r '.qubo_method')" >> "$GITHUB_OUTPUT"
+          echo "qubo_objective=$(printf '%s' "$RESULT" | jq -r '.qubo_objective')" >> "$GITHUB_OUTPUT"
+          echo "qubo_selected=$(printf '%s' "$RESULT" | jq -r '.qubo_selected_symbols | join(",")')" >> "$GITHUB_OUTPUT"
 
       - name: Avoid duplicate signal issue
-        if: steps.scan.outputs.notify == 'true' && steps.scan.outputs.test != 'true'
+        if: steps.scan.outputs.notify == 'true'
         id: dedupe
         env:
           GH_TOKEN: ${{ github.token }}
@@ -115,8 +65,8 @@ jobs:
             echo 'duplicate=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create GitHub notification
-        if: steps.scan.outputs.notify == 'true' && (steps.scan.outputs.test == 'true' || steps.dedupe.outputs.duplicate != 'true')
+      - name: Create production GitHub signal notification
+        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SYMBOL: ${{ steps.scan.outputs.symbol }}
@@ -124,33 +74,34 @@ jobs:
           PRICE: ${{ steps.scan.outputs.price }}
           QV: ${{ steps.scan.outputs.quote_volume }}
           SOURCE: ${{ steps.scan.outputs.source }}
-          IS_TEST: ${{ steps.scan.outputs.test }}
+          UTILITY: ${{ steps.scan.outputs.utility }}
+          QUBO_METHOD: ${{ steps.scan.outputs.qubo_method }}
+          QUBO_OBJECTIVE: ${{ steps.scan.outputs.qubo_objective }}
+          QUBO_SELECTED: ${{ steps.scan.outputs.qubo_selected }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$IS_TEST" = "true" ]; then
-            TITLE='[SPOT SIGNAL TEST] Notificación GitHub funcional'
-            BODY='Prueba de notificación de Proypers25 desde GitHub Actions. No representa una operación real. Si recibiste esta alerta, el canal GitHub → usuario funciona sin GCP.'
-          else
-            TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-            BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n\n%s\n\n%s' \
-              'Proypers25 GitHub Radar detectó una oportunidad Spot sin usar GCP.' \
-              "- Símbolo: $SYMBOL" \
-              "- Cambio 24h: +${PCT}%" \
-              "- Precio: $PRICE" \
-              "- Volumen quote 24h: $QV USD/USDT aprox." \
-              "- Fuente: $SOURCE" \
-              'Acción: abre GitHub Actions y ejecuta el workflow manual de aprobación correspondiente si deseas continuar.' \
-              'Esta alerta no crea ni envía ninguna orden a Binance.')
-          fi
+          TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
+          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+            'Proypers25 detectó una oportunidad Spot en producción desde GitHub, sin GCP.' \
+            "- Símbolo: $SYMBOL" \
+            "- Cambio 24h: +${PCT}%" \
+            "- Precio: $PRICE" \
+            "- Volumen quote 24h: $QV USD/USDT aprox." \
+            "- Fuente: $SOURCE" \
+            "- QUBO: $QUBO_METHOD" \
+            "- Utility: $UTILITY | Objetivo QUBO: $QUBO_OBJECTIVE" \
+            "- Selección QUBO: $QUBO_SELECTED" \
+            'Acción: abre GitHub Actions → Spot Manual Approval → Run workflow → mode=real.')
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
 
       - name: Summary
         if: always()
         shell: bash
         run: |
-          echo "### Spot GitHub Radar" >> "$GITHUB_STEP_SUMMARY"
-          echo "- GCP usado: no" >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot GitHub Radar — Production' >> "$GITHUB_STEP_SUMMARY"
+          echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- QUBO: producción para selección de señal' >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Notificación solicitada: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
