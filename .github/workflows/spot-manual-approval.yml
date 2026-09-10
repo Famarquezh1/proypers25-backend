@@ -28,7 +28,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
-      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
