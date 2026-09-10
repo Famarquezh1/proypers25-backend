@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: deploy-proypers25-backend
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
