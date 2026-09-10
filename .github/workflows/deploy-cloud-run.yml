@@ -17,6 +17,8 @@ jobs:
     name: Cloud Build to Cloud Run
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
@@ -102,14 +104,13 @@ jobs:
         with:
           project_id: proypers2025
 
-      - name: Load current cron secret from Secret Manager
+      - name: Load deployment runtime secret
         shell: bash
         run: |
           set -euo pipefail
-          CRON_SECRET_VALUE=$(gcloud secrets versions access latest --secret=cron-secret --project=proypers2025)
-          test -n "$CRON_SECRET_VALUE"
-          echo "::add-mask::$CRON_SECRET_VALUE"
-          echo "CRON_SECRET=$CRON_SECRET_VALUE" >> "$GITHUB_ENV"
+          test -n "$CRON_SECRET"
+          echo "::add-mask::$CRON_SECRET"
+          echo "Runtime secret loaded from GitHub Actions; Secret Manager read is not required."
 
       - name: Submit immutable build and deployment
         shell: bash
