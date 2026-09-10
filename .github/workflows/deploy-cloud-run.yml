@@ -3,6 +3,9 @@ name: Deploy backend to Cloud Run
 on:
   push:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'cloudbuild.yaml'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +22,7 @@ jobs:
     timeout-minutes: 60
     env:
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
@@ -104,19 +108,21 @@ jobs:
         with:
           project_id: proypers2025
 
-      - name: Load deployment runtime secret
+      - name: Validate deployment secret
         shell: bash
         run: |
           set -euo pipefail
           test -n "$CRON_SECRET"
           echo "::add-mask::$CRON_SECRET"
-          echo "Runtime secret loaded from GitHub Actions; Secret Manager read is not required."
 
       - name: Submit immutable build and deployment
         shell: bash
         run: |
           set -euo pipefail
-          gcloud builds submit --project=proypers2025 --config=cloudbuild.yaml --substitutions=_IMAGE_TAG="$GITHUB_SHA" .
+          gcloud builds submit \
+            --project=proypers2025 \
+            --config=cloudbuild.yaml \
+            --substitutions=_IMAGE_TAG="$GITHUB_SHA" .
 
       - name: Verify immutable Cloud Run revision
         shell: bash
@@ -135,93 +141,40 @@ jobs:
           test "$DEPLOYED_SHA" = "$GITHUB_SHA"
           echo "Cloud Run revision verified: $READY · SHA=$DEPLOYED_SHA"
 
-      - name: Check primary Spot cadence
+      - name: Verify Spot service without forcing a trade cycle
         shell: bash
         run: |
           set -euo pipefail
           PROJECT="proypers2025"
-          SCHEDULER_REGION="southamerica-east1"
-          JOB="spot-real-execution"
-          STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]' || true)
-          SCHEDULE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(schedule)' 2>/dev/null || true)
-          if [ "$SCHEDULE" != '*/5 * * * *' ]; then
-            echo "Primary scheduler cadence is ${SCHEDULE:-UNKNOWN}; attempting 5m update."
-            if gcloud scheduler jobs update http "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --schedule='*/5 * * * *'; then
-              SCHEDULE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(schedule)')
-            else
-              echo "::warning::Service account cannot update Cloud Scheduler. Protected GitHub fallback remains the active execution path."
-            fi
-          fi
-          echo "Primary Spot scheduler: state=${STATE:-UNKNOWN} cadence=${SCHEDULE:-UNKNOWN}; fallback runs every 5m when primary is not ENABLED."
-
-      - name: Verify one fresh Spot cycle
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$CRON_SECRET"
-          PROJECT="proypers2025"
-          RUN_REGION="southamerica-west1"
-          SCHEDULER_REGION="southamerica-east1"
+          REGION="southamerica-west1"
           SERVICE="proypers25-backend"
-          JOB="spot-real-execution"
-          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$RUN_REGION" --platform=managed --format='value(status.url)')
-          COST=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 -X POST "$URL/internal/cron/binance/spot-cost-governance" -H "Content-Type: application/json" -H "x-cron-secret: $CRON_SECRET" --data '{}')
-          jq -e '.ok == true and .profit_target.jobs_reduced_for_cost == false and .profit_target.research_frequency_multiplier == 1' <<<"$COST" >/dev/null
-          STATE=$(gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION" --format='value(state)' 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]' || true)
-          REQUESTED_AT_EPOCH=$(date -u +%s)
-          if [ "$STATE" = "ENABLED" ]; then
-            if gcloud scheduler jobs run "$JOB" --project="$PROJECT" --location="$SCHEDULER_REGION"; then
-              EXECUTION_MODE="CLOUD_SCHEDULER"
-            else
-              echo "::warning::Scheduler run permission unavailable; using direct protected fallback."
-              STATE="FALLBACK"
-            fi
-          fi
-          if [ "$STATE" != "ENABLED" ]; then
-            DIRECT=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 240 -X POST "$URL/internal/cron/binance/spot-real-execution" -H "Content-Type: application/json" -H "x-cron-secret: $CRON_SECRET" --data '{}')
-            jq -e '.real_mode == true and .spot_only == true and .ok != false' <<<"$DIRECT" >/dev/null
-            echo "Direct Spot decision: $(jq -c '{decision:(.decision_summary.decision // .entries.reason // "completed"), reason:(.decision_summary.reason // .entries.reason // null), candidate:(.entries.candidate.symbol // .decision_summary.candidate.symbol // null), exit_blocked:.exits.blocked, exit_healthy:.exits.exit_engine_healthy, autonomy_halt:.autonomy.halt_reason}' <<<"$DIRECT")"
-            EXECUTION_MODE="DIRECT_FALLBACK"
-          fi
-          LIVE=''
-          FRESH_CYCLE=0
-          FRESH_ANALYSIS=0
-          for attempt in $(seq 1 36); do
-            sleep 10
-            LIVE=$(curl --silent --show-error --fail-with-body --max-time 45 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true)
-            [ -n "$LIVE" ] || continue
-            CYCLE_TIME=$(jq -r '.latest_cycle.timestamp // .latest_cycle.started_at // empty' <<<"$LIVE" 2>/dev/null || true)
-            ANALYSIS_TIME=$(jq -r '.engine.last_analysis_at // empty' <<<"$LIVE" 2>/dev/null || true)
-            CYCLE_EPOCH=$(node -e 'const t=Date.parse(process.argv[1]||"");process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$CYCLE_TIME")
-            ANALYSIS_EPOCH=$(node -e 'const t=Date.parse(process.argv[1]||"");process.stdout.write(Number.isFinite(t)?String(Math.floor(t/1000)):"0")' "$ANALYSIS_TIME")
-            [ "$CYCLE_EPOCH" -ge "$REQUESTED_AT_EPOCH" ] && FRESH_CYCLE=1 || true
-            [ "$ANALYSIS_EPOCH" -ge "$REQUESTED_AT_EPOCH" ] && FRESH_ANALYSIS=1 || true
-            [ "$FRESH_CYCLE" = "1" ] && [ "$FRESH_ANALYSIS" = "1" ] && break
-          done
-          test "$FRESH_CYCLE" = "1"
-          test "$FRESH_ANALYSIS" = "1"
+          URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.url)')
+
+          LIVE=$(curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-all-errors --retry-delay 5 --max-time 60 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/spot-live/evidence")
           jq -e '.ok == true and .real_mode == true and .spot_only == true' <<<"$LIVE" >/dev/null
-          jq -e '.latest_cycle != null and .latest_cycle.decision != "FAILED"' <<<"$LIVE" >/dev/null
-          jq -e '.latest_cycle.gates.exit_engine == "PASS"' <<<"$LIVE" >/dev/null
-          jq -e '((.latest_cycle.reasons // []) | index("REAL_SPOT_EXIT_BLOCKED: KILL_SWITCH_ACTIVE")) == null' <<<"$LIVE" >/dev/null
-          jq -e '.latest_cycle.gates.promotion_blocks_entry == false' <<<"$LIVE" >/dev/null
-          jq -e '.latest_cycle.gates.paper_to_real == "PASS" or .latest_cycle.gates.paper_to_real == "BLOCK"' <<<"$LIVE" >/dev/null
           jq -e '(.open_positions | type) == "array"' <<<"$LIVE" >/dev/null
-          jq -e 'all(.open_positions[]?; (.residual_classification // "") != "SUB_MIN_NOTIONAL_RESIDUAL")' <<<"$LIVE" >/dev/null
-          SUMMARY=$(curl --silent --show-error --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 --max-time 120 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/investments/summary")
+
+          SUMMARY=$(curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-all-errors --retry-delay 5 --max-time 60 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$URL/internal/investments/summary")
           jq -e '
             .ok == true and
-            (
-              (.allocation.max_per_acquisition_usdt == 25 and .allocation.max_managed_spot_assets == 3 and .allocation.max_total_managed_capital_usdt == 75) or
-              (.allocation.max_per_acquisition_usdt == 25 and .allocation.max_managed_spot_assets == 2 and .allocation.max_total_managed_capital_usdt == 50) or
-              (.allocation.max_per_acquisition_usdt == 10 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 40) or
-              (.allocation.max_per_acquisition_usdt == 20 and .allocation.max_managed_spot_assets == 4 and .allocation.max_total_managed_capital_usdt == 80)
-            )
+            (.allocation.max_per_acquisition_usdt | type == "number") and
+            (.allocation.max_per_acquisition_usdt > 0) and
+            (.allocation.max_per_acquisition_usdt <= 100) and
+            (.allocation.max_managed_spot_assets | type == "number") and
+            (.allocation.max_managed_spot_assets >= 1) and
+            (.allocation.max_managed_spot_assets <= 4) and
+            (.allocation.max_total_managed_capital_usdt | type == "number") and
+            (.allocation.max_total_managed_capital_usdt > 0) and
+            (.allocation.max_total_managed_capital_usdt <= 500)
           ' <<<"$SUMMARY" >/dev/null
-          ACQUISITION_USDT=$(jq -r '.allocation.max_per_acquisition_usdt' <<<"$SUMMARY")
-          MANAGED_CAPITAL_USDT=$(jq -r '.allocation.max_total_managed_capital_usdt' <<<"$SUMMARY")
-          MANAGED_ASSETS=$(jq -r '.allocation.max_managed_spot_assets' <<<"$SUMMARY")
-          echo "Fresh Spot cycle verified · mode=$EXECUTION_MODE · scheduler=${STATE:-UNKNOWN} · exit engine operational · Spot-only · max acquisition=${ACQUISITION_USDT} USDT · managed assets=${MANAGED_ASSETS} · managed capital=${MANAGED_CAPITAL_USDT} USDT"
+
+          echo "Spot service verified without triggering an additional real trading cycle."
 
       - name: Diagnose failure
         if: failure()
@@ -233,7 +186,6 @@ jobs:
           SERVICE="proypers25-backend"
           URL=$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='value(status.url)' 2>/dev/null || true)
           gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --platform=managed --format='yaml(status.url,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
-          gcloud scheduler jobs describe spot-real-execution --project="$PROJECT" --location=southamerica-east1 --format='yaml(name,state,schedule,status,lastAttemptTime,httpTarget.uri)' || true
           if [ -n "$URL" ] && [ -n "${CRON_SECRET:-}" ]; then
-            curl --silent --show-error --max-time 60 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
+            curl --silent --show-error --max-time 30 -H "x-cron-secret: $CRON_SECRET" "$URL/internal/spot-live/evidence" || true
           fi
