@@ -3,7 +3,7 @@ name: Export Cloud Run observability
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '12 * * * *'
 
 permissions:
   contents: write
@@ -41,8 +41,8 @@ jobs:
           gcloud logging read \
             'resource.type="cloud_run_revision" AND resource.labels.service_name="proypers25-backend"' \
             --project=proypers2025 \
-            --freshness=45m \
-            --limit=1000 \
+            --freshness=75m \
+            --limit=500 \
             --order=desc \
             --format=json > /tmp/cloud-run-logs.json
 
@@ -50,14 +50,13 @@ jobs:
 
           jq --arg generated_at "$GENERATED_AT" '
             def payload: (.jsonPayload // {});
-            def rev: (.resource.labels.revision_name // null);
             def real_events: [ .[] | select(payload.event == "SPOT_REAL_CYCLE_DECISION") ];
             def latest($items): ($items | sort_by(.timestamp) | reverse | .[0] // null);
             (real_events) as $real |
             (latest($real)) as $last |
             {
               generated_at: $generated_at,
-              window_minutes: 45,
+              window_minutes: 75,
               service: "proypers25-backend",
               cloud_run_revision: ($last.resource.labels.revision_name // null),
               spot_real: {
@@ -152,7 +151,7 @@ jobs:
           cat > /tmp/observability/README.md <<'EOF'
           # Proypers25 Observability
 
-          Rama generada automáticamente cada 30 minutos desde Cloud Logging.
+          Rama generada automáticamente cada hora desde Cloud Logging.
 
           Solo contiene campos sanitizados y permitidos. No publica encabezados HTTP, secretos, API keys, cuerpos completos ni variables de entorno.
 
