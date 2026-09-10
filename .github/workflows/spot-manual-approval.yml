@@ -28,7 +28,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
-      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,19 +42,24 @@ jobs:
           set -euo pipefail
           if [ "$MODE" = "test" ]; then
             JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'SPOT SIGNAL TEST in:title' --limit 20 --json number,title,body,createdAt --jq 'sort_by(.createdAt) | reverse | .[0]')
-            test "$JSON" != "null"
+            test -n "$JSON" && test "$JSON" != "null"
             NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
+            CREATED=$(printf '%s' "$JSON" | jq -r '.createdAt')
             echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
             echo 'symbol=TESTUSDT' >> "$GITHUB_OUTPUT"
             echo 'pct=4.20' >> "$GITHUB_OUTPUT"
             echo 'price=0.12345' >> "$GITHUB_OUTPUT"
-            echo "created_at=$(printf '%s' "$JSON" | jq -r '.createdAt')" >> "$GITHUB_OUTPUT"
+            echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
             echo 'test=true' >> "$GITHUB_OUTPUT"
+            echo 'SIGNAL_SYMBOL=TESTUSDT' >> "$GITHUB_ENV"
+            echo 'SIGNAL_PCT=4.20' >> "$GITHUB_ENV"
+            echo 'SIGNAL_PRICE=0.12345' >> "$GITHUB_ENV"
+            echo "SIGNAL_CREATED_AT=$CREATED" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '[SPOT SIGNAL] in:title -[SPOT SIGNAL TEST] in:title' --limit 50 --json number,title,body,createdAt --jq '[.[] | select(.title | startswith("[SPOT SIGNAL] "))] | sort_by(.createdAt) | reverse | .[0]')
-          test "$JSON" != "null"
+          JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '[SPOT SIGNAL] in:title' --limit 50 --json number,title,body,createdAt --jq '[.[] | select(.title | startswith("[SPOT SIGNAL] "))] | sort_by(.createdAt) | reverse | .[0]')
+          test -n "$JSON" && test "$JSON" != "null"
           NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
           TITLE=$(printf '%s' "$JSON" | jq -r '.title')
           BODY=$(printf '%s' "$JSON" | jq -r '.body')
@@ -62,13 +67,17 @@ jobs:
           SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([A-Z0-9]*USDT\).*/\1/p')
           PCT=$(printf '%s' "$BODY" | sed -n 's/^- Cambio 24h: +\([0-9.-]*\)%.*/\1/p' | head -1)
           PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
-          test -n "$SYMBOL" && test -n "$PCT" && test -n "$PRICE"
+          test -n "$SYMBOL" && test -n "$PCT" && test -n "$PRICE" && test -n "$CREATED"
           echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
           echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
           echo "pct=$PCT" >> "$GITHUB_OUTPUT"
           echo "price=$PRICE" >> "$GITHUB_OUTPUT"
           echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
           echo 'test=false' >> "$GITHUB_OUTPUT"
+          echo "SIGNAL_SYMBOL=$SYMBOL" >> "$GITHUB_ENV"
+          echo "SIGNAL_PCT=$PCT" >> "$GITHUB_ENV"
+          echo "SIGNAL_PRICE=$PRICE" >> "$GITHUB_ENV"
+          echo "SIGNAL_CREATED_AT=$CREATED" >> "$GITHUB_ENV"
 
       - name: Confirm test approval path
         if: steps.signal.outputs.test == 'true'
@@ -86,11 +95,6 @@ jobs:
       - name: Revalidate and execute real Spot order
         if: steps.signal.outputs.test != 'true'
         working-directory: backend
-        env:
-          SIGNAL_SYMBOL: ${{ steps.signal.outputs.symbol }}
-          SIGNAL_PCT: ${{ steps.signal.outputs.pct }}
-          SIGNAL_PRICE: ${{ steps.signal.outputs.price }}
-          SIGNAL_CREATED_AT: ${{ steps.signal.outputs.created_at }}
         run: node scripts/github-spot-manual-execution.js
 
       - name: Mark real signal executed
