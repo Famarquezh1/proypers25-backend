@@ -14,6 +14,8 @@ const MAX_USDT = 100;
 const POSITION_FRACTION = 0.15;
 const MAX_SIGNAL_AGE_MS = 15 * 60 * 1000;
 const MAX_PRICE_ADVANCE_FROM_SIGNAL = 0.03;
+const HARD_STOP_PCT = 0.05;
+const STOP_LIMIT_GAP_PCT = 0.006;
 const BASES = [
   'https://api.binance.com',
   'https://api1.binance.com',
@@ -112,9 +114,82 @@ async function chooseBase() {
   fail(`Binance private API unreachable from this GitHub runner (${failures.join(', ')})`);
 }
 
+function balanceRow(account, asset) {
+  return (account.balances || []).find((x) => x.asset === asset) || {};
+}
+
 function freeBalance(account, asset) {
-  const row = (account.balances || []).find((x) => x.asset === asset);
-  return Number(row?.free || 0);
+  return Number(balanceRow(account, asset).free || 0);
+}
+
+function totalBalance(account, asset) {
+  const row = balanceRow(account, asset);
+  return Number(row.free || 0) + Number(row.locked || 0);
+}
+
+function decimalPlaces(step) {
+  const text = String(step);
+  if (!text.includes('.')) return 0;
+  return (text.replace(/0+$/, '').split('.')[1] || '').length;
+}
+
+function floorToStep(value, stepSize) {
+  const step = Number(stepSize);
+  if (!(step > 0)) return Number(value);
+  return Number((Math.floor((Number(value) + Number.EPSILON) / step) * step).toFixed(decimalPlaces(stepSize)));
+}
+
+async function placeNativeProtection(base, order, entryPrice) {
+  const exchangeInfo = await request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`);
+  const info = exchangeInfo.symbols?.[0];
+  if (!info || info.status !== 'TRADING' || info.isSpotTradingAllowed !== true) {
+    throw new Error(`Native protection unavailable: ${SYMBOL} is not active Spot`);
+  }
+
+  const account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
+  const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
+  const priceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');
+  if (!lot || !priceFilter) throw new Error(`Native protection unavailable: filters missing for ${SYMBOL}`);
+
+  const executedQty = Number(order.executedQty || 0);
+  const free = freeBalance(account, info.baseAsset);
+  const quantity = floorToStep(Math.min(executedQty, free), lot.stepSize);
+  if (!(quantity >= Number(lot.minQty || 0))) throw new Error(`Native protection quantity below minimum for ${SYMBOL}`);
+
+  const stopPrice = floorToStep(entryPrice * (1 - HARD_STOP_PCT), priceFilter.tickSize);
+  if (!(stopPrice > 0)) throw new Error(`Native protection stop price invalid for ${SYMBOL}`);
+
+  const clientId = `proypers-gh-protect-${Date.now()}`;
+  let protectionOrder;
+  if ((info.orderTypes || []).includes('STOP_LOSS')) {
+    protectionOrder = await signed(base, 'POST', '/api/v3/order', {
+      symbol: SYMBOL,
+      side: 'SELL',
+      type: 'STOP_LOSS',
+      quantity: String(quantity),
+      stopPrice: String(stopPrice),
+      newOrderRespType: 'RESULT',
+      newClientOrderId: clientId
+    });
+  } else if ((info.orderTypes || []).includes('STOP_LOSS_LIMIT')) {
+    const limitPrice = floorToStep(stopPrice * (1 - STOP_LIMIT_GAP_PCT), priceFilter.tickSize);
+    protectionOrder = await signed(base, 'POST', '/api/v3/order', {
+      symbol: SYMBOL,
+      side: 'SELL',
+      type: 'STOP_LOSS_LIMIT',
+      timeInForce: 'GTC',
+      quantity: String(quantity),
+      stopPrice: String(stopPrice),
+      price: String(limitPrice),
+      newOrderRespType: 'RESULT',
+      newClientOrderId: clientId
+    });
+  } else {
+    throw new Error(`Native protection unavailable: ${SYMBOL} does not support STOP_LOSS orders`);
+  }
+
+  if (!protectionOrder?.orderId) throw new Error(`Native protection returned no orderId for ${SYMBOL}`);
+  console.log(`NATIVE_STOP_ARMED symbol=${SYMBOL} orderId=${protectionOrder.orderId} stop=${stopPrice} quantity=${quantity}`);
 }
 
 async function main() {
@@ -148,7 +223,7 @@ async function main() {
   if (quoteOrderQty < MIN_USDT) fail(`Insufficient free USDT for minimum acquisition (${usdtFree} USDT free)`);
 
   const baseAsset = SYMBOL.slice(0, -4);
-  const existingAssetQty = freeBalance(account, baseAsset);
+  const existingAssetQty = totalBalance(account, baseAsset);
   if (existingAssetQty > 0 && existingAssetQty * currentPrice >= MIN_USDT) {
     fail(`${baseAsset} already has >= ${MIN_USDT} USDT equivalent balance; duplicate acquisition blocked`);
   }
@@ -165,7 +240,16 @@ async function main() {
   });
 
   if (!order?.orderId) fail('Binance returned no orderId');
+  const executedQty = Number(order.executedQty || 0);
+  const quoteFilled = Number(order.cummulativeQuoteQty || 0);
+  const entryPrice = executedQty > 0 ? quoteFilled / executedQty : currentPrice;
   console.log(`ORDER_CREATED symbol=${SYMBOL} orderId=${order.orderId} status=${order.status} quoteOrderQty=${quoteOrderQty}`);
+
+  try {
+    await placeNativeProtection(base, order, entryPrice);
+  } catch (error) {
+    fail(`BUY succeeded but native protection failed: ${error.message || String(error)}. Auto-exit runner must recover protection immediately.`);
+  }
 }
 
 main().catch((error) => fail(error.message || String(error)));
