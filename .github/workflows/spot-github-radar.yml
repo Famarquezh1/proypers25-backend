@@ -1,0 +1,129 @@
+name: Spot GitHub Radar
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: 'Crear notificación de prueba'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spot-github-radar
+  cancel-in-progress: true
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scan Binance Spot without GCP
+        id: scan
+        shell: bash
+        env:
+          TEST_NOTIFICATION: ${{ inputs.test_notification || 'false' }}
+        run: |
+          set -euo pipefail
+          DATA=$(curl --fail --silent --show-error --max-time 30 'https://api.binance.com/api/v3/ticker/24hr')
+          CANDIDATE=$(printf '%s' "$DATA" | jq -c '[.[]
+            | select(.symbol | endswith("USDT"))
+            | select(.symbol | test("(UP|DOWN|BULL|BEAR)USDT$") | not)
+            | . + {pct:(.priceChangePercent|tonumber), qv:(.quoteVolume|tonumber)}
+            | select(.pct >= 1 and .pct < 18 and .qv >= 200000)]
+            | sort_by(.pct) | reverse | .[0] // null')
+
+          if [ "$TEST_NOTIFICATION" = "true" ]; then
+            echo 'notify=true' >> "$GITHUB_OUTPUT"
+            echo 'test=true' >> "$GITHUB_OUTPUT"
+            echo 'symbol=TESTUSDT' >> "$GITHUB_OUTPUT"
+            echo 'pct=4.20' >> "$GITHUB_OUTPUT"
+            echo 'price=0.12345' >> "$GITHUB_OUTPUT"
+            echo 'quote_volume=1000000' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$CANDIDATE" = "null" ]; then
+            echo 'notify=false' >> "$GITHUB_OUTPUT"
+            echo 'No qualifying early-momentum candidate.'
+            exit 0
+          fi
+
+          SYMBOL=$(printf '%s' "$CANDIDATE" | jq -r '.symbol')
+          PCT=$(printf '%s' "$CANDIDATE" | jq -r '.pct')
+          PRICE=$(printf '%s' "$CANDIDATE" | jq -r '.lastPrice')
+          QV=$(printf '%s' "$CANDIDATE" | jq -r '.qv')
+
+          echo 'notify=true' >> "$GITHUB_OUTPUT"
+          echo 'test=false' >> "$GITHUB_OUTPUT"
+          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
+          echo "price=$PRICE" >> "$GITHUB_OUTPUT"
+          echo "quote_volume=$QV" >> "$GITHUB_OUTPUT"
+
+      - name: Avoid duplicate signal issue
+        if: steps.scan.outputs.notify == 'true' && steps.scan.outputs.test != 'true'
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SINCE=$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+          COUNT=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "[SPOT SIGNAL] $SYMBOL in:title created:>=$SINCE" --json number --jq 'length')
+          if [ "$COUNT" -gt 0 ]; then
+            echo 'duplicate=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'duplicate=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub notification
+        if: steps.scan.outputs.notify == 'true' && (steps.scan.outputs.test == 'true' || steps.dedupe.outputs.duplicate != 'true')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+          PCT: ${{ steps.scan.outputs.pct }}
+          PRICE: ${{ steps.scan.outputs.price }}
+          QV: ${{ steps.scan.outputs.quote_volume }}
+          IS_TEST: ${{ steps.scan.outputs.test }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$IS_TEST" = "true" ]; then
+            TITLE='[SPOT SIGNAL TEST] Notificación GitHub funcional'
+            BODY='Prueba de notificación de Proypers25 desde GitHub Actions. No representa una operación real. Si recibiste esta alerta, el canal GitHub → usuario funciona sin GCP.'
+          else
+            TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
+            BODY=$(cat <<EOF
+          Proypers25 GitHub Radar detectó una oportunidad Spot sin usar GCP.
+
+          - Símbolo: $SYMBOL
+          - Cambio 24h: +${PCT}%
+          - Precio: $PRICE
+          - Volumen quote 24h: $QV USDT
+          - Banda Early Momentum: 1% a <18%
+          - Liquidez mínima aplicada: 200,000 USDT
+
+          Acción: abre GitHub Actions y ejecuta el workflow manual de aprobación correspondiente si deseas continuar.
+
+          Esta alerta no crea ni envía ninguna orden a Binance.
+          EOF
+          )
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "### Spot GitHub Radar" >> "$GITHUB_STEP_SUMMARY"
+          echo "- GCP usado: no" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Binance endpoint: public Spot ticker" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Notificación: ${{ steps.scan.outputs.notify }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
