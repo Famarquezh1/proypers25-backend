@@ -18,11 +18,16 @@ concurrency:
 
 jobs:
   train:
-    name: Walk-forward multi-agent training
+    name: Walk-forward ${{ matrix.lookback }}d
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        lookback: [30, 60, 90, 120]
     env:
-      TRAIN_LOOKBACK_DAYS: '30'
+      TRAIN_LOOKBACK_DAYS: '${{ matrix.lookback }}'
       TRAIN_MAX_SYMBOLS: '24'
     steps:
       - name: Checkout repository
@@ -41,20 +46,95 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spot-fast-training-${{ github.run_id }}
+          name: spot-fast-training-${{ matrix.lookback }}d-${{ github.run_id }}
           path: |
             backend/training-output/spot-fast-training-report.json
             backend/training-output/spot-fast-champions.json
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Training summary
+      - name: Window summary
         if: success()
         working-directory: backend
         shell: bash
         run: |
-          echo '### Spot Historical Fast Trainer' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot Historical Fast Trainer — ${{ matrix.lookback }} días' >> "$GITHUB_STEP_SUMMARY"
           echo '- Fuente: Binance Vision' >> "$GITHUB_STEP_SUMMARY"
           echo '- Futuro visible durante decisión: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- División: 60% train / 20% validation / 20% test temporal' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const r=require('./training-output/spot-fast-training-report.json'); console.log('- Muestras: '+r.samples); console.log('- Campeones: '+(r.champions.map(x=>x.agent).join(', ')||'ninguno aún')); console.log('- Mejor test avg neto: '+((r.results[0]?.test?.avg_net||0)*100).toFixed(3)+'%');" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const r=require('./training-output/spot-fast-training-report.json'); console.log('- Muestras: '+r.samples); console.log('- Campeones: '+(r.champions.map(x=>x.agent).join(', ')||'ninguno')); console.log('- Mejor test avg neto: '+((r.results[0]?.test?.avg_net||0)*100).toFixed(3)+'%'); console.log('- Mejor test win rate: '+((r.results[0]?.test?.win_rate||0)*100).toFixed(1)+'%'); console.log('- Mejor test profit factor: '+Number(r.results[0]?.test?.profit_factor||0).toFixed(2));" >> "$GITHUB_STEP_SUMMARY"
+
+  consolidate:
+    name: Cross-window champion stability
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download all training evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-fast-training-*-${{ github.run_id }}
+          path: combined-training
+
+      - name: Consolidate stable champions
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = 'combined-training';
+          const reports = [];
+          function walk(dir) {
+            for (const name of fs.readdirSync(dir)) {
+              const p = path.join(dir, name);
+              const s = fs.statSync(p);
+              if (s.isDirectory()) walk(p);
+              else if (name === 'spot-fast-training-report.json') reports.push(JSON.parse(fs.readFileSync(p, 'utf8')));
+            }
+          }
+          if (fs.existsSync(root)) walk(root);
+          reports.sort((a,b)=>a.lookback_days-b.lookback_days);
+          const stability = new Map();
+          for (const r of reports) {
+            for (const result of r.results || []) {
+              if (!stability.has(result.agent)) stability.set(result.agent, {agent:result.agent, windows:0, positive:0, champion:0, testAvg:[], winRate:[], pf:[]});
+              const x = stability.get(result.agent);
+              x.windows++;
+              if ((result.validation?.avg_net||0) > 0 && (result.test?.avg_net||0) > 0) x.positive++;
+              if ((r.champions||[]).some(c=>c.agent===result.agent)) x.champion++;
+              x.testAvg.push(result.test?.avg_net||0);
+              x.winRate.push(result.test?.win_rate||0);
+              x.pf.push(result.test?.profit_factor||0);
+            }
+          }
+          const avg = xs => xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0;
+          const rows = [...stability.values()].map(x=>({
+            agent:x.agent,
+            windows:x.windows,
+            positive_windows:x.positive,
+            champion_windows:x.champion,
+            avg_test_net:avg(x.testAvg),
+            avg_test_win_rate:avg(x.winRate),
+            avg_test_profit_factor:avg(x.pf)
+          })).sort((a,b)=>
+            b.positive_windows-a.positive_windows ||
+            b.champion_windows-a.champion_windows ||
+            b.avg_test_net-a.avg_test_net
+          );
+          const stable = rows.filter(x=>x.windows>=3 && x.positive_windows===x.windows && x.avg_test_net>0 && x.avg_test_profit_factor>1).slice(0,3);
+          fs.writeFileSync('spot-cross-window-summary.json', JSON.stringify({generated_at:new Date().toISOString(), windows:reports.map(r=>r.lookback_days), stable_champions:stable, ranking:rows}, null, 2));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n### Cross-window stability\n');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- Ventanas completadas: ${reports.map(r=>r.lookback_days+'d').join(', ') || 'ninguna'}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- Campeones estables: ${stable.map(x=>x.agent).join(', ') || 'ninguno todavía'}\n`);
+          for (const x of rows.slice(0,5)) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- ${x.agent}: positivas ${x.positive_windows}/${x.windows}, campeón ${x.champion_windows}/${x.windows}, test neto prom ${(x.avg_test_net*100).toFixed(3)}%, win rate ${(x.avg_test_win_rate*100).toFixed(1)}%, PF ${x.avg_test_profit_factor.toFixed(2)}\n`);
+          }
+          NODE
+
+      - name: Upload consolidated evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-cross-window-summary-${{ github.run_id }}
+          path: spot-cross-window-summary.json
+          retention-days: 14
