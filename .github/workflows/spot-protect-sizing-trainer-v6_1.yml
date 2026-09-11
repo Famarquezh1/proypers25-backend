@@ -1,0 +1,77 @@
+name: Spot Protect Sizing Trainer V6.1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-protect-sizing-trainer-v6_1.js'
+      - '.github/workflows/spot-protect-sizing-trainer-v6_1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.1 protect-sizing ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.1
+        run: node --check backend/scripts/github-spot-protect-sizing-trainer-v6_1.js
+      - name: Run V6.1 protect-sizing trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 10
+        run: node backend/scripts/github-spot-protect-sizing-trainer-v6_1.js
+      - name: Upload V6.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-protect-sizing-v6-1-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-protect-sizing-v6_1-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-protect-sizing-v6_1-report.json');
+          console.log(JSON.stringify({days:r.lookbackDays,gate:r.productionGate,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test,cfg:r.champion.cfg},null,2));
+          NODE
+
+  consolidate:
+    name: V6.1 protect-sizing arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.1 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-protect-sizing-v6-1-*
+          path: evidence
+      - name: Consolidate V6.1
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const month=reports.find(r=>r.lookbackDays===30),passWindows=reports.filter(r=>r.productionGate.pass).length,positiveNet=reports.filter(r=>r.champion.test.netGrowth>0).length,improving=reports.filter(r=>r.champion.improvementVsHold>0).length;
+          const pass=Boolean(month?.productionGate?.pass)&&positiveNet>=2&&improving>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.1',objective:'positive 30-day net growth by optimizing PROTECT plus sizing',windows:reports.map(r=>({days:r.lookbackDays,gate:r.productionGate.pass,netGrowth:r.champion.test.netGrowth,baselineNetGrowth:r.baseline.test.netGrowth,improvementVsHold:r.champion.improvementVsHold,maxDrawdown:r.champion.test.maxDrawdown,protectRate:r.champion.test.protectRate,avgSize:r.champion.test.avgSize,cfg:r.champion.cfg})),month30:{gate:month.productionGate.pass,netGrowth:month.champion.test.netGrowth,baselineNetGrowth:month.baseline.test.netGrowth,improvementVsHold:month.champion.improvementVsHold},passWindows,positiveNetWindows:positiveNet,improvingWindows:improving,productionGate:{pass,reason:pass?'V6.1 achieves positive 30-day untouched net growth with short-window support':'HOLD: 30-day positivity or supporting windows insufficient'},promotion:'NOT AUTOMATIC. Research only; production unchanged.'};
+          fs.writeFileSync('spot-protect-sizing-v6_1-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-protect-sizing-v6-1-cross-window-${{ github.run_id }}
+          path: spot-protect-sizing-v6_1-cross-window.json
+          retention-days: 14
