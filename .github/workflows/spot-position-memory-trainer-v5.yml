@@ -1,0 +1,82 @@
+name: Spot Position Memory Trainer V5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-position-memory-trainer-v5.js'
+      - '.github/workflows/spot-position-memory-trainer-v5.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V5 memory bots ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [30, 45, 60]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run V5 autonomous position-memory bots
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 18
+        run: node backend/scripts/github-spot-position-memory-trainer-v5.js
+      - name: Upload V5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-position-memory-v5-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-position-memory-v5-report.json');
+          console.log(JSON.stringify({days:r.lookbackDays,gate:r.productionGate,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test},null,2));
+          NODE
+
+  consolidate:
+    name: V5 cross-window arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V5 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-position-memory-v5-*
+          path: evidence
+      - name: Consolidate V5
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];
+          function walk(d){for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==3) throw new Error(`expected 3 reports, got ${reports.length}`);
+          const passWindows=reports.filter(r=>r.productionGate.pass).length;
+          const positiveImprovement=reports.filter(r=>r.champion.improvementVsHold>0).length;
+          const champions=reports.map(r=>r.champion.type);
+          const counts=champions.reduce((m,x)=>(m[x]=(m[x]||0)+1,m),{});
+          const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+          const pass=passWindows>=2&&positiveImprovement>=2&&dominant[1]>=2;
+          const out={generatedAt:new Date().toISOString(),version:'V5',windows:reports.map(r=>({days:r.lookbackDays,gate:r.productionGate.pass,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test})),passWindows,positiveImprovement,dominantChampion:{type:dominant[0],windows:dominant[1]},productionGate:{pass,reason:pass?'V5 position-memory policy robust in at least 2/3 short windows with same dominant bot':'HOLD: V5 cross-window consistency insufficient'},promotion:'NOT AUTOMATIC. Research evidence only; production remains unchanged.'};
+          fs.writeFileSync('spot-position-memory-v5-cross-window.json',JSON.stringify(out,null,2));
+          console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-cross-window-${{ github.run_id }}
+          path: spot-position-memory-v5-cross-window.json
+          retention-days: 14
