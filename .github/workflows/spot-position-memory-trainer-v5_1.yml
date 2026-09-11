@@ -1,0 +1,84 @@
+name: Spot Position Memory Trainer V5.1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-position-memory-trainer-v5_1.js'
+      - '.github/workflows/spot-position-memory-trainer-v5_1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V5.1 memory bots ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [30, 45, 60]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run V5.1 risk-hardened position-memory bots
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 18
+        run: node backend/scripts/github-spot-position-memory-trainer-v5_1.js
+      - name: Upload V5.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-1-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-position-memory-v5_1-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-position-memory-v5_1-report.json');
+          console.log(JSON.stringify({days:r.lookbackDays,gate:r.productionGate,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test,riskModel:r.riskModel},null,2));
+          NODE
+
+  consolidate:
+    name: V5.1 cross-window risk arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V5.1 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-position-memory-v5-1-*
+          path: evidence
+      - name: Consolidate V5.1
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];
+          function walk(d){for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==3) throw new Error(`expected 3 reports, got ${reports.length}`);
+          const passWindows=reports.filter(r=>r.productionGate.pass).length;
+          const positiveImprovement=reports.filter(r=>r.champion.improvementVsHold>0).length;
+          const safeWindows=reports.filter(r=>r.champion.test.maxDrawdown>=-r.riskModel.maxPortfolioDrawdown).length;
+          const champions=reports.map(r=>r.champion.type);
+          const counts=champions.reduce((m,x)=>(m[x]=(m[x]||0)+1,m),{});
+          const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+          const worstDrawdown=Math.min(...reports.map(r=>r.champion.test.maxDrawdown));
+          const pass=passWindows>=2&&positiveImprovement>=2&&safeWindows===3&&dominant[1]>=2&&worstDrawdown>=-.15;
+          const out={generatedAt:new Date().toISOString(),version:'V5.1',windows:reports.map(r=>({days:r.lookbackDays,gate:r.productionGate.pass,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test})),passWindows,positiveImprovement,safeWindows,worstDrawdown,dominantChampion:{type:dominant[0],windows:dominant[1]},productionGate:{pass,reason:pass?'V5.1 robust in at least 2/3 windows with all windows inside 15% portfolio DD':'HOLD: V5.1 cross-window risk consistency insufficient'},promotion:'NOT AUTOMATIC. Research evidence only; production remains unchanged.'};
+          fs.writeFileSync('spot-position-memory-v5_1-cross-window.json',JSON.stringify(out,null,2));
+          console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V5.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-1-cross-window-${{ github.run_id }}
+          path: spot-position-memory-v5_1-cross-window.json
+          retention-days: 14
