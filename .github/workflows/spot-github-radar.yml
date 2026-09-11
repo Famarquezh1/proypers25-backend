@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: write
 
 concurrency:
   group: spot-github-radar
@@ -108,6 +109,16 @@ jobs:
             'Acción: validación y ejecución autónoma en el runner local. No requiere aprobación manual.')
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
 
+      - name: Dispatch autonomous local validator
+        if: steps.scan.outputs.notify == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run spot-manual-approval.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+          echo 'Autonomous validator dispatched through workflow_dispatch.'
+
       - name: Summary
         if: always()
         shell: bash
@@ -117,6 +128,7 @@ jobs:
           echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
           echo '- Gate V4.2: mínimo 2/3 ventanas entrenadas' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Validador local: dispatch automático vía workflow_dispatch' >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
