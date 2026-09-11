@@ -26,7 +26,22 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Temporary sleep window until 07:15 Chile
+        id: quiet
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%s)
+          CUTOFF=1789121700
+          if [ "$NOW" -lt "$CUTOFF" ]; then
+            echo 'paused=true' >> "$GITHUB_OUTPUT"
+            echo 'Radar notification delivery paused until 2026-09-11 07:15 Chile / 10:15 UTC.'
+          else
+            echo 'paused=false' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run production Spot QUBO radar without GCP
+        if: steps.quiet.outputs.paused != 'true'
         id: scan
         shell: bash
         run: |
@@ -50,7 +65,7 @@ jobs:
           echo "qubo_selected=$(printf '%s' "$RESULT" | jq -r '.qubo_selected_symbols | join(",")')" >> "$GITHUB_OUTPUT"
 
       - name: Avoid duplicate signal issue
-        if: steps.scan.outputs.notify == 'true'
+        if: steps.quiet.outputs.paused != 'true' && steps.scan.outputs.notify == 'true'
         id: dedupe
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,7 +81,7 @@ jobs:
           fi
 
       - name: Create production GitHub signal notification
-        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
+        if: steps.quiet.outputs.paused != 'true' && steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SYMBOL: ${{ steps.scan.outputs.symbol }}
@@ -104,6 +119,7 @@ jobs:
           echo '### Spot GitHub Radar — Production' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO: producción para selección de señal' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Pausa temporal: ${{ steps.quiet.outputs.paused || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
