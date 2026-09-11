@@ -1,0 +1,60 @@
+name: Spot Historical Fast Trainer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-historical-fast-trainer.js'
+      - '.github/workflows/spot-historical-fast-trainer.yml'
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-historical-fast-trainer
+  cancel-in-progress: true
+
+jobs:
+  train:
+    name: Walk-forward multi-agent training
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TRAIN_LOOKBACK_DAYS: '30'
+      TRAIN_MAX_SYMBOLS: '24'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Replay historical market without future leakage
+        working-directory: backend
+        run: node scripts/github-spot-historical-fast-trainer.js
+
+      - name: Upload training evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-fast-training-${{ github.run_id }}
+          path: |
+            backend/training-output/spot-fast-training-report.json
+            backend/training-output/spot-fast-champions.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Training summary
+        if: success()
+        working-directory: backend
+        shell: bash
+        run: |
+          echo '### Spot Historical Fast Trainer' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Fuente: Binance Vision' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Futuro visible durante decisión: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- División: 60% train / 20% validation / 20% test temporal' >> "$GITHUB_STEP_SUMMARY"
+          node -e "const r=require('./training-output/spot-fast-training-report.json'); console.log('- Muestras: '+r.samples); console.log('- Campeones: '+(r.champions.map(x=>x.agent).join(', ')||'ninguno aún')); console.log('- Mejor test avg neto: '+((r.results[0]?.test?.avg_net||0)*100).toFixed(3)+'%');" >> "$GITHUB_STEP_SUMMARY"
