@@ -1,0 +1,37 @@
+name: Spot V6.1 Production Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-manual-execution.js'
+      - 'backend/scripts/github-spot-v61-protect.js'
+      - 'backend/scripts/github-spot-auto-exit.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy.js'
+      - '.github/workflows/spot-v61-production-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: Validate V6.1 production scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        run: |
+          node --check backend/scripts/github-spot-manual-execution.js
+          node --check backend/scripts/github-spot-v61-protect.js
+          node --check backend/scripts/github-spot-auto-exit.js
+          node --check backend/scripts/github-spot-auto-exit-legacy.js
+      - name: Confirm production wiring
+        run: |
+          grep -q "github-spot-v61-protect.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "github-spot-auto-exit-legacy.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "V61_SCORE_ANCHOR" backend/scripts/github-spot-manual-execution.js
+          echo "V6.1 production integration syntax and wiring OK"
