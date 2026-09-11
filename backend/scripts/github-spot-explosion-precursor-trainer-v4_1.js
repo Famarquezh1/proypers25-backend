@@ -126,9 +126,9 @@ function portfolio(samples,fn,threshold,days){
   let cash=1,closed=0,wins=0,peak=1,dd=0;const active=[],symUntil=new Map(),equityCurve=[];
   function settle(t){
     active.sort((a,b)=>a.exitT-b.exitT);
-    while(active.length&&active[0].exitT<=t){const p=active.shift();const proceeds=p.stake*(1+p.ret);cash+=proceeds;closed++;if(p.ret>0)wins++;const eq=cash+active.reduce((s,x)=>s+x.stake,s);peak=Math.max(peak,eq);dd=Math.min(dd,eq/peak-1);equityCurve.push(eq);}
+    while(active.length&&active[0].exitT<=t){const p=active.shift();const proceeds=p.stake*(1+p.ret);cash+=proceeds;closed++;if(p.ret>0)wins++;const eq=cash+active.reduce((s,x)=>s+x.stake,0);peak=Math.max(peak,eq);dd=Math.min(dd,eq/peak-1);equityCurve.push(eq);}
   }
-  for(const s of sig){settle(s.t);if(active.length>=MAX_CONCURRENT)continue;if(s.t<(symUntil.get(s.symbol)||0))continue;const eq=cash+active.reduce((z,x)=>z+x.stake,z);const stake=Math.min(cash,eq*POSITION_FRACTION);if(stake<eq*.05)continue;cash-=stake;active.push({exitT:s.o.exitT,stake,ret:s.o.stress});symUntil.set(s.symbol,s.t+COOLDOWN_MS);}
+  for(const s of sig){settle(s.t);if(active.length>=MAX_CONCURRENT)continue;if(s.t<(symUntil.get(s.symbol)||0))continue;const eq=cash+active.reduce((z,x)=>z+x.stake,0);const stake=Math.min(cash,eq*POSITION_FRACTION);if(stake<eq*.05)continue;cash-=stake;active.push({exitT:s.o.exitT,stake,ret:s.o.stress});symUntil.set(s.symbol,s.t+COOLDOWN_MS);}
   settle(Infinity);const end=cash;return {trades:closed,winRate:closed?wins/closed:0,capitalEnd:end,netGrowth:end-1,maxDrawdown:dd,tradesPer30:closed/Math.max(1,days)*30};
 }
 
