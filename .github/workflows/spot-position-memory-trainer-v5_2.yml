@@ -1,0 +1,83 @@
+name: Spot Position Memory Trainer V5.2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-position-memory-trainer-v5_2.js'
+      - '.github/workflows/spot-position-memory-trainer-v5_2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V5.2 intramonth memory ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run V5.2 intramonth trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 10
+        run: node backend/scripts/github-spot-position-memory-trainer-v5_2.js
+      - name: Upload V5.2 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-2-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-position-memory-v5_2-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-position-memory-v5_2-report.json');
+          console.log(JSON.stringify({days:r.lookbackDays,gate:r.productionGate,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test},null,2));
+          NODE
+
+  consolidate:
+    name: V5.2 intramonth arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V5.2 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-position-memory-v5-2-*
+          path: evidence
+      - name: Consolidate V5.2
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4) throw new Error(`expected 4 reports, got ${reports.length}`);
+          const month=reports.find(r=>r.lookbackDays===30);
+          const passWindows=reports.filter(r=>r.productionGate.pass).length;
+          const positive=reports.filter(r=>r.champion.improvementVsHold>0).length;
+          const champions=reports.map(r=>r.champion.type);
+          const counts=champions.reduce((m,x)=>(m[x]=(m[x]||0)+1,m),{});
+          const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+          const pass=Boolean(month?.productionGate?.pass)&&passWindows>=2&&positive>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V5.2',objective:'30-day capital growth with 7/14/21-day supporting evidence',windows:reports.map(r=>({days:r.lookbackDays,gate:r.productionGate.pass,champion:r.champion.type,improvementVsHold:r.champion.improvementVsHold,test:r.champion.test,baseline:r.baseline.test})),month30:{gate:month.productionGate.pass,champion:month.champion.type,improvementVsHold:month.champion.improvementVsHold},passWindows,positiveWindows:positive,dominantChampion:{type:dominant[0],windows:dominant[1]},productionGate:{pass,reason:pass?'V5.2 improves the 30-day objective with supporting short-window evidence':'HOLD: 30-day objective or short-window support insufficient'},promotion:'NOT AUTOMATIC. Research evidence only; production remains unchanged.'};
+          fs.writeFileSync('spot-position-memory-v5_2-cross-window.json',JSON.stringify(out,null,2));
+          console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V5.2 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-position-memory-v5-2-cross-window-${{ github.run_id }}
+          path: spot-position-memory-v5_2-cross-window.json
+          retention-days: 14
