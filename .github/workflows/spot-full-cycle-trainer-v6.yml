@@ -1,0 +1,87 @@
+name: Spot Full-Cycle Trainer V6
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-full-cycle-trainer-v6.js'
+      - '.github/workflows/spot-full-cycle-trainer-v6.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6 full-cycle ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6
+        run: node --check backend/scripts/github-spot-full-cycle-trainer-v6.js
+      - name: Run V6 full-cycle trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 10
+        run: node backend/scripts/github-spot-full-cycle-trainer-v6.js
+      - name: Upload V6 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-full-cycle-v6-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-full-cycle-v6-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-full-cycle-v6-report.json');
+          console.log(JSON.stringify({days:r.lookbackDays,gate:r.productionGate,test:r.champion.test,baseline:r.baseline.test,improvementVsHold:r.champion.improvementVsHold,contributions:r.contributions,cfg:r.champion.cfg},null,2));
+          NODE
+
+  consolidate:
+    name: V6 intramonth full-cycle arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-full-cycle-v6-*
+          path: evidence
+      - name: Consolidate V6
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4) throw new Error(`expected 4 reports, got ${reports.length}`);
+          const month=reports.find(r=>r.lookbackDays===30);
+          const passWindows=reports.filter(r=>r.productionGate.pass).length;
+          const positiveNetWindows=reports.filter(r=>r.champion.test.netGrowth>0).length;
+          const improvedWindows=reports.filter(r=>r.champion.improvementVsHold>0).length;
+          const featureNames=['timing','protect','exit','rotation','adaptiveSize'];
+          const featureVotes=Object.fromEntries(featureNames.map(k=>[k,reports.filter(r=>Boolean(r.champion.cfg[k])).length]));
+          const contributionAvg={};
+          for(const k of ['noTiming','noProtect','noExit','noRotation','fixedSize']) contributionAvg[k]=reports.reduce((s,r)=>s+Number(r.contributions[k]||0),0)/reports.length;
+          const pass=Boolean(month?.productionGate?.pass)&&month.champion.test.netGrowth>0&&passWindows>=2&&positiveNetWindows>=2&&improvedWindows>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6',objective:'positive 30-day net capital growth from full-cycle optimization',windows:reports.map(r=>({days:r.lookbackDays,gate:r.productionGate.pass,netGrowth:r.champion.test.netGrowth,baselineGrowth:r.baseline.test.netGrowth,improvementVsHold:r.champion.improvementVsHold,maxDrawdown:r.champion.test.maxDrawdown,cfg:r.champion.cfg,contributions:r.contributions})),month30:{gate:month.productionGate.pass,netGrowth:month.champion.test.netGrowth,improvementVsHold:month.champion.improvementVsHold,maxDrawdown:month.champion.test.maxDrawdown,cfg:month.champion.cfg},passWindows,positiveNetWindows,improvedWindows,featureVotes,contributionAvg,productionGate:{pass,reason:pass?'V6 achieves positive untouched 30-day net growth with supporting intramonth evidence':'HOLD: V6 did not satisfy positive 30-day full-cycle objective with enough short-window support'},promotion:'NOT AUTOMATIC. Research evidence only; production remains unchanged.'};
+          fs.writeFileSync('spot-full-cycle-v6-cross-window.json',JSON.stringify(out,null,2));
+          console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-full-cycle-v6-cross-window-${{ github.run_id }}
+          path: spot-full-cycle-v6-cross-window.json
+          retention-days: 14
