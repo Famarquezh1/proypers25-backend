@@ -1,19 +1,22 @@
-name: Spot Manual Approval
+name: Spot Autonomous Validation & Execution
 
 on:
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: spot-manual-approval
+  group: spot-autonomous-execution
   cancel-in-progress: false
 
 jobs:
   prepare:
-    name: Resolve latest production Spot signal
+    name: Resolve production Spot signal
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[SPOT SIGNAL] ')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
@@ -25,17 +28,25 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Resolve latest production signal
+      - name: Resolve signal payload
         id: signal
         shell: bash
         run: |
           set -euo pipefail
-          JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '[SPOT SIGNAL] in:title' --limit 50 --json number,title,body,createdAt --jq '[.[] | select(.title | startswith("[SPOT SIGNAL] "))] | sort_by(.createdAt) | reverse | .[0]')
-          test -n "$JSON" && test "$JSON" != "null"
-          NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
-          TITLE=$(printf '%s' "$JSON" | jq -r '.title')
-          BODY=$(printf '%s' "$JSON" | jq -r '.body')
-          CREATED=$(printf '%s' "$JSON" | jq -r '.createdAt')
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            JSON=$(cat "$GITHUB_EVENT_PATH")
+            NUMBER=$(printf '%s' "$JSON" | jq -r '.issue.number')
+            TITLE=$(printf '%s' "$JSON" | jq -r '.issue.title')
+            BODY=$(printf '%s' "$JSON" | jq -r '.issue.body')
+            CREATED=$(printf '%s' "$JSON" | jq -r '.issue.created_at')
+          else
+            JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '[SPOT SIGNAL] in:title' --limit 50 --json number,title,body,createdAt --jq '[.[] | select(.title | startswith("[SPOT SIGNAL] "))] | sort_by(.createdAt) | reverse | .[0]')
+            test -n "$JSON" && test "$JSON" != "null"
+            NUMBER=$(printf '%s' "$JSON" | jq -r '.number')
+            TITLE=$(printf '%s' "$JSON" | jq -r '.title')
+            BODY=$(printf '%s' "$JSON" | jq -r '.body')
+            CREATED=$(printf '%s' "$JSON" | jq -r '.createdAt')
+          fi
           SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([A-Z0-9]*USDT\).*/\1/p')
           PCT=$(printf '%s' "$BODY" | sed -n 's/^- Cambio 24h: +\([0-9.-]*\)%.*/\1/p' | head -1)
           PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
@@ -47,10 +58,16 @@ jobs:
           echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
 
   execute:
-    name: Execute approved Spot order from Chile PC
+    name: Validate and execute from Chile PC
     needs: prepare
+    if: needs.prepare.result == 'success'
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
+    outputs:
+      outcome: ${{ steps.trade.outputs.outcome }}
+      reason: ${{ steps.trade.outputs.reason }}
+      order_id: ${{ steps.trade.outputs.order_id }}
+      symbol: ${{ steps.trade.outputs.symbol }}
     env:
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
       BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
@@ -67,21 +84,37 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Revalidate and execute real Spot order
+      - name: Autonomous local revalidation and Spot execution
+        id: trade
         working-directory: backend
         run: node scripts/github-spot-manual-execution.js
 
   mark:
-    name: Mark executed signal
+    name: Mark autonomous decision
     needs: [prepare, execute]
-    if: success()
+    if: always() && needs.prepare.result == 'success' && needs.execute.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
       GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ needs.prepare.outputs.issue_number }}
+      OUTCOME: ${{ needs.execute.outputs.outcome }}
+      REASON: ${{ needs.execute.outputs.reason }}
+      ORDER_ID: ${{ needs.execute.outputs.order_id }}
     steps:
-      - name: Close executed signal
+      - name: Record autonomous decision
         shell: bash
         run: |
-          gh issue comment "${{ needs.prepare.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --body '✅ Operación Spot aprobada mediante **Run workflow** y procesada por el runner local. Revisa Binance y el log de la ejecución para el orderId.'
-          gh issue close "${{ needs.prepare.outputs.issue_number }}" --repo "$GITHUB_REPOSITORY" --reason completed
+          set -euo pipefail
+          if [ "$OUTCOME" = "executed" ]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "✅ Validación autónoma local aprobó la oportunidad y ejecutó la compra Spot. orderId: $ORDER_ID. La protección nativa fue armada."
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+          elif [ "$OUTCOME" = "executed_protection_pending" ]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "⚠️ La validación autónoma ejecutó la compra Spot (orderId: $ORDER_ID), pero la protección nativa quedó pendiente. El auto-exit local debe recuperarla. Motivo: $REASON"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+          elif [ "$OUTCOME" = "declined" ]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "🛑 Oportunidad descartada automáticamente por el PC local. No se compró. Motivo: $REASON"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason not_planned
+          else
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "⚠️ La validación autónoma no pudo completar la decisión por un problema técnico. No asumir compra. Revisa el job local antes de reintentar."
+          fi
