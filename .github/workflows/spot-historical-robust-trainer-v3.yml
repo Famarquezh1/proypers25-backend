@@ -1,0 +1,119 @@
+name: Spot Historical Robust Trainer V3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-historical-robust-trainer-v3.js'
+      - '.github/workflows/spot-historical-robust-trainer-v3.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-historical-robust-trainer-v3
+  cancel-in-progress: true
+
+jobs:
+  train:
+    name: Robust V3 ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        days: [60, 90, 120, 180]
+    env:
+      TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+      TRAIN_MAX_SYMBOLS: '40'
+      TRAIN_PURGE_HOURS: '48'
+      TRAIN_MIN_POINT_IN_TIME_QV: '1000000'
+      TRAIN_BOOTSTRAPS: '400'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run robustness-first trainer
+        working-directory: backend
+        run: node scripts/github-spot-historical-robust-trainer-v3.js
+
+      - name: Upload V3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-robust-v3-${{ matrix.days }}d-${{ github.run_id }}
+          path: |
+            backend/training-output/spot-robust-v3-report.json
+            backend/training-output/spot-robust-v3-champions.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: V3 window summary
+        if: success()
+        working-directory: backend
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./training-output/spot-robust-v3-report.json');
+          console.log(`### Robust Trainer V3 — ${r.lookback_days} días`);
+          console.log(`- Muestras: ${r.samples}`);
+          console.log(`- Agentes: ${r.agents.length}`);
+          console.log(`- Caminos purgados: ${r.paths.length}`);
+          console.log(`- PBO: ${(r.production_gate.pbo*100).toFixed(1)}%`);
+          console.log(`- Campeones estables: ${r.stable_champions.map(x=>x.agent).join(', ')||'ninguno'}`);
+          console.log(`- Gate: ${r.production_gate.pass?'PASS':'HOLD'}`);
+          for(const x of r.ranking.slice(0,5)) console.log(`- ${x.agent}: test+ ${x.positive_test}/${x.paths}, stress+ ${x.positive_stress}/${x.paths}, P05+ ${x.p05_positive}/${x.paths}, neto prom ${(x.avg_test_net*100).toFixed(3)}%, PF ${x.avg_pf.toFixed(2)}, peor DD ${(x.worst_dd*100).toFixed(1)}%`);
+          NODE
+
+  consolidate:
+    name: Robust V3 cross-window gate
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download V3 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-robust-v3-*-${{ github.run_id }}
+          path: robust-v3-combined
+          merge-multiple: false
+
+      - name: Consolidate V3 windows
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const reports=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);if(s.isDirectory())walk(p);else if(n==='spot-robust-v3-report.json')reports.push(JSON.parse(fs.readFileSync(p,'utf8')));}}
+          walk('robust-v3-combined');reports.sort((a,b)=>a.lookback_days-b.lookback_days);
+          const agentMap=new Map();
+          for(const r of reports){for(const x of r.ranking||[]){if(!agentMap.has(x.agent))agentMap.set(x.agent,{agent:x.agent,windows:0,window_passes:0,positive_test_paths:0,total_paths:0,avg_net:[],pf:[],worst_dd:0});const a=agentMap.get(x.agent);a.windows++;if((r.stable_champions||[]).some(c=>c.agent===x.agent))a.window_passes++;a.positive_test_paths+=x.positive_test;a.total_paths+=x.paths;a.avg_net.push(x.avg_test_net);a.pf.push(x.avg_pf);a.worst_dd=Math.min(a.worst_dd,x.worst_dd);}}
+          const avg=xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:0;
+          const ranking=[...agentMap.values()].map(x=>({...x,avg_test_net:avg(x.avg_net),avg_pf:avg(x.pf)})).sort((a,b)=>b.window_passes-a.window_passes||b.avg_test_net-a.avg_test_net);
+          const stable=ranking.filter(x=>x.windows>=3&&x.window_passes>=3&&x.avg_test_net>0&&x.avg_pf>1&&x.worst_dd>-0.35).slice(0,3);
+          const windowsPass=reports.filter(r=>r.production_gate?.pass).length;
+          const avgPbo=avg(reports.map(r=>r.production_gate?.pbo??1));
+          const pass=stable.length>0&&windowsPass>=3&&avgPbo<=.35;
+          const summary={generated_at:new Date().toISOString(),windows:reports.map(r=>({days:r.lookback_days,gate:r.production_gate,champions:r.stable_champions})),stable_champions:stable,windows_passed:windowsPass,average_pbo:avgPbo,ranking,production_gate:{pass,reason:pass?'stable across >=3 independent lookbacks with PBO control':'HOLD: cross-window robustness threshold not met'}};
+          fs.writeFileSync('spot-robust-v3-cross-window-summary.json',JSON.stringify(summary,null,2));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'\n### Robust V3 cross-window\n');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`- Ventanas completadas: ${reports.map(r=>r.lookback_days+'d').join(', ')}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`- Ventanas PASS: ${windowsPass}/${reports.length}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`- PBO promedio: ${(avgPbo*100).toFixed(1)}%\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`- Campeones estables: ${stable.map(x=>x.agent).join(', ')||'ninguno'}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`- Gate producción: ${pass?'PASS':'HOLD'}\n`);
+          NODE
+
+      - name: Upload V3 consolidated evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-robust-v3-cross-window-${{ github.run_id }}
+          path: spot-robust-v3-cross-window-summary.json
+          retention-days: 14
