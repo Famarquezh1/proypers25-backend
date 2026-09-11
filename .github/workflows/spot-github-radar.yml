@@ -26,32 +26,18 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Temporary sleep window until 07:15 Chile
-        id: quiet
-        shell: bash
-        run: |
-          set -euo pipefail
-          NOW=$(date -u +%s)
-          CUTOFF=1789121700
-          if [ "$NOW" -lt "$CUTOFF" ]; then
-            echo 'paused=true' >> "$GITHUB_OUTPUT"
-            echo 'Radar notification delivery paused until 2026-09-11 07:15 Chile / 10:15 UTC.'
-          else
-            echo 'paused=false' >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run production Spot QUBO radar without GCP
-        if: steps.quiet.outputs.paused != 'true'
+      - name: Run production Spot QUBO radar with V4.2 hierarchy
         id: scan
         shell: bash
         run: |
           set -euo pipefail
-          RESULT=$(node backend/scripts/github-spot-production-radar.js)
+          RESULT=$(node backend/scripts/github-spot-production-radar-v42.js)
           printf '%s\n' "$RESULT"
           NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
           echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
           if [ "$NOTIFY" != "true" ]; then
             echo 'symbol=none' >> "$GITHUB_OUTPUT"
+            echo "reason=$(printf '%s' "$RESULT" | jq -r '.reason // "no signal"')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "symbol=$(printf '%s' "$RESULT" | jq -r '.symbol')" >> "$GITHUB_OUTPUT"
@@ -63,9 +49,14 @@ jobs:
           echo "qubo_method=$(printf '%s' "$RESULT" | jq -r '.qubo_method')" >> "$GITHUB_OUTPUT"
           echo "qubo_objective=$(printf '%s' "$RESULT" | jq -r '.qubo_objective')" >> "$GITHUB_OUTPUT"
           echo "qubo_selected=$(printf '%s' "$RESULT" | jq -r '.qubo_selected_symbols | join(",")')" >> "$GITHUB_OUTPUT"
+          echo "v42_pass_windows=$(printf '%s' "$RESULT" | jq -r '.v42_pass_windows')" >> "$GITHUB_OUTPUT"
+          echo "v42_norm=$(printf '%s' "$RESULT" | jq -r '.v42_norm')" >> "$GITHUB_OUTPUT"
+          echo "v42_ignition=$(printf '%s' "$RESULT" | jq -r '.v42_detail.ignition')" >> "$GITHUB_OUTPUT"
+          echo "v42_confirm=$(printf '%s' "$RESULT" | jq -r '.v42_detail.confirm')" >> "$GITHUB_OUTPUT"
+          echo "v42_extension=$(printf '%s' "$RESULT" | jq -r '.v42_detail.extension')" >> "$GITHUB_OUTPUT"
 
       - name: Avoid duplicate signal issue
-        if: steps.quiet.outputs.paused != 'true' && steps.scan.outputs.notify == 'true'
+        if: steps.scan.outputs.notify == 'true'
         id: dedupe
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,8 +71,8 @@ jobs:
             echo 'duplicate=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create production GitHub signal notification
-        if: steps.quiet.outputs.paused != 'true' && steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
+      - name: Create autonomous production Spot signal
+        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SYMBOL: ${{ steps.scan.outputs.symbol }}
@@ -93,12 +84,17 @@ jobs:
           QUBO_METHOD: ${{ steps.scan.outputs.qubo_method }}
           QUBO_OBJECTIVE: ${{ steps.scan.outputs.qubo_objective }}
           QUBO_SELECTED: ${{ steps.scan.outputs.qubo_selected }}
+          V42_PASS: ${{ steps.scan.outputs.v42_pass_windows }}
+          V42_NORM: ${{ steps.scan.outputs.v42_norm }}
+          V42_IGNITION: ${{ steps.scan.outputs.v42_ignition }}
+          V42_CONFIRM: ${{ steps.scan.outputs.v42_confirm }}
+          V42_EXTENSION: ${{ steps.scan.outputs.v42_extension }}
         shell: bash
         run: |
           set -euo pipefail
           TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
-            'Proypers25 detectó una oportunidad Spot en producción desde GitHub, sin GCP.' \
+          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+            'Proypers25 detectó una oportunidad Spot en producción con jerarquía V4.2 y QUBO.' \
             "- Símbolo: $SYMBOL" \
             "- Cambio 24h: +${PCT}%" \
             "- Precio: $PRICE" \
@@ -107,19 +103,21 @@ jobs:
             "- QUBO: $QUBO_METHOD" \
             "- Utility: $UTILITY | Objetivo QUBO: $QUBO_OBJECTIVE" \
             "- Selección QUBO: $QUBO_SELECTED" \
-            'Acción: abre GitHub Actions → Spot Manual Approval → Run workflow → mode=real.')
-          ISSUE_URL=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1)
-          ISSUE_NUMBER=$(basename "$ISSUE_URL")
-          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body '@Famarquezh1 ⚠️ Señal Spot nueva. Revisa esta oportunidad y, si sigue vigente, apruébala en **Actions → Spot Manual Approval → Run workflow**.'
+            "- V4.2 robustez: $V42_PASS/3 ventanas | score: $V42_NORM" \
+            "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
+            'Acción: validación y ejecución autónoma en el runner local. No requiere aprobación manual.')
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
 
       - name: Summary
         if: always()
         shell: bash
         run: |
-          echo '### Spot GitHub Radar — Production' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot GitHub Radar — Production V4.2' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
-          echo '- QUBO: producción para selección de señal' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Pausa temporal: ${{ steps.quiet.outputs.paused || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
+          echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Gate V4.2: mínimo 2/3 ventanas entrenadas' >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Motivo sin señal: ${{ steps.scan.outputs.reason || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
