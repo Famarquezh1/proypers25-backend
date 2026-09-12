@@ -14,7 +14,7 @@ jobs:
   train:
     name: V6.8 integrated optimizer ${{ matrix.days }}d
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
