@@ -1,0 +1,101 @@
+name: Spot Early Timing Trainer V6.2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-early-timing-trainer-v6_2.js'
+      - '.github/workflows/spot-early-timing-trainer-v6_2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-early-timing-trainer-v6-2
+  cancel-in-progress: true
+
+jobs:
+  train:
+    name: V6.2 early timing ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    env:
+      TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+      TRAIN_MAX_SYMBOLS: '60'
+      MIN_HIST_QUOTE_VOL_24H: '200000'
+      TRAIN_WINNER_TARGET: '0.10'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.2
+        run: node --check backend/scripts/github-spot-early-timing-trainer-v6_2.js
+      - name: Run V6.2 early timing trainer
+        run: node backend/scripts/github-spot-early-timing-trainer-v6_2.js
+      - name: Upload V6.2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-early-timing-v6-2-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-early-timing-v6_2-report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Window summary
+        if: success()
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-early-timing-v6_2-report.json');
+          const b=r.baseline.test,c=r.champion.test,d=r.champion.deltaVsBaseline;
+          console.log(`### V6.2 early timing — ${r.lookbackDays}d`);
+          console.log(`- Hard cap: ${r.hardLookbackCapDays}d; interval ${r.interval}`);
+          console.log(`- Multi-agent from first point: ${r.agents.join(', ')}`);
+          console.log(`- Champion quantile / consensus: ${r.champion.quantile} / ${r.champion.consensus}`);
+          console.log(`- Baseline recall/precision: ${(b.recall*100).toFixed(2)}% / ${(b.precision*100).toFixed(2)}%`);
+          console.log(`- V6.2 recall/precision: ${(c.recall*100).toFixed(2)}% / ${(c.precision*100).toFixed(2)}%`);
+          console.log(`- Winner detection: ${b.avgWinnerDetection24hPct.toFixed(2)}% -> ${c.avgWinnerDetection24hPct.toFixed(2)}%`);
+          console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+          console.log(`- DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+          console.log(`- Gate: ${r.researchGate.pass?'PASS':'HOLD'} — ${r.researchGate.reason}`);
+          console.log('- Research only; no production thresholds or trading actions changed.');
+          NODE
+
+  consolidate:
+    name: V6.2 timing arbiter
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download V6.2 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-early-timing-v6-2-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.2
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,pass:r.researchGate.pass,recallDelta:r.champion.deltaVsBaseline.recall,precisionDelta:r.champion.deltaVsBaseline.precision,detectionDelta:r.champion.deltaVsBaseline.winnerDetection24hPct,avgNetRetDelta:r.champion.deltaVsBaseline.avgNetRet,maxDrawdown:r.champion.test.maxDrawdown,quantile:r.champion.quantile,consensus:r.champion.consensus}));
+          const month=windows.find(x=>x.days===30),passCount=windows.filter(x=>x.pass).length,earlier=windows.filter(x=>x.detectionDelta<=0).length,recall=windows.filter(x=>x.recallDelta>=0).length;
+          const pass=Boolean(month?.pass)&&passCount>=3&&earlier>=3&&recall>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.2',objective:'reduce detection lag with multi-agent timing calibration while preserving V6.1 economic safety',windows,passWindows:passCount,earlierWindows:earlier,nonWorseRecallWindows:recall,researchGate:{pass,reason:pass?'V6.2 timing improvement is robust across short windows and passes the 30d untouched test':'HOLD: timing improvement is not robust enough across 7/14/21/30d'},promotion:'NOT AUTOMATIC. Research only; production unchanged.'};
+          fs.writeFileSync('spot-early-timing-v6_2-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.2 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-early-timing-v6-2-cross-window-${{ github.run_id }}
+          path: spot-early-timing-v6_2-cross-window.json
+          retention-days: 14
