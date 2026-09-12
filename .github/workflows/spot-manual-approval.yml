@@ -114,7 +114,7 @@ jobs:
             gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
           elif [ "$OUTCOME" = "declined" ]; then
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "🛑 Oportunidad descartada automáticamente por el PC local. No se compró. Motivo: $REASON"
-            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason not_planned
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not planned"
           else
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "⚠️ La validación autónoma no pudo completar la decisión por un problema técnico. No asumir compra. Revisa el job local antes de reintentar."
           fi
