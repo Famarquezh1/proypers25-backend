@@ -1,0 +1,90 @@
+name: Spot Integrated Cycle Trainer V6.3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-integrated-cycle-trainer-v6_3.js'
+      - '.github/workflows/spot-integrated-cycle-trainer-v6_3.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.3 integrated cycle ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.3
+        run: node --check backend/scripts/github-spot-integrated-cycle-trainer-v6_3.js
+      - name: Run V6.3 integrated-cycle trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+          TRAIN_WINNER_TARGET: 0.10
+        run: node backend/scripts/github-spot-integrated-cycle-trainer-v6_3.js
+      - name: Upload V6.3 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-integrated-cycle-v6-3-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-integrated-cycle-v6_3-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE'
+          const r=require('./backend/training-output/spot-integrated-cycle-v6_3-report.json');
+          const b=r.baseline.test,c=r.champion.test,d=r.champion.deltaVsBaseline;
+          console.log(`### V6.3 integrated cycle — ${r.lookbackDays}d`);
+          console.log(`- Champion q/consensus/risk: ${r.champion.quantile} / ${r.champion.cfg.consensus} / ${r.champion.cfg.risk}`);
+          console.log(`- Avg size: ${(c.avgSize*100).toFixed(2)}%`);
+          console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+          console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+          console.log(`- Winner detection: ${b.avgWinnerDetection24hPct.toFixed(2)}% -> ${c.avgWinnerDetection24hPct.toFixed(2)}%`);
+          console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+          console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+          console.log(`- Gate: ${r.researchGate.pass?'PASS':'HOLD'} — ${r.researchGate.reason}`);
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V6.3 integrated-cycle arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.3 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-integrated-cycle-v6-3-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.3
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,pass:r.researchGate.pass,recallDelta:r.champion.deltaVsBaseline.recall,precisionDelta:r.champion.deltaVsBaseline.precision,detectionDelta:r.champion.deltaVsBaseline.winnerDetection24hPct,netGrowthDelta:r.champion.deltaVsBaseline.netGrowth,maxDrawdown:r.champion.test.maxDrawdown,avgSize:r.champion.test.avgSize,quantile:r.champion.quantile,consensus:r.champion.cfg.consensus,risk:r.champion.cfg.risk}));
+          const month=windows.find(x=>x.days===30),passCount=windows.filter(x=>x.pass).length,earlier=windows.filter(x=>x.detectionDelta<=0).length,recall=windows.filter(x=>x.recallDelta>=0).length,economic=windows.filter(x=>x.netGrowthDelta>0).length,ddSafe=windows.filter(x=>x.maxDrawdown>=-.12).length;
+          const pass=Boolean(month?.pass)&&passCount>=3&&earlier>=3&&recall>=3&&economic>=3&&ddSafe>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.3',objective:'integrate early detection with adaptive sizing and position management on identical opportunity sets',windows,passWindows:passCount,earlierWindows:earlier,nonWorseRecallWindows:recall,economicImprovementWindows:economic,drawdownSafeWindows:ddSafe,researchGate:{pass,reason:pass?'V6.3 integrated cycle is robust across short windows and passes 30d untouched economic safety':'HOLD: integrated cycle is not robust enough across 7/14/21/30d'},promotion:'NOT AUTOMATIC. Research only; production unchanged.'};
+          fs.writeFileSync('spot-integrated-cycle-v6_3-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.3 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-integrated-cycle-v6-3-cross-window-${{ github.run_id }}
+          path: spot-integrated-cycle-v6_3-cross-window.json
+          retention-days: 14
