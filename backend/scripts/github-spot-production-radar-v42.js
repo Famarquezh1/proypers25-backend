@@ -3,7 +3,8 @@
 const MIN_PCT = 1;
 const MAX_PCT = 18;
 const MIN_QUOTE_VOLUME = 200000;
-const PROBE_CANDIDATES = 24;
+const PROBE_CANDIDATES = 100;
+const PROBE_CONCURRENCY = 10;
 const MAX_QUBO_CANDIDATES = 10;
 const MAX_SELECTED = 3;
 const V42_MIN_PASS_WINDOWS = 2;
@@ -48,6 +49,25 @@ function baseUtility(candidate) {
   const freshness = pct <= 8 ? 1 : clamp(1 - ((pct - 8) / 10));
   const chasePenalty = pct > 12 ? clamp((pct - 12) / 6) : 0;
   return momentum * 0.45 + liquidity * 0.30 + freshness * 0.25 - chasePenalty * 0.15;
+}
+
+function probeLaneScore(candidate, lane = 'base') {
+  const pct = Number(candidate.pct) || 0;
+  const liquidity = normalizedLog(candidate.qv, MIN_QUOTE_VOLUME, 150000000);
+
+  if (lane === 'fresh') {
+    const freshSweetSpot = clamp(1 - (Math.abs(pct - 2) / 4));
+    return freshSweetSpot * 0.65 + liquidity * 0.35;
+  }
+  if (lane === 'surge') {
+    const surgeSweetSpot = clamp(1 - (Math.abs(pct - 9) / 8));
+    return surgeSweetSpot * 0.60 + liquidity * 0.40;
+  }
+  if (lane === 'liquidity') {
+    const notExtended = pct <= 12 ? 1 : clamp(1 - ((pct - 12) / 6));
+    return liquidity * 0.80 + notExtended * 0.20;
+  }
+  return baseUtility(candidate);
 }
 
 function utility(candidate) {
@@ -120,12 +140,55 @@ function normalizeCoinGecko(rows) {
 }
 
 function eligibleProbe(rows) {
-  return rows
+  const eligible = rows
     .filter((row) => row.symbol.endsWith('USDT'))
     .filter((row) => !/(UP|DOWN|BULL|BEAR)USDT$/.test(row.symbol))
-    .filter((row) => row.price > 0 && row.pct >= MIN_PCT && row.pct < MAX_PCT && row.qv >= MIN_QUOTE_VOLUME)
-    .sort((a, b) => baseUtility(b) - baseUtility(a))
-    .slice(0, PROBE_CANDIDATES);
+    .filter((row) => row.price > 0 && row.pct >= MIN_PCT && row.pct < MAX_PCT && row.qv >= MIN_QUOTE_VOLUME);
+
+  const lanes = {
+    fresh: [...eligible].sort((a, b) => probeLaneScore(b, 'fresh') - probeLaneScore(a, 'fresh')),
+    surge: [...eligible].sort((a, b) => probeLaneScore(b, 'surge') - probeLaneScore(a, 'surge')),
+    liquidity: [...eligible].sort((a, b) => probeLaneScore(b, 'liquidity') - probeLaneScore(a, 'liquidity')),
+    base: [...eligible].sort((a, b) => baseUtility(b) - baseUtility(a))
+  };
+
+  const selected = [];
+  const seen = new Set();
+  function addFrom(pool, quota) {
+    let added = 0;
+    for (const candidate of pool) {
+      if (selected.length >= PROBE_CANDIDATES || added >= quota) break;
+      if (seen.has(candidate.symbol)) continue;
+      seen.add(candidate.symbol);
+      selected.push(candidate);
+      added += 1;
+    }
+  }
+
+  addFrom(lanes.fresh, 30);
+  addFrom(lanes.surge, 20);
+  addFrom(lanes.liquidity, 20);
+  addFrom(lanes.base, 30);
+  addFrom(lanes.fresh, PROBE_CANDIDATES - selected.length);
+  addFrom(lanes.base, PROBE_CANDIDATES - selected.length);
+
+  return selected.slice(0, PROBE_CANDIDATES);
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+  const workers = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 async function klines(symbol, interval, limit) {
@@ -158,7 +221,7 @@ function stableScore(f) {
 }
 
 async function enrichStable(candidates) {
-  const enriched = await Promise.all(candidates.map(async (candidate) => {
+  const enriched = await mapWithConcurrency(candidates, PROBE_CONCURRENCY, async (candidate) => {
     try {
       const scores = stableScore(await stableFeatures(candidate.symbol));
       return { ...candidate, stable_raw: scores.ensemble, stable_detail: scores };
@@ -166,7 +229,7 @@ async function enrichStable(candidates) {
       console.error(`STABLE_FEATURES_FAILED ${candidate.symbol} ${error.message}`);
       return { ...candidate, stable_raw: NaN, stable_detail: null };
     }
-  }));
+  });
   const valid = enriched.map((x) => x.stable_raw).filter(Number.isFinite);
   if (!valid.length) return enriched.map((x) => ({ ...x, stable_norm: 0.5 }));
   const min = Math.min(...valid), max = Math.max(...valid);
@@ -230,7 +293,7 @@ async function enrichV42(candidates) {
     console.error(`V42_BTC_CONTEXT_FAILED ${error.message}`);
     return candidates.map((x) => ({ ...x, v42_pass_windows: 0, v42_norm: 0, v42_detail: null }));
   }
-  return Promise.all(candidates.map(async (candidate) => {
+  return mapWithConcurrency(candidates, PROBE_CONCURRENCY, async (candidate) => {
     try {
       const features = v42Features(await klines(candidate.symbol, '5m', 290), btc);
       const parts = v42Parts(features);
@@ -241,7 +304,7 @@ async function enrichV42(candidates) {
       console.error(`V42_FEATURES_FAILED ${candidate.symbol} ${error.message}`);
       return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null };
     }
-  }));
+  });
 }
 
 async function loadMarket() {
@@ -273,7 +336,7 @@ async function main() {
   candidates = await enrichV42(candidates);
   const robust = candidates.filter((x) => x.v42_pass_windows >= V42_MIN_PASS_WINDOWS);
   if (!robust.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
     return;
   }
 
@@ -283,7 +346,7 @@ async function main() {
   const selected = [...decision.selected].sort((a, b) => utility(b) - utility(a));
   const candidate = selected[0];
   if (!candidate) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'QUBO selected none' }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'QUBO selected none', probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
     return;
   }
 
@@ -292,6 +355,9 @@ async function main() {
     notify: true,
     mode: 'PRODUCTION_V42',
     source: market.source,
+    probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
+    probed: candidates.length,
+    robust_candidates: robust.length,
     qubo_method: decision.method,
     qubo_objective: decision.objective,
     qubo_selected_symbols: selected.map((item) => item.symbol),
