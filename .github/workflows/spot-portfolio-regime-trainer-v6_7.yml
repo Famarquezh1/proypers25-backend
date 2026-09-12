@@ -1,0 +1,96 @@
+name: Spot Portfolio Regime Trainer V6.7
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-portfolio-regime-trainer-v6_7.js'
+      - '.github/workflows/spot-portfolio-regime-trainer-v6_7.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.7 portfolio regime ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.7
+        run: node --check backend/scripts/github-spot-portfolio-regime-trainer-v6_7.js
+      - name: Run V6.7 portfolio-regime trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-portfolio-regime-trainer-v6_7.js
+      - name: Upload V6.7 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-portfolio-regime-v6-7-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-portfolio-regime-v6_7-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-portfolio-regime-v6_7-report.json');
+          console.log(`### V6.7 portfolio regime — ${r.lookbackDays}d`);
+          if(!r.champion){
+            console.log(`- Gate: HOLD — ${r.researchGate.reason}`);
+          } else {
+            const b=r.baseline.test,c=r.champion.test;
+            console.log(`- Champion q / consensus: ${r.champion.quantile} / ${r.champion.cfg.baseConsensus}`);
+            console.log(`- Max open / exposure: ${r.champion.cfg.maxOpen} / ${(r.champion.cfg.maxExposure*100).toFixed(0)}%`);
+            console.log(`- Daily stop-risk budget: ${(r.champion.cfg.dailyRiskBudget*100).toFixed(2)}%`);
+            console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+            console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+            console.log(`- Detection: ${b.avgDetection24hPct.toFixed(2)}% -> ${c.avgDetection24hPct.toFixed(2)}%`);
+            console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+            console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+            console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+            console.log(`- Avg size: ${(b.avgSize*100).toFixed(2)}% -> ${(c.avgSize*100).toFixed(2)}%`);
+            console.log(`- Gate: ${r.researchGate.pass?'PASS':'HOLD'} — ${r.researchGate.reason}`);
+          }
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V6.7 portfolio-regime arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.7 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-portfolio-regime-v6-7-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.7
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>{const c=r.champion;return {days:r.lookbackDays,pass:Boolean(r.researchGate?.pass),noChampion:!c,recallDelta:c?.deltaVsBaseline?.recall??null,precisionDelta:c?.deltaVsBaseline?.precision??null,detectionDelta:c?.deltaVsBaseline?.detection??null,avgNetRetDelta:c?.deltaVsBaseline?.avgNetRet??null,netGrowthDelta:c?.deltaVsBaseline?.netGrowth??null,drawdown:c?.test?.maxDrawdown??r.baseline?.test?.maxDrawdown??null,stopBefore10Delta:c?.deltaVsBaseline?.stopBefore10Rate??null,avgSize:c?.test?.avgSize??null,maxOpen:c?.cfg?.maxOpen??null,maxExposure:c?.cfg?.maxExposure??null,dailyRiskBudget:c?.cfg?.dailyRiskBudget??null};});
+          const valid=windows.filter(x=>!x.noChampion),month=windows.find(x=>x.days===30),passCount=windows.filter(x=>x.pass).length,economic=valid.filter(x=>x.avgNetRetDelta>=0&&x.netGrowthDelta>0).length,timing=valid.filter(x=>x.detectionDelta<=.25).length,dd=valid.filter(x=>x.drawdown>=-.12).length,clean=valid.filter(x=>x.stopBefore10Delta<=.02).length;
+          const pass=Boolean(month?.pass)&&passCount>=3&&economic>=3&&timing>=3&&dd>=3&&clean>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.7',objective:'validate portfolio-level risk and market-regime controls over V6.6 continuous-quality early entries',windows,passWindows:passCount,economicImprovementWindows:economic,timingSafeWindows:timing,drawdownSafeWindows:dd,trajectorySafeWindows:clean,researchGate:{pass,reason:pass?'V6.7 portfolio regime control is robust across 7/14/21/30d and passes 30d untouched economics':'HOLD: V6.7 portfolio regime control is not robust enough across windows'},promotion:'NOT AUTOMATIC. Research only; production unchanged.'};
+          fs.writeFileSync('spot-portfolio-regime-v6_7-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.7 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-portfolio-regime-v6-7-cross-window-${{ github.run_id }}
+          path: spot-portfolio-regime-v6_7-cross-window.json
+          retention-days: 14
