@@ -44,7 +44,7 @@ jobs:
         run: |
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const r=require('./backend/training-output/spot-trajectory-quality-v6_4-report.json');
-          const b=r.baseline.test,c=r.champion.test,d=r.champion.deltaVsBaseline;
+          const b=r.baseline.test,c=r.champion.test;
           console.log(`### V6.4 trajectory quality — ${r.lookbackDays}d`);
           console.log(`- Champion q/consensus: ${r.champion.quantile} / ${r.champion.cfg.consensus}`);
           console.log(`- Tradable recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
@@ -67,7 +67,7 @@ jobs:
       - name: Download V6.4 evidence
         uses: actions/download-artifact@v4
         with:
-          pattern: spot-trajectory-quality-v6-4-*- ${{ github.run_id }}
+          pattern: spot-trajectory-quality-v6-4-*-${{ github.run_id }}
           path: evidence
       - name: Consolidate V6.4
         run: |
