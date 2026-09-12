@@ -1,0 +1,92 @@
+name: Spot Regime Meta Trainer V6.9
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-regime-meta-trainer-v6_9.js'
+      - '.github/workflows/spot-regime-meta-trainer-v6_9.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.9 regime meta ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.9
+        run: node --check backend/scripts/github-spot-regime-meta-trainer-v6_9.js
+      - name: Run V6.9 regime meta-controller trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-regime-meta-trainer-v6_9.js
+      - name: Upload V6.9 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-regime-meta-v6-9-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-regime-meta-v6_9-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-regime-meta-v6_9-report.json');
+          console.log(`### V6.9 regime meta-controller — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label || 'UNKNOWN'}**`);
+          if(r.metaController?.test){
+            const b=r.baseline.test,c=r.metaController.test;
+            console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+            console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+            console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+            console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+            console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+            console.log(`- Detection: ${b.avgDetection24hPct.toFixed(2)}% -> ${c.avgDetection24hPct.toFixed(2)}%`);
+            console.log(`- Regime admissions: ${JSON.stringify(c.regimeAdmissions)}`);
+          }
+          console.log(`- ${r.decision?.reason || ''}`);
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V6.9 regime meta arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.9 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-regime-meta-v6-9-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.9
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,decision:r.decision?.label||'UNKNOWN',ready:Boolean(r.decision?.ready),netGrowth:r.metaController?.test?.netGrowth??null,baselineNetGrowth:r.baseline?.test?.netGrowth??null,avgNetRet:r.metaController?.test?.avgNetRet??null,maxDrawdown:r.metaController?.test?.maxDrawdown??null,recall:r.metaController?.test?.recall??null,precision:r.metaController?.test?.precision??null,detectionDelta:r.deltaVsBaseline?.detection??null,netGrowthDelta:r.deltaVsBaseline?.netGrowth??null,activeRegimes:r.specialists?Object.entries(r.specialists).filter(([,x])=>!x.off).map(([k])=>k):[]}));
+          const month=windows.find(x=>x.days===30),readyWindows=windows.filter(x=>x.ready).length,positive=windows.filter(x=>x.netGrowth!==null&&x.netGrowth>0).length,ddSafe=windows.filter(x=>x.maxDrawdown!==null&&x.maxDrawdown>=-.12).length,econBeat=windows.filter(x=>x.netGrowthDelta!==null&&x.netGrowthDelta>0).length,timingSafe=windows.filter(x=>x.detectionDelta!==null&&x.detectionDelta<=.25).length;
+          const ready=Boolean(month?.ready)&&readyWindows>=3&&positive>=3&&ddSafe>=3&&econBeat>=3&&timingSafe>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.9',objective:'validate regime-specialist policies plus meta-controller across 7/14/21/30d',windows,readyWindows,positiveWindows:positive,drawdownSafeWindows:ddSafe,economicBeatWindows:econBeat,timingSafeWindows:timingSafe,decision:{ready,label:ready?'READY_FOR_SHADOW_VALIDATION':'REQUIRES_IMPROVEMENT',reason:ready?'Regime-specialist meta-controller is robustly positive across windows; shadow validation is the next step':'Regime-specialist meta-controller has not yet proven robust cross-window economic superiority'},promotion:ready?'SHADOW VALIDATION NEXT. No automatic production promotion.':'RESEARCH CONTINUES. Production unchanged.'};
+          fs.writeFileSync('spot-regime-meta-v6_9-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.9 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-regime-meta-v6-9-cross-window-${{ github.run_id }}
+          path: spot-regime-meta-v6_9-cross-window.json
+          retention-days: 14
