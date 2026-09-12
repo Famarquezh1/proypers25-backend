@@ -1,0 +1,91 @@
+name: Spot Microstructure Trainer V6.5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-microstructure-trainer-v6_5.js'
+      - '.github/workflows/spot-microstructure-trainer-v6_5.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.5 microstructure ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.5
+        run: node --check backend/scripts/github-spot-microstructure-trainer-v6_5.js
+      - name: Run V6.5 microstructure trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-microstructure-trainer-v6_5.js
+      - name: Upload V6.5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-microstructure-v6-5-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-microstructure-v6_5-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-microstructure-v6_5-report.json');
+          const b=r.baseline.test,c=r.champion.test;
+          console.log(`### V6.5 microstructure — ${r.lookbackDays}d`);
+          console.log(`- Champion q: ${r.champion.quantile}`);
+          console.log(`- Base/micro consensus: ${r.champion.cfg.baseConsensus}/${r.champion.cfg.microConsensus}`);
+          console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+          console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+          console.log(`- Detection: ${b.avgDetection24hPct.toFixed(2)}% -> ${c.avgDetection24hPct.toFixed(2)}%`);
+          console.log(`- Stop-before-10: ${(b.stopBefore10Rate*100).toFixed(2)}% -> ${(c.stopBefore10Rate*100).toFixed(2)}%`);
+          console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+          console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+          console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+          console.log(`- Gate: ${r.researchGate.pass?'PASS':'HOLD'} — ${r.researchGate.reason}`);
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V6.5 microstructure arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.5 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-microstructure-v6-5-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.5
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,pass:r.researchGate.pass,recallDelta:r.champion.deltaVsBaseline.recall,precisionDelta:r.champion.deltaVsBaseline.precision,detectionDelta:r.champion.deltaVsBaseline.detection,avgNetRetDelta:r.champion.deltaVsBaseline.avgNetRet,netGrowthDelta:r.champion.deltaVsBaseline.netGrowth,drawdown:r.champion.test.maxDrawdown,stopBefore10Delta:r.champion.deltaVsBaseline.stopBefore10Rate,quantile:r.champion.quantile,baseConsensus:r.champion.cfg.baseConsensus,microConsensus:r.champion.cfg.microConsensus}));
+          const month=windows.find(x=>x.days===30),passCount=windows.filter(x=>x.pass).length,economic=windows.filter(x=>x.avgNetRetDelta>0&&x.netGrowthDelta>0).length,cleaner=windows.filter(x=>x.stopBefore10Delta<=0).length,dd=windows.filter(x=>x.drawdown>=-.12).length;
+          const pass=Boolean(month?.pass)&&passCount>=3&&economic>=3&&cleaner>=3&&dd>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V6.5',objective:'validate whether pre-entry microstructure improves clean economically realizable trajectories',windows,passWindows:passCount,economicImprovementWindows:economic,cleanerTrajectoryWindows:cleaner,drawdownSafeWindows:dd,researchGate:{pass,reason:pass?'V6.5 microstructure is robust across 7/14/21/30d and passes 30d untouched economics':'HOLD: microstructure improvement is not robust enough across windows'},promotion:'NOT AUTOMATIC. Research only; production unchanged.'};
+          fs.writeFileSync('spot-microstructure-v6_5-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-microstructure-v6-5-cross-window-${{ github.run_id }}
+          path: spot-microstructure-v6_5-cross-window.json
+          retention-days: 14
