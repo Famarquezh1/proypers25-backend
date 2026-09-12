@@ -1,0 +1,71 @@
+name: Spot Early Probe Trainer V5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-early-probe-trainer-v5.js'
+      - '.github/workflows/spot-early-probe-trainer-v5.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-early-probe-trainer-v5
+  cancel-in-progress: true
+
+jobs:
+  train:
+    name: Early Probe V5 30d
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TRAIN_LOOKBACK_DAYS: '30'
+      TRAIN_MAX_SYMBOLS: '60'
+      MIN_HIST_QUOTE_VOL_24H: '200000'
+      TRAIN_WINNER_TARGET: '0.10'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check
+        run: node --check backend/scripts/github-spot-early-probe-trainer-v5.js
+
+      - name: Run research-only multi-agent trainer
+        working-directory: backend
+        run: node scripts/github-spot-early-probe-trainer-v5.js
+
+      - name: Upload research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-early-probe-v5-30d-${{ github.run_id }}
+          path: backend/training-output/spot-early-probe-v5-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Research summary
+        if: success()
+        working-directory: backend
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./training-output/spot-early-probe-v5-report.json');
+          const o=r.test.legacy24,n=r.test.diversified100,d=r.delta;
+          console.log('### Early Probe V5 — 30d research only');
+          console.log(`- Historical cap: ${r.hardLookbackCapDays} days`);
+          console.log(`- Interval: ${r.interval}; every historical 5m point evaluated`);
+          console.log(`- Agents from first point: ${r.agents.join(', ')}`);
+          console.log(`- Consensus selected on validation: ${r.consensusMin}`);
+          console.log(`- Legacy 24: recall ${(o.recall*100).toFixed(1)}%, precision ${(o.precision*100).toFixed(1)}%, winner detected at ${o.avgWinnerDetection24hPct.toFixed(2)}% 24h move`);
+          console.log(`- Diversified 100: recall ${(n.recall*100).toFixed(1)}%, precision ${(n.precision*100).toFixed(1)}%, winner detected at ${n.avgWinnerDetection24hPct.toFixed(2)}% 24h move`);
+          console.log(`- Delta recall: ${(d.recall*100).toFixed(1)} pp`);
+          console.log(`- Delta detection level: ${d.winnerDetection24hPct.toFixed(2)} pp (negative = earlier)`);
+          console.log(`- Research gate: ${r.researchGate.pass?'PASS':'HOLD'} — ${r.researchGate.reason}`);
+          console.log('- This workflow does not dispatch trading, place orders or modify production thresholds.');
+          NODE
