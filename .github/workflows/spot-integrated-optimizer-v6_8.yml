@@ -1,0 +1,94 @@
+name: Spot Integrated Optimizer V6.8
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-integrated-optimizer-v6_8.js'
+      - '.github/workflows/spot-integrated-optimizer-v6_8.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V6.8 integrated optimizer ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V6.8
+        run: node --check backend/scripts/github-spot-integrated-optimizer-v6_8.js
+      - name: Run V6.8 integrated optimizer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-integrated-optimizer-v6_8.js
+      - name: Upload V6.8 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-integrated-optimizer-v6-8-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-integrated-optimizer-v6_8-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-integrated-optimizer-v6_8-report.json');
+          console.log(`### V6.8 integrated optimizer — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label || r.status || 'UNKNOWN'}**`);
+          if(r.champion){
+            const b=r.baseline.test,c=r.champion.test;
+            console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+            console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+            console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+            console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+            console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+            console.log(`- Detection: ${b.avgDetection24hPct.toFixed(2)}% -> ${c.avgDetection24hPct.toFixed(2)}%`);
+            console.log(`- Avg size: ${(c.avgSize*100).toFixed(2)}% | Max open: ${r.champion.cfg.maxOpen} | Exposure cap: ${(r.champion.cfg.maxExposure*100).toFixed(0)}%`);
+          }
+          console.log(`- ${r.decision?.reason || r.reason || ''}`);
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V6.8 integrated system arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V6.8 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-integrated-optimizer-v6-8-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V6.8
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,decision:r.decision?.label||r.status||'UNKNOWN',ready:Boolean(r.decision?.ready),netGrowth:r.champion?.test?.netGrowth??r.baseline?.test?.netGrowth??null,baselineNetGrowth:r.baseline?.test?.netGrowth??null,avgNetRet:r.champion?.test?.avgNetRet??null,maxDrawdown:r.champion?.test?.maxDrawdown??r.baseline?.test?.maxDrawdown??null,recallDelta:r.champion?.deltaVsBaseline?.recall??null,precisionDelta:r.champion?.deltaVsBaseline?.precision??null,detectionDelta:r.champion?.deltaVsBaseline?.detection??null,admitted:r.champion?.test?.admitted??null}));
+          const month=windows.find(x=>x.days===30),readyWindows=windows.filter(x=>x.ready).length,positiveWindows=windows.filter(x=>x.netGrowth!==null&&x.netGrowth>0).length,ddSafeWindows=windows.filter(x=>x.maxDrawdown!==null&&x.maxDrawdown>=-.12).length,timingSafeWindows=windows.filter(x=>x.detectionDelta!==null&&x.detectionDelta<=.25).length,econBeatWindows=windows.filter(x=>x.netGrowth!==null&&x.baselineNetGrowth!==null&&x.netGrowth>x.baselineNetGrowth).length;
+          const ready=Boolean(month?.ready)&&readyWindows>=3&&positiveWindows>=3&&ddSafeWindows>=3&&timingSafeWindows>=3&&econBeatWindows>=3;
+          const label=ready?'READY_FOR_SHADOW_VALIDATION':'REQUIRES_IMPROVEMENT';
+          const reason=ready?'Integrated optimization is economically positive and robust across windows; proceed only to shadow validation':'Integrated optimization has not yet demonstrated robust cross-window superiority on economics, risk and timing';
+          const out={generatedAt:new Date().toISOString(),version:'V6.8',objective:'system-level optimization of early detection, economic quality, adaptive sizing, regime, concurrency, exposure and drawdown',windows,readyWindows,positiveWindows,drawdownSafeWindows:ddSafeWindows,timingSafeWindows,economicBeatWindows:econBeatWindows,decision:{ready,label,reason},promotion:ready?'SHADOW VALIDATION NEXT. No automatic production promotion.':'KEEP RESEARCH. Production unchanged.'};
+          fs.writeFileSync('spot-integrated-optimizer-v6_8-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V6.8 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-integrated-optimizer-v6-8-cross-window-${{ github.run_id }}
+          path: spot-integrated-optimizer-v6_8-cross-window.json
+          retention-days: 14
