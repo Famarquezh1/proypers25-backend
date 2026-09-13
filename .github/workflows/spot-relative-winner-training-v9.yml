@@ -1,0 +1,57 @@
+name: Spot Relative Winner Training V9
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9.js'
+      - '.github/workflows/spot-relative-winner-training-v9.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+      V9_EVAL_DAYS: '7'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V9 trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-instant-decision-trainer-v8.js
+          node --check backend/scripts/github-spot-relative-winner-trainer-v9.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-relative-winner-trainer-v9.js
+          grep -q "target:'cross-sectional future excess return'" backend/scripts/github-spot-relative-winner-trainer-v9.js
+          grep -q "productionMutation:false" backend/scripts/github-spot-relative-winner-trainer-v9.js
+      - name: Train cross-sectional winner ranker
+        run: node backend/scripts/github-spot-relative-winner-trainer-v9.js
+      - name: Upload V9 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-relative-winner-v9-${{ github.run_id }}
+          path: spot-relative-winner-v9.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Relative Winner Training V9' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Objective: rank the winner relative to coins available at the same instant' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Training: rolling 7 days; decisions every 5m; cross-sectional samples every 15m' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Future target: 30m/60m/180m excess return blend' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-relative-winner-v9.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Ready days: \(.aggregate.readyDays)/\(.aggregate.evaluatedDays)\n- Positive alpha days: \(.aggregate.positiveAlphaDays)\n- Positive absolute days: \(.aggregate.positiveAbsDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg alpha: \(.aggregate.avgAlpha)\n- Avg net 180m: \(.aggregate.avgNet180)\n- Top-decile hit rate: \(.aggregate.avgTop10HitRate)"' spot-relative-winner-v9.json >> "$GITHUB_STEP_SUMMARY"
+          fi
