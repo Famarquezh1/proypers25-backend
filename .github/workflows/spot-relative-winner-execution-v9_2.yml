@@ -1,0 +1,58 @@
+name: Spot Relative Winner Execution V9.2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9_1.js'
+      - 'backend/scripts/github-spot-relative-winner-execution-v9_2.js'
+      - '.github/workflows/spot-relative-winner-execution-v9_2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+      V92_EVAL_DAYS: '7'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V9.2 evaluator
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-relative-winner-execution-v9_2.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-relative-winner-execution-v9_2.js
+          grep -q "ranking:'V9.1 unchanged'" backend/scripts/github-spot-relative-winner-execution-v9_2.js
+          grep -q "conservativeIntrabar:true" backend/scripts/github-spot-relative-winner-execution-v9_2.js
+      - name: Evaluate trained ranking with executable exits
+        run: node backend/scripts/github-spot-relative-winner-execution-v9_2.js
+      - name: Upload V9.2 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-relative-winner-v9-2-${{ github.run_id }}
+          path: spot-relative-winner-v9_2.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Relative Winner Execution V9.2' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ranking model: V9.1 unchanged' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Execution test: +3% TP / -1.2% SL / 3h timeout / costs included' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Conservative same-candle ordering: stop first' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-relative-winner-v9_2.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Active days: \(.aggregate.activeDays)/\(.aggregate.evaluatedDays)\n- Positive execution days: \(.aggregate.positiveExecutionDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg win rate: \(.aggregate.avgWinRate)\n- Top-decile hit rate: \(.aggregate.avgTop10HitRate)\n- Max DD: \(.aggregate.maxObservedDD)"' spot-relative-winner-v9_2.json >> "$GITHUB_STEP_SUMMARY"
+          fi
