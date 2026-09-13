@@ -1,0 +1,141 @@
+name: Spot Microflow Hunter V10
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: spot-microflow-hunter-v10
+  cancel-in-progress: true
+
+jobs:
+  hunter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Scan self-trained V10 microflow lane
+        id: scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-microflow-hunter-v10.js
+          RESULT=$(node backend/scripts/github-spot-microflow-hunter-v10.js)
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
+          NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
+          echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
+          echo "reason=$(printf '%s' "$RESULT" | jq -r '.reason // "n/a"')" >> "$GITHUB_OUTPUT"
+          if [ "$NOTIFY" != "true" ]; then
+            echo 'symbol=none' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "symbol=$(printf '%s' "$RESULT" | jq -r '.symbol')" >> "$GITHUB_OUTPUT"
+          echo "pct=$(printf '%s' "$RESULT" | jq -r '.pct')" >> "$GITHUB_OUTPUT"
+          echo "price=$(printf '%s' "$RESULT" | jq -r '.price')" >> "$GITHUB_OUTPUT"
+          echo "quote_volume=$(printf '%s' "$RESULT" | jq -r '.quote_volume')" >> "$GITHUB_OUTPUT"
+          echo "score=$(printf '%s' "$RESULT" | jq -r '.microflow_score')" >> "$GITHUB_OUTPUT"
+          echo "margin=$(printf '%s' "$RESULT" | jq -r '.microflow_margin')" >> "$GITHUB_OUTPUT"
+          echo "score_cut=$(printf '%s' "$RESULT" | jq -r '.score_cut')" >> "$GITHUB_OUTPUT"
+          echo "margin_cut=$(printf '%s' "$RESULT" | jq -r '.margin_cut // "none"')" >> "$GITHUB_OUTPUT"
+          echo "cal_avg_net=$(printf '%s' "$RESULT" | jq -r '.calibration.avgNet')" >> "$GITHUB_OUTPUT"
+          echo "cal_growth=$(printf '%s' "$RESULT" | jq -r '.calibration.growth')" >> "$GITHUB_OUTPUT"
+          echo "cal_win_rate=$(printf '%s' "$RESULT" | jq -r '.calibration.winRate')" >> "$GITHUB_OUTPUT"
+          echo "cal_stop_rate=$(printf '%s' "$RESULT" | jq -r '.calibration.stopRate')" >> "$GITHUB_OUTPUT"
+          echo "trained_samples=$(printf '%s' "$RESULT" | jq -r '.trained_samples')" >> "$GITHUB_OUTPUT"
+          echo "calibration_samples=$(printf '%s' "$RESULT" | jq -r '.calibration_samples')" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce V10 signal cooldown
+        if: steps.scan.outputs.notify == 'true'
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 100 --json title,body,createdAt)
+          GLOBAL=$(printf '%s' "$JSON" | jq '[.[] | select((.body // "") | contains("- Lane: V10_HUNTER")) | select((.createdAt | fromdateiso8601) >= (now - 1800))] | length')
+          SAME=$(printf '%s' "$JSON" | jq --arg symbol "$SYMBOL" '[.[] | select(.title | startswith("[SPOT SIGNAL] " + $symbol)) | select((.body // "") | contains("- Lane: V10_HUNTER")) | select((.createdAt | fromdateiso8601) >= (now - 10800))] | length')
+          if [ "$GLOBAL" -gt 0 ] || [ "$SAME" -gt 0 ]; then
+            echo 'duplicate=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'duplicate=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create V10 Hunter production signal
+        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+          PCT: ${{ steps.scan.outputs.pct }}
+          PRICE: ${{ steps.scan.outputs.price }}
+          QV: ${{ steps.scan.outputs.quote_volume }}
+          SCORE: ${{ steps.scan.outputs.score }}
+          MARGIN: ${{ steps.scan.outputs.margin }}
+          SCORE_CUT: ${{ steps.scan.outputs.score_cut }}
+          MARGIN_CUT: ${{ steps.scan.outputs.margin_cut }}
+          CAL_AVG_NET: ${{ steps.scan.outputs.cal_avg_net }}
+          CAL_GROWTH: ${{ steps.scan.outputs.cal_growth }}
+          CAL_WIN_RATE: ${{ steps.scan.outputs.cal_win_rate }}
+          CAL_STOP_RATE: ${{ steps.scan.outputs.cal_stop_rate }}
+          TRAINED: ${{ steps.scan.outputs.trained_samples }}
+          CAL_SAMPLES: ${{ steps.scan.outputs.calibration_samples }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
+          BODY=$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s' \
+            'Proypers25 V10 Hunter detectó una oportunidad microflow autoentrenada.' \
+            '- Lane: V10_HUNTER' \
+            "- Símbolo: $SYMBOL" \
+            "- Cambio 24h: +${PCT}%" \
+            "- Precio: $PRICE" \
+            "- Volumen quote 24h: $QV" \
+            "- Microflow score: $SCORE | cut: $SCORE_CUT" \
+            "- Microflow margin: $MARGIN | cut: $MARGIN_CUT" \
+            "- Calibración avg net: $CAL_AVG_NET | growth: $CAL_GROWTH" \
+            "- Calibración win rate: $CAL_WIN_RATE | stop rate: $CAL_STOP_RATE" \
+            "- Samples entrenamiento: $TRAINED | calibración: $CAL_SAMPLES" \
+            '- Política V10: TP 3% / stop 1.2% / timeout 3h' \
+            '- Máximo real: 10 USDT, Spot only' \
+            '- Acción: revalidación autónoma local antes de cualquier compra.')
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
+          echo 'created=true' >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch autonomous local validator
+        if: steps.issue.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run spot-manual-approval.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot V10 Microflow Hunter' >> "$GITHUB_STEP_SUMMARY"
+          echo '- CORE V4.2 5m: intacto' >> "$GITHUB_STEP_SUMMARY"
+          echo '- HUNTER: taker-flow autoentrenado cada 15m' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Señal solo con calibración causal positiva' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ejecución: Spot, máximo 10 USDT, validador local' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Salida HUNTER: TP 3% / stop 1.2% / timeout 3h' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Notify: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Symbol: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No-signal reason: ${{ steps.scan.outputs.reason || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
