@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
       - 'backend/scripts/github-spot-microflow-trainer-v10.js'
+      - 'backend/scripts/github-spot-microflow-trainer-v10-5m.js'
       - '.github/workflows/spot-microflow-training-v10.yml'
 
 permissions:
@@ -30,11 +31,14 @@ jobs:
         run: |
           set -euo pipefail
           node --check backend/scripts/github-spot-microflow-trainer-v10.js
+          node --check backend/scripts/github-spot-microflow-trainer-v10-5m.js
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-microflow-trainer-v10.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-microflow-trainer-v10-5m.js
           grep -q "taker buy quote volume" backend/scripts/github-spot-microflow-trainer-v10.js
+          grep -q "i=v.WARM;i<rows.length-38;i++" backend/scripts/github-spot-microflow-trainer-v10-5m.js
           grep -q "productionMutation:false" backend/scripts/github-spot-microflow-trainer-v10.js
-      - name: Train taker-flow instant winner model
-        run: node backend/scripts/github-spot-microflow-trainer-v10.js
+      - name: Train taker-flow instant winner model at true 5m cadence
+        run: node backend/scripts/github-spot-microflow-trainer-v10-5m.js
       - name: Upload V10 evidence
         uses: actions/upload-artifact@v4
         with:
@@ -45,9 +49,9 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo '### Spot Microflow Training V10' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot Microflow Training V10 — true 5m cadence' >> "$GITHUB_STEP_SUMMARY"
           echo '- Adds historical taker buy/sell pressure and candle microstructure' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Fit 5d + calibration 2d; next-day evaluation; decisions every 5m' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Fit 5d + calibration 2d; next-day evaluation; samples every 5m' >> "$GITHUB_STEP_SUMMARY"
           echo '- Exit: +3% TP / -1.2% SL / 3h timeout' >> "$GITHUB_STEP_SUMMARY"
           echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
           if [ -f spot-microflow-v10.json ]; then
