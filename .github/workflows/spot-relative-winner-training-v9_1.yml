@@ -1,0 +1,57 @@
+name: Spot Relative Winner Training V9.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9_1.js'
+      - '.github/workflows/spot-relative-winner-training-v9_1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+      V91_EVAL_DAYS: '7'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V9.1 trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-relative-winner-trainer-v9_1.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-relative-winner-trainer-v9_1.js
+          grep -q "m.avgAlpha>.001" backend/scripts/github-spot-relative-winner-trainer-v9_1.js
+          grep -q "m.avgNet180>0" backend/scripts/github-spot-relative-winner-trainer-v9_1.js
+      - name: Train confidence-calibrated relative winner model
+        run: node backend/scripts/github-spot-relative-winner-trainer-v9_1.js
+      - name: Upload V9.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-relative-winner-v9-1-${{ github.run_id }}
+          path: spot-relative-winner-v9_1.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Relative Winner Training V9.1' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Same V9 ranker; only high-confidence regimes are allowed' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Fit 5d + calibration 2d, then next-day evaluation' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Requires positive alpha + positive net return in calibration' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-relative-winner-v9_1.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Active days: \(.aggregate.activeDays)/\(.aggregate.evaluatedDays)\n- Abstain days: \(.aggregate.abstainDays)\n- Positive absolute days: \(.aggregate.positiveAbsDays)\n- Positive alpha days: \(.aggregate.positiveAlphaDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg net 180m: \(.aggregate.avgNet180)\n- Avg alpha: \(.aggregate.avgAlpha)\n- Top-decile hit rate: \(.aggregate.avgTop10HitRate)"' spot-relative-winner-v9_1.json >> "$GITHUB_STEP_SUMMARY"
+          fi
