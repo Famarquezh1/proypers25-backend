@@ -1,0 +1,59 @@
+name: Spot Winner Profit Meta
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-winner-profit-meta.js'
+      - '.github/workflows/spot-winner-profit-meta.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research-only profit meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-winner-profit-meta.js
+          grep -q "ENTRY_TRAIN_DAYS = 14" backend/scripts/github-spot-winner-profit-meta.js
+          grep -q "META_TRAIN_DAYS = 14" backend/scripts/github-spot-winner-profit-meta.js
+          grep -q "productionTradingTouched: false" backend/scripts/github-spot-winner-profit-meta.js
+          ! grep -q "createOrder\|api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/github-spot-winner-profit-meta.js
+      - name: Train causal profit meta-gate
+        env:
+          HIST_POOL_SIZE: '60'
+        run: node backend/scripts/github-spot-winner-profit-meta.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-winner-profit-meta-${{ github.run_id }}
+          path: backend/training-output/spot-winner-profit-meta-report.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-winner-profit-meta-report.json');
+          console.log('### Winner Profit Meta');
+          console.log(`- Decision: ${r.decision.label}`);
+          console.log(`- Development pass: ${r.developmentPass}`);
+          console.log(`- Development gated growth: ${(100*r.development.gated.economic.netGrowth).toFixed(3)}%`);
+          console.log(`- Development ungated growth: ${(100*r.development.ungated.economic.netGrowth).toFixed(3)}%`);
+          console.log(`- Development gated signals: ${r.development.gated.signals}`);
+          if(r.confirmation){
+            console.log(`- Confirmation pass: ${r.confirmation.pass}`);
+            console.log(`- Confirmation gated growth: ${(100*r.confirmation.gated.economic.netGrowth).toFixed(3)}%`);
+            console.log(`- Confirmation ungated growth: ${(100*r.confirmation.ungated.economic.netGrowth).toFixed(3)}%`);
+            console.log(`- Confirmation gated signals: ${r.confirmation.gated.signals}`);
+          }
+          NODE
