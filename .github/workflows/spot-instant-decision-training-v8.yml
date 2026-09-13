@@ -1,0 +1,58 @@
+name: Spot Instant Decision Training V8
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - '.github/workflows/spot-instant-decision-training-v8.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_EVAL_DAYS: '7'
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated instant-decision trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-instant-decision-trainer-v8.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-instant-decision-trainer-v8.js
+          grep -q "const TRAIN_DAYS = 7" backend/scripts/github-spot-instant-decision-trainer-v8.js
+          grep -q "const TP = 0.03" backend/scripts/github-spot-instant-decision-trainer-v8.js
+          grep -q "const SL = 0.012" backend/scripts/github-spot-instant-decision-trainer-v8.js
+          grep -q "const HOLD_BARS = 36" backend/scripts/github-spot-instant-decision-trainer-v8.js
+      - name: Train and walk-forward V8
+        run: node backend/scripts/github-spot-instant-decision-trainer-v8.js
+      - name: Upload V8 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-instant-decision-v8-${{ github.run_id }}
+          path: spot-instant-decision-v8.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Instant Decision Training V8' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Training: rolling 7 days, retrained daily' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Decision cadence: 5 minutes' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Label: realized trade path, not 24h max-gain winner' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Exit used for learning: +3% TP / -1.2% SL / 3h timeout / costs included' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-instant-decision-v8.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Ready days: \(.aggregate.readyDays)/\(.aggregate.evaluatedDays)\n- Positive days: \(.aggregate.positiveDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)\n- Avg win rate: \(.aggregate.avgWinRate)"' spot-instant-decision-v8.json >> "$GITHUB_STEP_SUMMARY"
+          fi
