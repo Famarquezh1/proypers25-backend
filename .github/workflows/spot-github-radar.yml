@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run production Spot QUBO radar with V4.2 + ENTRY-first + active Spot filter
+      - name: Run production Spot QUBO radar with V4.2 + active Spot filter
         id: scan
         shell: bash
         run: |
@@ -39,7 +39,6 @@ jobs:
           if [ "$NOTIFY" != "true" ]; then
             echo 'symbol=none' >> "$GITHUB_OUTPUT"
             echo "reason=$(printf '%s' "$RESULT" | jq -r '.reason // "no signal"')" >> "$GITHUB_OUTPUT"
-            echo "entry_first_version=$(printf '%s' "$RESULT" | jq -r '.entry_first_version // "n/a"')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "symbol=$(printf '%s' "$RESULT" | jq -r '.symbol')" >> "$GITHUB_OUTPUT"
@@ -48,9 +47,6 @@ jobs:
           echo "quote_volume=$(printf '%s' "$RESULT" | jq -r '.quote_volume')" >> "$GITHUB_OUTPUT"
           echo "source=$(printf '%s' "$RESULT" | jq -r '.source')" >> "$GITHUB_OUTPUT"
           echo "utility=$(printf '%s' "$RESULT" | jq -r '.utility')" >> "$GITHUB_OUTPUT"
-          echo "legacy_utility=$(printf '%s' "$RESULT" | jq -r '.legacy_utility // "n/a"')" >> "$GITHUB_OUTPUT"
-          echo "entry_first=$(printf '%s' "$RESULT" | jq -r '.entry_first_norm // "n/a"')" >> "$GITHUB_OUTPUT"
-          echo "entry_first_version=$(printf '%s' "$RESULT" | jq -r '.entry_first_version // "n/a"')" >> "$GITHUB_OUTPUT"
           echo "qubo_method=$(printf '%s' "$RESULT" | jq -r '.qubo_method')" >> "$GITHUB_OUTPUT"
           echo "qubo_objective=$(printf '%s' "$RESULT" | jq -r '.qubo_objective')" >> "$GITHUB_OUTPUT"
           echo "qubo_selected=$(printf '%s' "$RESULT" | jq -r '.qubo_selected_symbols | join(",")')" >> "$GITHUB_OUTPUT"
@@ -86,9 +82,6 @@ jobs:
           QV: ${{ steps.scan.outputs.quote_volume }}
           SOURCE: ${{ steps.scan.outputs.source }}
           UTILITY: ${{ steps.scan.outputs.utility }}
-          LEGACY_UTILITY: ${{ steps.scan.outputs.legacy_utility }}
-          ENTRY_FIRST: ${{ steps.scan.outputs.entry_first }}
-          ENTRY_FIRST_VERSION: ${{ steps.scan.outputs.entry_first_version }}
           QUBO_METHOD: ${{ steps.scan.outputs.qubo_method }}
           QUBO_OBJECTIVE: ${{ steps.scan.outputs.qubo_objective }}
           QUBO_SELECTED: ${{ steps.scan.outputs.qubo_selected }}
@@ -101,15 +94,14 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
-            'Proypers25 detectó una oportunidad Spot en producción con V4.2, ENTRY-first y QUBO.' \
+          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+            'Proypers25 detectó una oportunidad Spot en producción con V4.2 y QUBO.' \
             "- Símbolo: $SYMBOL" \
             "- Cambio 24h: +${PCT}%" \
             "- Precio: $PRICE" \
             "- Volumen quote 24h: $QV USD/USDT aprox." \
             "- Fuente: $SOURCE" \
-            "- ENTRY-first: $ENTRY_FIRST ($ENTRY_FIRST_VERSION)" \
-            "- Legacy utility: $LEGACY_UTILITY | Utility final: $UTILITY" \
+            "- Utility: $UTILITY" \
             "- QUBO: $QUBO_METHOD" \
             "- Objetivo QUBO: $QUBO_OBJECTIVE" \
             "- Selección QUBO: $QUBO_SELECTED" \
@@ -132,16 +124,16 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo '### Spot GitHub Radar — Production V4.2 + ENTRY-first' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot GitHub Radar — Production V4.2 + QUBO' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- Universo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
-          echo '- ENTRY-first: priorización suave dentro del conjunto V4.2 robusto' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ranking: base 40% + stable 15% + V4.2 45%' >> "$GITHUB_STEP_SUMMARY"
+          echo '- ENTRY-first: retirado de producción tras fallar holdouts frescos R5' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
           echo '- Gate V4.2: mínimo 2/3 ventanas entrenadas' >> "$GITHUB_STEP_SUMMARY"
           echo '- Validador local: dispatch automático vía workflow_dispatch' >> "$GITHUB_STEP_SUMMARY"
-          echo "- ENTRY-first version: ${{ steps.scan.outputs.entry_first_version || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
