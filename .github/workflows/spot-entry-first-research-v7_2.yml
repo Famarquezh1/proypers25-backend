@@ -1,0 +1,171 @@
+name: Spot Entry-First Research V7.2
+
+on:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-entry-first-v7_2.js'
+      - '.github/workflows/spot-entry-first-research-v7_2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    name: V7.2 ENTRY-first ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check isolated research harness
+        run: |
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2.js
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2-robust.js
+          node --check backend/scripts/github-spot-entry-first-v7_2.js
+
+      - name: Run ENTRY-first historical backtest
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          HIST_POOL_SIZE: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-entry-first-v7_2.js
+
+      - name: Upload per-window ENTRY-first evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-entry-first-v7-2-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-entry-first-v7_2-report.json
+          retention-days: 14
+
+      - name: Window summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs=require('fs'),p='./backend/training-output/spot-entry-first-v7_2-report.json';
+          if(!fs.existsSync(p)){console.log('### V7.2 ENTRY-first — no report produced');process.exit(0)}
+          const r=require(p),b=r.fullSystem?.baseline,c=r.fullSystem?.entryFirstV72,x=r.pairedExitComparison?.delta,e=r.entryFirst?.testEvidence;
+          const pct=v=>`${(Number(v||0)*100).toFixed(2)}%`;
+          console.log(`### ${r.version||'V7.2-ENTRY-FIRST'} — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label||'UNKNOWN'}**`);
+          console.log(`- ENTRY selected by TRAIN/VALIDATION evidence: ${r.entryFirst?.selectedByEvidence?'yes':'fallback'}`);
+          console.log(`- Raw TEST samples -> candidates: ${r.participation?.rawEligibleSamples||0} -> ${r.participation?.candidateSignals||0}`);
+          console.log(`- Specialist entry gate: **disabled**`);
+          if(e){console.log(`- Fixed-24h MFE lift from ENTRY: ${pct(e.avgMFEFixed24hLift)}`);console.log(`- Clean-opportunity precision lift: ${pct(e.precisionLiftVsRaw)}`)}
+          if(b&&c){
+            console.log(`- Net growth: ${pct(b.netGrowth)} -> ${pct(c.netGrowth)}`);
+            console.log(`- Avg net return: ${pct(b.avgNetRet)} -> ${pct(c.avgNetRet)}`);
+            console.log(`- Fixed-24h capture: ${pct(b.avgCaptureRatioFixed24h)} -> ${pct(c.avgCaptureRatioFixed24h)}`);
+            console.log(`- Capture loss 24h: ${pct(b.avgCaptureLoss24h)} -> ${pct(c.avgCaptureLoss24h)}`);
+            console.log(`- Max DD: ${pct(b.maxDrawdown)} -> ${pct(c.maxDrawdown)}`);
+            console.log(`- Trades: ${b.tradeCount} -> ${c.tradeCount}`);
+            console.log(`- Pure EXIT net-growth delta: ${pct(x?.netGrowth)}`);
+            console.log(`- Pure EXIT capture delta: ${pct(x?.avgCaptureRatioFixed24h)}`);
+          }
+          console.log(`- Holdout previously observed: ${r.leakageAudit?.holdoutPreviouslyObserved?'yes':'no'}; fresh unseen holdout required for READY.`);
+          console.log('- Research-only; public Binance historical data; production untouched.');
+          NODE
+
+  consolidate:
+    name: V7.2 ENTRY-first cross-window arbiter
+    runs-on: ubuntu-latest
+    needs: backtest
+    if: always()
+
+    steps:
+      - name: Download ENTRY-first evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-entry-first-v7-2-*-${{ github.run_id }}
+          path: evidence
+        continue-on-error: true
+
+      - name: Build cross-window arbiter
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),files=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          const expected=[7,14,21,30],seen=new Set(reports.map(r=>r.lookbackDays)),missingWindows=expected.filter(d=>!seen.has(d));
+          const windows=reports.map(r=>{
+            const b=r.fullSystem?.baseline,c=r.fullSystem?.entryFirstV72,p=r.pairedExitComparison?.delta,e=r.entryFirst?.testEvidence||{},part=r.participation||{};
+            const valid=Boolean(b&&c&&b.tradeCount>=10&&c.tradeCount>=10);
+            return {
+              days:r.lookbackDays,valid,decision:r.decision?.label||'UNKNOWN',underlyingReady:Boolean(r.decision?.underlyingReady),
+              entrySelectedByEvidence:Boolean(r.entryFirst?.selectedByEvidence),rawSamples:part.rawEligibleSamples||0,candidateSignals:part.candidateSignals||0,
+              baselineTrades:b?.tradeCount??0,adaptiveTrades:c?.tradeCount??0,participationRate:part.participationRate??0,
+              netGrowth:c?.netGrowth??null,baselineNetGrowth:b?.netGrowth??null,avgNetRet:c?.avgNetRet??null,baselineAvgNetRet:b?.avgNetRet??null,
+              maxDrawdown:c?.maxDrawdown??null,avgCaptureRatioFixed24h:c?.avgCaptureRatioFixed24h??null,baselineCaptureRatioFixed24h:b?.avgCaptureRatioFixed24h??null,
+              avgCaptureLoss24h:c?.avgCaptureLoss24h??null,baselineCaptureLoss24h:b?.avgCaptureLoss24h??null,
+              avgDetectionDelayMinutes:c?.avgDetectionDelayMinutes??null,baselineDetectionDelayMinutes:b?.avgDetectionDelayMinutes??null,
+              timingCoverage:c?.timingCoverage??0,baselineTimingCoverage:b?.timingCoverage??0,activeRegimes:r.regimeCoverage?.activeRegimes||0,
+              entryMfeLift:e.avgMFEFixed24hLift??null,entryPrecisionLift:e.precisionLiftVsRaw??null,
+              pureExitNetGrowthDelta:p?.netGrowth??null,pureExitAvgNetRetDelta:p?.avgNetRet??null,pureExitCaptureDelta:p?.avgCaptureRatioFixed24h??null,
+              holdoutPreviouslyObserved:Boolean(r.leakageAudit?.holdoutPreviouslyObserved),
+            };
+          });
+          const valid=windows.filter(w=>w.valid),validWindows=valid.length;
+          const positiveWindows=valid.filter(w=>w.netGrowth>0).length;
+          const economicBeatWindows=valid.filter(w=>w.netGrowth>w.baselineNetGrowth&&w.avgNetRet>w.baselineAvgNetRet).length;
+          const captureImprovedWindows=valid.filter(w=>w.avgCaptureRatioFixed24h>w.baselineCaptureRatioFixed24h&&w.avgCaptureLoss24h<w.baselineCaptureLoss24h).length;
+          const drawdownSafeWindows=valid.filter(w=>w.maxDrawdown>=-.12).length;
+          const timingSafeWindows=valid.filter(w=>w.timingCoverage>=.5&&w.baselineTimingCoverage>=.5&&w.avgDetectionDelayMinutes<=w.baselineDetectionDelayMinutes+30).length;
+          const participationSafeWindows=valid.filter(w=>w.participationRate>=.30&&w.adaptiveTrades>=w.baselineTrades*.65).length;
+          const regimeCoverageWindows=valid.filter(w=>w.activeRegimes>=2).length;
+          const entryLiftWindows=valid.filter(w=>w.entryMfeLift>0&&w.entryPrecisionLift>0).length;
+          const pureExitPositiveWindows=valid.filter(w=>w.pureExitNetGrowthDelta>0&&w.pureExitAvgNetRetDelta>0&&w.pureExitCaptureDelta>0).length;
+          const researchReadyWindows=valid.filter(w=>w.underlyingReady).length;
+          const freshHoldoutRequired=true;
+          let label='REQUIRES_IMPROVEMENT',reason='ENTRY-first has not yet demonstrated robust cross-window causal superiority.';
+          if(validWindows<2){label=reports.some(r=>r.decision?.label==='INSUFFICIENT_PARTICIPATION')?'INSUFFICIENT_PARTICIPATION':'REQUIRES_MORE_DATA';reason='Too few windows contain sufficient comparable TEST participation; zero-trade windows are not counted as safe.'}
+          else if(researchReadyWindows>=3&&entryLiftWindows>=3&&pureExitPositiveWindows>=3){label='REQUIRES_MORE_DATA';reason='Research gates are strong across windows, but these holdouts were observed during prior V7.2 development. A fresh unseen holdout is mandatory before shadow-readiness.'}
+          else if(entryLiftWindows===0){label='REQUIRES_REDESIGN';reason='ENTRY-first does not enrich fixed-24h trajectory opportunity across valid windows.'}
+          else if(pureExitPositiveWindows===0&&captureImprovedWindows<=1){label='REQUIRES_REDESIGN';reason='ENTRY improves opportunity selection, but the paired pure-EXIT hypothesis still does not convert it into better capture/economics.'}
+          const out={
+            generatedAt:new Date().toISOString(),version:'V7.2-ENTRY-FIRST',experiment:'ENTRY-first Causal Opportunity Capture & Regime Attribution',
+            researchOnly:true,publicDataOnly:true,productionTradingTouched:false,holdoutPreviouslyObserved:true,freshHoldoutRequiredForReady:freshHoldoutRequired,
+            windows,missingWindows,validWindows,positiveWindows,economicBeatWindows,captureImprovedWindows,drawdownSafeWindows,timingSafeWindows,
+            participationSafeWindows,regimeCoverageWindows,entryLiftWindows,pureExitPositiveWindows,researchReadyWindows,
+            decision:{ready:false,certificationEligible:false,label,reason},
+            promotion:'RESEARCH ONLY. No automatic production/shadow promotion. Fresh unseen holdout required.'
+          };
+          fs.writeFileSync('spot-entry-first-v7_2-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+
+      - name: Upload consolidated ENTRY-first evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-entry-first-v7-2-cross-window-${{ github.run_id }}
+          path: spot-entry-first-v7_2-cross-window.json
+          retention-days: 14
+
+      - name: Cross-window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./spot-entry-first-v7_2-cross-window.json');
+          console.log('### V7.2 ENTRY-first cross-window arbiter');
+          console.log(`- Decision: **${r.decision.label}**`);
+          console.log(`- validWindows: ${r.validWindows}/4`);
+          console.log(`- entryLiftWindows: ${r.entryLiftWindows}/4`);
+          console.log(`- pureExitPositiveWindows: ${r.pureExitPositiveWindows}/4`);
+          console.log(`- economicBeatWindows: ${r.economicBeatWindows}/4`);
+          console.log(`- captureImprovedWindows: ${r.captureImprovedWindows}/4`);
+          console.log(`- drawdownSafeWindows: ${r.drawdownSafeWindows}/4`);
+          console.log(`- timingSafeWindows: ${r.timingSafeWindows}/4`);
+          console.log(`- participationSafeWindows: ${r.participationSafeWindows}/4`);
+          console.log(`- regimeCoverageWindows: ${r.regimeCoverageWindows}/4`);
+          console.log(`- researchReadyWindows: ${r.researchReadyWindows}/4`);
+          console.log('- Certification READY is intentionally blocked until a fresh unseen holdout is evaluated.');
+          console.log(`- ${r.decision.reason}`);
+          NODE
