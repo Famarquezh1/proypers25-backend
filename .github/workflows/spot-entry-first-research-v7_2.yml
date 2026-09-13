@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'backend/scripts/github-spot-entry-first-v7_2.js'
+      - 'backend/scripts/github-spot-entry-first-v7_2-short-window.js'
       - '.github/workflows/spot-entry-first-research-v7_2.yml'
 
 permissions:
@@ -17,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        days: [7, 14, 21, 30]
+        days: [1, 7, 14]
 
     steps:
       - name: Checkout repository
@@ -33,13 +34,14 @@ jobs:
           node --check backend/scripts/github-spot-causal-opportunity-v7_2.js
           node --check backend/scripts/github-spot-causal-opportunity-v7_2-robust.js
           node --check backend/scripts/github-spot-entry-first-v7_2.js
+          node --check backend/scripts/github-spot-entry-first-v7_2-short-window.js
 
       - name: Run ENTRY-first historical backtest
         env:
           TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
           HIST_POOL_SIZE: 60
           MIN_HIST_QUOTE_VOL_24H: 200000
-        run: node backend/scripts/github-spot-entry-first-v7_2.js
+        run: node backend/scripts/github-spot-entry-first-v7_2-short-window.js
 
       - name: Upload per-window ENTRY-first evidence
         uses: actions/upload-artifact@v4
@@ -73,7 +75,7 @@ jobs:
             console.log(`- Pure EXIT capture delta: ${pct(x?.avgCaptureRatioFixed24h)}`);
           }
           console.log(`- Holdout previously observed: ${r.leakageAudit?.holdoutPreviouslyObserved?'yes':'no'}; fresh unseen holdout required for READY.`);
-          console.log('- Research-only; public Binance historical data; production untouched.');
+          console.log('- Research-only; public Binance historical data.');
           NODE
 
   consolidate:
@@ -97,7 +99,7 @@ jobs:
           function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
           walk('evidence');
           const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
-          const expected=[7,14,21,30],seen=new Set(reports.map(r=>r.lookbackDays)),missingWindows=expected.filter(d=>!seen.has(d));
+          const expected=[1,7,14],seen=new Set(reports.map(r=>r.lookbackDays)),missingWindows=expected.filter(d=>!seen.has(d));
           const windows=reports.map(r=>{
             const b=r.fullSystem?.baseline,c=r.fullSystem?.entryFirstV72,p=r.pairedExitComparison?.delta,e=r.entryFirst?.testEvidence||{},part=r.participation||{};
             const valid=Boolean(b&&c&&b.tradeCount>=10&&c.tradeCount>=10);
@@ -128,12 +130,12 @@ jobs:
           const researchReadyWindows=valid.filter(w=>w.underlyingReady).length;
           const freshHoldoutRequired=true;
           let label='REQUIRES_IMPROVEMENT',reason='ENTRY-first has not yet demonstrated robust cross-window causal superiority.';
-          if(validWindows<2){label=reports.some(r=>r.decision?.label==='INSUFFICIENT_PARTICIPATION')?'INSUFFICIENT_PARTICIPATION':'REQUIRES_MORE_DATA';reason='Too few windows contain sufficient comparable TEST participation; zero-trade windows are not counted as safe.'}
-          else if(researchReadyWindows>=3&&entryLiftWindows>=3&&pureExitPositiveWindows>=3){label='REQUIRES_MORE_DATA';reason='Research gates are strong across windows, but these holdouts were observed during prior V7.2 development. A fresh unseen holdout is mandatory before shadow-readiness.'}
-          else if(entryLiftWindows===0){label='REQUIRES_REDESIGN';reason='ENTRY-first does not enrich fixed-24h trajectory opportunity across valid windows.'}
+          if(validWindows<2){label=reports.some(r=>r.decision?.label==='INSUFFICIENT_PARTICIPATION')?'INSUFFICIENT_PARTICIPATION':'REQUIRES_MORE_DATA';reason='Too few 1/7/14-day windows contain sufficient comparable TEST participation; zero-trade windows are not counted as safe.'}
+          else if(researchReadyWindows>=2&&entryLiftWindows>=2&&pureExitPositiveWindows>=2){label='REQUIRES_MORE_DATA';reason='Research gates are strong across short windows, but previously observed holdouts cannot certify readiness. A fresh unseen holdout is mandatory.'}
+          else if(entryLiftWindows===0){label='REQUIRES_REDESIGN';reason='ENTRY-first does not enrich fixed-24h trajectory opportunity across valid short windows.'}
           else if(pureExitPositiveWindows===0&&captureImprovedWindows<=1){label='REQUIRES_REDESIGN';reason='ENTRY improves opportunity selection, but the paired pure-EXIT hypothesis still does not convert it into better capture/economics.'}
           const out={
-            generatedAt:new Date().toISOString(),version:'V7.2-ENTRY-FIRST',experiment:'ENTRY-first Causal Opportunity Capture & Regime Attribution',
+            generatedAt:new Date().toISOString(),version:'V7.2-ENTRY-FIRST',experiment:'ENTRY-first Causal Opportunity Capture — short-window 1/7/14d',
             researchOnly:true,publicDataOnly:true,productionTradingTouched:false,holdoutPreviouslyObserved:true,freshHoldoutRequiredForReady:freshHoldoutRequired,
             windows,missingWindows,validWindows,positiveWindows,economicBeatWindows,captureImprovedWindows,drawdownSafeWindows,timingSafeWindows,
             participationSafeWindows,regimeCoverageWindows,entryLiftWindows,pureExitPositiveWindows,researchReadyWindows,
@@ -154,18 +156,18 @@ jobs:
         run: |
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const r=require('./spot-entry-first-v7_2-cross-window.json');
-          console.log('### V7.2 ENTRY-first cross-window arbiter');
+          console.log('### V7.2 ENTRY-first cross-window arbiter — 1/7/14d');
           console.log(`- Decision: **${r.decision.label}**`);
-          console.log(`- validWindows: ${r.validWindows}/4`);
-          console.log(`- entryLiftWindows: ${r.entryLiftWindows}/4`);
-          console.log(`- pureExitPositiveWindows: ${r.pureExitPositiveWindows}/4`);
-          console.log(`- economicBeatWindows: ${r.economicBeatWindows}/4`);
-          console.log(`- captureImprovedWindows: ${r.captureImprovedWindows}/4`);
-          console.log(`- drawdownSafeWindows: ${r.drawdownSafeWindows}/4`);
-          console.log(`- timingSafeWindows: ${r.timingSafeWindows}/4`);
-          console.log(`- participationSafeWindows: ${r.participationSafeWindows}/4`);
-          console.log(`- regimeCoverageWindows: ${r.regimeCoverageWindows}/4`);
-          console.log(`- researchReadyWindows: ${r.researchReadyWindows}/4`);
-          console.log('- Certification READY is intentionally blocked until a fresh unseen holdout is evaluated.');
+          console.log(`- validWindows: ${r.validWindows}/3`);
+          console.log(`- entryLiftWindows: ${r.entryLiftWindows}/3`);
+          console.log(`- pureExitPositiveWindows: ${r.pureExitPositiveWindows}/3`);
+          console.log(`- economicBeatWindows: ${r.economicBeatWindows}/3`);
+          console.log(`- captureImprovedWindows: ${r.captureImprovedWindows}/3`);
+          console.log(`- drawdownSafeWindows: ${r.drawdownSafeWindows}/3`);
+          console.log(`- timingSafeWindows: ${r.timingSafeWindows}/3`);
+          console.log(`- participationSafeWindows: ${r.participationSafeWindows}/3`);
+          console.log(`- regimeCoverageWindows: ${r.regimeCoverageWindows}/3`);
+          console.log(`- researchReadyWindows: ${r.researchReadyWindows}/3`);
+          console.log('- Certification READY remains blocked until a fresh unseen holdout is evaluated.');
           console.log(`- ${r.decision.reason}`);
           NODE
