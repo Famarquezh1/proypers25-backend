@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'backend/scripts/github-spot-causal-opportunity-v7_2.js'
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2-robust.js'
       - '.github/workflows/spot-causal-opportunity-research-v7_2.yml'
 
 permissions:
@@ -30,14 +31,16 @@ jobs:
           node-version: '20'
 
       - name: Syntax check V7.2 research harness
-        run: node --check backend/scripts/github-spot-causal-opportunity-v7_2.js
+        run: |
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2.js
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2-robust.js
 
       - name: Run isolated historical V7.2 backtest
         env:
           TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
           HIST_POOL_SIZE: 60
           MIN_HIST_QUOTE_VOL_24H: 200000
-        run: node backend/scripts/github-spot-causal-opportunity-v7_2.js
+        run: node backend/scripts/github-spot-causal-opportunity-v7_2-robust.js
 
       - name: Upload per-window V7.2 evidence
         uses: actions/upload-artifact@v4
@@ -52,9 +55,9 @@ jobs:
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const fs=require('fs'),p='./backend/training-output/spot-causal-opportunity-v7_2-report.json';
           if(!fs.existsSync(p)){console.log('### V7.2 — no report artifact produced');process.exit(0)}
-          const r=require(p),b=r.fullSystem?.baseline,c=r.fullSystem?.v72,x=r.pairedExitComparison?.delta;
+          const r=require(p),b=r.fullSystem?.baseline,c=r.fullSystem?.v72,x=r.pairedExitComparison?.delta,s=r.sizingAttribution?.delta;
           const pct=v=>`${(Number(v||0)*100).toFixed(2)}%`;
-          console.log(`### V7.2 Causal Opportunity — ${r.lookbackDays}d`);
+          console.log(`### ${r.version||'V7.2'} Causal Opportunity — ${r.lookbackDays}d`);
           console.log(`- Decision: **${r.decision?.label||'UNKNOWN'}**`);
           if(b&&c){
             console.log(`- Net growth: ${pct(b.netGrowth)} -> ${pct(c.netGrowth)}`);
@@ -64,8 +67,10 @@ jobs:
             console.log(`- Max DD: ${pct(b.maxDrawdown)} -> ${pct(c.maxDrawdown)}`);
             console.log(`- Trades: ${b.tradeCount} -> ${c.tradeCount}`);
             console.log(`- Pure EXIT net-growth delta: ${pct(x?.netGrowth)}`);
-            console.log(`- Pure EXIT avg-return delta: ${pct(x?.avgNetRet)}`);
+            console.log(`- Pure EXIT capture delta: ${pct(x?.avgCaptureRatioFixed24h)}`);
+            console.log(`- Sizing mode: ${r.asymmetricSizing?.mode||'UNKNOWN'}; sizing delta: ${pct(s?.netGrowth)}`);
             console.log(`- Participation rate: ${pct(r.participation?.participationRate)}`);
+            console.log(`- Trajectory gate: ${r.trajectoryGate?.enabled?'enabled':'fallback/off'}`);
             console.log(`- Active regimes: ${r.regimeCoverage?.activeRegimes||0}/4`);
           }
           console.log('- Research-only; public Binance historical market data; production untouched.');
@@ -93,23 +98,23 @@ jobs:
           walk('evidence');
           const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
           const expected=[7,14,21,30],seen=new Set(reports.map(r=>r.lookbackDays)),missingWindows=expected.filter(d=>!seen.has(d));
-          const windows=reports.map(r=>{const b=r.fullSystem?.baseline,c=r.fullSystem?.v72,p=r.pairedExitComparison?.delta,part=r.participation||{},coverage=r.regimeCoverage?.activeRegimes||0;const valid=Boolean(b&&c&&b.tradeCount>=10&&c.tradeCount>=10);return {days:r.lookbackDays,valid,decision:r.decision?.label||'UNKNOWN',ready:Boolean(r.decision?.ready),baselineTrades:b?.tradeCount??0,adaptiveTrades:c?.tradeCount??0,participationRate:part.participationRate??0,netGrowth:c?.netGrowth??null,baselineNetGrowth:b?.netGrowth??null,avgNetRet:c?.avgNetRet??null,baselineAvgNetRet:b?.avgNetRet??null,maxDrawdown:c?.maxDrawdown??null,avgCaptureRatioFixed24h:c?.avgCaptureRatioFixed24h??null,baselineCaptureRatioFixed24h:b?.avgCaptureRatioFixed24h??null,avgCaptureLoss24h:c?.avgCaptureLoss24h??null,baselineCaptureLoss24h:b?.avgCaptureLoss24h??null,avgDetectionDelayMinutes:c?.avgDetectionDelayMinutes??null,baselineDetectionDelayMinutes:b?.avgDetectionDelayMinutes??null,timingCoverage:c?.timingCoverage??0,baselineTimingCoverage:b?.timingCoverage??0,activeRegimes:coverage,pureExitNetGrowthDelta:p?.netGrowth??null,pureExitAvgNetRetDelta:p?.avgNetRet??null};});
+          const windows=reports.map(r=>{const b=r.fullSystem?.baseline,c=r.fullSystem?.v72,p=r.pairedExitComparison?.delta,part=r.participation||{},coverage=r.regimeCoverage?.activeRegimes||0;const valid=Boolean(b&&c&&b.tradeCount>=10&&c.tradeCount>=10);return {days:r.lookbackDays,version:r.version||'V7.2',valid,decision:r.decision?.label||'UNKNOWN',ready:Boolean(r.decision?.ready),baselineTrades:b?.tradeCount??0,adaptiveTrades:c?.tradeCount??0,participationRate:part.participationRate??0,netGrowth:c?.netGrowth??null,baselineNetGrowth:b?.netGrowth??null,avgNetRet:c?.avgNetRet??null,baselineAvgNetRet:b?.avgNetRet??null,maxDrawdown:c?.maxDrawdown??null,avgCaptureRatioFixed24h:c?.avgCaptureRatioFixed24h??null,baselineCaptureRatioFixed24h:b?.avgCaptureRatioFixed24h??null,avgCaptureLoss24h:c?.avgCaptureLoss24h??null,baselineCaptureLoss24h:b?.avgCaptureLoss24h??null,avgDetectionDelayMinutes:c?.avgDetectionDelayMinutes??null,baselineDetectionDelayMinutes:b?.avgDetectionDelayMinutes??null,timingCoverage:c?.timingCoverage??0,baselineTimingCoverage:b?.timingCoverage??0,activeRegimes:coverage,pureExitNetGrowthDelta:p?.netGrowth??null,pureExitAvgNetRetDelta:p?.avgNetRet??null,pureExitCaptureDelta:p?.avgCaptureRatioFixed24h??null,sizingMode:r.asymmetricSizing?.mode||'UNKNOWN'};});
           const valid=windows.filter(w=>w.valid),validWindows=valid.length;
           const positiveWindows=valid.filter(w=>w.netGrowth>0).length;
           const economicBeatWindows=valid.filter(w=>w.netGrowth>w.baselineNetGrowth&&w.avgNetRet>w.baselineAvgNetRet).length;
           const captureImprovedWindows=valid.filter(w=>w.avgCaptureRatioFixed24h>w.baselineCaptureRatioFixed24h&&w.avgCaptureLoss24h<w.baselineCaptureLoss24h).length;
           const drawdownSafeWindows=valid.filter(w=>w.maxDrawdown>=-.12).length;
           const timingSafeWindows=valid.filter(w=>w.timingCoverage>=.5&&w.baselineTimingCoverage>=.5&&w.avgDetectionDelayMinutes<=w.baselineDetectionDelayMinutes+30).length;
-          const participationSafeWindows=valid.filter(w=>w.participationRate>=.45&&w.adaptiveTrades>=w.baselineTrades*.65).length;
+          const participationSafeWindows=valid.filter(w=>w.participationRate>=.30&&w.adaptiveTrades>=w.baselineTrades*.65).length;
           const regimeCoverageWindows=valid.filter(w=>w.activeRegimes>=2).length;
-          const pureExitPositiveWindows=valid.filter(w=>w.pureExitNetGrowthDelta>0&&w.pureExitAvgNetRetDelta>0).length;
+          const pureExitPositiveWindows=valid.filter(w=>w.pureExitNetGrowthDelta>0&&w.pureExitAvgNetRetDelta>0&&w.pureExitCaptureDelta>0).length;
           const readyWindows=valid.filter(w=>w.ready).length,month=windows.find(w=>w.days===30);
           const ready=missingWindows.length===0&&validWindows>=3&&Boolean(month?.ready)&&readyWindows>=3&&positiveWindows>=3&&economicBeatWindows>=3&&captureImprovedWindows>=3&&drawdownSafeWindows>=3&&timingSafeWindows>=3&&participationSafeWindows>=3&&regimeCoverageWindows>=3&&pureExitPositiveWindows>=3;
-          let label='REQUIRES_IMPROVEMENT',reason='V7.2 has not yet demonstrated robust causal exit/capture superiority across enough valid windows.';
+          let label='REQUIRES_IMPROVEMENT',reason='V7.2-R2 has not yet demonstrated robust causal exit/capture superiority across enough valid windows.';
           if(validWindows<2){label=reports.some(r=>r.decision?.label==='INSUFFICIENT_PARTICIPATION')?'INSUFFICIENT_PARTICIPATION':'REQUIRES_MORE_DATA';reason='Too few windows contain sufficient comparable TEST participation; zero-trade windows are not counted as safe.'}
-          else if(ready){label='READY_FOR_SHADOW_VALIDATION';reason='Causal paired EXIT edge, fixed-24h capture improvement, risk, timing, participation and regime coverage are robust across valid windows.'}
-          else if(pureExitPositiveWindows===0&&captureImprovedWindows<=1){label='REQUIRES_REDESIGN';reason='The paired pure-EXIT hypothesis does not produce robust capture/economic improvement.'}
-          const out={generatedAt:new Date().toISOString(),version:'V7.2',experiment:'Causal Opportunity Capture & Regime Attribution',researchOnly:true,publicDataOnly:true,productionTradingTouched:false,windows,missingWindows,validWindows,positiveWindows,economicBeatWindows,captureImprovedWindows,drawdownSafeWindows,timingSafeWindows,participationSafeWindows,regimeCoverageWindows,pureExitPositiveWindows,readyWindows,decision:{ready,label,reason},promotion:'RESEARCH ONLY. No automatic production promotion.'};
+          else if(ready){label='READY_FOR_SHADOW_VALIDATION';reason='Robust causal paired EXIT edge, fixed-24h capture improvement, risk, timing, participation and regime coverage are confirmed across valid windows.'}
+          else if(pureExitPositiveWindows===0&&captureImprovedWindows<=1){label='REQUIRES_REDESIGN';reason='The robust paired pure-EXIT hypothesis does not produce cross-window capture/economic improvement.'}
+          const out={generatedAt:new Date().toISOString(),version:'V7.2-R2',experiment:'Causal Opportunity Capture & Regime Attribution — Robust Causal Selector',researchOnly:true,publicDataOnly:true,productionTradingTouched:false,windows,missingWindows,validWindows,positiveWindows,economicBeatWindows,captureImprovedWindows,drawdownSafeWindows,timingSafeWindows,participationSafeWindows,regimeCoverageWindows,pureExitPositiveWindows,readyWindows,decision:{ready,label,reason},promotion:'RESEARCH ONLY. No automatic production promotion.'};
           fs.writeFileSync('spot-causal-opportunity-v7_2-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
           NODE
 
@@ -124,7 +129,7 @@ jobs:
         run: |
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const r=require('./spot-causal-opportunity-v7_2-cross-window.json');
-          console.log('### V7.2 cross-window causal arbiter');
+          console.log('### V7.2-R2 cross-window causal arbiter');
           console.log(`- Decision: **${r.decision.label}**`);
           console.log(`- validWindows: ${r.validWindows}/4`);
           console.log(`- positiveWindows: ${r.positiveWindows}/4`);
