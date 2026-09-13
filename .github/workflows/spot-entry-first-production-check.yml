@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
+      - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/services/spotEntryFirstSelector.js'
       - 'backend/services/paperToRealEntryGate.js'
       - 'backend/tests/spotEntryFirstSelector.test.js'
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
+      - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/services/spotEntryFirstSelector.js'
       - 'backend/services/paperToRealEntryGate.js'
       - 'backend/tests/spotEntryFirstSelector.test.js'
@@ -34,6 +36,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check backend/scripts/github-spot-production-radar-v42.js
+          node --check backend/scripts/github-spot-production-radar-v42-active.js
           node --check backend/services/spotEntryFirstSelector.js
           node --check backend/services/paperToRealEntryGate.js
       - name: ENTRY-first prioritizer tests
@@ -45,5 +48,8 @@ jobs:
           grep -q "V42_MIN_PASS_WINDOWS = 2" backend/scripts/github-spot-production-radar-v42.js
           grep -q "v42_pass_windows >= V42_MIN_PASS_WINDOWS" backend/scripts/github-spot-production-radar-v42.js
           grep -q "legacy \* 0.75 + entryFirst \* 0.25" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "status !== 'TRADING'" backend/scripts/github-spot-production-radar-v42-active.js
+          grep -q "isSpotTradingAllowed === false" backend/scripts/github-spot-production-radar-v42-active.js
+          grep -q "refusing unfiltered radar" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
-          echo 'V4.2 admission, soft ENTRY-first weighting, and 10 USDT real-entry cap preserved.'
+          echo 'V4.2 admission, soft ENTRY-first weighting, active Spot filter, fail-safe behavior, and 10 USDT real-entry cap preserved.'
