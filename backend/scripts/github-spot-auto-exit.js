@@ -20,5 +20,5 @@ function run(script, label) {
 }
 
 run('github-spot-v61-protect.js', 'V61_PROTECT');
-run('github-spot-auto-exit-legacy.js', 'LEGACY_AUTO_EXIT');
-console.log('AUTO_EXIT_V61_OK protect_policy=V6.1 legacy_exit_preserved=true');
+run('github-spot-auto-exit-legacy-v10-aware.js', 'LEGACY_AUTO_EXIT');
+console.log('AUTO_EXIT_V61_OK protect_policy=V6.1 legacy_exit_preserved=true v10_hunter_exit_aligned=true');
