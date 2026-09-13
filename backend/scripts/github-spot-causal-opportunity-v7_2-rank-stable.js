@@ -43,8 +43,6 @@ replaceOrThrow(
 replaceOrThrow(
   /function makeBroadRows\(samples, cal\) \{[\s\S]*?\n\}\n\nfunction labelUtility/,
   `function makeBroadRows(samples, cal) {
-  // Keep the full causal cross-section here. Symbol cooldown is applied only
-  // after relative ranking, so the learner can compare contemporaneous assets.
   return samples.map(s => ({
     ...s,
     quality: broadQuality(s, cal),
@@ -61,7 +59,7 @@ function labelUtility`,
 );
 
 replaceOrThrow(
-  /function chooseEntryGate\(trainRows, valRows, trainAll, valAll\) \{[\s\S]*?\n\}\n\nfunction applyEntryGate/,
+  /function chooseEntryGate\(trainBroad, valBroad, trainAll, valAll\) \{[\s\S]*?\n\}\n\nfunction applyEntryGate/,
   `function selectCrossSection(rows, fraction, cap) {
   const groups = new Map();
   for (const s of rows) {
