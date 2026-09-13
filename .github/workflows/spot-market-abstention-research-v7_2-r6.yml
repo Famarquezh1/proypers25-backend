@@ -1,0 +1,69 @@
+name: Spot Market Abstention Research V7.2 R6
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-market-abstention-v7_2-r6.js'
+      - '.github/workflows/spot-market-abstention-research-v7_2-r6.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-market-abstention-v7-2-r6
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Guard research isolation and frozen windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-market-abstention-v7_2-r6.js
+          grep -q "const TRAIN_WINDOWS = \[1, 7, 14\]" backend/scripts/github-spot-market-abstention-v7_2-r6.js
+          grep -q "consumedHoldoutsExcluded" backend/scripts/github-spot-market-abstention-v7_2-r6.js
+          grep -q "finalHoldoutNotEvaluatedUnlessDevelopmentPasses: true" backend/scripts/github-spot-market-abstention-v7_2-r6.js
+          ! grep -E "BINANCE_(API|SECRET)_KEY|firestore|createOrder|newOrder|withdraw|binance_open_positions|binance_execution_intents" backend/scripts/github-spot-market-abstention-v7_2-r6.js
+
+      - name: Run causal 1d 7d 14d market-abstention research
+        env:
+          HIST_POOL_SIZE: '60'
+          DEV_START: '2026-02-01T00:00:00Z'
+          DEV_END: '2026-03-15T00:00:00Z'
+          HOLDOUT_START: '2026-03-15T00:00:00Z'
+          HOLDOUT_END: '2026-03-29T00:00:00Z'
+        run: node backend/scripts/github-spot-market-abstention-v7_2-r6.js
+
+      - name: Upload R6 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-market-abstention-v7-2-r6-${{ github.run_id }}
+          path: backend/training-output/spot-market-abstention-v7_2-r6-report.json
+          retention-days: 30
+
+      - name: Research summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-market-abstention-v7_2-r6-report.json');
+          const pct=x=>`${(100*Number(x||0)).toFixed(2)}%`;
+          console.log(`### ${r.version}`);
+          console.log(`- Decision: **${r.decision.label}**`);
+          console.log(`- Development config: ${r.selectedDevelopmentConfig ? r.selectedDevelopmentConfig.trainDays+'d' : 'none'}`);
+          for (const k of ['1d','7d','14d']) {
+            const x=r.development[k];
+            console.log(`- ${k}: pass=${x.pass} | net=${pct(x.summary.gated.netGrowth)} | avg=${pct(x.summary.gated.avgNetRet)} | trades=${x.summary.gated.tradeCount} | participation=${pct(x.summary.signals.participation)}`);
+          }
+          if (r.freshHoldout) console.log(`- Fresh 14d: pass=${r.freshHoldout.pass} | net=${pct(r.freshHoldout.summary.gated.netGrowth)} | avg=${pct(r.freshHoldout.summary.gated.avgNetRet)} | trades=${r.freshHoldout.summary.gated.tradeCount}`);
+          else console.log('- Fresh 14d: preserved; not evaluated because development did not pass.');
+          console.log('- Production touched: no');
+          NODE
