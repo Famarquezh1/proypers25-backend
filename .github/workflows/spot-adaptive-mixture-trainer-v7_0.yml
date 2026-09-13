@@ -1,0 +1,92 @@
+name: Spot Adaptive Mixture Trainer V7.0
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-adaptive-mixture-trainer-v7_0.js'
+      - '.github/workflows/spot-adaptive-mixture-trainer-v7_0.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: V7.0 adaptive mixture ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check V7.0
+        run: node --check backend/scripts/github-spot-adaptive-mixture-trainer-v7_0.js
+      - name: Run V7.0 adaptive mixture trainer
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-adaptive-mixture-trainer-v7_0.js
+      - name: Upload V7.0 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-adaptive-mixture-v7-0-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-adaptive-mixture-v7_0-report.json
+          retention-days: 14
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-adaptive-mixture-v7_0-report.json');
+          console.log(`### V7.0 adaptive mixture — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label || 'UNKNOWN'}**`);
+          if(r.metaController?.test){
+            const b=r.baseline.test,c=r.metaController.test;
+            console.log(`- Net growth: ${(b.netGrowth*100).toFixed(2)}% -> ${(c.netGrowth*100).toFixed(2)}%`);
+            console.log(`- Avg net return: ${(b.avgNetRet*100).toFixed(3)}% -> ${(c.avgNetRet*100).toFixed(3)}%`);
+            console.log(`- Max DD: ${(b.maxDrawdown*100).toFixed(2)}% -> ${(c.maxDrawdown*100).toFixed(2)}%`);
+            console.log(`- Recall: ${(b.recall*100).toFixed(2)}% -> ${(c.recall*100).toFixed(2)}%`);
+            console.log(`- Precision: ${(b.precision*100).toFixed(2)}% -> ${(c.precision*100).toFixed(2)}%`);
+            console.log(`- Detection: ${b.avgDetection24hPct.toFixed(2)}% -> ${c.avgDetection24hPct.toFixed(2)}%`);
+            console.log(`- Avg opportunity score: ${(c.avgOpportunity*100).toFixed(1)}%`);
+          }
+          console.log(`- ${r.decision?.reason || ''}`);
+          console.log('- Research only; production unchanged.');
+          NODE
+
+  consolidate:
+    name: V7.0 adaptive mixture arbiter
+    runs-on: ubuntu-latest
+    needs: train
+    if: always()
+    steps:
+      - name: Download V7.0 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-adaptive-mixture-v7-0-*-${{ github.run_id }}
+          path: evidence
+      - name: Consolidate V7.0
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const files=[];function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          if(reports.length!==4)throw new Error(`expected 4 reports, got ${reports.length}`);
+          const windows=reports.map(r=>({days:r.lookbackDays,decision:r.decision?.label||'UNKNOWN',ready:Boolean(r.decision?.ready),netGrowth:r.metaController?.test?.netGrowth??null,baselineNetGrowth:r.baseline?.test?.netGrowth??null,avgNetRet:r.metaController?.test?.avgNetRet??null,maxDrawdown:r.metaController?.test?.maxDrawdown??null,recall:r.metaController?.test?.recall??null,precision:r.metaController?.test?.precision??null,detectionDelta:r.deltaVsBaseline?.detection??null,netGrowthDelta:r.deltaVsBaseline?.netGrowth??null,avgOpportunity:r.metaController?.test?.avgOpportunity??null}));
+          const month=windows.find(x=>x.days===30),readyWindows=windows.filter(x=>x.ready).length,positive=windows.filter(x=>x.netGrowth!==null&&x.netGrowth>0).length,ddSafe=windows.filter(x=>x.maxDrawdown!==null&&x.maxDrawdown>=-.12).length,econBeat=windows.filter(x=>x.netGrowthDelta!==null&&x.netGrowthDelta>0).length,timingSafe=windows.filter(x=>x.detectionDelta!==null&&x.detectionDelta<=.25).length;
+          const ready=Boolean(month?.ready)&&readyWindows>=3&&positive>=3&&ddSafe>=3&&econBeat>=3&&timingSafe>=3;
+          const out={generatedAt:new Date().toISOString(),version:'V7.0',objective:'validate soft regime mixture with cross-sectional breadth and confidence-weighted participation across 7/14/21/30d',windows,readyWindows,positiveWindows:positive,drawdownSafeWindows:ddSafe,economicBeatWindows:econBeat,timingSafeWindows:timingSafe,decision:{ready,label:ready?'READY_FOR_SHADOW_VALIDATION':'REQUIRES_IMPROVEMENT',reason:ready?'Adaptive mixture is robustly positive across windows; shadow validation is next':'Adaptive mixture has not yet proven robust cross-window superiority'},promotion:ready?'SHADOW VALIDATION NEXT. No automatic production promotion.':'RESEARCH CONTINUES. Production unchanged.'};
+          fs.writeFileSync('spot-adaptive-mixture-v7_0-cross-window.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+      - name: Upload consolidated V7.0 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-adaptive-mixture-v7-0-cross-window-${{ github.run_id }}
+          path: spot-adaptive-mixture-v7_0-cross-window.json
+          retention-days: 14
