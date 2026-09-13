@@ -1,0 +1,55 @@
+name: Spot Microflow Training V10
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-microflow-trainer-v10.js'
+      - '.github/workflows/spot-microflow-training-v10.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V10_EVAL_DAYS: '7'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V10 trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-microflow-trainer-v10.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-microflow-trainer-v10.js
+          grep -q "taker buy quote volume" backend/scripts/github-spot-microflow-trainer-v10.js
+          grep -q "productionMutation:false" backend/scripts/github-spot-microflow-trainer-v10.js
+      - name: Train taker-flow instant winner model
+        run: node backend/scripts/github-spot-microflow-trainer-v10.js
+      - name: Upload V10 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-microflow-v10-${{ github.run_id }}
+          path: spot-microflow-v10.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Microflow Training V10' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Adds historical taker buy/sell pressure and candle microstructure' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Fit 5d + calibration 2d; next-day evaluation; decisions every 5m' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Exit: +3% TP / -1.2% SL / 3h timeout' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-microflow-v10.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Active days: \(.aggregate.activeDays)/\(.aggregate.evaluatedDays)\n- Positive days: \(.aggregate.positiveDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg win rate: \(.aggregate.avgWinRate)\n- Avg alpha: \(.aggregate.avgAlpha)\n- Top-decile hit rate: \(.aggregate.avgTop10HitRate)\n- Max DD: \(.aggregate.maxObservedDD)"' spot-microflow-v10.json >> "$GITHUB_STEP_SUMMARY"
+          fi
