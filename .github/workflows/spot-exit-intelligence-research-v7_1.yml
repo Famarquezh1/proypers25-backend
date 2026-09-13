@@ -1,0 +1,211 @@
+name: Spot Exit Intelligence Research V7.1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-exit-intelligence-v7_1.js'
+      - 'backend/scripts/github-spot-adaptive-mixture-trainer-v7_0.js'
+      - '.github/workflows/spot-exit-intelligence-research-v7_1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    name: V7.1 exit intelligence ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check research script
+        run: node --check backend/scripts/github-spot-exit-intelligence-v7_1.js
+
+      - name: Run isolated historical V7.1 backtest
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          TRAIN_MAX_SYMBOLS: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-exit-intelligence-v7_1.js
+
+      - name: Upload per-window evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-exit-intelligence-v7-1-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-exit-intelligence-v7_1-report.json
+          retention-days: 14
+
+      - name: Window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r = require('./backend/training-output/spot-exit-intelligence-v7_1-report.json');
+          console.log(`### V7.1 Exit Intelligence — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label || 'UNKNOWN'}**`);
+          if (r.baseline?.test && r.v71?.test) {
+            const b = r.baseline.test, c = r.v71.test;
+            const pct = x => `${(Number(x || 0) * 100).toFixed(2)}%`;
+            console.log(`- Net growth: ${pct(b.netGrowth)} -> ${pct(c.netGrowth)} (Δ ${pct(c.netGrowth - b.netGrowth)})`);
+            console.log(`- Avg net return: ${pct(b.avgNetRet)} -> ${pct(c.avgNetRet)}`);
+            console.log(`- Capture ratio avg: ${pct(b.avgCaptureRatio)} -> ${pct(c.avgCaptureRatio)}`);
+            console.log(`- Capture ratio median: ${pct(b.medianCaptureRatio)} -> ${pct(c.medianCaptureRatio)}`);
+            console.log(`- Avg MFE: ${pct(b.avgMFE)} -> ${pct(c.avgMFE)}`);
+            console.log(`- Max DD: ${pct(b.maxDrawdown)} -> ${pct(c.maxDrawdown)}`);
+            console.log(`- Win rate: ${pct(b.winRate)} -> ${pct(c.winRate)}`);
+            console.log(`- Recall: ${pct(b.recall)} -> ${pct(c.recall)}`);
+            console.log(`- Precision: ${pct(b.precision)} -> ${pct(c.precision)}`);
+            console.log(`- Detection timing proxy: ${b.avgDetection24hPct.toFixed(2)} -> ${c.avgDetection24hPct.toFixed(2)}`);
+            console.log(`- Holding time avg: ${b.avgHoldingMin.toFixed(1)}m -> ${c.avgHoldingMin.toFixed(1)}m`);
+            console.log(`- Trades: ${b.tradeCount} -> ${c.tradeCount}`);
+            console.log(`- stopBefore10Rate: ${pct(b.stopBefore10Rate)} -> ${pct(c.stopBefore10Rate)}`);
+          }
+          console.log(`- ${r.decision?.reason || ''}`);
+          console.log('- Public Binance market data only. No private Binance, Firestore, orders, trading workflow calls or production promotion.');
+          NODE
+
+  consolidate:
+    name: V7.1 cross-window arbiter
+    runs-on: ubuntu-latest
+    needs: backtest
+    if: always()
+
+    steps:
+      - name: Download V7.1 evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spot-exit-intelligence-v7-1-*-${{ github.run_id }}
+          path: evidence
+        continue-on-error: true
+
+      - name: Build cross-window evidence and arbiter
+        run: |
+          node <<'NODE'
+          const fs = require('fs'), path = require('path');
+          const files = [];
+          function walk(d) {
+            if (!fs.existsSync(d)) return;
+            for (const n of fs.readdirSync(d)) {
+              const p = path.join(d, n), s = fs.statSync(p);
+              s.isDirectory() ? walk(p) : files.push(p);
+            }
+          }
+          walk('evidence');
+
+          const reports = files
+            .filter(f => f.endsWith('.json'))
+            .map(f => JSON.parse(fs.readFileSync(f, 'utf8')))
+            .sort((a, b) => a.lookbackDays - b.lookbackDays);
+
+          const expected = [7, 14, 21, 30];
+          const seen = new Set(reports.map(r => r.lookbackDays));
+          const missingWindows = expected.filter(d => !seen.has(d));
+
+          const windows = reports.map(r => {
+            const b = r.baseline?.test || null, c = r.v71?.test || null;
+            return {
+              days: r.lookbackDays,
+              decision: r.decision?.label || 'UNKNOWN',
+              ready: Boolean(r.decision?.ready),
+              netGrowth: c?.netGrowth ?? null,
+              baselineNetGrowth: b?.netGrowth ?? null,
+              netGrowthDelta: r.deltaVsBaseline?.netGrowth ?? null,
+              avgNetRet: c?.avgNetRet ?? null,
+              baselineAvgNetRet: b?.avgNetRet ?? null,
+              avgNetRetDelta: r.deltaVsBaseline?.avgNetRet ?? null,
+              maxDrawdown: c?.maxDrawdown ?? null,
+              avgCaptureRatio: c?.avgCaptureRatio ?? null,
+              baselineAvgCaptureRatio: b?.avgCaptureRatio ?? null,
+              captureDelta: r.deltaVsBaseline?.avgCaptureRatio ?? null,
+              recall: c?.recall ?? null,
+              precision: c?.precision ?? null,
+              detectionTiming: c?.avgDetection24hPct ?? null,
+              detectionDelta: r.deltaVsBaseline?.detectionTiming ?? null,
+              tradeCount: c?.tradeCount ?? null,
+              baselineTradeCount: b?.tradeCount ?? null,
+              participationRatio: b?.tradeCount ? c.tradeCount / b.tradeCount : null,
+              avgHoldingMin: c?.avgHoldingMin ?? null,
+              avgMFE: c?.avgMFE ?? null,
+            };
+          });
+
+          const positiveWindows = windows.filter(w => w.netGrowth !== null && w.netGrowth > 0).length;
+          const economicBeatWindows = windows.filter(w => w.netGrowthDelta !== null && w.netGrowthDelta > 0 && w.avgNetRetDelta > 0).length;
+          const captureImprovedWindows = windows.filter(w => w.captureDelta !== null && w.captureDelta > 0).length;
+          const drawdownSafeWindows = windows.filter(w => w.maxDrawdown !== null && w.maxDrawdown >= -0.12).length;
+          const timingSafeWindows = windows.filter(w => w.detectionDelta !== null && w.detectionDelta <= 0.25).length;
+          const participationSafeWindows = windows.filter(w => w.participationRatio !== null && w.participationRatio >= 0.65).length;
+          const readyWindows = windows.filter(w => w.ready).length;
+          const month = windows.find(w => w.days === 30);
+
+          const ready = missingWindows.length === 0 && Boolean(month?.ready) && readyWindows >= 3 && positiveWindows >= 3 && economicBeatWindows >= 3 && captureImprovedWindows >= 3 && drawdownSafeWindows === 4 && timingSafeWindows >= 3 && participationSafeWindows >= 3;
+
+          let label = 'REQUIRES_IMPROVEMENT';
+          let reason = 'V7.1 has not yet demonstrated robust cross-window economic and capture superiority.';
+          if (missingWindows.length > 0 || reports.filter(r => r.decision?.label === 'REQUIRES_MORE_DATA').length >= 2) {
+            label = 'REQUIRES_MORE_DATA';
+            reason = `Cross-window evidence is incomplete or data-constrained. Missing windows: ${missingWindows.join(', ') || 'none'}.`;
+          } else if (ready) {
+            label = 'READY_FOR_SHADOW_VALIDATION';
+            reason = 'V7.1 improves economics and capture robustly across windows while preserving drawdown, timing and participation constraints.';
+          } else if (windows.length >= 3 && economicBeatWindows === 0 && captureImprovedWindows <= 1) {
+            label = 'REQUIRES_REDESIGN';
+            reason = 'The exit/sizing hypothesis fails to improve economics and capture across the tested windows.';
+          }
+
+          const out = {
+            generatedAt: new Date().toISOString(),
+            version: 'V7.1',
+            experiment: 'Exit Intelligence + Asymmetric Sizing',
+            researchOnly: true,
+            publicDataOnly: true,
+            productionTradingTouched: false,
+            windows,
+            missingWindows,
+            positiveWindows,
+            economicBeatWindows,
+            captureImprovedWindows,
+            drawdownSafeWindows,
+            timingSafeWindows,
+            participationSafeWindows,
+            readyWindows,
+            decision: { ready, label, reason },
+            promotion: ready ? 'SHADOW VALIDATION NEXT. No automatic production promotion.' : 'RESEARCH CONTINUES. Production unchanged.'
+          };
+
+          fs.writeFileSync('spot-exit-intelligence-v7_1-cross-window.json', JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Upload consolidated V7.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-exit-intelligence-v7-1-cross-window-${{ github.run_id }}
+          path: spot-exit-intelligence-v7_1-cross-window.json
+          retention-days: 14
+
+      - name: Cross-window summary
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r = require('./spot-exit-intelligence-v7_1-cross-window.json');
+          console.log('### V7.1 cross-window arbiter');
+          console.log(`- Decision: **${r.decision.label}**`);
+          console.log(`- positiveWindows: ${r.positiveWindows}/4`);
+          console.log(`- economicBeatWindows: ${r.economicBeatWindows}/4`);
+          console.log(`- captureImprovedWindows: ${r.captureImprovedWindows}/4`);
+          console.log(`- drawdownSafeWindows: ${r.drawdownSafeWindows}/4`);
+          console.log(`- timingSafeWindows: ${r.timingSafeWindows}/4`);
+          console.log(`- participationSafeWindows: ${r.participationSafeWindows}/4`);
+          console.log(`- readyWindows: ${r.readyWindows}/4`);
+          console.log(`- ${r.decision.reason}`);
+          NODE
