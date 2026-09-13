@@ -27,12 +27,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run production Spot QUBO radar with V4.2 + ENTRY-first
+      - name: Run production Spot QUBO radar with V4.2 + ENTRY-first + active Spot filter
         id: scan
         shell: bash
         run: |
           set -euo pipefail
-          RESULT=$(node backend/scripts/github-spot-production-radar-v42.js)
+          RESULT=$(node backend/scripts/github-spot-production-radar-v42-active.js)
           printf '%s\n' "$RESULT"
           NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
           echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
@@ -134,6 +134,7 @@ jobs:
         run: |
           echo '### Spot GitHub Radar — Production V4.2 + ENTRY-first' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Universo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
           echo '- ENTRY-first: priorización suave dentro del conjunto V4.2 robusto' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
