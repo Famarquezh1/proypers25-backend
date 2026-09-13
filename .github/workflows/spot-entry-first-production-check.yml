@@ -7,8 +7,13 @@ on:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-auto-exit.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
+      - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-auto-exit-local.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
   pull_request:
     branches: [main]
@@ -16,8 +21,13 @@ on:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-auto-exit.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
+      - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-auto-exit-local.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
 
 permissions:
@@ -36,6 +46,10 @@ jobs:
           node --check backend/scripts/github-spot-production-radar-v42.js
           node --check backend/scripts/github-spot-production-radar-v42-active.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
+          node --check backend/scripts/github-spot-auto-exit.js
+          node --check backend/scripts/github-spot-auto-exit-legacy.js
+          node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          node --check backend/scripts/github-spot-v61-protect.js
           node --check backend/services/paperToRealEntryGate.js
       - name: Active Spot universe smoke check
         shell: bash
@@ -63,4 +77,12 @@ jobs:
           ! grep -Eq 'if:.*v8shadow' .github/workflows/spot-github-radar.yml
           grep -q "if: steps.scan.outputs.notify == 'true'" .github/workflows/spot-github-radar.yml
           grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
-          echo 'V4.2/QUBO remains execution authority. V8 is production shadow only and cannot gate or trigger orders. Active Spot fail-safe and 10 USDT cap preserved.'
+          grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
+          node - <<'NODE'
+          const id = `proypers-gh-protect-v61-${Date.now().toString(36)}`;
+          if (id.length > 36) throw new Error(`Binance clientOrderId too long: ${id.length}`);
+          if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
+          console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
+          NODE
+          echo 'V4.2/QUBO remains execution authority. V8 is production shadow only. Active Spot fail-safe, 10 USDT cap, Windows exit wrapper compatibility, and Binance-safe protective IDs preserved.'
