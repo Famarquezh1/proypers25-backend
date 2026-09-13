@@ -1,0 +1,49 @@
+name: Spot ENTRY-first Production Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-production-radar-v42.js'
+      - 'backend/services/spotEntryFirstSelector.js'
+      - 'backend/services/paperToRealEntryGate.js'
+      - 'backend/tests/spotEntryFirstSelector.test.js'
+      - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-entry-first-production-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-production-radar-v42.js'
+      - 'backend/services/spotEntryFirstSelector.js'
+      - 'backend/services/paperToRealEntryGate.js'
+      - 'backend/tests/spotEntryFirstSelector.test.js'
+      - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-entry-first-production-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax checks
+        run: |
+          node --check backend/scripts/github-spot-production-radar-v42.js
+          node --check backend/services/spotEntryFirstSelector.js
+          node --check backend/services/paperToRealEntryGate.js
+      - name: ENTRY-first prioritizer tests
+        run: node backend/tests/spotEntryFirstSelector.test.js
+      - name: Guard production invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "V42_MIN_PASS_WINDOWS = 2" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "v42_pass_windows >= V42_MIN_PASS_WINDOWS" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "legacy \* 0.75 + entryFirst \* 0.25" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
+          echo 'V4.2 admission, soft ENTRY-first weighting, and 10 USDT real-entry cap preserved.'
