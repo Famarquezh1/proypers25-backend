@@ -12,6 +12,7 @@ on:
       - '.github/workflows/spot-manual-approval.yml'
       - '.github/workflows/spot-microflow-hunter-v10.yml'
       - '.github/workflows/spot-v10-hunter-production-check.yml'
+      - 'rearm_config.json'
   pull_request:
     branches: [main]
 
@@ -42,9 +43,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "const MAX_USDT = 10" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "const MAX_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "const MAX_TOTAL_CAPITAL_USDT = 40" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "const MAX_OPEN_POSITIONS = 2" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "const MIN_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
-          grep -q "DUPLICATE_POSITION_USDT = 10" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "DUPLICATE_POSITION_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "Managed Spot capital limit would be exceeded" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "Managed Spot position limit reached" backend/scripts/github-spot-manual-execution-v10-aware.js
+          test "$(jq -r '.max_position_usdt' rearm_config.json)" = "15"
+          test "$(jq -r '.max_total_capital_usdt' rearm_config.json)" = "40"
+          test "$(jq -r '.max_open_positions' rearm_config.json)" = "2"
           grep -q "V10_HARD_STOP_PCT = 0.012" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "V10_TAKE_PROFIT" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           grep -q "V10_TIMEOUT_3H" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
@@ -52,7 +60,7 @@ jobs:
           grep -q "github-spot-manual-execution-v10-aware.js" .github/workflows/spot-manual-approval.yml
           grep -q "cron: '7,22,37,52 \* \* \* \*'" .github/workflows/spot-microflow-hunter-v10.yml
           grep -q "CORE V4.2 5m: intacto" .github/workflows/spot-microflow-hunter-v10.yml
-          echo 'V10 lane invariants preserved: CORE default, Spot-only executor path, max 10 USDT, trained HUNTER exits.'
+          echo 'V10 lane invariants preserved: CORE default, Spot-only executor path, 15 USDT per acquisition, 40 USDT total cap, max 2 positions, trained HUNTER exits.'
 
       - name: Read-only V10 Hunter live smoke
         shell: bash
