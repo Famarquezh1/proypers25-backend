@@ -1,0 +1,58 @@
+name: Spot Winner Capture R8
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-winner-capture-trainer-r8.js'
+      - '.github/workflows/spot-winner-capture-r8.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research-only capture trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-winner-capture-trainer-r8.js
+          grep -q "TRAIN_WINDOWS = \[1, 7, 14\]" backend/scripts/github-spot-winner-capture-trainer-r8.js
+          grep -q "productionTradingTouched: false" backend/scripts/github-spot-winner-capture-trainer-r8.js
+          ! grep -q "createOrder\|api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/github-spot-winner-capture-trainer-r8.js
+      - name: Train winner capture exit
+        env:
+          HIST_POOL_SIZE: '60'
+        run: node backend/scripts/github-spot-winner-capture-trainer-r8.js
+      - name: Upload R8 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-winner-capture-r8-${{ github.run_id }}
+          path: backend/training-output/spot-winner-capture-r8-report.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-winner-capture-r8-report.json');
+          console.log('### R8 Winner Capture');
+          console.log(`- Decision: ${r.decision.label}`);
+          console.log(`- Selected training window: ${r.selectedDevelopment?.trainDays ?? 'none'}d`);
+          console.log(`- Selected exit: ${r.selectedDevelopment?.exit?.id ?? 'none'}`);
+          if(r.confirmation){
+            console.log(`- Confirmation pass: ${r.confirmation.pass}`);
+            console.log(`- Signals: ${r.confirmation.prediction.signals}`);
+            console.log(`- +5% precision: ${(100*r.confirmation.prediction.winner5Precision).toFixed(1)}%`);
+            console.log(`- +10% precision: ${(100*r.confirmation.prediction.winner10Precision).toFixed(1)}%`);
+            console.log(`- Matched net growth: ${(100*r.confirmation.matched.netGrowth).toFixed(3)}%`);
+            console.log(`- Base-exit net growth: ${(100*r.confirmation.base.netGrowth).toFixed(3)}%`);
+          }
+          NODE
