@@ -1,0 +1,61 @@
+name: Spot Instant Decision Training V8.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8_1.js'
+      - '.github/workflows/spot-instant-decision-training-v8_1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_EVAL_DAYS: '7'
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V8.1 trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-instant-decision-trainer-v8.js
+          node --check backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+          grep -q "m.avgNet<0.001" backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+          grep -q "m.compoundedGrowth<=0" backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+          grep -q "TAKE_PROFIT'?1:0" backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+          grep -q "maxPerTime=1" backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+      - name: Train and walk-forward V8.1
+        run: node backend/scripts/github-spot-instant-decision-trainer-v8_1.js
+      - name: Upload V8.1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-instant-decision-v8-1-${{ github.run_id }}
+          path: spot-instant-decision-v8_1.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot Instant Decision Training V8.1' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Retraining: daily from prior 7 days' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Decision cadence modeled: 5 minutes' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Label: TAKE_PROFIT before stop, not any small positive timeout' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Economic gate: calibration must be positive after costs' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Selection: maximum one candidate per instant' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-instant-decision-v8_1.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Ready days: \(.aggregate.readyDays)/\(.aggregate.evaluatedDays)\n- Positive days: \(.aggregate.positiveDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)\n- Avg win rate: \(.aggregate.avgWinRate)"' spot-instant-decision-v8_1.json >> "$GITHUB_STEP_SUMMARY"
+          fi
