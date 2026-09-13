@@ -1,4 +1,4 @@
-name: Spot ENTRY-first Production Check
+name: Spot Production Ranking Check
 
 on:
   push:
@@ -6,9 +6,7 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
-      - 'backend/services/spotEntryFirstSelector.js'
       - 'backend/services/paperToRealEntryGate.js'
-      - 'backend/tests/spotEntryFirstSelector.test.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
   pull_request:
@@ -16,9 +14,7 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
-      - 'backend/services/spotEntryFirstSelector.js'
       - 'backend/services/paperToRealEntryGate.js'
-      - 'backend/tests/spotEntryFirstSelector.test.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
 
@@ -37,7 +33,6 @@ jobs:
         run: |
           node --check backend/scripts/github-spot-production-radar-v42.js
           node --check backend/scripts/github-spot-production-radar-v42-active.js
-          node --check backend/services/spotEntryFirstSelector.js
           node --check backend/services/paperToRealEntryGate.js
       - name: Active Spot universe smoke check
         shell: bash
@@ -46,17 +41,17 @@ jobs:
           RESULT=$(node backend/scripts/github-spot-production-radar-v42-active.js)
           printf '%s\n' "$RESULT"
           test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
-      - name: ENTRY-first prioritizer tests
-        run: node backend/tests/spotEntryFirstSelector.test.js
       - name: Guard production invariants
         shell: bash
         run: |
           set -euo pipefail
           grep -q "V42_MIN_PASS_WINDOWS = 2" backend/scripts/github-spot-production-radar-v42.js
           grep -q "v42_pass_windows >= V42_MIN_PASS_WINDOWS" backend/scripts/github-spot-production-radar-v42.js
-          grep -q "legacy \* 0.75 + entryFirst \* 0.25" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "base \* 0.40 + stable \* 0.15 + v42 \* 0.45" backend/scripts/github-spot-production-radar-v42.js
+          ! grep -q "entry_first_enabled: true" backend/scripts/github-spot-production-radar-v42.js
+          ! grep -q "legacy \* 0.75 + entryFirst \* 0.25" backend/scripts/github-spot-production-radar-v42.js
           grep -q "status !== 'TRADING'" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "isSpotTradingAllowed === false" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "refusing unfiltered radar" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
-          echo 'V4.2 admission, soft ENTRY-first weighting, active Spot filter, fail-safe behavior, and 10 USDT real-entry cap preserved.'
+          echo 'V4.2 admission, legacy QUBO ranking, active Spot filter, fail-safe behavior, and 10 USDT real-entry cap preserved. ENTRY-first production weighting absent.'
