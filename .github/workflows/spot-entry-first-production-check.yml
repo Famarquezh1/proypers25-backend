@@ -6,6 +6,7 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
+      - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
+      - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
@@ -33,6 +35,7 @@ jobs:
         run: |
           node --check backend/scripts/github-spot-production-radar-v42.js
           node --check backend/scripts/github-spot-production-radar-v42-active.js
+          node --check backend/scripts/github-spot-v8-production-shadow.js
           node --check backend/services/paperToRealEntryGate.js
       - name: Active Spot universe smoke check
         shell: bash
@@ -53,5 +56,11 @@ jobs:
           grep -q "status !== 'TRADING'" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "isSpotTradingAllowed === false" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "refusing unfiltered radar" backend/scripts/github-spot-production-radar-v42-active.js
+          grep -q "mode:'V8_SHADOW_ONLY'" backend/scripts/github-spot-v8-production-shadow.js
+          grep -q "decisionInfluence:false" backend/scripts/github-spot-v8-production-shadow.js
+          grep -q "productionAction:'NONE_V8_SHADOW'" backend/scripts/github-spot-v8-production-shadow.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v8-production-shadow.js
+          ! grep -Eq 'if:.*v8shadow' .github/workflows/spot-github-radar.yml
+          grep -q "if: steps.scan.outputs.notify == 'true'" .github/workflows/spot-github-radar.yml
           grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
-          echo 'V4.2 admission, legacy QUBO ranking, active Spot filter, fail-safe behavior, and 10 USDT real-entry cap preserved. ENTRY-first production weighting absent.'
+          echo 'V4.2/QUBO remains execution authority. V8 is production shadow only and cannot gate or trigger orders. Active Spot fail-safe and 10 USDT cap preserved.'
