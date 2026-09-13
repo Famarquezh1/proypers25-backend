@@ -1,0 +1,120 @@
+name: Spot Causal Opportunity Research V7.2 R5 Fresh Holdout
+
+on:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js'
+      - '.github/workflows/spot-causal-opportunity-research-v7_2-r5.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  holdout:
+    name: R5 fresh holdout ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: june-2026
+            start: '2026-06-01'
+            end: '2026-07-01'
+          - name: july-2026
+            start: '2026-07-01'
+            end: '2026-08-01'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Guard frozen research design
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          ! grep -E "BINANCE_(API|SECRET)_KEY|firestore|createOrder|newOrder|withdraw" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          grep -q "const TRAIN_DAYS = 14" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          grep -q "const RANK_FRACTION = 0.08" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          grep -q "const RANK_CAP = 3" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          grep -q "noHoldoutTuning: true" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+          grep -q "specialistLayer: 'DISABLED_FOR_PURE_ENTRY_HOLDOUT'" backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+
+      - name: Run frozen daily walk-forward on unseen period
+        env:
+          HOLDOUT_START: ${{ matrix.start }}
+          HOLDOUT_END: ${{ matrix.end }}
+          HIST_POOL_SIZE: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-causal-opportunity-v7_2-r5-walk-forward.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-v7-2-r5-${{ matrix.name }}-${{ github.run_id }}
+          path: backend/training-output/spot-causal-opportunity-v7_2-r5-holdout.json
+          retention-days: 30
+
+      - name: Holdout summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs=require('fs'),p='backend/training-output/spot-causal-opportunity-v7_2-r5-holdout.json';
+          if(!fs.existsSync(p)){console.log('### R5 — no report');process.exit(0)}
+          const r=require('./'+p),pct=x=>`${(100*Number(x||0)).toFixed(2)}%`;
+          console.log(`### ${r.version}: ${r.holdout.start} → ${r.holdout.endExclusive}`);
+          console.log(`- Decision: **${r.decision.label}**`);
+          console.log(`- Net growth selected/broad: ${pct(r.selected.netGrowth)} / ${pct(r.baseline.netGrowth)}`);
+          console.log(`- Avg net selected/broad: ${pct(r.selected.avgNetRet)} / ${pct(r.baseline.avgNetRet)}`);
+          console.log(`- Trades: ${r.selected.tradeCount} / ${r.baseline.tradeCount}`);
+          console.log(`- Max DD: ${pct(r.selected.maxDrawdown)}`);
+          console.log(`- Weeks positive/beat: ${r.temporal.positiveWeeks}/${r.temporal.comparableWeeks} | ${r.temporal.beatWeeks}/${r.temporal.comparableWeeks}`);
+          console.log(`- Participation: ${pct(r.participation)}`);
+          console.log('- This holdout is consumed after this run and cannot be tuned against.');
+          NODE
+
+  consolidate:
+    name: R5 fresh holdout arbiter
+    runs-on: ubuntu-latest
+    needs: holdout
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: spot-v7-2-r5-*-${{ github.run_id }}
+          path: evidence
+        continue-on-error: true
+
+      - name: Consolidate fresh evidence
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),files=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.holdout.start.localeCompare(b.holdout.start));
+          const passes=reports.filter(r=>r.decision?.pass).length;
+          const bothPass=reports.length===2&&passes===2;
+          const out={
+            generatedAt:new Date().toISOString(),version:'V7.2-R5-FROZEN-WALK-FORWARD',researchOnly:true,
+            holdoutIntegrity:'FRESH_UNSEEN_NON_OVERLAPPING_ANCHORED_PERIODS_CONSUMED',
+            windows:reports.map(r=>({holdout:r.holdout,decision:r.decision,selected:r.selected,baseline:r.baseline,delta:r.delta,temporal:r.temporal,gates:r.gates,participation:r.participation})),
+            passes,total:reports.length,
+            decision:{
+              ready:false,
+              label:bothPass?'PROMISING_AFTER_FRESH_HOLDOUT':'REJECT_OR_REDESIGN',
+              reason:bothPass
+                ?'The frozen daily 14d ENTRY rank passed both previously unseen non-overlapping holdouts. This supports a later controlled shadow phase, but does not authorize production.'
+                :'The frozen design failed at least one fresh unseen holdout. Do not tune on these consumed holdouts; redesign from first principles or retain current production logic.'
+            },
+            promotion:'NO AUTOMATIC PROMOTION. No production code or trading workflow changed.'
+          };
+          fs.writeFileSync('r5-fresh-cross.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-v7-2-r5-fresh-cross-${{ github.run_id }}
+          path: r5-fresh-cross.json
+          retention-days: 30
