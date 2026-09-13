@@ -1,0 +1,60 @@
+name: Spot V4.2 Instant Meta Training
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-v42-instant-meta-trainer.js'
+      - '.github/workflows/spot-v42-instant-meta-training.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_EVAL_DAYS: '7'
+      V8_MAX_SYMBOLS: '60'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated V4.2 meta trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-instant-decision-trainer-v8.js
+          node --check backend/scripts/github-spot-v42-instant-meta-trainer.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v42-instant-meta-trainer.js
+          grep -q "passCount>=2" backend/scripts/github-spot-v42-instant-meta-trainer.js
+          grep -q "i+=1" backend/scripts/github-spot-v42-instant-meta-trainer.js
+          grep -q "o.net>=0.005" backend/scripts/github-spot-v42-instant-meta-trainer.js
+          grep -q "maxPerTime=1" backend/scripts/github-spot-v42-instant-meta-trainer.js
+      - name: Train V4.2 instant meta learner
+        run: node backend/scripts/github-spot-v42-instant-meta-trainer.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v42-instant-meta-${{ github.run_id }}
+          path: spot-v42-instant-meta-training.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot V4.2 Instant Meta Training' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Base admission: current production V4.2 minimum 2/3' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Training cadence: true 5 minutes' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Goal: rank/approve candidates already admitted by V4.2' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Exit label: realized +3% TP / -1.2% SL / 3h timeout, costs included' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-v42-instant-meta-training.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Ready days: \(.aggregate.readyDays)/\(.aggregate.evaluatedDays)\n- Positive days: \(.aggregate.positiveDays)\n- Economic beat days: \(.aggregate.economicBeatDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)"' spot-v42-instant-meta-training.json >> "$GITHUB_STEP_SUMMARY"
+          fi
