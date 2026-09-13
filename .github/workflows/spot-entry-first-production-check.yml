@@ -39,6 +39,13 @@ jobs:
           node --check backend/scripts/github-spot-production-radar-v42-active.js
           node --check backend/services/spotEntryFirstSelector.js
           node --check backend/services/paperToRealEntryGate.js
+      - name: Active Spot universe smoke check
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node backend/scripts/github-spot-production-radar-v42-active.js)
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
       - name: ENTRY-first prioritizer tests
         run: node backend/tests/spotEntryFirstSelector.test.js
       - name: Guard production invariants
