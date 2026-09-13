@@ -7,7 +7,10 @@ const fs = require('fs');
 const path = require('path');
 
 const sourcePath = path.join(__dirname, 'github-spot-auto-exit-legacy.js');
-let source = fs.readFileSync(sourcePath, 'utf8');
+// The local production runner is Windows and Git may check out CRLF files.
+// Normalize in memory so the exact safety patches behave identically on
+// Windows and Linux instead of refusing valid source because of line endings.
+let source = fs.readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
 
 function patch(from, to, label) {
   if (!source.includes(from)) throw new Error(`EXIT_PATCH_REFUSED ${label}`);
