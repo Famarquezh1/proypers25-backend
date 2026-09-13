@@ -7,6 +7,11 @@ const {
   evaluateEarlyMomentumCandidate
 } = require('./spotEarlyMomentumRadar');
 const { summarizePositiveValidation } = require('../lib/spotPaperRiskRules');
+const {
+  ENTRY_FIRST_VERSION,
+  prioritizeEntryFirstCandidates,
+  prioritizeLane
+} = require('./spotEntryFirstSelector');
 
 const SCANS = 'spot_opportunity_scans';
 const CANDIDATES = 'spot_opportunity_candidates';
@@ -122,9 +127,8 @@ function buildLaneCandidatePools(candidates = [], config = {}) {
     .filter((candidate) => candidateScore(candidate) >= standardScore)
     .filter((candidate) => !configuredCategories || configuredCategories.has(String(candidate.category || '').toUpperCase()));
 
-  // The early lane is ranked by live 5m acceleration, not by the slower daily
-  // opportunity score. This is the pre-breakout radar used before a move is
-  // already obvious in Binance's 24h winners table.
+  // The early lane remains an acceleration-aware pool. ENTRY-first may reorder
+  // this pool later, but it does not change the early admission thresholds.
   const early = candidates
     .filter((candidate) => candidate.early_momentum_probed === true)
     .sort((left, right) => asNumber(right.earlyMomentumScore, 0) - asNumber(left.earlyMomentumScore, 0));
@@ -227,6 +231,10 @@ function buildCandidateAudit(candidates, validationRows, paperRows, currentScanI
       symbol,
       rank: index + 1,
       score: candidateScore(candidate),
+      entry_first_rank: candidate.entry_first_rank ?? null,
+      entry_first_score: candidate.entry_first_score ?? null,
+      entry_first_feature_coverage: candidate.entry_first_feature_coverage ?? null,
+      entry_first_components: candidate.entry_first_components || null,
       quote_volume_24h: candidateVolume(candidate),
       price_change_24h: candidateMetric(candidate, 'priceChange24h', 'price_change_24h'),
       impulse_score: candidateMetric(candidate, 'impulseScore', 'impulse_score'),
@@ -258,12 +266,14 @@ async function saveDecision(db, decision) {
 }
 
 /**
- * Three-lane entry gate:
+ * Three-lane entry gate with ENTRY-first prioritization:
+ * - ENTRY-first ranks the broad causal candidate set before lane selection.
  * - STANDARD requires accumulated historical Paper evidence.
  * - EARLY_MOMENTUM probes live closed 5m candles to catch acceleration before
  *   a symbol becomes an already-extended 24h winner.
  * - TACTICAL_MOMENTUM remains the controlled fast lane for established fresh moves.
- * No lane can bypass reconciliation, exit health, autonomy or config safety gates.
+ * ENTRY-first is ranking-only: it cannot bypass any lane, technical, reconciliation,
+ * exit-health, autonomy, position-limit or config safety gate.
  */
 async function evaluatePaperToRealEntryGate(db, config = {}) {
   const now = Date.now();
@@ -291,8 +301,15 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
   const earlyRadar = latestUniqueBase.length
     ? await enrichEarlyMomentumCandidates(latestUniqueBase, config)
     : { candidates: latestUniqueBase, probed_count: 0, eligible_count: 0, eligible_symbols: [], errors: [], version: 'early_momentum_radar_v1' };
-  const latestUnique = earlyRadar.candidates;
-  const lanePools = buildLaneCandidatePools(latestUnique, config);
+
+  const entryFirstRanking = prioritizeEntryFirstCandidates(earlyRadar.candidates, config);
+  const latestUnique = entryFirstRanking.candidates;
+  const rawLanePools = buildLaneCandidatePools(latestUnique, config);
+  const lanePools = {
+    standard: prioritizeLane(rawLanePools.standard, entryFirstRanking.enabled),
+    early: prioritizeLane(rawLanePools.early, entryFirstRanking.enabled),
+    tactical: prioritizeLane(rawLanePools.tactical, entryFirstRanking.enabled)
+  };
 
   const validationRows = validationSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const paperRows = paperResultSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -392,6 +409,11 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
       scan_id: predicted.scan_id || null,
       score,
       opportunityScore: score,
+      entry_first_rank: predicted.entry_first_rank ?? null,
+      entry_first_score: predicted.entry_first_score ?? null,
+      entry_first_feature_coverage: predicted.entry_first_feature_coverage ?? null,
+      entry_first_components: predicted.entry_first_components || null,
+      entry_first_version: predicted.entry_first_version || ENTRY_FIRST_VERSION,
       score_separation: laneEvaluation?.score_separation ?? null,
       category: predicted.category || null,
       quote_volume_24h: volume,
@@ -411,6 +433,20 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     } : null,
     validation,
     technical_confirmation: technical,
+    entry_first_ranking: {
+      enabled: entryFirstRanking.enabled,
+      version: entryFirstRanking.version,
+      admission_gate: false,
+      safety_bypass: false,
+      ranked_candidates: latestUnique.length,
+      top: latestUnique.slice(0, 10).map((candidate) => ({
+        symbol: candidate.symbol,
+        rank: candidate.entry_first_rank,
+        entry_first_score: candidate.entry_first_score,
+        opportunity_score: candidateScore(candidate),
+        feature_coverage: candidate.entry_first_feature_coverage
+      }))
+    },
     early_momentum_radar: {
       version: earlyRadar.version,
       probed_count: earlyRadar.probed_count,
@@ -436,7 +472,7 @@ async function evaluatePaperToRealEntryGate(db, config = {}) {
     spot_only: true,
     maximum_real_order_usdt: 10,
     no_order_created: true,
-    version: 'paper_to_real_entry_gate_v6_early_momentum'
+    version: 'paper_to_real_entry_gate_v7_entry_first_priority'
   };
 
   await saveDecision(db, decision);
