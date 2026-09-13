@@ -1,0 +1,106 @@
+name: Spot Causal Opportunity Research V7.2 R4
+
+on:
+  push:
+    paths:
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2.js'
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2-robust.js'
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2-entry-first.js'
+      - 'backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js'
+      - '.github/workflows/spot-causal-opportunity-research-v7_2-r4.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    name: V7.2 R4 rank-stable ${{ matrix.days }}d
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        days: [7, 14, 21, 30]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax and research isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js
+          ! grep -E "BINANCE_(API|SECRET)_KEY|firestore|createOrder|newOrder|withdraw" backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js
+          grep -q "R4 freezes sizing at 5%" backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js
+          grep -q "selectCrossSection" backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js
+
+      - name: Run isolated historical R4 diagnostic
+        env:
+          TRAIN_LOOKBACK_DAYS: ${{ matrix.days }}
+          HIST_POOL_SIZE: 60
+          MIN_HIST_QUOTE_VOL_24H: 200000
+        run: node backend/scripts/github-spot-causal-opportunity-v7_2-rank-stable.js
+
+      - name: Upload R4 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-causal-opportunity-v7-2-r4-${{ matrix.days }}d-${{ github.run_id }}
+          path: backend/training-output/spot-causal-opportunity-v7_2-report.json
+          retention-days: 14
+
+      - name: Window summary
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs=require('fs'),p='backend/training-output/spot-causal-opportunity-v7_2-report.json';
+          if(!fs.existsSync(p)){console.log('### R4 — no report');process.exit(0)}
+          const r=require('./'+p),g=r.entryGate||{},b=r.fullSystem?.baseline,c=r.fullSystem?.v72;
+          const pct=x=>`${(100*Number(x||0)).toFixed(2)}%`;
+          console.log(`### ${r.version} — ${r.lookbackDays}d`);
+          console.log(`- Decision: **${r.decision?.label}**`);
+          console.log(`- ENTRY evidence: ${Boolean(g.selectedByEvidence)} | rank fraction: ${g.selected?.fraction??'n/a'} | cap: ${g.selected?.cap??'n/a'}`);
+          console.log(`- Broad → ENTRY → META: ${r.participation?.broadSignals||0} → ${r.participation?.entryGateSignals||0} → ${r.participation?.candidateSignals||0}`);
+          if(b&&c) console.log(`- Net growth: ${pct(b.netGrowth)} → ${pct(c.netGrowth)} | trades ${b.tradeCount} → ${c.tradeCount}`);
+          console.log('- Sizing fixed at 5%; reused TEST is diagnostic only.');
+          NODE
+
+  consolidate:
+    name: V7.2 R4 diagnostic arbiter
+    runs-on: ubuntu-latest
+    needs: backtest
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: spot-causal-opportunity-v7-2-r4-*-${{ github.run_id }}
+          path: evidence
+        continue-on-error: true
+
+      - name: Consolidate
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),files=[];
+          function walk(d){if(!fs.existsSync(d))return;for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.statSync(p);s.isDirectory()?walk(p):files.push(p)}}
+          walk('evidence');
+          const reports=files.filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(f,'utf8'))).sort((a,b)=>a.lookbackDays-b.lookbackDays);
+          const windows=reports.map(r=>({
+            days:r.lookbackDays,entryEvidence:Boolean(r.entryGate?.selectedByEvidence),rankFraction:r.entryGate?.selected?.fraction??null,rankCap:r.entryGate?.selected?.cap??null,
+            valGrowth:r.entryGate?.selected?.validation?.netGrowth??null,valAvg:r.entryGate?.selected?.validation?.avgNetRet??null,
+            trainGuardGrowth:r.entryGate?.selected?.trainGuard?.netGrowth??null,testTrades:r.fullSystem?.v72?.tradeCount??0,testGrowth:r.fullSystem?.v72?.netGrowth??0,
+            baselineGrowth:r.fullSystem?.baseline?.netGrowth??0,participation:r.participation?.participationRate??0,activeRegimes:r.regimeCoverage?.activeRegimes??0,
+            decision:r.decision?.label||'UNKNOWN'
+          }));
+          const evidenceWindows=windows.filter(w=>w.entryEvidence).length;
+          const positiveValWindows=windows.filter(w=>w.entryEvidence&&w.valGrowth>0&&w.valAvg>0&&w.trainGuardGrowth>=-.005).length;
+          const out={generatedAt:new Date().toISOString(),version:'V7.2-R4-RANK-STABLE',researchOnly:true,researchHoldoutIntegrity:'COMPROMISED_BY_ITERATIVE_REVIEW',windows,evidenceWindows,positiveValWindows,decision:{ready:false,label:positiveValWindows>=3?'PROMISING_REQUIRES_FRESH_HOLDOUT':'REQUIRES_IMPROVEMENT',reason:positiveValWindows>=3?'TRAIN/VALIDATION rank stability is broad enough to freeze the design; only a fresh unseen holdout can validate it.':'Rank-stable ENTRY does not yet show broad TRAIN/VALIDATION robustness across horizons.'},promotion:'RESEARCH ONLY. No production or shadow promotion.'};
+          fs.writeFileSync('r4-cross.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-causal-opportunity-v7-2-r4-cross-${{ github.run_id }}
+          path: r4-cross.json
+          retention-days: 14
