@@ -25,6 +25,7 @@ jobs:
       pct: ${{ steps.signal.outputs.pct }}
       price: ${{ steps.signal.outputs.price }}
       created_at: ${{ steps.signal.outputs.created_at }}
+      lane: ${{ steps.signal.outputs.lane }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -50,12 +51,15 @@ jobs:
           SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([A-Z0-9]*USDT\).*/\1/p')
           PCT=$(printf '%s' "$BODY" | sed -n 's/^- Cambio 24h: +\([0-9.-]*\)%.*/\1/p' | head -1)
           PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
+          LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
+          LANE=${LANE:-CORE}
           test -n "$SYMBOL" && test -n "$PCT" && test -n "$PRICE" && test -n "$CREATED"
           echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
           echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
           echo "pct=$PCT" >> "$GITHUB_OUTPUT"
           echo "price=$PRICE" >> "$GITHUB_OUTPUT"
           echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
+          echo "lane=$LANE" >> "$GITHUB_OUTPUT"
 
   execute:
     name: Validate and execute from Chile PC
@@ -75,6 +79,7 @@ jobs:
       SIGNAL_PCT: ${{ needs.prepare.outputs.pct }}
       SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
       SIGNAL_CREATED_AT: ${{ needs.prepare.outputs.created_at }}
+      SIGNAL_LANE: ${{ needs.prepare.outputs.lane }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -87,7 +92,7 @@ jobs:
       - name: Autonomous local revalidation and Spot execution
         id: trade
         working-directory: backend
-        run: node scripts/github-spot-manual-execution.js
+        run: node scripts/github-spot-manual-execution-v10-aware.js
 
   mark:
     name: Mark autonomous decision
