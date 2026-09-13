@@ -1,0 +1,58 @@
+name: Spot V4.2 + Relative Winner V9.3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-instant-decision-trainer-v8.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9.js'
+      - 'backend/scripts/github-spot-relative-winner-trainer-v9_1.js'
+      - 'backend/scripts/github-spot-v42-relative-winner-v9_3.js'
+      - '.github/workflows/spot-v42-relative-winner-v9_3.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+      V8_ROUNDTRIP_COST: '0.0025'
+      V93_EVAL_DAYS: '7'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard isolated composite trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-v42-relative-winner-v9_3.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v42-relative-winner-v9_3.js
+          grep -q "admission:'production V4.2 >=2/3'" backend/scripts/github-spot-v42-relative-winner-v9_3.js
+          grep -q "productionMutation:false" backend/scripts/github-spot-v42-relative-winner-v9_3.js
+      - name: Train and evaluate production-shaped composite
+        run: node backend/scripts/github-spot-v42-relative-winner-v9_3.js
+      - name: Upload V9.3 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v42-relative-winner-v9-3-${{ github.run_id }}
+          path: spot-v42-relative-winner-v9_3.json
+          retention-days: 30
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### Spot V4.2 + Relative Winner V9.3' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Admission: exact production V4.2 >= 2/3' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ranking: trained V9.1 relative winner confidence' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Exit: +3% TP / -1.2% SL / 3h timeout / costs included' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production mutation: none' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-v42-relative-winner-v9_3.json ]; then
+            jq -r '"- Verdict: \(.verdict)\n- Active days: \(.aggregate.activeDays)/\(.aggregate.evaluatedDays)\n- Positive execution days: \(.aggregate.positiveExecutionDays)\n- Trades: \(.aggregate.totalTrades)\n- Avg net/trade: \(.aggregate.avgNetPerTrade)\n- Avg daily growth: \(.aggregate.avgDailyGrowth)\n- Avg win rate: \(.aggregate.avgWinRate)\n- Avg alpha: \(.aggregate.avgAlpha)\n- Top-decile hit rate: \(.aggregate.avgTop10HitRate)\n- Max DD: \(.aggregate.maxObservedDD)"' spot-v42-relative-winner-v9_3.json >> "$GITHUB_STEP_SUMMARY"
+          fi
