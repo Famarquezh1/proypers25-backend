@@ -14,6 +14,8 @@ on:
       - "backend/services/spotCycleObservability.js"
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
+      - "backend/services/spotEntryFirstSelector.js"
+      - "backend/services/paperToRealEntryGate.js"
       - "backend/services/spotGemRadar.js"
       - "backend/services/spotLocalQuboOptimizer.js"
       - "backend/services/spotRealPipelinePolicy.js"
@@ -33,6 +35,7 @@ on:
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
+      - "backend/tests/spotEntryFirstSelector.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
       - "backend/tests/spotLocalQuboOptimizer.test.js"
       - "backend/tests/spotRealPipeline.test.js"
@@ -54,6 +57,8 @@ on:
       - "backend/services/spotCycleObservability.js"
       - "backend/services/spotLiveEvidence.js"
       - "backend/services/spotEarlyMomentumRadar.js"
+      - "backend/services/spotEntryFirstSelector.js"
+      - "backend/services/paperToRealEntryGate.js"
       - "backend/services/spotGemRadar.js"
       - "backend/services/spotLocalQuboOptimizer.js"
       - "backend/services/spotRealPipelinePolicy.js"
@@ -73,6 +78,7 @@ on:
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/tests/spotLiveEvidence.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
+      - "backend/tests/spotEntryFirstSelector.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
       - "backend/tests/spotLocalQuboOptimizer.test.js"
       - "backend/tests/spotRealPipeline.test.js"
@@ -111,6 +117,8 @@ jobs:
           node --check backend/services/spotCycleObservability.js
           node --check backend/services/spotLiveEvidence.js
           node --check backend/services/spotEarlyMomentumRadar.js
+          node --check backend/services/spotEntryFirstSelector.js
+          node --check backend/services/paperToRealEntryGate.js
           node --check backend/services/spotGemRadar.js
           node --check backend/services/spotLocalQuboOptimizer.js
           node --check backend/services/spotRealPipelinePolicy.js
@@ -131,6 +139,8 @@ jobs:
           node -e "require('./backend/services/binanceSpotRealExecutor')"
           node -e "require('./backend/services/controlledSpotExitExecutor')"
           node -e "require('./backend/services/spotEarlyMomentumRadar')"
+          node -e "require('./backend/services/spotEntryFirstSelector')"
+          node -e "require('./backend/services/paperToRealEntryGate')"
           node -e "require('./backend/services/spotGemRadar')"
           node -e "require('./backend/services/spotLocalQuboOptimizer')"
           node -e "require('./backend/services/spotQuantEntryDecision')"
@@ -157,6 +167,9 @@ jobs:
 
       - name: Early momentum radar unit tests
         run: node backend/tests/earlyMomentumRadar.test.js
+
+      - name: ENTRY-first production prioritizer unit tests
+        run: node backend/tests/spotEntryFirstSelector.test.js
 
       - name: Productive gem discovery unit tests
         run: node backend/tests/spotGemRadarProductiveSelection.test.js
