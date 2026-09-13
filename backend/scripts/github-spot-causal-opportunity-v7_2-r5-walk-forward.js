@@ -45,9 +45,9 @@ function isoDay(t) { return new Date(t).toISOString().slice(0, 10); }
 function makeBroad(samples, cal) {
   return samples.map(s => ({
     ...s,
-    quality: broadQuality(s, cal),
-    rawQuality: broadQuality(s, cal),
-    agreement: causalAgreement(s),
+    quality: r.broadQuality(s, cal),
+    rawQuality: r.broadQuality(s, cal),
+    agreement: r.causalAgreement(s),
     regimeConfidence: Math.max(...Object.values(s.regimeWeights || {})),
     activationWeight: 1,
     activationConfidence: 1,
