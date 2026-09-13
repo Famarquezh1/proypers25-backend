@@ -1,0 +1,65 @@
+name: Spot V10 Hunter Production Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-microflow-trainer-v10.js'
+      - 'backend/scripts/github-spot-microflow-hunter-v10.js'
+      - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
+      - 'backend/scripts/github-spot-auto-exit.js'
+      - '.github/workflows/spot-manual-approval.yml'
+      - '.github/workflows/spot-microflow-hunter-v10.yml'
+      - '.github/workflows/spot-v10-hunter-production-check.yml'
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax checks
+        run: |
+          node --check backend/scripts/github-spot-microflow-hunter-v10.js
+          node --check backend/scripts/github-spot-manual-execution-v10-aware.js
+          node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          node --check backend/scripts/github-spot-auto-exit.js
+
+      - name: Guard production invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "const MAX_USDT = 10" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "const MIN_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "DUPLICATE_POSITION_USDT = 10" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "V10_HARD_STOP_PCT = 0.012" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "V10_TAKE_PROFIT" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          grep -q "V10_TIMEOUT_3H" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          grep -q "LANE=\${LANE:-CORE}" .github/workflows/spot-manual-approval.yml
+          grep -q "github-spot-manual-execution-v10-aware.js" .github/workflows/spot-manual-approval.yml
+          grep -q "cron: '7,22,37,52 \* \* \* \*'" .github/workflows/spot-microflow-hunter-v10.yml
+          grep -q "CORE V4.2 5m: intacto" .github/workflows/spot-microflow-hunter-v10.yml
+          echo 'V10 lane invariants preserved: CORE default, Spot-only executor path, max 10 USDT, trained HUNTER exits.'
+
+      - name: Read-only V10 Hunter live smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node backend/scripts/github-spot-microflow-hunter-v10.js)
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.lane // ""')" = "V10_HUNTER"
+          echo 'Read-only smoke completed; no issue/order is created by this script.'
