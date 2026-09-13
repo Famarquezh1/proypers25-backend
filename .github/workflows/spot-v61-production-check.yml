@@ -8,6 +8,7 @@ on:
       - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
+      - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - '.github/workflows/spot-v61-production-check.yml'
 
 permissions:
@@ -29,9 +30,18 @@ jobs:
           node --check backend/scripts/github-spot-v61-protect.js
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
+          node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
       - name: Confirm production wiring
         run: |
+          set -euo pipefail
           grep -q "github-spot-v61-protect.js" backend/scripts/github-spot-auto-exit.js
-          grep -q "github-spot-auto-exit-legacy.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "github-spot-auto-exit-legacy-v10-aware.js" backend/scripts/github-spot-auto-exit.js
+          grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
           grep -q "V61_SCORE_ANCHOR" backend/scripts/github-spot-manual-execution.js
-          echo "V6.1 production integration syntax and wiring OK"
+          node - <<'NODE'
+          const id = `proypers-gh-protect-v61-${Date.now().toString(36)}`;
+          if (id.length > 36 || !/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`invalid Binance clientOrderId: ${id}`);
+          console.log(`V6.1 protective clientOrderId OK length=${id.length}`);
+          NODE
+          echo "V6.1 production integration syntax and V10-aware wiring OK"
