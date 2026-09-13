@@ -10,6 +10,7 @@ const MAX_SELECTED = 3;
 const V42_MIN_PASS_WINDOWS = 2;
 const STABLE_AGENTS = ['EARLY_MOMENTUM', 'BREAKOUT'];
 const V42_HIERARCHY = ['VOLUME_IGNITION', 'FRESH_RS_CONFIRM', 'RELATIVE_STRENGTH_EXTENSION'];
+const ENTRY_FIRST_VERSION = 'PRODUCTION_V42_ENTRY_FIRST_V1';
 const V42_THRESHOLDS = [
   { days: 30, i: 0.904010256302157, c: 0.30262335308700017, e: 0.0333071863419859 },
   { days: 45, i: 0.7912647052581232, c: 0.36672756172128707, e: 0.029510140018270917 },
@@ -70,11 +71,19 @@ function probeLaneScore(candidate, lane = 'base') {
   return baseUtility(candidate);
 }
 
-function utility(candidate) {
+function legacyUtility(candidate) {
   const base = baseUtility(candidate);
   const stable = Number.isFinite(candidate.stable_norm) ? candidate.stable_norm : 0.5;
   const v42 = Number.isFinite(candidate.v42_norm) ? candidate.v42_norm : 0;
-  return Number((base * 0.40 + stable * 0.15 + v42 * 0.45).toFixed(6));
+  return clamp(base * 0.40 + stable * 0.15 + v42 * 0.45);
+}
+
+function utility(candidate) {
+  const legacy = legacyUtility(candidate);
+  const entryFirst = Number.isFinite(candidate.entry_first_norm) ? candidate.entry_first_norm : 0.5;
+  // ENTRY-first is deliberately a soft production prioritizer. V4.2 admission
+  // remains unchanged; only ranking/QUBO utility inside the robust pool changes.
+  return Number((legacy * 0.75 + entryFirst * 0.25).toFixed(6));
 }
 
 function pairPenalty(a, b) {
@@ -104,14 +113,14 @@ function exactQubo(candidates) {
       best = selected;
     }
   }
-  return { method: 'LOCAL_QUBO_EXACT_PRODUCTION_V42', objective: bestScore, selected: best };
+  return { method: 'LOCAL_QUBO_EXACT_PRODUCTION_V42_ENTRY_FIRST', objective: bestScore, selected: best };
 }
 
 async function fetchJson(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const response = await fetch(url, { signal: controller.signal, headers: { 'user-agent': 'proypers25-github-radar-v42/1.0' } });
+    const response = await fetch(url, { signal: controller.signal, headers: { 'user-agent': 'proypers25-github-radar-v42-entry-first/1.0' } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.json();
   } finally {
@@ -299,11 +308,57 @@ async function enrichV42(candidates) {
       const parts = v42Parts(features);
       const freshEnough = features.r24 < 0.18 && features.r60 < 0.10 && features.r15 < 0.06;
       const passCount = freshEnough ? v42PassCount(parts) : 0;
-      return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough } };
+      return {
+        ...candidate,
+        v42_pass_windows: passCount,
+        v42_norm: freshEnough ? v42Norm(parts, passCount) : 0,
+        v42_detail: { ...parts, ...features, freshEnough }
+      };
     } catch (error) {
       console.error(`V42_FEATURES_FAILED ${candidate.symbol} ${error.message}`);
       return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null };
     }
+  });
+}
+
+function entryFirstScore(candidate) {
+  const f = candidate.v42_detail || {};
+  const m15 = clamp(0.5 + (Number(f.r15) || 0) / 0.035);
+  const m60 = clamp(0.5 + (Number(f.r60) || 0) / 0.075);
+  const ignition = clamp(0.5 + ((Number(f.ignition) || 0) - 0.8) / 2.0);
+  const confirm = clamp(0.5 + ((Number(f.confirm) || 0) - 0.30) / 0.8);
+  const extension = clamp(0.5 + ((Number(f.extension) || 0) - 0.03) / 0.12);
+  const stable = Number.isFinite(candidate.stable_norm) ? clamp(candidate.stable_norm) : 0.5;
+  const liquidity = normalizedLog(candidate.qv, MIN_QUOTE_VOLUME, 150000000);
+  const tickerChase = Number(candidate.pct) > 12 ? clamp((Number(candidate.pct) - 12) / 6) : 0;
+  const r24Chase = clamp(((Number(f.r24) || 0) - 0.10) / 0.08);
+  const r60Chase = clamp(((Number(f.r60) || 0) - 0.06) / 0.04);
+  const chase = Math.max(tickerChase, r24Chase, r60Chase);
+  const score = clamp(
+    m15 * 0.14 +
+    m60 * 0.15 +
+    ignition * 0.18 +
+    confirm * 0.20 +
+    extension * 0.16 +
+    stable * 0.08 +
+    liquidity * 0.09 -
+    chase * 0.12
+  );
+  return {
+    score,
+    detail: { m15, m60, ignition, confirm, extension, stable, liquidity, chase }
+  };
+}
+
+function enrichEntryFirst(candidates) {
+  return candidates.map((candidate) => {
+    const scored = entryFirstScore(candidate);
+    return {
+      ...candidate,
+      entry_first_norm: Number(scored.score.toFixed(6)),
+      entry_first_detail: scored.detail,
+      entry_first_version: ENTRY_FIRST_VERSION
+    };
   });
 }
 
@@ -328,15 +383,16 @@ async function main() {
   const market = await loadMarket();
   const probe = eligibleProbe(market.rows);
   if (!probe.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no base candidates', v42_hierarchy: V42_HIERARCHY }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no base candidates', v42_hierarchy: V42_HIERARCHY, entry_first_version: ENTRY_FIRST_VERSION }));
     return;
   }
 
   let candidates = await enrichStable(probe);
   candidates = await enrichV42(candidates);
+  candidates = enrichEntryFirst(candidates);
   const robust = candidates.filter((x) => x.v42_pass_windows >= V42_MIN_PASS_WINDOWS);
   if (!robust.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, entry_first_version: ENTRY_FIRST_VERSION, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
     return;
   }
 
@@ -346,14 +402,14 @@ async function main() {
   const selected = [...decision.selected].sort((a, b) => utility(b) - utility(a));
   const candidate = selected[0];
   if (!candidate) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'QUBO selected none', probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'QUBO selected none', entry_first_version: ENTRY_FIRST_VERSION, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
     return;
   }
 
   console.log(JSON.stringify({
     ok: true,
     notify: true,
-    mode: 'PRODUCTION_V42',
+    mode: 'PRODUCTION_V42_ENTRY_FIRST',
     source: market.source,
     probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
     probed: candidates.length,
@@ -364,16 +420,21 @@ async function main() {
     stable_agents: STABLE_AGENTS,
     v42_hierarchy: V42_HIERARCHY,
     v42_min_pass_windows: V42_MIN_PASS_WINDOWS,
+    entry_first_enabled: true,
+    entry_first_version: ENTRY_FIRST_VERSION,
     symbol: candidate.symbol,
     pct: candidate.pct,
     price: candidate.price,
     quote_volume: candidate.qv,
     base_utility: Number(baseUtility(candidate).toFixed(6)),
+    legacy_utility: Number(legacyUtility(candidate).toFixed(6)),
     stable_score: Number.isFinite(candidate.stable_raw) ? Number(candidate.stable_raw.toFixed(6)) : null,
     stable_norm: candidate.stable_norm,
     v42_pass_windows: candidate.v42_pass_windows,
     v42_norm: Number(candidate.v42_norm.toFixed(6)),
     v42_detail: candidate.v42_detail,
+    entry_first_norm: candidate.entry_first_norm,
+    entry_first_detail: candidate.entry_first_detail,
     utility: utility(candidate)
   }));
 }
