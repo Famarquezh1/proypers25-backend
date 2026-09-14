@@ -1,8 +1,9 @@
 'use strict';
 
 // Production hardening wrapper around the existing autonomous executor.
-// It keeps CORE behavior intact while respecting the configured Spot limits:
-// 15 USDT max per acquisition, 40 USDT total managed capital, 2 positions max.
+// It keeps CORE behavior intact while removing artificial caps on the number
+// of managed Spot positions and total managed Spot capital.
+// Per-acquisition sizing, duplicate protection, Spot-only safety and stops remain intact.
 // V10_HUNTER keeps the stop used by its causal training.
 const fs = require('fs');
 const path = require('path');
@@ -24,26 +25,8 @@ patch(
 
 patch(
   'const MIN_USDT = 10;\nconst MAX_USDT = 100;',
-  'const MIN_USDT = 5;\nconst MAX_USDT = 15;\nconst MAX_TOTAL_CAPITAL_USDT = 40;\nconst MAX_OPEN_POSITIONS = 2;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
-  'position limits'
-);
-
-patch(
-  "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT')\n  ]);",
-  "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars, openOrders] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT'),\n    signed(base, 'GET', '/api/v3/openOrders')\n  ]);",
-  'managed position inventory'
-);
-
-patch(
-  "if (!info || info.status !== 'TRADING' || info.isSpotTradingAllowed !== true) decline(`${SYMBOL} is not active Spot TRADING`);",
-  "if (!info || info.status !== 'TRADING' || info.isSpotTradingAllowed !== true) decline(`${SYMBOL} is not active Spot TRADING`);\n  const managedOpenOrders = (Array.isArray(openOrders) ? openOrders : []).filter((order) => String(order.clientOrderId || '').startsWith('proypers-gh-protect-'));\n  const managedSymbols = new Set(managedOpenOrders.map((order) => String(order.symbol || '').toUpperCase()).filter(Boolean));\n  if (!managedSymbols.has(SYMBOL) && managedSymbols.size >= MAX_OPEN_POSITIONS) decline(`Managed Spot position limit reached (${managedSymbols.size}/${MAX_OPEN_POSITIONS})`);",
-  'max managed positions'
-);
-
-patch(
-  "const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);",
-  "const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);\n  const managedCapitalEstimate = managedOpenOrders.reduce((sum, order) => { const qty = Number(order.origQty || 0); const stop = Number(order.stopPrice || 0); return sum + (qty > 0 && stop > 0 ? (qty * stop) / 0.95 : 0); }, 0);\n  if (managedCapitalEstimate + quoteOrderQty > MAX_TOTAL_CAPITAL_USDT) decline(`Managed Spot capital limit would be exceeded (${(managedCapitalEstimate + quoteOrderQty).toFixed(2)} > ${MAX_TOTAL_CAPITAL_USDT} USDT)`);",
-  'max managed capital'
+  'const MIN_USDT = 5;\nconst MAX_USDT = 15;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
+  'entry sizing'
 );
 
 patch(
