@@ -1,0 +1,65 @@
+name: Spot V8 Hunter Shadow Model
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 0 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
+      - '.github/workflows/spot-v8-hunter-shadow-model.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-v8-hunter-shadow-model
+  cancel-in-progress: true
+
+jobs:
+  train-shadow-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Guard shadow-only model builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "productionAction:'NONE'" backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "const TP = 0.03" backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "const SL = 0.012" backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "const HOLD_BARS = 36" backend/scripts/github-spot-v8-hunter-shadow-model.js
+
+      - name: Build V8 hunter shadow model
+        run: node backend/scripts/github-spot-v8-hunter-shadow-model.js spot-v8-hunter-shadow-model.json
+
+      - name: Upload V8 hunter shadow model
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v8-hunter-shadow-model
+          path: spot-v8-hunter-shadow-model.json
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### V8 Hunter — shadow model only' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Trading action: NONE' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production influence: 0' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Training cadence: daily; market scoring remains every 5 minutes in Spot GitHub Radar' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Objective: collect independent V8_ONLY vs BOTH evidence without changing V4.2/QUBO' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-v8-hunter-shadow-model.json ]; then
+            jq -r '"- Threshold: \(.threshold)\n- Fit samples: \(.training.fitSamples)\n- Calibration samples: \(.training.calSamples)\n- Calibration trades: \(.calibration.trades)\n- Calibration avg net: \(.calibration.avgNet)\n- Calibration growth: \(.calibration.compoundedGrowth)"' spot-v8-hunter-shadow-model.json >> "$GITHUB_STEP_SUMMARY"
+          fi
