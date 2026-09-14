@@ -7,12 +7,15 @@ on:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
+      - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-v8-hunter-shadow-model.yml'
       - '.github/workflows/spot-auto-exit-local.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
   pull_request:
@@ -21,12 +24,15 @@ on:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
+      - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-v8-hunter-shadow-model.yml'
       - '.github/workflows/spot-auto-exit-local.yml'
       - '.github/workflows/spot-entry-first-production-check.yml'
 
@@ -46,6 +52,8 @@ jobs:
           node --check backend/scripts/github-spot-production-radar-v42.js
           node --check backend/scripts/github-spot-production-radar-v42-active.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
+          node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
+          node --check backend/scripts/github-spot-v8-hunter-shadow.js
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
@@ -74,8 +82,14 @@ jobs:
           grep -q "decisionInfluence:false" backend/scripts/github-spot-v8-production-shadow.js
           grep -q "productionAction:'NONE_V8_SHADOW'" backend/scripts/github-spot-v8-production-shadow.js
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v8-production-shadow.js
-          ! grep -Eq 'if:.*v8shadow' .github/workflows/spot-github-radar.yml
+          grep -q "version:'V8_HUNTER_SHADOW_MODEL_V1'" backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "productionAction:'NONE'" backend/scripts/github-spot-v8-hunter-shadow-model.js
+          grep -q "mode:'V8_HUNTER_INDEPENDENT_SHADOW'" backend/scripts/github-spot-v8-hunter-shadow.js
+          grep -q "decisionInfluence:false" backend/scripts/github-spot-v8-hunter-shadow.js
+          grep -q "productionAction:'NONE'" backend/scripts/github-spot-v8-hunter-shadow.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|gh workflow run' backend/scripts/github-spot-v8-hunter-shadow-model.js backend/scripts/github-spot-v8-hunter-shadow.js
           grep -q "if: steps.scan.outputs.notify == 'true'" .github/workflows/spot-github-radar.yml
+          grep -q "V8 HUNTER: scanner independiente cada 5m; peso de ejecución = 0" .github/workflows/spot-github-radar.yml
           grep -q "maximum_real_order_usdt: 10" backend/services/paperToRealEntryGate.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
@@ -85,4 +99,4 @@ jobs:
           if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
           console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
           NODE
-          echo 'V4.2/QUBO remains execution authority. V8 is production shadow only. Active Spot fail-safe, 10 USDT cap, Windows exit wrapper compatibility, and Binance-safe protective IDs preserved.'
+          echo 'V4.2/QUBO remains sole execution authority. Independent V8 HUNTER is shadow-only with zero production influence. Active Spot fail-safe, 10 USDT cap, Windows exit wrapper compatibility, and Binance-safe protective IDs preserved.'
