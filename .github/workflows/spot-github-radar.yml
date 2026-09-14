@@ -56,34 +56,71 @@ jobs:
           echo "v42_confirm=$(printf '%s' "$RESULT" | jq -r '.v42_detail.confirm')" >> "$GITHUB_OUTPUT"
           echo "v42_extension=$(printf '%s' "$RESULT" | jq -r '.v42_detail.extension')" >> "$GITHUB_OUTPUT"
 
-      - name: Run V8 instant-decision shadow evidence
-        if: steps.scan.outputs.notify == 'true'
-        id: v8shadow
+      - name: Load latest independent V8 hunter shadow model
+        id: v8model
         env:
-          SYMBOL: ${{ steps.scan.outputs.symbol }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set +e
-          RESULT=$(node backend/scripts/github-spot-v8-production-shadow.js "$SYMBOL" 2>v8-shadow.err)
+          rm -rf .v8-model
+          mkdir -p .v8-model
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v8-hunter-shadow-model.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null)
+          if [ -z "$RUN_ID" ]; then
+            echo 'status=UNAVAILABLE' >> "$GITHUB_OUTPUT"
+            echo 'No successful V8 hunter shadow model run yet; V4.2 continues unaffected.'
+            exit 0
+          fi
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name spot-v8-hunter-shadow-model --dir .v8-model >/dev/null 2>&1
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ] || [ ! -f .v8-model/spot-v8-hunter-shadow-model.json ]; then
+            echo 'status=UNAVAILABLE' >> "$GITHUB_OUTPUT"
+            echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            echo 'V8 hunter model download unavailable; V4.2 continues unaffected.'
+            exit 0
+          fi
+          echo 'status=OK' >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "generated_at=$(jq -r '.generatedAt' .v8-model/spot-v8-hunter-shadow-model.json)" >> "$GITHUB_OUTPUT"
+          echo "threshold=$(jq -r '.threshold' .v8-model/spot-v8-hunter-shadow-model.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Run independent V8 HUNTER shadow over market
+        if: steps.v8model.outputs.status == 'OK'
+        id: v8hunter
+        env:
+          V42_NOTIFY: ${{ steps.scan.outputs.notify || 'false' }}
+          V42_SYMBOL: ${{ steps.scan.outputs.symbol || 'none' }}
+        shell: bash
+        run: |
+          set +e
+          RESULT=$(node backend/scripts/github-spot-v8-hunter-shadow.js .v8-model/spot-v8-hunter-shadow-model.json v8-hunter-shadow-evidence.json 2>v8-hunter-shadow.err)
           STATUS=$?
           set -e
           if [ "$STATUS" -ne 0 ]; then
-            cat v8-shadow.err >&2 || true
+            cat v8-hunter-shadow.err >&2 || true
             echo 'status=UNAVAILABLE' >> "$GITHUB_OUTPUT"
-            echo 'advisory=UNAVAILABLE' >> "$GITHUB_OUTPUT"
-            echo 'probability=n/a' >> "$GITHUB_OUTPUT"
-            echo 'threshold=n/a' >> "$GITHUB_OUTPUT"
-            echo 'eligible=n/a' >> "$GITHUB_OUTPUT"
+            echo 'count=0' >> "$GITHUB_OUTPUT"
+            echo 'symbols=none' >> "$GITHUB_OUTPUT"
+            echo 'overlap_v42=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           printf '%s\n' "$RESULT"
           echo 'status=OK' >> "$GITHUB_OUTPUT"
-          echo "advisory=$(printf '%s' "$RESULT" | jq -r '.advisory')" >> "$GITHUB_OUTPUT"
-          echo "probability=$(printf '%s' "$RESULT" | jq -r '.probability')" >> "$GITHUB_OUTPUT"
-          echo "threshold=$(printf '%s' "$RESULT" | jq -r '.threshold')" >> "$GITHUB_OUTPUT"
+          echo "count=$(printf '%s' "$RESULT" | jq -r '.signalCount')" >> "$GITHUB_OUTPUT"
+          echo "symbols=$(printf '%s' "$RESULT" | jq -r '[.signals[].symbol] | if length==0 then "none" else join(",") end')" >> "$GITHUB_OUTPUT"
+          echo "cohorts=$(printf '%s' "$RESULT" | jq -r '[.signals[].cohort] | if length==0 then "none" else join(",") end')" >> "$GITHUB_OUTPUT"
+          echo "overlap_v42=$(printf '%s' "$RESULT" | jq -r '[.signals[] | select(.cohort=="BOTH")] | length > 0')" >> "$GITHUB_OUTPUT"
           echo "eligible=$(printf '%s' "$RESULT" | jq -r '.eligibleInstant')" >> "$GITHUB_OUTPUT"
-          echo "cal_avg_net=$(printf '%s' "$RESULT" | jq -r '.calibration.avgNet')" >> "$GITHUB_OUTPUT"
-          echo "cal_growth=$(printf '%s' "$RESULT" | jq -r '.calibration.compoundedGrowth')" >> "$GITHUB_OUTPUT"
+          echo "active_universe=$(printf '%s' "$RESULT" | jq -r '.universe.activeSpotUsdt')" >> "$GITHUB_OUTPUT"
+          echo "detailed_loaded=$(printf '%s' "$RESULT" | jq -r '.universe.detailedLoaded')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload independent V8 hunter evidence
+        if: steps.v8hunter.outputs.status == 'OK' && steps.v8hunter.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-hunter-shadow-evidence-${{ github.run_id }}
+          path: v8-hunter-shadow-evidence.json
+          retention-days: 30
 
       - name: Avoid duplicate signal issue
         if: steps.scan.outputs.notify == 'true'
@@ -119,11 +156,9 @@ jobs:
           V42_IGNITION: ${{ steps.scan.outputs.v42_ignition }}
           V42_CONFIRM: ${{ steps.scan.outputs.v42_confirm }}
           V42_EXTENSION: ${{ steps.scan.outputs.v42_extension }}
-          V8_STATUS: ${{ steps.v8shadow.outputs.status || 'UNAVAILABLE' }}
-          V8_ADVISORY: ${{ steps.v8shadow.outputs.advisory || 'UNAVAILABLE' }}
-          V8_PROBABILITY: ${{ steps.v8shadow.outputs.probability || 'n/a' }}
-          V8_THRESHOLD: ${{ steps.v8shadow.outputs.threshold || 'n/a' }}
-          V8_ELIGIBLE: ${{ steps.v8shadow.outputs.eligible || 'n/a' }}
+          V8_STATUS: ${{ steps.v8hunter.outputs.status || 'UNAVAILABLE' }}
+          V8_SYMBOLS: ${{ steps.v8hunter.outputs.symbols || 'none' }}
+          V8_OVERLAP: ${{ steps.v8hunter.outputs.overlap_v42 || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -141,8 +176,8 @@ jobs:
             "- Selección QUBO: $QUBO_SELECTED" \
             "- V4.2 robustez: $V42_PASS/3 ventanas | score: $V42_NORM" \
             "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
-            "- V8 shadow: $V8_ADVISORY | probabilidad: $V8_PROBABILITY | umbral: $V8_THRESHOLD | trigger: $V8_ELIGIBLE | estado: $V8_STATUS" \
-            'V8 está integrado solo como observador: no habilita, bloquea ni modifica la orden. Acción real: validación y ejecución autónoma V4.2/QUBO en el runner local.')
+            "- V8 HUNTER shadow independiente: estado=$V8_STATUS | candidatos=$V8_SYMBOLS | coincide con V4.2=$V8_OVERLAP" \
+            'V8 HUNTER es solo evidencia independiente: no habilita, bloquea, prioriza ni modifica la orden. Acción real: validación y ejecución autónoma V4.2/QUBO en el runner local.')
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
 
       - name: Dispatch autonomous local validator
@@ -159,19 +194,23 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo '### Spot GitHub Radar — Production V4.2 + QUBO + V8 shadow' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot GitHub Radar — Production V4.2 + QUBO / independent V8 HUNTER shadow' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Universo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Universo productivo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Ranking: base 40% + stable 15% + V4.2 45%' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ranking productivo: base 40% + stable 15% + V4.2 45%' >> "$GITHUB_STEP_SUMMARY"
           echo '- ENTRY-first: retirado de producción tras fallar holdouts frescos R5' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
-          echo '- V8: decisión instantánea observada en shadow; peso de ejecución = 0 mientras V8 siga NOT_READY' >> "$GITHUB_STEP_SUMMARY"
+          echo '- V8 HUNTER: scanner independiente cada 5m; peso de ejecución = 0; no bloquea ni habilita órdenes' >> "$GITHUB_STEP_SUMMARY"
+          echo '- V8 HUNTER model: entrenamiento diario separado para evitar reentrenar 7 días en cada scan' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Evidencia V8: artifacts solo cuando existen candidatos; cohortes V8_ONLY o BOTH' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
           echo '- Gate V4.2: mínimo 2/3 ventanas entrenadas' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Validador local: dispatch automático vía workflow_dispatch' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Fuente: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Notificación: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Símbolo: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- V8 shadow: ${{ steps.v8shadow.outputs.advisory || 'n/a' }} | p=${{ steps.v8shadow.outputs.probability || 'n/a' }} | th=${{ steps.v8shadow.outputs.threshold || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Motivo sin señal: ${{ steps.scan.outputs.reason || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '- Validador local: dispatch automático únicamente por señal productiva V4.2/QUBO' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fuente V4.2: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Notificación V4.2: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Símbolo V4.2: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V8 model: ${{ steps.v8model.outputs.status || 'UNAVAILABLE' }} | run=${{ steps.v8model.outputs.run_id || 'n/a' }} | th=${{ steps.v8model.outputs.threshold || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V8 HUNTER: ${{ steps.v8hunter.outputs.status || 'UNAVAILABLE' }} | señales=${{ steps.v8hunter.outputs.count || '0' }} | símbolos=${{ steps.v8hunter.outputs.symbols || 'none' }} | cohortes=${{ steps.v8hunter.outputs.cohorts || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V8 universo detallado: ${{ steps.v8hunter.outputs.detailed_loaded || 'n/a' }} / activos=${{ steps.v8hunter.outputs.active_universe || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Motivo sin señal V4.2: ${{ steps.scan.outputs.reason || 'n/a' }}" >> "$GITHUB_STEP_SUMMARY"
