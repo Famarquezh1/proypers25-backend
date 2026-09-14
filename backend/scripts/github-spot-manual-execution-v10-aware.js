@@ -9,6 +9,7 @@ const path = require('path');
 
 const sourcePath = path.join(__dirname, 'github-spot-manual-execution.js');
 let source = fs.readFileSync(sourcePath, 'utf8');
+source = source.replace(/\r\n/g, '\n');
 
 function patch(from, to, label) {
   if (!source.includes(from)) throw new Error(`EXECUTOR_PATCH_REFUSED ${label}`);
