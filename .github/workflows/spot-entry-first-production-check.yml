@@ -14,6 +14,9 @@ on:
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-v61-protect.js'
+      - 'backend/scripts/github-xec-historical-protection.js'
+      - 'backend/services/xecHistoricalHoldingPolicy.js'
+      - 'backend/tests/githubXecNativeProtection.test.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-v8-hunter-shadow-model.yml'
@@ -32,6 +35,9 @@ on:
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-v61-protect.js'
+      - 'backend/scripts/github-xec-historical-protection.js'
+      - 'backend/services/xecHistoricalHoldingPolicy.js'
+      - 'backend/tests/githubXecNativeProtection.test.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
       - '.github/workflows/spot-v8-hunter-shadow-model.yml'
@@ -61,7 +67,12 @@ jobs:
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-v61-protect.js
+          node --check backend/scripts/github-xec-historical-protection.js
+          node --check backend/services/xecHistoricalHoldingPolicy.js
+          node --check backend/tests/githubXecNativeProtection.test.js
           node --check backend/services/paperToRealEntryGate.js
+      - name: XEC native protection tests
+        run: node backend/tests/githubXecNativeProtection.test.js
       - name: Active Spot universe smoke check
         shell: bash
         run: |
@@ -98,6 +109,12 @@ jobs:
           ! grep -q "MAX_OPEN_POSITIONS" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "Managed Spot position limit reached" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "XEC historical holding is exit-only; new XEC entries are disabled" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "github-xec-historical-protection.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "fast_arm_recovery_pct" backend/services/xecHistoricalHoldingPolicy.js
+          grep -q "FAST_RECOVERY" backend/services/xecHistoricalHoldingPolicy.js
+          grep -q "enableWithdrawals !== false" backend/scripts/github-xec-historical-protection.js
+          grep -q "RECOVERY_RUNNER_PROGRESSIVE_EXIT" backend/scripts/github-xec-historical-protection.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
           node - <<'NODE'
@@ -106,4 +123,4 @@ jobs:
           if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
           console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
           NODE
-          echo 'V4.2/QUBO remains sole execution authority. Independent V8 HUNTER is shadow-only with zero production influence. Spot safety, per-order sizing, Windows compatibility, protective IDs and uncapped managed-position capacity are preserved.'
+          echo 'V4.2/QUBO remains sole execution authority. Independent V8 HUNTER is shadow-only with zero production influence. Spot safety, per-order sizing, Windows compatibility, protective IDs, uncapped managed-position capacity and GitHub-native historical XEC protection are preserved.'
