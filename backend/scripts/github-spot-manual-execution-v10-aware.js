@@ -36,6 +36,12 @@ patch(
 );
 
 patch(
+  "if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');",
+  "if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');\n  if (SYMBOL === 'XECUSDT') decline('XEC historical holding is exit-only; new XEC entries are disabled');",
+  'XEC exit-only entry block'
+);
+
+patch(
   "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT')\n  ]);",
   "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars, openOrders] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT'),\n    signed(base, 'GET', '/api/v3/openOrders').catch((error) => { console.warn(`ENTRY_GATE_OPEN_ORDERS_UNAVAILABLE ${error.message || error}`); return []; })\n  ]);",
   'managed position inventory'
