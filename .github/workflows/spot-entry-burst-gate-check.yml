@@ -1,0 +1,57 @@
+name: Spot Entry Burst Gate Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/services/spotEntryBurstGate.js'
+      - 'backend/tests/spotEntryBurstGate.test.js'
+      - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - '.github/workflows/spot-entry-burst-gate-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/services/spotEntryBurstGate.js'
+      - 'backend/tests/spotEntryBurstGate.test.js'
+      - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - '.github/workflows/spot-entry-burst-gate-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax checks
+        run: |
+          node --check backend/services/spotEntryBurstGate.js
+          node --check backend/tests/spotEntryBurstGate.test.js
+          node --check backend/scripts/github-spot-manual-execution-v10-aware.js
+
+      - name: Behavioral gate tests
+        run: node backend/tests/spotEntryBurstGate.test.js
+
+      - name: Guard production invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "evaluateSpotEntryBurstGate" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "v42QualityFromBars" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "returnCorrelationFromBars" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "/api/v3/openOrders" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "SAME_SYMBOL_OPEN" backend/services/spotEntryBurstGate.js
+          grep -q "ENTRY_COOLDOWN" backend/services/spotEntryBurstGate.js
+          grep -q "BURST_QUALITY" backend/services/spotEntryBurstGate.js
+          grep -q "EXTENDED_ENTRY" backend/services/spotEntryBurstGate.js
+          grep -q "CORRELATED_ENTRY" backend/services/spotEntryBurstGate.js
+          ! grep -q "MAX_OPEN_POSITIONS" backend/scripts/github-spot-manual-execution-v10-aware.js
+          ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "V10_HUNTER keeps the stop" backend/scripts/github-spot-manual-execution-v10-aware.js
+          echo 'Selective anti-overentry gate verified without restoring hard position/capital caps or changing V8 shadow authority.'
