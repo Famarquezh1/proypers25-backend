@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'xec_historical_holding_policy_v1';
+const VERSION = 'xec_historical_holding_policy_v2';
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -17,9 +17,11 @@ function pctChange(current, reference) {
 }
 
 function normalizeXecPolicy(config = {}) {
+  const upsideArmRecoveryPct = Math.max(8, n(config.xec_upside_arm_recovery_pct, 12));
   return {
     enabled: config.xec_managed_exit_enabled !== false,
-    upside_arm_recovery_pct: Math.max(8, n(config.xec_upside_arm_recovery_pct, 12)),
+    upside_arm_recovery_pct: upsideArmRecoveryPct,
+    fast_arm_recovery_pct: Math.max(upsideArmRecoveryPct, n(config.xec_fast_arm_recovery_pct, 15)),
     first_take_min_recovery_pct: Math.max(10, n(config.xec_first_take_min_recovery_pct, 15)),
     second_take_min_recovery_pct: Math.max(20, n(config.xec_second_take_min_recovery_pct, 30)),
     final_take_min_recovery_pct: Math.max(30, n(config.xec_final_take_min_recovery_pct, 50)),
@@ -52,11 +54,15 @@ function evaluateXecHistoricalHolding({ state = {}, currentPrice, averageCost, o
   const improvementPct = currentDrawdownPct !== null && baselineDrawdownPct !== null
     ? currentDrawdownPct - baselineDrawdownPct
     : recoveryPct;
+  const recoveryStrengthPct = Math.max(recoveryPct, improvementPct);
 
   const positiveNow = price > lastPrice && n(oneHourChangePct) >= policy.minimum_1h_change_pct && n(change24hPct) >= policy.minimum_24h_change_pct;
   const positiveCycles = positiveNow ? Math.max(0, Math.floor(n(state.positive_cycles, 0))) + 1 : 0;
   const armedBefore = state.xec_runner_armed === true;
-  const shouldArm = policy.enabled && !armedBefore && Math.max(recoveryPct, improvementPct) >= policy.upside_arm_recovery_pct && positiveCycles >= policy.minimum_positive_cycles;
+  const confirmedRecoveryArm = policy.enabled && !armedBefore && recoveryStrengthPct >= policy.upside_arm_recovery_pct && positiveCycles >= policy.minimum_positive_cycles;
+  const fastRecoveryArm = policy.enabled && !armedBefore && recoveryStrengthPct >= policy.fast_arm_recovery_pct;
+  const shouldArm = confirmedRecoveryArm || fastRecoveryArm;
+  const armMode = fastRecoveryArm ? 'FAST_RECOVERY' : confirmedRecoveryArm ? 'CONFIRMED_RECOVERY' : null;
   const armed = armedBefore || shouldArm;
   const previousHigh = n(state.highest_price_after_arm, price);
   const highestPrice = armed ? Math.max(previousHigh, price) : null;
@@ -112,6 +118,7 @@ function evaluateXecHistoricalHolding({ state = {}, currentPrice, averageCost, o
     next_stage: nextStage,
     mark_downside_trim_done: markDownsideTrimDone,
     arm_now: shouldArm,
+    arm_mode: armMode,
     armed,
     positive_now: positiveNow,
     positive_cycles: positiveCycles,
@@ -122,6 +129,7 @@ function evaluateXecHistoricalHolding({ state = {}, currentPrice, averageCost, o
     current_drawdown_pct: currentDrawdownPct,
     recovery_pct: recoveryPct,
     improvement_pct: improvementPct,
+    recovery_strength_pct: recoveryStrengthPct,
     highest_price_after_arm: highestPrice,
     high_recovery_pct: highRecoveryPct,
     pullback_from_recovery_high_pct: pullbackPct,
