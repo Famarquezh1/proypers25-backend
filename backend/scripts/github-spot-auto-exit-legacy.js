@@ -11,7 +11,9 @@ const HARD_STOP_PCT = 0.05;
 const BREAK_EVEN_TRIGGER_PCT = 0.05;
 const BREAK_EVEN_LOCK_PCT = 0.002;
 const TRAILING_TRIGGER_PCT = 0.08;
-const TRAILING_DISTANCE_PCT = 0.03;
+// CORE runner trail: V6.1 executes first and tightens fading momentum; while
+// healthy, keep wider room so exceptional winners are not cut by normal noise.
+const TRAILING_DISTANCE_PCT = 0.06;
 const STALE_TIMEOUT_HOURS = 18;
 const STALE_TIMEOUT_MAX_GAIN_PCT = 0.005;
 const MAX_MANAGED_AGE_DAYS = 7;
