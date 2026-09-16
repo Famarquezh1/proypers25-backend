@@ -2,6 +2,7 @@
 
 const DEFAULT_SELECTION_GUARD = Object.freeze({
   minQuoteVolumeUsdt: 750000,
+  minRecent15mReturn: -0.025,
   twoWindowMinQuoteVolumeUsdt: 2000000,
   twoWindowMinV42Norm: 0.74,
   twoWindowMinConfirm: 0.50,
@@ -20,10 +21,14 @@ function evaluateProductionCandidate(candidate, config = {}) {
   const v42Norm = finite(candidate?.v42_norm);
   const confirm = finite(candidate?.v42_detail?.confirm, -Infinity);
   const extension = finite(candidate?.v42_detail?.extension, -Infinity);
+  const r15 = finite(candidate?.v42_detail?.r15, -Infinity);
   const reasons = [];
 
   if (qv < cfg.minQuoteVolumeUsdt) reasons.push('THIN_LIQUIDITY');
   if (passWindows < 2) reasons.push('V42_ROBUSTNESS');
+  // Do not commit capital into a candidate whose short-term move has already
+  // reversed sharply. Discovery stays broad; this is only a production gate.
+  if (r15 < cfg.minRecent15mReturn) reasons.push('RECENT_REVERSAL');
 
   // A 2/3 candidate can still be an early winner, but it must compensate for
   // the missing trained window with materially better liquidity and continuation.
@@ -42,7 +47,8 @@ function evaluateProductionCandidate(candidate, config = {}) {
       pass_windows: passWindows,
       v42_norm: v42Norm,
       confirm,
-      extension
+      extension,
+      r15
     }
   };
 }
