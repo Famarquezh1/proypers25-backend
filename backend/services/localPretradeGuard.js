@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { evaluateManipulationRisk } = require('./marketManipulationRisk');
 
 const DEFAULTS = Object.freeze({
   samples: 5,
@@ -119,30 +120,57 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
 
     const cfg = { ...DEFAULTS, ...config };
     const rows = [];
+    const depthSnapshots = [];
     for (let i = 0; i < cfg.samples; i += 1) {
-      const book = await fetchJson(`${base}/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(symbol)}`);
+      const [book, depth] = await Promise.all([
+        fetchJson(`${base}/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(symbol)}`),
+        fetchJson(`${base}/api/v3/depth?symbol=${encodeURIComponent(symbol)}&limit=20`)
+      ]);
       const bid = Number(book.bidPrice || 0);
       const ask = Number(book.askPrice || 0);
       const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
       const spreadPct = mid > 0 ? (ask - bid) / mid : Infinity;
-      rows.push({ at: Date.now(), bid, ask, mid, spreadPct });
+      const at = Date.now();
+      rows.push({ at, bid, ask, mid, spreadPct });
+      depthSnapshots.push({ at, bids: depth.bids || [], asks: depth.asks || [] });
       if (i + 1 < cfg.samples) await new Promise((resolve) => setTimeout(resolve, cfg.sampleIntervalMs));
     }
 
-    const decision = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, cfg);
+    const [recentTrades, recentKlines] = await Promise.all([
+      fetchJson(`${base}/api/v3/aggTrades?symbol=${encodeURIComponent(symbol)}&limit=120`),
+      fetchJson(`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&limit=10`)
+    ]);
+
+    const micro = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, cfg);
+    const integrity = evaluateManipulationRisk({ depthSnapshots, recentTrades, recentKlines });
+    const allow = micro.allow && !integrity.block;
+    const code = !micro.allow ? micro.code : integrity.block ? integrity.code : micro.code;
+    const reason = !micro.allow
+      ? micro.reason
+      : integrity.block
+        ? `${integrity.code}:${integrity.reason}`
+        : `${micro.reason}; manipulation_risk=${integrity.score.toFixed(3)}(${integrity.band})`;
+    const metrics = {
+      ...micro.metrics,
+      manipulationRisk: integrity.score,
+      manipulationBand: integrity.band,
+      manipulationReason: integrity.reason,
+      manipulationMetrics: integrity.metrics
+    };
+
     persist({
       ts: new Date().toISOString(),
       symbol,
       lane,
       signalPrice: finite(signalPrice),
       currentPrice: finite(currentPrice),
-      allow: decision.allow,
-      code: decision.code,
-      reason: decision.reason,
-      metrics: decision.metrics,
+      allow,
+      code,
+      reason,
+      metrics,
       elapsedMs: Date.now() - startedAt
     });
-    return decision;
+    return { allow, code, reason, metrics };
   } catch (error) {
     const reason = `MICROVALIDATION_UNAVAILABLE:${error.message || error}`;
     const decision = { allow: false, code: 'MICROVALIDATION_UNAVAILABLE', reason, metrics: { elapsedMs: Date.now() - startedAt } };
