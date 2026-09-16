@@ -13,6 +13,7 @@ const {
   returnCorrelationFromBars,
   evaluateSpotEntryBurstGate
 } = require('../services/spotEntryBurstGate');
+const { runLocalPretradeGuard } = require('../services/localPretradeGuard');
 
 const sourcePath = path.join(__dirname, 'github-spot-manual-execution.js');
 let source = fs.readFileSync(sourcePath, 'utf8');
@@ -73,8 +74,8 @@ patch(
 
 patch(
   "console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
-  "console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
-  'audit lane and gate'
+  "const localGuard = await runLocalPretradeGuard({ base, symbol: SYMBOL, signalPrice: SIGNAL_PRICE, currentPrice, lane: SIGNAL_LANE });\n  if (!localGuard.allow) decline(`Local microvalidation blocked: ${localGuard.reason}`);\n  console.log(`LOCAL_PRETRADE_OK symbol=${SYMBOL} lane=${SIGNAL_LANE} code=${localGuard.code} samples=${localGuard.metrics.samples} end_return=${Number(localGuard.metrics.endReturnPct || 0).toFixed(6)} peak_to_end=${Number(localGuard.metrics.peakToEndPct || 0).toFixed(6)} spread=${Number(localGuard.metrics.lastSpreadPct || 0).toFixed(6)} latency_ms=${Number(localGuard.metrics.latencyMs || 0).toFixed(0)}`);\n  console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
+  'local microvalidation and audit'
 );
 
 eval(source);
