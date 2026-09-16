@@ -13,8 +13,10 @@ on:
       - 'backend/scripts/github-spot-orphan-protect.js'
       - 'backend/services/spotOrphanProtection.js'
       - 'backend/services/localPretradeGuard.js'
+      - 'backend/services/marketManipulationRisk.js'
       - 'backend/tests/spotOrphanProtection.test.js'
       - 'backend/tests/localPretradeGuard.test.js'
+      - 'backend/tests/marketManipulationRisk.test.js'
       - '.github/workflows/spot-v61-production-check.yml'
 
 permissions:
@@ -41,10 +43,13 @@ jobs:
           node --check backend/scripts/github-spot-orphan-protect.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
+          node --check backend/services/marketManipulationRisk.js
       - name: Orphan balance policy tests
         run: node backend/tests/spotOrphanProtection.test.js
       - name: Local pretrade guard tests
         run: node backend/tests/localPretradeGuard.test.js
+      - name: Defensive manipulation risk tests
+        run: node backend/tests/marketManipulationRisk.test.js
       - name: Confirm production wiring
         run: |
           set -euo pipefail
@@ -57,7 +62,10 @@ jobs:
           grep -q "ORPHAN_PROTECT_OK" backend/scripts/github-spot-orphan-protect.js
           grep -q "V61_SCORE_ANCHOR" backend/scripts/github-spot-manual-execution.js
           grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "manipulation_risk=" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "local-pretrade-memory.jsonl" backend/services/localPretradeGuard.js
+          grep -q "evaluateManipulationRisk" backend/services/localPretradeGuard.js
+          grep -q "MANIPULATION_RISK_HIGH" backend/services/marketManipulationRisk.js
           node - <<'NODE'
           const ids = [
             `proypers-gh-protect-v61-${Date.now().toString(36)}`,
@@ -69,4 +77,4 @@ jobs:
           }
           console.log(`protective clientOrderIds OK lengths=${ids.map((id) => id.length).join(',')}`);
           NODE
-          echo "V6.1 production integration, local microvalidation, V10-aware wiring, and orphan protection OK"
+          echo "V6.1 production integration, local microvalidation, manipulation-risk defense, V10-aware wiring, and orphan protection OK"
