@@ -6,6 +6,11 @@ const {
   historyCoversBalance,
   decideProfitProtection
 } = require('../services/spotOrphanProtection');
+const {
+  DEFAULT_SELECTION_GUARD,
+  evaluateProductionCandidate,
+  summarizeSelectionRejections
+} = require('../services/spotProductionSelection');
 
 const trades = [
   { id: 1, time: 1, isBuyer: true, qty: '100', quoteQty: '10', price: '0.1', commission: '0', commissionAsset: 'BNB' },
@@ -36,5 +41,51 @@ assert.strictEqual(breakEven.stopPrice, 100.2);
 
 const unarmed = decideProfitProtection({ entryPrice: 100, currentPrice: 102, recentHigh: 104, tickSize: 0.01 });
 assert.strictEqual(unarmed.action, 'HOLD_UNARMED');
+
+assert.strictEqual(DEFAULT_SELECTION_GUARD.minQuoteVolumeUsdt, 750000);
+
+const thinButStrong = evaluateProductionCandidate({
+  qv: 253699,
+  v42_pass_windows: 3,
+  v42_norm: 1,
+  v42_detail: { confirm: 1.84, extension: 0.18 }
+});
+assert.strictEqual(thinButStrong.ok, false);
+assert(thinButStrong.reasons.includes('THIN_LIQUIDITY'));
+
+const weakTwoWindow = evaluateProductionCandidate({
+  qv: 1646345,
+  v42_pass_windows: 2,
+  v42_norm: 0.702603,
+  v42_detail: { confirm: 0.543708, extension: 0.079973 }
+});
+assert.strictEqual(weakTwoWindow.ok, false);
+assert(weakTwoWindow.reasons.includes('TWO_WINDOW_LIQUIDITY'));
+assert(weakTwoWindow.reasons.includes('TWO_WINDOW_SCORE'));
+
+const strongTwoWindow = evaluateProductionCandidate({
+  qv: 4500000,
+  v42_pass_windows: 2,
+  v42_norm: 0.82,
+  v42_detail: { confirm: 0.68, extension: 0.09 }
+});
+assert.strictEqual(strongTwoWindow.ok, true);
+
+const strongThreeWindow = evaluateProductionCandidate({
+  qv: 2300000,
+  v42_pass_windows: 3,
+  v42_norm: 0.96,
+  v42_detail: { confirm: 1.1, extension: 0.14 }
+});
+assert.strictEqual(strongThreeWindow.ok, true);
+
+const rejectionCounts = summarizeSelectionRejections([
+  { selection_gate: thinButStrong },
+  { selection_gate: weakTwoWindow },
+  { selection_gate: strongTwoWindow }
+]);
+assert.strictEqual(rejectionCounts.THIN_LIQUIDITY, 1);
+assert.strictEqual(rejectionCounts.TWO_WINDOW_LIQUIDITY, 1);
+assert.strictEqual(rejectionCounts.TWO_WINDOW_SCORE, 1);
 
 console.log('spotOrphanProtection tests OK');
