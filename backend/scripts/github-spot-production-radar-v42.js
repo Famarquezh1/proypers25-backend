@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  DEFAULT_SELECTION_GUARD,
+  evaluateProductionCandidate,
+  summarizeSelectionRejections
+} = require('../services/spotProductionSelection');
+
 const MIN_PCT = 1;
 const MAX_PCT = 18;
 const MIN_QUOTE_VOLUME = 200000;
@@ -340,13 +346,51 @@ async function main() {
     return;
   }
 
-  robust.sort((a, b) => utility(b) - utility(a));
-  const quboPool = robust.slice(0, MAX_QUBO_CANDIDATES);
+  const evaluated = robust.map((candidate) => ({
+    ...candidate,
+    selection_gate: evaluateProductionCandidate(candidate)
+  }));
+  const productionCandidates = evaluated.filter((candidate) => candidate.selection_gate.ok);
+  const rejected = evaluated.filter((candidate) => !candidate.selection_gate.ok);
+  const selectionRejections = summarizeSelectionRejections(rejected);
+
+  if (!productionCandidates.length) {
+    console.log(JSON.stringify({
+      ok: true,
+      notify: false,
+      source: market.source,
+      mode: 'PRODUCTION_V42',
+      reason: 'no V4.2 candidate passed production quality gate',
+      probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
+      probed: candidates.length,
+      robust_candidates: robust.length,
+      production_candidates: 0,
+      selection_rejections: selectionRejections,
+      selection_guard: DEFAULT_SELECTION_GUARD,
+      v42_hierarchy: V42_HIERARCHY,
+      v42_min_pass_windows: V42_MIN_PASS_WINDOWS
+    }));
+    return;
+  }
+
+  productionCandidates.sort((a, b) => utility(b) - utility(a));
+  const quboPool = productionCandidates.slice(0, MAX_QUBO_CANDIDATES);
   const decision = exactQubo(quboPool);
   const selected = [...decision.selected].sort((a, b) => utility(b) - utility(a));
   const candidate = selected[0];
   if (!candidate) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'QUBO selected none', probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
+    console.log(JSON.stringify({
+      ok: true,
+      notify: false,
+      source: market.source,
+      mode: 'PRODUCTION_V42',
+      reason: 'QUBO selected none',
+      probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
+      robust_candidates: robust.length,
+      production_candidates: productionCandidates.length,
+      selection_rejections: selectionRejections,
+      selection_guard: DEFAULT_SELECTION_GUARD
+    }));
     return;
   }
 
@@ -358,6 +402,10 @@ async function main() {
     probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
     probed: candidates.length,
     robust_candidates: robust.length,
+    production_candidates: productionCandidates.length,
+    selection_rejections: selectionRejections,
+    selection_guard: DEFAULT_SELECTION_GUARD,
+    selection_gate: candidate.selection_gate,
     qubo_method: decision.method,
     qubo_objective: decision.objective,
     qubo_selected_symbols: selected.map((item) => item.symbol),
