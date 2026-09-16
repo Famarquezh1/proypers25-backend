@@ -22,4 +22,5 @@ function run(script, label) {
 run('github-xec-historical-protection.js', 'XEC_HISTORICAL_PROTECT');
 run('github-spot-v61-protect.js', 'V61_PROTECT');
 run('github-spot-auto-exit-legacy-v10-aware.js', 'LEGACY_AUTO_EXIT');
-console.log('AUTO_EXIT_V61_OK xec_historical_protect=true protect_policy=V6.1 legacy_exit_preserved=true v10_hunter_exit_aligned=true');
+run('github-spot-orphan-protect.js', 'ORPHAN_BALANCE_PROTECT');
+console.log('AUTO_EXIT_V61_OK xec_historical_protect=true protect_policy=V6.1 legacy_exit_preserved=true v10_hunter_exit_aligned=true orphan_balance_protect=true');
