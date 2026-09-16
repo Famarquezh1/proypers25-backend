@@ -5,13 +5,16 @@ on:
   push:
     paths:
       - 'backend/scripts/github-spot-manual-execution.js'
+      - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
       - 'backend/scripts/github-spot-v61-protect.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-orphan-protect.js'
       - 'backend/services/spotOrphanProtection.js'
+      - 'backend/services/localPretradeGuard.js'
       - 'backend/tests/spotOrphanProtection.test.js'
+      - 'backend/tests/localPretradeGuard.test.js'
       - '.github/workflows/spot-v61-production-check.yml'
 
 permissions:
@@ -30,14 +33,18 @@ jobs:
       - name: Syntax check
         run: |
           node --check backend/scripts/github-spot-manual-execution.js
+          node --check backend/scripts/github-spot-manual-execution-v10-aware.js
           node --check backend/scripts/github-spot-v61-protect.js
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-orphan-protect.js
           node --check backend/services/spotOrphanProtection.js
+          node --check backend/services/localPretradeGuard.js
       - name: Orphan balance policy tests
         run: node backend/tests/spotOrphanProtection.test.js
+      - name: Local pretrade guard tests
+        run: node backend/tests/localPretradeGuard.test.js
       - name: Confirm production wiring
         run: |
           set -euo pipefail
@@ -49,6 +56,8 @@ jobs:
           grep -Fq "'XEC'" backend/scripts/github-spot-orphan-protect.js
           grep -q "ORPHAN_PROTECT_OK" backend/scripts/github-spot-orphan-protect.js
           grep -q "V61_SCORE_ANCHOR" backend/scripts/github-spot-manual-execution.js
+          grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "local-pretrade-memory.jsonl" backend/services/localPretradeGuard.js
           node - <<'NODE'
           const ids = [
             `proypers-gh-protect-v61-${Date.now().toString(36)}`,
@@ -60,4 +69,4 @@ jobs:
           }
           console.log(`protective clientOrderIds OK lengths=${ids.map((id) => id.length).join(',')}`);
           NODE
-          echo "V6.1 production integration, V10-aware wiring, and orphan protection OK"
+          echo "V6.1 production integration, local microvalidation, V10-aware wiring, and orphan protection OK"
