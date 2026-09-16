@@ -43,12 +43,13 @@ const unarmed = decideProfitProtection({ entryPrice: 100, currentPrice: 102, rec
 assert.strictEqual(unarmed.action, 'HOLD_UNARMED');
 
 assert.strictEqual(DEFAULT_SELECTION_GUARD.minQuoteVolumeUsdt, 750000);
+assert.strictEqual(DEFAULT_SELECTION_GUARD.minRecent15mReturn, -0.025);
 
 const thinButStrong = evaluateProductionCandidate({
   qv: 253699,
   v42_pass_windows: 3,
   v42_norm: 1,
-  v42_detail: { confirm: 1.84, extension: 0.18 }
+  v42_detail: { confirm: 1.84, extension: 0.18, r15: 0.02 }
 });
 assert.strictEqual(thinButStrong.ok, false);
 assert(thinButStrong.reasons.includes('THIN_LIQUIDITY'));
@@ -57,17 +58,26 @@ const weakTwoWindow = evaluateProductionCandidate({
   qv: 1646345,
   v42_pass_windows: 2,
   v42_norm: 0.702603,
-  v42_detail: { confirm: 0.543708, extension: 0.079973 }
+  v42_detail: { confirm: 0.543708, extension: 0.079973, r15: 0.01 }
 });
 assert.strictEqual(weakTwoWindow.ok, false);
 assert(weakTwoWindow.reasons.includes('TWO_WINDOW_LIQUIDITY'));
 assert(weakTwoWindow.reasons.includes('TWO_WINDOW_SCORE'));
 
+const sharpReversal = evaluateProductionCandidate({
+  qv: 5212750,
+  v42_pass_windows: 3,
+  v42_norm: 0.952515,
+  v42_detail: { confirm: 0.663818, extension: 0.055683, r15: -0.079365 }
+});
+assert.strictEqual(sharpReversal.ok, false);
+assert(sharpReversal.reasons.includes('RECENT_REVERSAL'));
+
 const strongTwoWindow = evaluateProductionCandidate({
   qv: 4500000,
   v42_pass_windows: 2,
   v42_norm: 0.82,
-  v42_detail: { confirm: 0.68, extension: 0.09 }
+  v42_detail: { confirm: 0.68, extension: 0.09, r15: 0.012 }
 });
 assert.strictEqual(strongTwoWindow.ok, true);
 
@@ -75,17 +85,19 @@ const strongThreeWindow = evaluateProductionCandidate({
   qv: 2300000,
   v42_pass_windows: 3,
   v42_norm: 0.96,
-  v42_detail: { confirm: 1.1, extension: 0.14 }
+  v42_detail: { confirm: 1.1, extension: 0.14, r15: -0.005 }
 });
 assert.strictEqual(strongThreeWindow.ok, true);
 
 const rejectionCounts = summarizeSelectionRejections([
   { selection_gate: thinButStrong },
   { selection_gate: weakTwoWindow },
+  { selection_gate: sharpReversal },
   { selection_gate: strongTwoWindow }
 ]);
 assert.strictEqual(rejectionCounts.THIN_LIQUIDITY, 1);
 assert.strictEqual(rejectionCounts.TWO_WINDOW_LIQUIDITY, 1);
 assert.strictEqual(rejectionCounts.TWO_WINDOW_SCORE, 1);
+assert.strictEqual(rejectionCounts.RECENT_REVERSAL, 1);
 
 console.log('spotOrphanProtection tests OK');
