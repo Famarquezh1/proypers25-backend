@@ -10,6 +10,7 @@ const {
 } = require('./binanceSpotRealExecutor');
 const { validateSpotEntryMarketSafety } = require('./spotEntryMarketSafety');
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
+const { buildSpotAssetRiskPolicy } = require('./spotAssetClassification');
 const {
   managedAcquisitionCapacity,
   ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT,
@@ -120,21 +121,41 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     operationalCapitalUsdt,
     adaptive: true
   });
-  const acquisitionUsdt = Number(capacity.next_acquisition_usdt || capacity.max_per_acquisition_usdt || 0);
+  const requestedAcquisitionUsdt = Number(capacity.next_acquisition_usdt || capacity.max_per_acquisition_usdt || 0);
+  const assetRiskPolicy = buildSpotAssetRiskPolicy({
+    symbol: normalizedCandidate.symbol,
+    requestedEntryUsdt: requestedAcquisitionUsdt,
+    candidate: normalizedCandidate
+  });
+  if (assetRiskPolicy.entry_allowed !== true) {
+    const reason = assetRiskPolicy.blocker || 'ASSET_RISK_POLICY_BLOCKED';
+    return {
+      ok: true,
+      skipped: true,
+      reason,
+      asset_risk_policy: assetRiskPolicy,
+      managed_spot_capacity: capacity,
+      entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: [reason] })
+    };
+  }
+  const acquisitionUsdt = Number(assetRiskPolicy.capped_entry_usdt || 0);
+  const minimumAcquisitionUsdt = assetRiskPolicy.classification.is_leveraged
+    ? Math.min(MIN_ADAPTIVE_ACQUISITION_USDT, Number(assetRiskPolicy.classification.max_entry_usdt || MIN_ADAPTIVE_ACQUISITION_USDT))
+    : MIN_ADAPTIVE_ACQUISITION_USDT;
 
-  if (!(acquisitionUsdt >= MIN_ADAPTIVE_ACQUISITION_USDT && acquisitionUsdt <= ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT)) {
-    return { ok: true, skipped: true, reason: 'MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID'] }) };
+  if (!(acquisitionUsdt >= minimumAcquisitionUsdt && acquisitionUsdt <= ADAPTIVE_HARD_MAX_PER_ACQUISITION_USDT)) {
+    return { ok: true, skipped: true, reason: 'MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID', asset_risk_policy: assetRiskPolicy, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_ACQUISITION_AMOUNT_INVALID'] }) };
   }
   if (managedAcquisitions.size >= capacity.max_managed_spot_assets) {
-    return { ok: true, skipped: true, reason: 'MAX_MANAGED_SPOT_ASSETS_REACHED', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MAX_MANAGED_SPOT_ASSETS_REACHED'] }) };
+    return { ok: true, skipped: true, reason: 'MAX_MANAGED_SPOT_ASSETS_REACHED', asset_risk_policy: assetRiskPolicy, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MAX_MANAGED_SPOT_ASSETS_REACHED'] }) };
   }
   if (snapshotContainsManagedSymbol(managedAcquisitions, normalizedCandidate.symbol)) {
-    return { ok: true, skipped: true, reason: 'ASSET_ALREADY_UNDER_SPOT_MANAGEMENT', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ASSET_ALREADY_UNDER_SPOT_MANAGEMENT'] }) };
+    return { ok: true, skipped: true, reason: 'ASSET_ALREADY_UNDER_SPOT_MANAGEMENT', asset_risk_policy: assetRiskPolicy, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ASSET_ALREADY_UNDER_SPOT_MANAGEMENT'] }) };
   }
   if (Number(exposure.total || 0) + acquisitionUsdt > capacity.max_total_managed_capital_usdt + 1e-8) {
-    return { ok: true, skipped: true, reason: 'MANAGED_SPOT_CAPITAL_LIMIT_REACHED', managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_CAPITAL_LIMIT_REACHED'] }) };
+    return { ok: true, skipped: true, reason: 'MANAGED_SPOT_CAPITAL_LIMIT_REACHED', asset_risk_policy: assetRiskPolicy, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['MANAGED_SPOT_CAPITAL_LIMIT_REACHED'] }) };
   }
-  if (Number(preflight.usdt_balance_free || 0) < acquisitionUsdt) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
+  if (Number(preflight.usdt_balance_free || 0) < acquisitionUsdt) return { ok: true, skipped: true, reason: 'INSUFFICIENT_BINANCE_USDT_BALANCE', preflight, asset_risk_policy: assetRiskPolicy, managed_spot_capacity: capacity, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['INSUFFICIENT_BINANCE_USDT_BALANCE'] }) };
 
   const marketSafety = await validateSpotEntryMarketSafety(normalizedCandidate.symbol, acquisitionUsdt, options.market_safety_dependencies || {});
   if (marketSafety.allowed !== true) {
@@ -145,30 +166,43 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
       reason,
       preflight,
       market_safety: marketSafety,
+      asset_risk_policy: assetRiskPolicy,
       managed_spot_capacity: capacity,
       entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: [reason] })
     };
   }
 
   const intent = await createRealExecutionIntent(db, normalizedCandidate, acquisitionUsdt, config);
-  if (!intent?.id) return { ok: false, skipped: true, reason: 'ENTRY_INTENT_RESERVATION_FAILED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_INTENT_RESERVATION_FAILED'] }) };
-  if (intent.created === false && intent.status === 'REAL_FILLED') return { ok: true, skipped: true, reason: 'ENTRY_ALREADY_FILLED', entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_ALREADY_FILLED'] }) };
+  if (!intent?.id) return { ok: false, skipped: true, reason: 'ENTRY_INTENT_RESERVATION_FAILED', asset_risk_policy: assetRiskPolicy, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_INTENT_RESERVATION_FAILED'] }) };
+  if (intent.created === false && intent.status === 'REAL_FILLED') return { ok: true, skipped: true, reason: 'ENTRY_ALREADY_FILLED', asset_risk_policy: assetRiskPolicy, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_ALREADY_FILLED'] }) };
 
   const order = await placeSpotMarketBuy(normalizedCandidate.symbol, acquisitionUsdt, config, preflight, intent.clientOrderId);
   if (!(order.ok === true && (order.order_created === true || order.recovered_existing_order === true))) {
     const reason = order.reason || 'BINANCE_ORDER_NOT_CREATED';
     await db.collection('real_spot_execution_intents').doc(intent.id).set({ status: 'REAL_REJECTED', rejection_reason: reason, updated_at: new Date().toISOString() }, { merge: true });
-    return { ok: order.blocked !== false, skipped: true, reason, order, market_safety: marketSafety, entry_diagnostic: diagnostic(normalizedCandidate, { order_creation_path_reached: true, rejected_reasons: [reason] }) };
+    return { ok: order.blocked !== false, skipped: true, reason, order, market_safety: marketSafety, asset_risk_policy: assetRiskPolicy, entry_diagnostic: diagnostic(normalizedCandidate, { order_creation_path_reached: true, rejected_reasons: [reason] }) };
   }
 
-  const strategyMetadata = resolveStrategyMetadata(normalizedCandidate, options);
+  const baseStrategyMetadata = resolveStrategyMetadata(normalizedCandidate, options);
+  const strategyMetadata = assetRiskPolicy.classification.is_leveraged ? {
+    ...baseStrategyMetadata,
+    risk_profile: 'LEVERAGED_TOKENIZED_SECURITY',
+    runner_mode: false,
+    minimum_hold_policy: 'NONE',
+    timeout_hours: Math.min(Number(config.timeout_hours || 24), Number(assetRiskPolicy.classification.max_timeout_hours || 6)),
+    asset_classification: assetRiskPolicy.classification
+  } : {
+    ...baseStrategyMetadata,
+    asset_classification: assetRiskPolicy.classification
+  };
+  const openedAt = new Date().toISOString();
   const entry = await recordConfirmedSpotEntry(db, {
     intentId: intent.id,
     candidate: {
       ...normalizedCandidate,
       safety_version: 'real_spot_controlled_v1',
       execution_decision_snapshot: {
-        executed_at: new Date().toISOString(),
+        executed_at: openedAt,
         source_module: 'approvedSpotRealExecutor',
         validation_reason: normalizedCandidate.entry_mode === 'TACTICAL_MOMENTUM'
           ? 'Tactical momentum and technical confirmation approved this exact candidate'
@@ -177,17 +211,32 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
         paper_gate: options.paper_gate || null,
         entry_mode: normalizedCandidate.entry_mode || null,
         managed_spot_capacity_before_entry: capacity,
+        requested_acquisition_usdt: requestedAcquisitionUsdt,
         acquisition_usdt: acquisitionUsdt,
         operational_capital_usdt: operationalCapitalUsdt,
         sizing_mode: capacity.sizing_mode,
-        market_safety: marketSafety
+        market_safety: marketSafety,
+        asset_risk_policy: assetRiskPolicy
       }
     },
     config,
     order,
     strategyMetadata,
-    openedAt: new Date().toISOString()
+    openedAt
   });
+
+  if (!entry.idempotent && assetRiskPolicy.classification.is_leveraged) {
+    const timeoutHours = Math.min(Number(config.timeout_hours || 24), Number(assetRiskPolicy.classification.max_timeout_hours || 6));
+    const effectiveTimeoutAt = new Date(new Date(openedAt).getTime() + timeoutHours * 60 * 60 * 1000).toISOString();
+    await db.collection(POSITIONS).doc(entry.positionId).set({
+      asset_classification: assetRiskPolicy.classification,
+      risk_profile: 'LEVERAGED_TOKENIZED_SECURITY',
+      leveraged_entry_cap_usdt: assetRiskPolicy.classification.max_entry_usdt,
+      leveraged_min_opportunity_score: assetRiskPolicy.classification.minimum_opportunity_score,
+      effective_timeout_at: effectiveTimeoutAt,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+  }
 
   if (!entry.idempotent) {
     await db.doc('real_spot_config/control').set({
@@ -199,6 +248,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
       operational_capital_usdt: operationalCapitalUsdt,
       last_entry_symbol: normalizedCandidate.symbol,
       last_entry_mode: normalizedCandidate.entry_mode || null,
+      last_entry_asset_class: assetRiskPolicy.classification.asset_class,
       last_entry_amount_usdt: acquisitionUsdt,
       last_entry_at: new Date().toISOString()
     }, { merge: true });
@@ -213,9 +263,12 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
     recovered_existing_order: order.recovered_existing_order === true,
     selected_symbol: normalizedCandidate.symbol,
     symbol: normalizedCandidate.symbol,
+    requested_acquisition_usdt: requestedAcquisitionUsdt,
     acquisition_usdt: acquisitionUsdt,
     operational_capital_usdt: operationalCapitalUsdt,
     sizing_mode: capacity.sizing_mode,
+    asset_classification: assetRiskPolicy.classification,
+    asset_risk_policy: assetRiskPolicy,
     entry_mode: normalizedCandidate.entry_mode || null,
     strategy: strategyMetadata.strategy,
     order_id: order.orderId || null,
