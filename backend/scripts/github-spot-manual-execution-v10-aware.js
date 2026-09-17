@@ -14,6 +14,11 @@ const {
   evaluateSpotEntryBurstGate
 } = require('../services/spotEntryBurstGate');
 const { runLocalPretradeGuard } = require('../services/localPretradeGuard');
+const { classifySpotAsset } = require('../services/spotAssetClassification');
+
+const LEVERAGED_GITHUB_MAX_USDT = 5;
+const LEVERAGED_GITHUB_MIN_V61_SCORE = 0.4487136592494857;
+const LEVERAGED_HARD_STOP_PCT = 0.03;
 
 const sourcePath = path.join(__dirname, 'github-spot-manual-execution.js');
 let source = fs.readFileSync(sourcePath, 'utf8');
@@ -55,14 +60,20 @@ patch(
 );
 
 patch(
+  "const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);",
+  "const assetClassification = classifySpotAsset(SYMBOL);\n  if (assetClassification.is_leveraged && (!Number.isFinite(score) || score < LEVERAGED_GITHUB_MIN_V61_SCORE)) decline(`Leveraged tokenized asset requires stronger entry score (${Number.isFinite(score) ? score.toFixed(6) : 'unavailable'} < ${LEVERAGED_GITHUB_MIN_V61_SCORE})`);\n  const usdtFree = freeBalance(account, 'USDT');\n  const uncappedQuoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);\n  const quoteOrderQty = assetClassification.is_leveraged ? Math.min(LEVERAGED_GITHUB_MAX_USDT, uncappedQuoteOrderQty) : uncappedQuoteOrderQty;",
+  'leveraged tokenized asset sizing'
+);
+
+patch(
   "const stopPrice = floorToStep(entryPrice * (1 - HARD_STOP_PCT), priceFilter.tickSize); if (!(stopPrice > 0)) throw new Error(`stop price invalid for ${SYMBOL}`);",
-  "const hardStopPct = SIGNAL_LANE === 'V10_HUNTER' ? V10_HARD_STOP_PCT : HARD_STOP_PCT; const stopPrice = floorToStep(entryPrice * (1 - hardStopPct), priceFilter.tickSize); if (!(stopPrice > 0)) throw new Error(`stop price invalid for ${SYMBOL}`);",
-  'lane stop'
+  "const classifiedForProtection = classifySpotAsset(SYMBOL); const laneHardStopPct = SIGNAL_LANE === 'V10_HUNTER' ? V10_HARD_STOP_PCT : HARD_STOP_PCT; const hardStopPct = classifiedForProtection.is_leveraged ? Math.min(laneHardStopPct, LEVERAGED_HARD_STOP_PCT) : laneHardStopPct; const stopPrice = floorToStep(entryPrice * (1 - hardStopPct), priceFilter.tickSize); if (!(stopPrice > 0)) throw new Error(`stop price invalid for ${SYMBOL}`);",
+  'lane and leveraged stop'
 );
 
 patch(
   "if (existingAssetQty > 0 && existingAssetQty * currentPrice >= MIN_USDT) decline(`${info.baseAsset} already has >= ${MIN_USDT} USDT equivalent balance; duplicate acquisition blocked`);",
-  "if (existingAssetQty > 0 && existingAssetQty * currentPrice >= DUPLICATE_POSITION_USDT) decline(`${info.baseAsset} already has >= ${DUPLICATE_POSITION_USDT} USDT equivalent balance; duplicate acquisition blocked`);",
+  "const duplicateThresholdUsdt = assetClassification.is_leveraged ? LEVERAGED_GITHUB_MAX_USDT : DUPLICATE_POSITION_USDT; if (existingAssetQty > 0 && existingAssetQty * currentPrice >= duplicateThresholdUsdt) decline(`${info.baseAsset} already has >= ${duplicateThresholdUsdt} USDT equivalent balance; duplicate acquisition blocked`);",
   'duplicate threshold'
 );
 
@@ -74,7 +85,7 @@ patch(
 
 patch(
   "console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
-  "const localGuard = await runLocalPretradeGuard({ base, symbol: SYMBOL, signalPrice: SIGNAL_PRICE, currentPrice, lane: SIGNAL_LANE });\n  if (!localGuard.allow) decline(`Local microvalidation blocked: ${localGuard.reason}`);\n  console.log(`LOCAL_PRETRADE_OK symbol=${SYMBOL} lane=${SIGNAL_LANE} code=${localGuard.code} samples=${localGuard.metrics.samples} end_return=${Number(localGuard.metrics.endReturnPct || 0).toFixed(6)} peak_to_end=${Number(localGuard.metrics.peakToEndPct || 0).toFixed(6)} spread=${Number(localGuard.metrics.lastSpreadPct || 0).toFixed(6)} latency_ms=${Number(localGuard.metrics.latencyMs || 0).toFixed(0)} manipulation_risk=${Number(localGuard.metrics.manipulationRisk || 0).toFixed(3)} manipulation_band=${localGuard.metrics.manipulationBand || 'UNKNOWN'} manipulation_reason=${String(localGuard.metrics.manipulationReason || 'none').replace(/\\s+/g, '_')}`);\n  console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
+  "const localGuard = await runLocalPretradeGuard({ base, symbol: SYMBOL, signalPrice: SIGNAL_PRICE, currentPrice, lane: SIGNAL_LANE });\n  if (!localGuard.allow) decline(`Local microvalidation blocked: ${localGuard.reason}`);\n  console.log(`LOCAL_PRETRADE_OK symbol=${SYMBOL} lane=${SIGNAL_LANE} code=${localGuard.code} samples=${localGuard.metrics.samples} end_return=${Number(localGuard.metrics.endReturnPct || 0).toFixed(6)} peak_to_end=${Number(localGuard.metrics.peakToEndPct || 0).toFixed(6)} spread=${Number(localGuard.metrics.lastSpreadPct || 0).toFixed(6)} latency_ms=${Number(localGuard.metrics.latencyMs || 0).toFixed(0)} manipulation_risk=${Number(localGuard.metrics.manipulationRisk || 0).toFixed(3)} manipulation_band=${localGuard.metrics.manipulationBand || 'UNKNOWN'} manipulation_reason=${String(localGuard.metrics.manipulationReason || 'none').replace(/\\s+/g, '_')}`);\n  console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} asset_class=${assetClassification.asset_class} leverage=${assetClassification.leverage_multiple} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
   'local microvalidation and audit'
 );
 
