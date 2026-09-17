@@ -7,7 +7,9 @@ on:
       - 'backend/scripts/github-spot-microflow-trainer-v10.js'
       - 'backend/scripts/github-spot-microflow-hunter-v10.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - 'backend/services/spotAssetClassification.js'
       - 'backend/services/spotEntryBurstGate.js'
+      - 'backend/tests/spotAssetClassification.test.js'
       - 'backend/tests/spotEntryBurstGate.test.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-auto-exit.js'
@@ -38,13 +40,17 @@ jobs:
         run: |
           node --check backend/scripts/github-spot-microflow-hunter-v10.js
           node --check backend/scripts/github-spot-manual-execution-v10-aware.js
+          node --check backend/services/spotAssetClassification.js
           node --check backend/services/spotEntryBurstGate.js
+          node --check backend/tests/spotAssetClassification.test.js
           node --check backend/tests/spotEntryBurstGate.test.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-auto-exit.js
 
       - name: Selective entry gate tests
-        run: node backend/tests/spotEntryBurstGate.test.js
+        run: |
+          node backend/tests/spotEntryBurstGate.test.js
+          node backend/tests/spotAssetClassification.test.js
 
       - name: Guard production invariants
         shell: bash
@@ -53,6 +59,11 @@ jobs:
           grep -q "const MAX_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "const MIN_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "DUPLICATE_POSITION_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "LEVERAGED_GITHUB_MAX_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "LEVERAGED_GITHUB_MIN_V61_SCORE" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "LEVERAGED_HARD_STOP_PCT = 0.03" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "classifySpotAsset" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "assetClassification.is_leveraged" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_OPEN_POSITIONS" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "Managed Spot capital limit would be exceeded" backend/scripts/github-spot-manual-execution-v10-aware.js
@@ -69,7 +80,7 @@ jobs:
           grep -q "github-spot-manual-execution-v10-aware.js" .github/workflows/spot-manual-approval.yml
           grep -q "cron: '7,22,37,52 \* \* \* \*'" .github/workflows/spot-microflow-hunter-v10.yml
           grep -q "CORE V4.2 5m: intacto" .github/workflows/spot-microflow-hunter-v10.yml
-          echo 'V10 lane invariants preserved: CORE default, Spot-only executor path, 15 USDT per acquisition, trained HUNTER exits; managed-position capacity stays uncapped while selective anti-overentry protection applies.'
+          echo 'V10 lane invariants preserved: CORE default, Spot-only executor path, 15 USDT normal acquisition cap, 5 USDT leveraged tokenized cap, stronger leveraged entry score and tighter leveraged stop.'
 
       - name: Read-only V10 Hunter live smoke
         shell: bash
