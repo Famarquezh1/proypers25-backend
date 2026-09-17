@@ -57,8 +57,9 @@ jobs:
         run: node backend/tests/spotPositionLifecycle.test.js
       - name: Existing exit regression
         run: node backend/tests/controlledSpotExitExecutor.test.js
-      - name: Verify full-frequency scheduler policy
+      - name: Verify disabled legacy GCP research scheduler
         run: |
-          grep -q 'policy=FULL_FREQUENCY' .github/workflows/spot-research-scheduler.yml
-          grep -q '10#$HOUR % 2' .github/workflows/spot-research-scheduler.yml
-          ! grep -q 'research_frequency_multiplier' .github/workflows/spot-research-scheduler.yml
+          grep -q 'GCP disabled' .github/workflows/spot-research-scheduler.yml
+          grep -q 'workflow_dispatch' .github/workflows/spot-research-scheduler.yml
+          grep -q 'GitHub-native radar remains active' .github/workflows/spot-research-scheduler.yml
+          ! grep -q 'schedule:' .github/workflows/spot-research-scheduler.yml
