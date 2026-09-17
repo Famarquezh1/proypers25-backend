@@ -34,6 +34,7 @@ steps:
           test -f /usr/src/app/services/spotLiveEvidence.js
           test -f /usr/src/app/services/spotDustResidual.js
           test -f /usr/src/app/services/spotEntryMarketSafety.js
+          test -f /usr/src/app/services/spotAssetClassification.js
           test -f /usr/src/app/services/spotManagedAcquisitionPolicy.js
           test -f /usr/src/app/services/spotCostGovernance.js
           test -f /usr/src/app/services/spotProfitTargetGovernance.js
@@ -62,6 +63,8 @@ steps:
           grep -q "XEC" /usr/src/app/services/legacySpotRecoveryLiquidator.js
           grep -q "PROTECTED_RESERVE_ASSET" /usr/src/app/services/approvedSpotRealExecutor.js
           grep -q "validateSpotEntryMarketSafety" /usr/src/app/services/approvedSpotRealExecutor.js
+          grep -q "buildSpotAssetRiskPolicy" /usr/src/app/services/approvedSpotRealExecutor.js
+          grep -q "LEVERAGED_MAX_ENTRY_USDT = 5" /usr/src/app/services/spotAssetClassification.js
           grep -q "RECOVERY_25_USDT" /usr/src/app/services/spotAutonomyController.js
           grep -q "SUB_MIN_NOTIONAL_RESIDUAL" /usr/src/app/services/spotDustResidual.js
           grep -q "spot-legacy-recovery" /usr/src/app/routes/controlledRealSpot.route.js
@@ -71,6 +74,7 @@ steps:
           node --check /usr/src/app/services/spotLiveEvidence.js
           node --check /usr/src/app/services/spotDustResidual.js
           node --check /usr/src/app/services/spotEntryMarketSafety.js
+          node --check /usr/src/app/services/spotAssetClassification.js
           node --check /usr/src/app/services/spotManagedAcquisitionPolicy.js
           node --check /usr/src/app/services/spotManagedQuantityRepair.js
           node --check /usr/src/app/services/spotCostGovernance.js
@@ -87,6 +91,7 @@ steps:
           node --check /usr/src/app/routes/spotCostGovernance.route.js
           node --check /usr/src/app/routes/controlledRealSpot.route.js
           node --check /usr/src/app/routes/newSpotAssetDiscovery.route.js
+          node /usr/src/app/tests/spotAssetClassification.test.js
           node /usr/src/app/tests/spotDustResidual.test.js
           node /usr/src/app/tests/spotManagedQuantityRepair.test.js
           node /usr/src/app/tests/managedSpotAcquisitionPolicy.test.js
