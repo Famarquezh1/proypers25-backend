@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const CANDIDATE = require('../config/spot-exit-policy-v2.json');
 const {
   CURRENT_CORE_POLICY,
   CURRENT_V61_POLICY,
@@ -19,6 +20,15 @@ const {
   trainV61Policy,
   evaluateHoldout
 } = require('../scripts/train-spot-exit-policy-v2');
+
+(function holdoutPassedCandidateIsRecorded() {
+  assert.strictEqual(CANDIDATE.mode, 'CANDIDATE');
+  assert.strictEqual(CANDIDATE.v61.mfe, 0.018);
+  assert.strictEqual(CANDIDATE.v61.r15, 0);
+  assert.strictEqual(CANDIDATE.v61.confirm, 0.015);
+  assert(CANDIDATE.training_reference.holdout_after.mean_return_pct > CANDIDATE.training_reference.holdout_before.mean_return_pct);
+  assert(CANDIDATE.training_reference.holdout_after.profit_factor > CANDIDATE.training_reference.holdout_before.profit_factor);
+})();
 
 (function parsesCoreSignal() {
   const row = parseSignal({
