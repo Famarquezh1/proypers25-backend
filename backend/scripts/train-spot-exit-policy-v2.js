@@ -135,9 +135,10 @@ function simulatePolicy(bars, entryPrice, policy, feePct = ROUND_TRIP_FEE_PCT) {
     const lowPrice = n(row[3]);
     const closePrice = n(row[4]);
     if (!(highPrice > 0 && lowPrice > 0 && closePrice > 0)) continue;
-    high = Math.max(high, highPrice);
     ageHours = i * 5 / 60;
 
+    // Use only the high known before this candle to set protection.
+    // This avoids look-ahead from an unknown intrabar high/low ordering.
     const mfe = high / entryPrice - 1;
     let stop = entryPrice * (1 - policy.hard_stop_pct);
     let stopReason = 'HARD_STOP';
@@ -171,6 +172,10 @@ function simulatePolicy(bars, entryPrice, policy, feePct = ROUND_TRIP_FEE_PCT) {
       reason = 'TAKE_PROFIT';
       break;
     }
+
+    // Only after surviving the candle does its high become available for
+    // the next candle's break-even/trailing decision.
+    high = Math.max(high, highPrice);
 
     const gainAtClose = closePrice / entryPrice - 1;
     if (ageHours >= policy.stale_timeout_hours && gainAtClose <= policy.stale_max_gain_pct) {
