@@ -1,8 +1,8 @@
 {
   "model_version": "SPOT_EXIT_POLICY_V2_2026_09_18",
-  "mode": "PRODUCTION",
-  "promoted_at": "2026-09-18",
-  "source": "immediate_historical_core_exit_training",
+  "mode": "CANDIDATE",
+  "trained_at": "2026-09-18",
+  "source": "immediate_historical_core_exit_training_holdout_passed",
   "training_reference": {
     "reconstructed_core_trades": 169,
     "matched_unique_exits": 163,
