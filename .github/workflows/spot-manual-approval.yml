@@ -53,7 +53,7 @@ jobs:
             BODY=$(printf '%s' "$JSON" | jq -r '.body')
             CREATED=$(printf '%s' "$JSON" | jq -r '.createdAt')
           fi
-          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([A-Z0-9]*USDT\).*/\1/p')
+          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
           PCT=$(printf '%s' "$BODY" | sed -n 's/^- Cambio 24h: +\([0-9.-]*\)%.*/\1/p' | head -1)
           PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
           LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)

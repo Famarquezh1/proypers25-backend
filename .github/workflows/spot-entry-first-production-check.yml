@@ -15,6 +15,7 @@ on:
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - 'backend/scripts/github-spot-manual-execution.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
@@ -41,6 +42,7 @@ on:
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
+      - 'backend/scripts/github-spot-manual-execution.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
@@ -76,6 +78,7 @@ jobs:
           node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
           node --check backend/scripts/github-spot-v8-hunter-shadow.js
           node --check backend/scripts/github-spot-manual-execution-v10-aware.js
+          node --check backend/scripts/github-spot-manual-execution.js
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
@@ -135,6 +138,10 @@ jobs:
           ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "Managed Spot position limit reached" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "XEC historical holding is exit-only; new XEC entries are disabled" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -Fq "[\\p{L}\\p{N}._-]{1,24}USDT" backend/scripts/github-spot-manual-execution.js
+          TITLE='[SPOT SIGNAL] WUSDT +12.768%'
+          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
+          test "$SYMBOL" = "WUSDT"
           grep -q "github-xec-historical-protection.js" backend/scripts/github-spot-auto-exit.js
           grep -q "fast_arm_recovery_pct" backend/services/xecHistoricalHoldingPolicy.js
           grep -q "FAST_RECOVERY" backend/services/xecHistoricalHoldingPolicy.js
