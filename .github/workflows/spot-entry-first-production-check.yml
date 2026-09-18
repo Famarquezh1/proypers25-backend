@@ -6,6 +6,11 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
+      - 'backend/scripts/train-spot-qubo-v5.js'
+      - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/config/spot-qubo-production-v5.json'
+      - 'backend/config/spot-qubo-training-snapshot-v5.json'
+      - 'backend/tests/spotQuboProductionV5.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
@@ -27,6 +32,11 @@ on:
     paths:
       - 'backend/scripts/github-spot-production-radar-v42.js'
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
+      - 'backend/scripts/train-spot-qubo-v5.js'
+      - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/config/spot-qubo-production-v5.json'
+      - 'backend/config/spot-qubo-training-snapshot-v5.json'
+      - 'backend/tests/spotQuboProductionV5.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
@@ -59,6 +69,9 @@ jobs:
         run: |
           node --check backend/scripts/github-spot-production-radar-v42.js
           node --check backend/scripts/github-spot-production-radar-v42-active.js
+          node --check backend/scripts/train-spot-qubo-v5.js
+          node --check backend/services/spotQuboProductionV5.js
+          node --check backend/tests/spotQuboProductionV5.test.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
           node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
           node --check backend/scripts/github-spot-v8-hunter-shadow.js
@@ -71,6 +84,10 @@ jobs:
           node --check backend/services/xecHistoricalHoldingPolicy.js
           node --check backend/tests/githubXecNativeProtection.test.js
           node --check backend/services/paperToRealEntryGate.js
+      - name: QUBO V5 training and hardware-ready tests
+        run: |
+          node backend/scripts/train-spot-qubo-v5.js --verify
+          node backend/tests/spotQuboProductionV5.test.js
       - name: XEC native protection tests
         run: node backend/tests/githubXecNativeProtection.test.js
       - name: Active Spot universe smoke check
@@ -86,7 +103,15 @@ jobs:
           set -euo pipefail
           grep -q "V42_MIN_PASS_WINDOWS = 2" backend/scripts/github-spot-production-radar-v42.js
           grep -q "v42_pass_windows >= V42_MIN_PASS_WINDOWS" backend/scripts/github-spot-production-radar-v42.js
-          grep -q "base \* 0.40 + stable \* 0.15 + v42 \* 0.45" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "solveHardwareReadyQubo" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "productionUtility" backend/scripts/github-spot-production-radar-v42.js
+          grep -q '"mode": "PRODUCTION"' backend/config/spot-qubo-production-v5.json
+          grep -q '"base": 0.55' backend/config/spot-qubo-production-v5.json
+          grep -q '"stable": 0.05' backend/config/spot-qubo-production-v5.json
+          grep -q '"v42": 0.40' backend/config/spot-qubo-production-v5.json
+          grep -q "HARDWARE_SCHEMA = 'BINARY_QUADRATIC_MODEL_QUBO_V1'" backend/services/spotQuboProductionV5.js
+          grep -q "cardinality_slack" backend/services/spotQuboProductionV5.js
+          grep -q "normalized_quadratic" backend/services/spotQuboProductionV5.js
           ! grep -q "entry_first_enabled: true" backend/scripts/github-spot-production-radar-v42.js
           ! grep -q "legacy \* 0.75 + entryFirst \* 0.25" backend/scripts/github-spot-production-radar-v42.js
           grep -q "status !== 'TRADING'" backend/scripts/github-spot-production-radar-v42-active.js
@@ -123,4 +148,4 @@ jobs:
           if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
           console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
           NODE
-          echo 'V4.2/QUBO remains sole execution authority. Independent V8 HUNTER is shadow-only with zero production influence. Spot safety, per-order sizing, Windows compatibility, protective IDs, uncapped managed-position capacity and GitHub-native historical XEC protection are preserved.'
+          echo 'V4.2/QUBO V5 hardware-ready remains production execution authority. Local exact solver consumes the same normalized BQM intended for a future quantum/annealing backend; only the solver adapter remains to change. Spot safety and local execution are preserved.'
