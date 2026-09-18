@@ -31,6 +31,29 @@ function fail(message) {
   process.exit(2);
 }
 
+function isNotionalFilterError(error) {
+  const message = String(error?.message || error || '');
+  const bodyMessage = String(error?.body?.msg || '');
+  return /Filter failure:\s*(NOTIONAL|MIN_NOTIONAL)/i.test(message) ||
+    /Filter failure:\s*(NOTIONAL|MIN_NOTIONAL)/i.test(bodyMessage) ||
+    /notional below minimum/i.test(message);
+}
+
+function minimumNotional(info, orderType = 'MARKET') {
+  const filters = Array.isArray(info?.filters) ? info.filters : [];
+  const notional = filters.find((f) => f.filterType === 'NOTIONAL');
+  if (notional) {
+    if (orderType === 'MARKET' && notional.applyMinToMarket === false) return 0;
+    return Number(notional.minNotional || 0);
+  }
+  const minNotional = filters.find((f) => f.filterType === 'MIN_NOTIONAL');
+  if (minNotional) {
+    if (orderType === 'MARKET' && minNotional.applyToMarket === false) return 0;
+    return Number(minNotional.minNotional || 0);
+  }
+  return 0;
+}
+
 async function request(base, path, options = {}) {
   const response = await fetch(`${base}${path}`, options);
   const text = await response.text();
@@ -203,6 +226,13 @@ async function placeProtection(base, info, symbol, quantity, stopPrice) {
   if (!lot || !priceFilter) throw new Error(`Protection filters missing for ${symbol}`);
   const normalizedQty = floorToStep(quantity, lot.stepSize);
   if (!(normalizedQty >= Number(lot.minQty || 0))) throw new Error(`Protection quantity below minimum for ${symbol}`);
+  const minNotional = minimumNotional(info, 'STOP_LOSS');
+  const protectionNotional = normalizedQty * stopPrice;
+  if (minNotional > 0 && protectionNotional + Number.EPSILON < minNotional) {
+    const error = new Error(`Protection notional below minimum for ${symbol}: ${protectionNotional} < ${minNotional}`);
+    error.code = 'PROTECTION_NOTIONAL_TOO_SMALL';
+    throw error;
+  }
 
   const clientId = `proypers-gh-protect-${Date.now()}`;
   let order;
@@ -246,8 +276,7 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
   if (!(quantity >= Number(lot.minQty || 0))) throw new Error(`SELL quantity below minimum for ${symbol}`);
 
   const notional = quantity * currentPrice;
-  const notionalFilter = info.filters?.find((f) => f.filterType === 'NOTIONAL') || info.filters?.find((f) => f.filterType === 'MIN_NOTIONAL');
-  const minNotional = Number(notionalFilter?.minNotional || 0);
+  const minNotional = minimumNotional(info, 'MARKET');
   if (minNotional > 0 && notional < minNotional) throw new Error(`SELL notional below minimum for ${symbol}`);
 
   const order = await signed(base, 'POST', '/api/v3/order', {
@@ -349,8 +378,13 @@ async function main() {
         continue;
       }
       if (openProtect) await cancelProtection(base, symbol, openProtect);
-      await marketSell(base, info, symbol, executedQty, reason, entryPrice, currentPrice);
-      soldCount += 1;
+      try {
+        await marketSell(base, info, symbol, executedQty, reason, entryPrice, currentPrice);
+        soldCount += 1;
+      } catch (error) {
+        if (!isNotionalFilterError(error)) throw error;
+        console.warn(`EXIT_SKIPPED_NOTIONAL symbol=${symbol} reason=${reason} detail=${error.message || error}`);
+      }
       continue;
     }
 
@@ -361,8 +395,13 @@ async function main() {
       const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       const free = freeBalance(refreshed, info.baseAsset);
       const quantity = Math.min(executedQty, free);
-      await placeProtection(base, info, symbol, quantity, stopPrice);
-      protectedCount += 1;
+      try {
+        await placeProtection(base, info, symbol, quantity, stopPrice);
+        protectedCount += 1;
+      } catch (error) {
+        if (!isNotionalFilterError(error) && error?.code !== 'PROTECTION_NOTIONAL_TOO_SMALL') throw error;
+        console.warn(`PROTECTION_SKIPPED_NOTIONAL symbol=${symbol} stop=${stopPrice} quantity=${quantity} detail=${error.message || error}`);
+      }
     }
   }
 
