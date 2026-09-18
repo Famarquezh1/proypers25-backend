@@ -10,6 +10,7 @@ const {
   productionUtility,
   solveHardwareReadyQubo
 } = require('../services/spotQuboProductionV5');
+const { classifyMarketRegime } = require('../services/spotMarketRegime');
 
 const MIN_PCT = 1;
 const MAX_PCT = 18;
@@ -264,11 +265,14 @@ function v42Norm(parts, passCount) {
 
 async function enrichV42(candidates) {
   let btc;
+  let marketRegime = { regime: 'UNKNOWN', r1h: 0, r4h: 0, r24h: 0, vol4h: 0 };
   try {
-    btc = btcContext(await klines('BTCUSDT', '5m', 290));
+    const btcBars = await klines('BTCUSDT', '5m', 290);
+    btc = btcContext(btcBars);
+    marketRegime = classifyMarketRegime(btcBars, btc.t);
   } catch (error) {
     console.error(`V42_BTC_CONTEXT_FAILED ${error.message}`);
-    return candidates.map((x) => ({ ...x, v42_pass_windows: 0, v42_norm: 0, v42_detail: null }));
+    return candidates.map((x) => ({ ...x, v42_pass_windows: 0, v42_norm: 0, v42_detail: null, market_regime: 'UNKNOWN' }));
   }
   return mapWithConcurrency(candidates, PROBE_CONCURRENCY, async (candidate) => {
     try {
@@ -280,10 +284,10 @@ async function enrichV42(candidates) {
       const parts = v42Parts(features);
       const freshEnough = features.r24 < 0.18 && features.r60 < 0.10 && features.r15 < 0.06;
       const passCount = freshEnough ? v42PassCount(parts) : 0;
-      return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough }, qubo_returns: quboReturns };
+      return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough }, qubo_returns: quboReturns, market_regime: marketRegime.regime, market_regime_detail: marketRegime };
     } catch (error) {
       console.error(`V42_FEATURES_FAILED ${candidate.symbol} ${error.message}`);
-      return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null, qubo_returns: [] };
+      return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null, qubo_returns: [], market_regime: marketRegime.regime, market_regime_detail: marketRegime };
     }
   });
 }
@@ -392,6 +396,9 @@ async function main() {
     qubo_adaptive: QUBO_V5_CONFIG.adaptive === true,
     qubo_adaptive_state: QUBO_V5_CONFIG.adaptive_state || 'STATIC_BASE',
     qubo_weights: QUBO_V5_CONFIG.weights,
+    qubo_effective_weights: QUBO_V5_CONFIG.regime_weights?.[candidate.market_regime] || QUBO_V5_CONFIG.weights,
+    market_regime: candidate.market_regime || 'UNKNOWN',
+    market_regime_detail: candidate.market_regime_detail || null,
     stable_agents: STABLE_AGENTS,
     v42_hierarchy: V42_HIERARCHY,
     v42_min_pass_windows: V42_MIN_PASS_WINDOWS,
