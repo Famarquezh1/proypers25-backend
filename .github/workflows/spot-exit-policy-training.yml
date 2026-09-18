@@ -1,4 +1,4 @@
-name: Spot Exit Policy Historical Training
+name: Spot Exit Stack Historical Training
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ permissions:
   issues: read
 
 concurrency:
-  group: spot-exit-policy-historical-training
+  group: spot-exit-stack-historical-training
   cancel-in-progress: true
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
           node --check backend/tests/spotExitPolicyHistoricalTraining.test.js
           node backend/tests/spotExitPolicyHistoricalTraining.test.js
 
-      - name: Train immediately from all usable historical CORE exits
+      - name: Train full CORE exit stack immediately from historical executions
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -68,15 +68,17 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo '### Spot exit policy — immediate historical training' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot CORE exit stack — immediate historical training' >> "$GITHUB_STEP_SUMMARY"
           if [ -f spot-exit-policy-training-report.json ]; then
             echo "- CORE reconstruidas: $(jq -r '.reconstructed_core_trades' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Train/Validation/Holdout: $(jq -r '.train_rows' spot-exit-policy-training-report.json)/$(jq -r '.validation_rows' spot-exit-policy-training-report.json)/$(jq -r '.holdout_rows' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Política actual: $(jq -c '.current_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Política entrenada: $(jq -c '.trained_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
-            echo "- PnL medio holdout actual → entrenado: $(jq -r '.holdout_evaluation.baseline.mean_return_pct' spot-exit-policy-training-report.json)% → $(jq -r '.holdout_evaluation.candidate.mean_return_pct' spot-exit-policy-training-report.json)%" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Profit factor holdout actual → entrenado: $(jq -r '.holdout_evaluation.baseline.profit_factor' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.profit_factor' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Tasa positiva holdout actual → entrenado: $(jq -r '.holdout_evaluation.baseline.positive_rate' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.positive_rate' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- CORE base: $(jq -c '.current_core_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- V6.1 actual: $(jq -c '.current_v61_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- V6.1 entrenado: $(jq -c '.trained_v61_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Salidas reales únicas vinculadas: $(jq -r '.matched_unique_exits' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- PnL medio holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.mean_return_pct' spot-exit-policy-training-report.json)% → $(jq -r '.holdout_evaluation.candidate.mean_return_pct' spot-exit-policy-training-report.json)%" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Profit factor holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.profit_factor' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.profit_factor' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Tasa positiva holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.positive_rate' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.positive_rate' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Recomendación: $(jq -r '.promotion_recommendation' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo '- Entrenamiento: inmediato con histórico existente; no espera meses' >> "$GITHUB_STEP_SUMMARY"
