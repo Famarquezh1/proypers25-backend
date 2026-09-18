@@ -1,0 +1,47 @@
+{
+  "model_version": "SPOT_EXIT_POLICY_V2_2026_09_18",
+  "mode": "PRODUCTION",
+  "promoted_at": "2026-09-18",
+  "source": "immediate_historical_core_exit_training",
+  "training_reference": {
+    "reconstructed_core_trades": 169,
+    "matched_unique_exits": 163,
+    "train_rows": 109,
+    "validation_rows": 26,
+    "holdout_rows": 34,
+    "round_trip_fee_assumption_pct": 0.20,
+    "holdout_before": {
+      "mean_return_pct": -0.1673,
+      "median_return_pct": -0.1557,
+      "positive_rate": 0.4412,
+      "profit_factor": 0.8511
+    },
+    "holdout_after": {
+      "mean_return_pct": 0.4741,
+      "median_return_pct": 0.8505,
+      "positive_rate": 0.6176,
+      "profit_factor": 1.4258
+    }
+  },
+  "core": {
+    "hard_stop_pct": 0.05,
+    "break_even_trigger_pct": 0.05,
+    "break_even_lock_pct": 0.002,
+    "trailing_trigger_pct": 0.08,
+    "trailing_distance_pct": 0.06,
+    "stale_timeout_hours": 18,
+    "stale_max_gain_pct": 0.005,
+    "take_profit_pct": 0
+  },
+  "v61": {
+    "enabled": true,
+    "mfe": 0.018,
+    "dd": -0.008,
+    "gap": 0.004,
+    "r15": 0,
+    "confirm": 0.015,
+    "healthyPnl": 0.004,
+    "healthyRs": -0.002,
+    "healthyConfirm": 0.015
+  }
+}
