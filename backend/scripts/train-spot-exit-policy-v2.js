@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const RECORDED_CANDIDATE_CONFIG = require('../config/spot-exit-policy-v2.json');
+const PRODUCTION_EXIT_CONFIG = require('../config/spot-exit-policy-v2.json');
 
 const HORIZON_HOURS = Math.max(12, Math.min(36, Number(process.env.EXIT_TRAIN_HORIZON_HOURS || 24)));
 const CONTEXT_HOURS = Math.max(24, Math.min(36, Number(process.env.EXIT_TRAIN_CONTEXT_HOURS || 24)));
@@ -13,28 +13,8 @@ const ROUND_TRIP_FEE_PCT = Math.max(0, Math.min(0.01, Number(process.env.EXIT_TR
 const OUTPUT = process.env.EXIT_TRAIN_OUTPUT || path.join(process.cwd(), 'spot-exit-policy-training-report.json');
 const EVIDENCE_OUTPUT = process.env.EXIT_TRAIN_EVIDENCE_OUTPUT || path.join(process.cwd(), 'spot-exit-policy-training-evidence.json');
 
-const CURRENT_CORE_POLICY = Object.freeze({
-  hard_stop_pct: 0.05,
-  break_even_trigger_pct: 0.05,
-  break_even_lock_pct: 0.002,
-  trailing_trigger_pct: 0.08,
-  trailing_distance_pct: 0.06,
-  stale_timeout_hours: 18,
-  stale_max_gain_pct: 0.005,
-  take_profit_pct: 0
-});
-const CURRENT_V61_POLICY = Object.freeze({
-  enabled: true,
-  mfe: 0.008,
-  dd: -0.008,
-  gap: 0.004,
-  r15: -0.001,
-  confirm: 0.005,
-  healthyPnl: 0.004,
-  healthyRs: -0.002,
-  healthyConfirm: 0.015
-});
-const RECORDED_V61_CANDIDATE = Object.freeze({ ...RECORDED_CANDIDATE_CONFIG.v61 });
+const CURRENT_CORE_POLICY = Object.freeze({ ...PRODUCTION_EXIT_CONFIG.core });
+const CURRENT_V61_POLICY = Object.freeze({ ...PRODUCTION_EXIT_CONFIG.v61 });
 
 
 function n(value, fallback = NaN) {
@@ -589,7 +569,6 @@ async function main() {
     holdout_rows: split.holdout.length,
     current_core_policy: CURRENT_CORE_POLICY,
     current_v61_policy: CURRENT_V61_POLICY,
-    recorded_v61_candidate: RECORDED_V61_CANDIDATE,
     trained_v61_policy: trained.selected.policy,
     train_metrics: {
       baseline: trained.baselineTrain,
@@ -654,7 +633,6 @@ if (require.main === module) {
 module.exports = {
   CURRENT_CORE_POLICY,
   CURRENT_V61_POLICY,
-  RECORDED_V61_CANDIDATE,
   parseSignal,
   classifyDecision,
   parseExit,
