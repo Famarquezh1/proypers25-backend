@@ -15,8 +15,9 @@ const {
 } = require('../services/spotEntryBurstGate');
 const { runLocalPretradeGuard } = require('../services/localPretradeGuard');
 const { classifySpotAsset } = require('../services/spotAssetClassification');
+const { resolveConvictionPosition, LEVERAGED_POSITION_USDT } = require('../services/spotConvictionSizing');
 
-const LEVERAGED_GITHUB_MAX_USDT = 5;
+const LEVERAGED_GITHUB_MAX_USDT = LEVERAGED_POSITION_USDT;
 const LEVERAGED_GITHUB_MIN_V61_SCORE = 0.4487136592494857;
 const LEVERAGED_HARD_STOP_PCT = 0.03;
 
@@ -31,13 +32,13 @@ function patch(from, to, label) {
 
 patch(
   "let SIGNAL_CREATED_AT = process.env.SIGNAL_CREATED_AT || '';",
-  "let SIGNAL_CREATED_AT = process.env.SIGNAL_CREATED_AT || '';\nconst SIGNAL_LANE = String(process.env.SIGNAL_LANE || 'CORE').toUpperCase();",
+  "let SIGNAL_CREATED_AT = process.env.SIGNAL_CREATED_AT || '';\nconst SIGNAL_LANE = String(process.env.SIGNAL_LANE || 'CORE').toUpperCase();\nconst SIGNAL_MICROFLOW_SCORE = Number(process.env.SIGNAL_MICROFLOW_SCORE || NaN);\nconst SIGNAL_MICROFLOW_CUT = Number(process.env.SIGNAL_MICROFLOW_CUT || NaN);\nconst SIGNAL_MICROFLOW_MARGIN = Number(process.env.SIGNAL_MICROFLOW_MARGIN || NaN);\nconst SIGNAL_MICROFLOW_MARGIN_CUT = Number(process.env.SIGNAL_MICROFLOW_MARGIN_CUT || NaN);\nconst SIGNAL_CALIBRATION_WIN_RATE = Number(process.env.SIGNAL_CALIBRATION_WIN_RATE || NaN);",
   'signal lane'
 );
 
 patch(
   'const MIN_USDT = 10;\nconst MAX_USDT = 100;',
-  'const MIN_USDT = 5;\nconst MAX_USDT = 15;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
+  'const MIN_USDT = 5;\nconst MAX_USDT = 40;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
   'entry sizing'
 );
 
@@ -61,8 +62,8 @@ patch(
 
 patch(
   "const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);",
-  "const assetClassification = classifySpotAsset(SYMBOL);\n  if (assetClassification.is_leveraged && (!Number.isFinite(score) || score < LEVERAGED_GITHUB_MIN_V61_SCORE)) decline(`Leveraged tokenized asset requires stronger entry score (${Number.isFinite(score) ? score.toFixed(6) : 'unavailable'} < ${LEVERAGED_GITHUB_MIN_V61_SCORE})`);\n  const usdtFree = freeBalance(account, 'USDT');\n  const uncappedQuoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);\n  const quoteOrderQty = assetClassification.is_leveraged ? Math.min(LEVERAGED_GITHUB_MAX_USDT, uncappedQuoteOrderQty) : uncappedQuoteOrderQty;",
-  'leveraged tokenized asset sizing'
+  "const assetClassification = classifySpotAsset(SYMBOL);\n  if (assetClassification.is_leveraged && (!Number.isFinite(score) || score < LEVERAGED_GITHUB_MIN_V61_SCORE)) decline(`Leveraged tokenized asset requires stronger entry score (${Number.isFinite(score) ? score.toFixed(6) : 'unavailable'} < ${LEVERAGED_GITHUB_MIN_V61_SCORE})`);\n  const usdtFree = freeBalance(account, 'USDT');\n  const convictionSizing = resolveConvictionPosition({ lane: SIGNAL_LANE, v61Score: score, v42PassCount: v42Quality.passCount, v42Norm: v42Quality.norm, microflowScore: SIGNAL_MICROFLOW_SCORE, microflowCut: SIGNAL_MICROFLOW_CUT, microflowMargin: SIGNAL_MICROFLOW_MARGIN, microflowMarginCut: SIGNAL_MICROFLOW_MARGIN_CUT, calibrationWinRate: SIGNAL_CALIBRATION_WIN_RATE, usdtFree, baseFraction: fraction, isLeveraged: assetClassification.is_leveraged });\n  const quoteOrderQty = Math.min(MAX_USDT, convictionSizing.quote_order_qty);",
+  'conviction-aware sizing'
 );
 
 patch(
@@ -85,7 +86,7 @@ patch(
 
 patch(
   "console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
-  "const localGuard = await runLocalPretradeGuard({ base, symbol: SYMBOL, signalPrice: SIGNAL_PRICE, currentPrice, lane: SIGNAL_LANE });\n  if (!localGuard.allow) decline(`Local microvalidation blocked: ${localGuard.reason}`);\n  console.log(`LOCAL_PRETRADE_OK symbol=${SYMBOL} lane=${SIGNAL_LANE} code=${localGuard.code} samples=${localGuard.metrics.samples} end_return=${Number(localGuard.metrics.endReturnPct || 0).toFixed(6)} peak_to_end=${Number(localGuard.metrics.peakToEndPct || 0).toFixed(6)} spread=${Number(localGuard.metrics.lastSpreadPct || 0).toFixed(6)} latency_ms=${Number(localGuard.metrics.latencyMs || 0).toFixed(0)} manipulation_risk=${Number(localGuard.metrics.manipulationRisk || 0).toFixed(3)} manipulation_band=${localGuard.metrics.manipulationBand || 'UNKNOWN'} manipulation_reason=${String(localGuard.metrics.manipulationReason || 'none').replace(/\\s+/g, '_')}`);\n  console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} asset_class=${assetClassification.asset_class} leverage=${assetClassification.leverage_multiple} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
+  "const localGuard = await runLocalPretradeGuard({ base, symbol: SYMBOL, signalPrice: SIGNAL_PRICE, currentPrice, lane: SIGNAL_LANE });\n  if (!localGuard.allow) decline(`Local microvalidation blocked: ${localGuard.reason}`);\n  console.log(`LOCAL_PRETRADE_OK symbol=${SYMBOL} lane=${SIGNAL_LANE} code=${localGuard.code} samples=${localGuard.metrics.samples} end_return=${Number(localGuard.metrics.endReturnPct || 0).toFixed(6)} peak_to_end=${Number(localGuard.metrics.peakToEndPct || 0).toFixed(6)} spread=${Number(localGuard.metrics.lastSpreadPct || 0).toFixed(6)} latency_ms=${Number(localGuard.metrics.latencyMs || 0).toFixed(0)} manipulation_risk=${Number(localGuard.metrics.manipulationRisk || 0).toFixed(3)} manipulation_band=${localGuard.metrics.manipulationBand || 'UNKNOWN'} manipulation_reason=${String(localGuard.metrics.manipulationReason || 'none').replace(/\\s+/g, '_')}`);\n  console.log(`APPROVED_V61 lane=${SIGNAL_LANE} entry_gate=${entryGate.code} conviction_tier=${convictionSizing.tier} conviction_cap_usdt=${convictionSizing.cap_usdt} reserve_usdt=${convictionSizing.reserve_usdt} v42_pass=${v42Quality.passCount} v42_norm=${Number(v42Quality.norm || 0).toFixed(6)} asset_class=${assetClassification.asset_class} leverage=${assetClassification.leverage_multiple} symbol=${SYMBOL} signal_pct=${SIGNAL_PCT}",
   'local microvalidation and audit'
 );
 

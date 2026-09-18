@@ -26,6 +26,11 @@ jobs:
       price: ${{ steps.signal.outputs.price }}
       created_at: ${{ steps.signal.outputs.created_at }}
       lane: ${{ steps.signal.outputs.lane }}
+      microflow_score: ${{ steps.signal.outputs.microflow_score }}
+      microflow_cut: ${{ steps.signal.outputs.microflow_cut }}
+      microflow_margin: ${{ steps.signal.outputs.microflow_margin }}
+      microflow_margin_cut: ${{ steps.signal.outputs.microflow_margin_cut }}
+      calibration_win_rate: ${{ steps.signal.outputs.calibration_win_rate }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -53,6 +58,11 @@ jobs:
           PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
           LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
           LANE=${LANE:-CORE}
+          MICROFLOW_SCORE=$(printf '%s' "$BODY" | sed -n 's/^- Microflow score: \([^ ]*\) | cut: .*/\1/p' | head -1)
+          MICROFLOW_CUT=$(printf '%s' "$BODY" | sed -n 's/^- Microflow score: [^ ]* | cut: \([^ ]*\).*/\1/p' | head -1)
+          MICROFLOW_MARGIN=$(printf '%s' "$BODY" | sed -n 's/^- Microflow margin: \([^ ]*\) | cut: .*/\1/p' | head -1)
+          MICROFLOW_MARGIN_CUT=$(printf '%s' "$BODY" | sed -n 's/^- Microflow margin: [^ ]* | cut: \([^ ]*\).*/\1/p' | head -1)
+          CALIBRATION_WIN_RATE=$(printf '%s' "$BODY" | sed -n 's/^- Calibración win rate: \([^ ]*\) | stop rate: .*/\1/p' | head -1)
           test -n "$SYMBOL" && test -n "$PCT" && test -n "$PRICE" && test -n "$CREATED"
           echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
           echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
@@ -60,6 +70,11 @@ jobs:
           echo "price=$PRICE" >> "$GITHUB_OUTPUT"
           echo "created_at=$CREATED" >> "$GITHUB_OUTPUT"
           echo "lane=$LANE" >> "$GITHUB_OUTPUT"
+          echo "microflow_score=$MICROFLOW_SCORE" >> "$GITHUB_OUTPUT"
+          echo "microflow_cut=$MICROFLOW_CUT" >> "$GITHUB_OUTPUT"
+          echo "microflow_margin=$MICROFLOW_MARGIN" >> "$GITHUB_OUTPUT"
+          echo "microflow_margin_cut=$MICROFLOW_MARGIN_CUT" >> "$GITHUB_OUTPUT"
+          echo "calibration_win_rate=$CALIBRATION_WIN_RATE" >> "$GITHUB_OUTPUT"
 
   execute:
     name: Validate and execute from Chile PC
@@ -80,6 +95,11 @@ jobs:
       SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
       SIGNAL_CREATED_AT: ${{ needs.prepare.outputs.created_at }}
       SIGNAL_LANE: ${{ needs.prepare.outputs.lane }}
+      SIGNAL_MICROFLOW_SCORE: ${{ needs.prepare.outputs.microflow_score }}
+      SIGNAL_MICROFLOW_CUT: ${{ needs.prepare.outputs.microflow_cut }}
+      SIGNAL_MICROFLOW_MARGIN: ${{ needs.prepare.outputs.microflow_margin }}
+      SIGNAL_MICROFLOW_MARGIN_CUT: ${{ needs.prepare.outputs.microflow_margin_cut }}
+      SIGNAL_CALIBRATION_WIN_RATE: ${{ needs.prepare.outputs.calibration_win_rate }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
