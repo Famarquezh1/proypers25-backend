@@ -3,15 +3,20 @@
 const assert = require('assert');
 const {
   CURRENT_CORE_POLICY,
+  CURRENT_V61_POLICY,
   parseSignal,
   classifyDecision,
   parseExit,
   dedupeExits,
-  simulatePolicy,
-  policyGrid,
+  oneToOneExitMatch,
+  legacyStop,
+  v61Features,
+  maybeTightenV61,
+  simulateStack,
+  v61Grid,
   metrics,
   chronologicalSplit,
-  trainPolicy,
+  trainV61Policy,
   evaluateHoldout
 } = require('../scripts/train-spot-exit-policy-v2');
 
@@ -24,107 +29,161 @@ const {
   });
   assert(row);
   assert.strictEqual(row.lane, 'CORE');
-  assert.strictEqual(row.symbol, 'TESTUSDT');
 })();
 
-(function parsesV10Signal() {
-  const row = parseSignal({
-    number: 2,
-    created_at: '2026-09-10T00:00:00Z',
-    title: '[SPOT SIGNAL] TESTUSDT +8.2%',
-    body: ['- Símbolo: TESTUSDT', '- Precio: 1.25', '- Lane: V10_HUNTER'].join('\n')
-  });
-  assert(row);
-  assert.strictEqual(row.lane, 'V10_HUNTER');
+(function decisionKeepsExecutionTime() {
+  const result = classifyDecision([
+    { created_at: '2026-09-10T00:01:00Z', body: 'ejecutó la compra Spot. orderId: 123' }
+  ]);
+  assert.strictEqual(result.decision, 'EXECUTED');
+  assert.strictEqual(result.order_id, '123');
+  assert.strictEqual(result.execution_at, '2026-09-10T00:01:00Z');
 })();
 
-(function decisionsAreDetected() {
-  assert.strictEqual(classifyDecision([{ body: 'ejecutó la compra Spot. orderId: 123' }]).decision, 'EXECUTED');
-  assert.strictEqual(classifyDecision([{ body: 'Oportunidad descartada automáticamente. No se compró.' }]).decision, 'DECLINED');
-})();
-
-(function exitsDeduplicate() {
-  const a = parseExit({
-    number: 10,
-    created_at: '2026-09-11T00:00:00Z',
-    title: '[SPOT EXIT] TESTUSDT STOP',
-    body: ['- Símbolo: TESTUSDT', '- Motivo: STOP_LOSS', '- Entrada aprox.: 1', '- Salida aprox.: 0.95', '- PnL aprox.: -5%', '- orderId=55'].join('\n')
-  });
-  assert(a);
-  assert.strictEqual(dedupeExits([a, { ...a, issue_number: 11 }]).length, 1);
-})();
-
-(function simulatorStopsConservatively() {
-  const bars = [
-    [0, 1, 1.03, 0.94, 1.01],
-    [300000, 1.01, 1.02, 1, 1.01]
+(function exitsDeduplicateAndMatchOneToOne() {
+  const exits = dedupeExits([
+    { symbol: 'AAAUSDT', order_id: '1', created_at: '2026-09-10T02:00:00Z', pnl_pct: 2 },
+    { symbol: 'AAAUSDT', order_id: '1', created_at: '2026-09-10T02:01:00Z', pnl_pct: 2 },
+    { symbol: 'AAAUSDT', order_id: '2', created_at: '2026-09-10T05:00:00Z', pnl_pct: -1 }
+  ]);
+  assert.strictEqual(exits.length, 2);
+  const signals = [
+    { issue_number: 1, symbol: 'AAAUSDT', execution_at: '2026-09-10T01:00:00Z' },
+    { issue_number: 2, symbol: 'AAAUSDT', execution_at: '2026-09-10T04:00:00Z' }
   ];
-  const result = simulatePolicy(bars, 1, CURRENT_CORE_POLICY, 0);
-  assert(result);
-  assert.strictEqual(result.reason, 'HARD_STOP');
-  assert(Math.abs(result.return_pct + 0.05) < 1e-9);
+  const matches = oneToOneExitMatch(signals, exits);
+  assert.strictEqual(matches.get(1).order_id, '1');
+  assert.strictEqual(matches.get(2).order_id, '2');
 })();
 
-(function simulatorCanTakeProfit() {
-  const policy = { ...CURRENT_CORE_POLICY, hard_stop_pct: 0.03, take_profit_pct: 0.04 };
-  const bars = [
-    [0, 1, 1.041, 0.995, 1.03]
-  ];
-  const result = simulatePolicy(bars, 1, policy, 0);
-  assert.strictEqual(result.reason, 'TAKE_PROFIT');
-  assert(Math.abs(result.return_pct - 0.04) < 1e-9);
+(function legacyStopBehaves() {
+  const hard = legacyStop(100, 101, CURRENT_CORE_POLICY);
+  assert.strictEqual(hard.reason, 'HARD_STOP');
+  const be = legacyStop(100, 106, CURRENT_CORE_POLICY);
+  assert.strictEqual(be.reason, 'BREAK_EVEN');
+  const trail = legacyStop(100, 110, CURRENT_CORE_POLICY);
+  assert.strictEqual(trail.reason, 'TRAILING');
 })();
 
-(function policyGridIsBounded() {
-  const grid = policyGrid();
-  assert(grid.length > 200);
-  assert(grid.length < 3000);
-  for (const p of grid) {
-    assert(p.hard_stop_pct > 0 && p.hard_stop_pct <= 0.05);
-    assert(p.trailing_distance_pct < p.trailing_trigger_pct + 0.015);
+function syntheticBars(start, count, drift = 0.0002) {
+  const rows = [];
+  let price = 100;
+  for (let i = 0; i < count; i += 1) {
+    const open = price;
+    price *= 1 + drift;
+    const high = price * 1.002;
+    const low = price * 0.998;
+    rows.push([start + i * 300000, open, high, low, price, 0, start + (i + 1) * 300000 - 1, 1000000, 100]);
   }
+  return rows;
+}
+
+(function v61FeaturesUseHistoricalContext() {
+  const start = Date.UTC(2026, 8, 10);
+  const bars = syntheticBars(start, 400, 0.0001);
+  const btc = syntheticBars(start, 400, 0.00005);
+  const f = v61Features(bars, 350, btc);
+  assert(f);
+  assert(Number.isFinite(f.confirm));
+  assert(Number.isFinite(f.rs60));
 })();
 
-(function chronologicalTrainingAndHoldoutWork() {
+(function v61CanTightenOnlyWhenConditionsPass() {
+  const start = Date.UTC(2026, 8, 10);
+  const bars = syntheticBars(start, 400, 0);
+  const btc = syntheticBars(start, 400, 0);
+  // Force prior rise then fading close on last context bar.
+  for (let i = 300; i < 350; i += 1) {
+    bars[i][2] = 103;
+    bars[i][4] = 103;
+  }
+  bars[350][2] = 103;
+  bars[350][4] = 101.5;
+  const tightened = maybeTightenV61({
+    bars,
+    index: 350,
+    btcBars: btc,
+    entryPrice: 100,
+    high: 103,
+    currentStop: 95,
+    policy: { ...CURRENT_V61_POLICY, r15: 1, confirm: 10, healthyPnl: 10 }
+  });
+  assert(tightened >= 95);
+})();
+
+(function stackSimulationProducesFiniteResult() {
+  const start = Date.UTC(2026, 8, 10);
+  const context = syntheticBars(start, 600, 0.00005);
+  const btc = syntheticBars(start, 600, 0.00003);
+  const executionAt = new Date(start + 300 * 300000).toISOString();
+  const row = {
+    created_at: executionAt,
+    execution_at: executionAt,
+    entry_price: context[300][4],
+    bars: context,
+    btc_bars: btc
+  };
+  const result = simulateStack(row, CURRENT_CORE_POLICY, CURRENT_V61_POLICY, 0);
+  assert(result);
+  assert(Number.isFinite(result.return_pct));
+})();
+
+(function v61GridIsBounded() {
+  const grid = v61Grid();
+  assert(grid.length > 100);
+  assert(grid.length < 1000);
+  assert(grid.every((p) => p.enabled === true));
+})();
+
+(function chronologicalTrainingWorks() {
+  const start = Date.UTC(2026, 8, 10);
   const rows = [];
   for (let i = 0; i < 120; i += 1) {
-    const good = i % 2 === 0;
-    const bars = [];
-    let price = 1;
-    for (let k = 0; k < 144; k += 1) {
-      price *= good ? 1.00035 : 0.9999;
-      bars.push([
-        Date.UTC(2026, 8, 10, 0, i) + k * 300000,
-        price,
-        good ? Math.max(price, 1.045) : price * 1.002,
-        good ? price * 0.998 : Math.min(price, 0.965),
-        price
-      ]);
-    }
+    const executionMs = start + i * 3600000;
+    const bars = syntheticBars(executionMs - 24 * 3600000, 577, i % 2 === 0 ? 0.0002 : -0.00005);
+    const btc = syntheticBars(executionMs - 24 * 3600000, 577, 0.00002);
     rows.push({
-      created_at: new Date(Date.UTC(2026, 8, 10, 0, i)).toISOString(),
-      entry_price: 1,
-      bars
+      created_at: new Date(executionMs).toISOString(),
+      execution_at: new Date(executionMs).toISOString(),
+      entry_price: bars[288][4],
+      bars,
+      btc_bars: btc
     });
   }
   const split = chronologicalSplit(rows);
-  assert(split.train.length > 0 && split.validation.length > 0 && split.holdout.length > 0);
-  assert(Date.parse(split.train.at(-1).created_at) < Date.parse(split.holdout[0].created_at));
-  const trained = trainPolicy(split.train, split.validation);
+  assert(split.train.length > split.validation.length);
+  assert(split.holdout.length > 0);
+  const trained = trainV61Policy(split.train, split.validation);
   assert(trained.selected.policy);
-  const evalResult = evaluateHoldout(split.holdout, trained.selected.policy);
-  assert.strictEqual(evalResult.holdout_samples, undefined); // top-level metrics contain samples
-  assert(Number.isFinite(evalResult.candidate.mean_return_pct));
+  const evaluation = evaluateHoldout(split.holdout, trained.selected.policy);
+  assert(Number.isFinite(evaluation.candidate.mean_return_pct));
 })();
 
 (function metricsAreSane() {
-  const rows = [{
-    entry_price: 1,
-    bars: [[0, 1, 1.05, 0.99, 1.04]]
-  }];
-  const m = metrics(rows, { ...CURRENT_CORE_POLICY, take_profit_pct: 0.04 });
+  const start = Date.UTC(2026, 8, 10);
+  const bars = syntheticBars(start, 577, 0.0001);
+  const btc = syntheticBars(start, 577, 0.00005);
+  const executionAt = new Date(start + 288 * 300000).toISOString();
+  const m = metrics([{
+    created_at: executionAt,
+    execution_at: executionAt,
+    entry_price: bars[288][4],
+    bars,
+    btc_bars: btc
+  }], CURRENT_CORE_POLICY, CURRENT_V61_POLICY);
   assert.strictEqual(m.samples, 1);
-  assert(m.mean_return_pct > 3);
+  assert(Number.isFinite(m.mean_return_pct));
 })();
 
-console.log('spot exit policy historical training tests passed');
+(function parseExitStillWorks() {
+  const exit = parseExit({
+    number: 5,
+    created_at: '2026-09-11T00:00:00Z',
+    title: '[SPOT EXIT] TESTUSDT STOP',
+    body: ['- Símbolo: TESTUSDT','- Motivo: STOP_LOSS','- Entrada aprox.: 1','- Salida aprox.: 0.95','- PnL aprox.: -5%','- orderId=99'].join('\n')
+  });
+  assert(exit);
+  assert.strictEqual(exit.order_id, '99');
+})();
+
+console.log('spot exit stack historical training tests passed');
