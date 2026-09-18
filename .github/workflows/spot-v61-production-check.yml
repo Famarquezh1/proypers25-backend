@@ -10,6 +10,10 @@ on:
       - 'backend/scripts/github-spot-auto-exit.js'
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
+      - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
+      - '.github/workflows/spot-exit-policy-training.yml'
       - 'backend/scripts/github-spot-orphan-protect.js'
       - 'backend/services/spotOrphanProtection.js'
       - 'backend/services/localPretradeGuard.js'
@@ -40,10 +44,14 @@ jobs:
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          node --check backend/scripts/train-spot-exit-policy-v2.js
+          node --check backend/tests/spotExitPolicyHistoricalTraining.test.js
           node --check backend/scripts/github-spot-orphan-protect.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
           node --check backend/services/marketManipulationRisk.js
+      - name: Historical exit-policy training tests
+        run: node backend/tests/spotExitPolicyHistoricalTraining.test.js
       - name: Orphan balance policy tests
         run: node backend/tests/spotOrphanProtection.test.js
       - name: Local pretrade guard tests
@@ -58,6 +66,12 @@ jobs:
           grep -q "isNotionalFilterError" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
+          grep -q '"mode": "CANDIDATE"' backend/config/spot-exit-policy-v2.json
+          grep -q '"mfe": 0.018' backend/config/spot-exit-policy-v2.json
+          grep -q '"confirm": 0.015' backend/config/spot-exit-policy-v2.json
+          grep -q "passed_for_production" backend/scripts/train-spot-exit-policy-v2.js
+          grep -q "Entrenamiento: inmediato con histórico existente" .github/workflows/spot-exit-policy-training.yml
           grep -q "github-spot-orphan-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js

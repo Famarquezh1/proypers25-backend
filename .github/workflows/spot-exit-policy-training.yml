@@ -1,0 +1,88 @@
+name: Spot Exit Stack Historical Training
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
+      - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
+      - '.github/workflows/spot-exit-policy-training.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
+      - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
+      - '.github/workflows/spot-exit-policy-training.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-exit-stack-historical-training
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXIT_TRAIN_HORIZON_HOURS: '24'
+      EXIT_TRAIN_MATCH_HOURS: '36'
+      EXIT_TRAIN_CONCURRENCY: '8'
+      EXIT_TRAIN_MAX_PAGES: '30'
+      EXIT_TRAIN_FEE_PCT: '0.002'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit tests
+        run: |
+          node --check backend/scripts/train-spot-exit-policy-v2.js
+          node --check backend/tests/spotExitPolicyHistoricalTraining.test.js
+          node backend/tests/spotExitPolicyHistoricalTraining.test.js
+
+      - name: Train full CORE exit stack immediately from historical executions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node backend/scripts/train-spot-exit-policy-v2.js | tee spot-exit-policy-training.log
+          test -s spot-exit-policy-training-report.json
+          test -s spot-exit-policy-training-evidence.json
+          test "$(jq -r '.ok' spot-exit-policy-training-report.json)" = "true"
+
+      - name: Upload training evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-exit-policy-training
+          path: |
+            spot-exit-policy-training-report.json
+            spot-exit-policy-training-evidence.json
+            spot-exit-policy-training.log
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Spot CORE exit stack — immediate historical training' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-exit-policy-training-report.json ]; then
+            echo "- CORE reconstruidas: $(jq -r '.reconstructed_core_trades' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Train/Validation/Holdout: $(jq -r '.train_rows' spot-exit-policy-training-report.json)/$(jq -r '.validation_rows' spot-exit-policy-training-report.json)/$(jq -r '.holdout_rows' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- CORE base: $(jq -c '.current_core_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- V6.1 actual: $(jq -c '.current_v61_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- V6.1 entrenado: $(jq -c '.trained_v61_policy' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Salidas reales únicas vinculadas: $(jq -r '.matched_unique_exits' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- PnL medio holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.mean_return_pct' spot-exit-policy-training-report.json)% → $(jq -r '.holdout_evaluation.candidate.mean_return_pct' spot-exit-policy-training-report.json)%" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Profit factor holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.profit_factor' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.profit_factor' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Tasa positiva holdout stack actual → entrenado: $(jq -r '.holdout_evaluation.baseline.positive_rate' spot-exit-policy-training-report.json) → $(jq -r '.holdout_evaluation.candidate.positive_rate' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Recomendación: $(jq -r '.promotion_recommendation' spot-exit-policy-training-report.json)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '- Entrenamiento: inmediato con histórico existente; no espera meses' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Órdenes reales durante entrenamiento: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- GCloud/Firestore: no' >> "$GITHUB_STEP_SUMMARY"
