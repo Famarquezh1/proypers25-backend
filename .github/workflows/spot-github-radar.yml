@@ -50,6 +50,10 @@ jobs:
           echo "qubo_method=$(printf '%s' "$RESULT" | jq -r '.qubo_method')" >> "$GITHUB_OUTPUT"
           echo "qubo_objective=$(printf '%s' "$RESULT" | jq -r '.qubo_objective')" >> "$GITHUB_OUTPUT"
           echo "qubo_selected=$(printf '%s' "$RESULT" | jq -r '.qubo_selected_symbols | join(",")')" >> "$GITHUB_OUTPUT"
+          echo "qubo_model_version=$(printf '%s' "$RESULT" | jq -r '.qubo_model_version // "unknown"')" >> "$GITHUB_OUTPUT"
+          echo "qubo_hardware_ready=$(printf '%s' "$RESULT" | jq -r '.qubo_hardware_ready // false')" >> "$GITHUB_OUTPUT"
+          echo "qubo_solver=$(printf '%s' "$RESULT" | jq -r '.qubo_solver // "unknown"')" >> "$GITHUB_OUTPUT"
+          echo "qubo_binary_variables=$(printf '%s' "$RESULT" | jq -r '.qubo_model_stats.total_binary_variables // 0')" >> "$GITHUB_OUTPUT"
           echo "v42_pass_windows=$(printf '%s' "$RESULT" | jq -r '.v42_pass_windows')" >> "$GITHUB_OUTPUT"
           echo "v42_norm=$(printf '%s' "$RESULT" | jq -r '.v42_norm')" >> "$GITHUB_OUTPUT"
           echo "v42_ignition=$(printf '%s' "$RESULT" | jq -r '.v42_detail.ignition')" >> "$GITHUB_OUTPUT"
@@ -151,6 +155,10 @@ jobs:
           QUBO_METHOD: ${{ steps.scan.outputs.qubo_method }}
           QUBO_OBJECTIVE: ${{ steps.scan.outputs.qubo_objective }}
           QUBO_SELECTED: ${{ steps.scan.outputs.qubo_selected }}
+          QUBO_MODEL_VERSION: ${{ steps.scan.outputs.qubo_model_version }}
+          QUBO_HARDWARE_READY: ${{ steps.scan.outputs.qubo_hardware_ready }}
+          QUBO_SOLVER: ${{ steps.scan.outputs.qubo_solver }}
+          QUBO_BINARY_VARIABLES: ${{ steps.scan.outputs.qubo_binary_variables }}
           V42_PASS: ${{ steps.scan.outputs.v42_pass_windows }}
           V42_NORM: ${{ steps.scan.outputs.v42_norm }}
           V42_IGNITION: ${{ steps.scan.outputs.v42_ignition }}
@@ -164,7 +172,7 @@ jobs:
           set -euo pipefail
           TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
           BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
-            'Proypers25 detectó una oportunidad Spot en producción con V4.2 y QUBO.' \
+            'Proypers25 detectó una oportunidad Spot en producción con V4.2 y QUBO V5 hardware-ready.' \
             "- Símbolo: $SYMBOL" \
             "- Cambio 24h: +${PCT}%" \
             "- Precio: $PRICE" \
@@ -174,6 +182,7 @@ jobs:
             "- QUBO: $QUBO_METHOD" \
             "- Objetivo QUBO: $QUBO_OBJECTIVE" \
             "- Selección QUBO: $QUBO_SELECTED" \
+            "- QUBO V5: modelo=$QUBO_MODEL_VERSION | solver=$QUBO_SOLVER | hardware_ready=$QUBO_HARDWARE_READY | variables_binarias=$QUBO_BINARY_VARIABLES" \
             "- V4.2 robustez: $V42_PASS/3 ventanas | score: $V42_NORM" \
             "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
             "- V8 HUNTER shadow independiente: estado=$V8_STATUS | candidatos=$V8_SYMBOLS | coincide con V4.2=$V8_OVERLAP" \
@@ -194,13 +203,14 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo '### Spot GitHub Radar — Production V4.2 + QUBO / independent V8 HUNTER shadow' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Spot GitHub Radar — Production V4.2 + QUBO V5 hardware-ready / independent V8 HUNTER shadow' >> "$GITHUB_STEP_SUMMARY"
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- Universo productivo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Ranking productivo: base 40% + stable 15% + V4.2 45%' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Ranking productivo QUBO V5 entrenado: base 55% + stable 5% + V4.2 40%' >> "$GITHUB_STEP_SUMMARY"
           echo '- ENTRY-first: retirado de producción tras fallar holdouts frescos R5' >> "$GITHUB_STEP_SUMMARY"
-          echo '- QUBO: selección final en producción' >> "$GITHUB_STEP_SUMMARY"
+          echo '- QUBO V5: BQM binario normalizado, restricción de cardinalidad codificada con slack bits, correlación como término cuadrático; selección final en producción' >> "$GITHUB_STEP_SUMMARY"
+          echo "- QUBO solver actual: ${{ steps.scan.outputs.qubo_solver || 'n/a' }} | hardware-ready=${{ steps.scan.outputs.qubo_hardware_ready || 'false' }} | variables=${{ steps.scan.outputs.qubo_binary_variables || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER: scanner independiente cada 5m; peso de ejecución = 0; no bloquea ni habilita órdenes' >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER model: entrenamiento diario separado para evitar reentrenar 7 días en cada scan' >> "$GITHUB_STEP_SUMMARY"
           echo '- Evidencia V8: artifacts solo cuando existen candidatos; cohortes V8_ONLY o BOTH' >> "$GITHUB_STEP_SUMMARY"
