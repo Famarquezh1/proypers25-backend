@@ -1,0 +1,26 @@
+{
+  "model_version": "QUBO_V5_HARDWARE_READY_2026_09_18",
+  "mode": "PRODUCTION",
+  "trained_at": "2026-09-18",
+  "training": {
+    "method": "regularized_pair_ranking_grid",
+    "samples": 26,
+    "prior_weights": { "base": 0.40, "stable": 0.15, "v42": 0.45 },
+    "regularization": 0.35
+  },
+  "weights": {
+    "base": 0.55,
+    "stable": 0.05,
+    "v42": 0.40
+  },
+  "qubo": {
+    "max_candidates": 12,
+    "max_selected": 3,
+    "cardinality_penalty": 2.5,
+    "correlation_threshold": 0.55,
+    "correlation_penalty": 0.12,
+    "momentum_similarity_band_pct": 1.5,
+    "momentum_similarity_penalty": 0.02,
+    "normalize_max_abs": 1.0
+  }
+}
