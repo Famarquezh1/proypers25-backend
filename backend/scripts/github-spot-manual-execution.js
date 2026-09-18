@@ -44,7 +44,7 @@ function decline(reason) { finish('declined', reason); console.log(`SIGNAL_DECLI
 
 function validateInputs() {
   if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');
-  if (!/^[A-Z0-9]{2,20}USDT$/.test(SYMBOL)) technicalFail('Invalid or missing signal symbol');
+  if (!/^[\p{L}\p{N}._-]{1,24}USDT$/u.test(SYMBOL)) technicalFail('Invalid or missing signal symbol');
   if (!(SIGNAL_PRICE > 0)) technicalFail('Invalid signal price');
   if (!(SIGNAL_PCT >= 1 && SIGNAL_PCT < 18)) decline('Signal is outside Early Momentum band');
   const created = Date.parse(SIGNAL_CREATED_AT);
