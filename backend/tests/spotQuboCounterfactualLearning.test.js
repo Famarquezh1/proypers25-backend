@@ -4,10 +4,17 @@ const assert = require('assert');
 const {
   parseSignal,
   classifyDecision,
+  classifyDecisionDetail,
+  parseExitIssue,
+  matchActualExit,
+  exitQuality,
   firstTouchOutcome,
   outcomeMetrics,
   trainAdaptiveWeights,
-  summarizeDecisions
+  trainRegimeWeights,
+  summarizeDecisions,
+  summarizeRejectionReasons,
+  summarizeRegimes
 } = require('../scripts/train-spot-qubo-counterfactual-v5');
 
 (function parsesLegacyCoreSignal() {
@@ -55,8 +62,25 @@ const {
 
 (function decisionsAreSeparated() {
   assert.strictEqual(classifyDecision([{ body: '✅ Validación autónoma local aprobó la oportunidad y ejecutó la compra Spot. orderId: 1.' }]), 'EXECUTED');
-  assert.strictEqual(classifyDecision([{ body: '🛑 Oportunidad descartada automáticamente por el PC local. No se compró.' }]), 'DECLINED');
+  const declined = classifyDecisionDetail([{ body: '🛑 Oportunidad descartada automáticamente por el PC local. No se compró. Motivo: Price advanced 3.4%; anti-chase blocked' }]);
+  assert.strictEqual(declined.decision, 'DECLINED');
+  assert(/anti-chase/i.test(declined.reason));
   assert.strictEqual(classifyDecision([{ body: '⚠️ problema técnico. No asumir compra.' }]), 'TECHNICAL');
+})();
+
+(function actualExitQualityIsMeasured() {
+  const exit = parseExitIssue({
+    number: 99,
+    created_at: '2026-09-18T02:00:00Z',
+    body: ['- Símbolo: TESTUSDT', '- Motivo: TRAILING_STOP', '- Entrada aprox.: 1', '- Salida aprox.: 1.025', '- PnL aprox.: 2.500%'].join('\n')
+  });
+  assert(exit);
+  const signal = { symbol: 'TESTUSDT', created_at: '2026-09-18T01:00:00Z' };
+  assert.strictEqual(matchActualExit(signal, [exit]).issue_number, 99);
+  const quality = exitQuality(exit, { mfe_pct: 4.0 });
+  assert.strictEqual(quality.actual_pnl_pct, 2.5);
+  assert.strictEqual(quality.capture_ratio, 0.625);
+  assert.strictEqual(quality.regret_vs_mfe_pct, 1.5);
 })();
 
 (function outcomeIsConservative() {
@@ -83,12 +107,22 @@ const {
       first_touch_3pct_vs_5pct: i % 3 ? 'WIN' : 'LOSS'
     });
   }
+  rows.forEach((row, i) => {
+    row.market_regime = i < 15 ? 'BULL' : 'BEAR';
+    row.decision_reason = row.decision === 'DECLINED' ? (i % 4 ? 'anti-chase blocked' : 'liquidity dropped') : 'EXECUTED';
+  });
   const trained = trainAdaptiveWeights(rows, { base: 0.55, stable: 0.05, v42: 0.40 });
   assert.strictEqual(trained.samples, 30);
   assert(trained.holdout_samples >= 6);
   const summary = summarizeDecisions(rows);
   assert.strictEqual(summary.executed, 15);
   assert.strictEqual(summary.declined, 15);
+  const reasons = summarizeRejectionReasons(rows);
+  assert(reasons.length >= 1);
+  const regimes = summarizeRegimes(rows);
+  assert.strictEqual(regimes.length, 2);
+  const regimeTraining = trainRegimeWeights(rows, { base: 0.55, stable: 0.05, v42: 0.40 });
+  assert(regimeTraining && typeof regimeTraining === 'object');
 })();
 
 console.log('spot QUBO counterfactual learning tests passed');
