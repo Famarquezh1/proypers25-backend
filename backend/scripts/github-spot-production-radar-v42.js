@@ -5,14 +5,18 @@ const {
   evaluateProductionCandidate,
   summarizeSelectionRejections
 } = require('../services/spotProductionSelection');
+const {
+  CONFIG: QUBO_V5_CONFIG,
+  productionUtility,
+  solveHardwareReadyQubo
+} = require('../services/spotQuboProductionV5');
 
 const MIN_PCT = 1;
 const MAX_PCT = 18;
 const MIN_QUOTE_VOLUME = 200000;
 const PROBE_CANDIDATES = 100;
 const PROBE_CONCURRENCY = 10;
-const MAX_QUBO_CANDIDATES = 10;
-const MAX_SELECTED = 3;
+const MAX_QUBO_CANDIDATES = QUBO_V5_CONFIG.qubo.max_candidates;
 const V42_MIN_PASS_WINDOWS = 2;
 const STABLE_AGENTS = ['EARLY_MOMENTUM', 'BREAKOUT'];
 const V42_HIERARCHY = ['VOLUME_IGNITION', 'FRESH_RS_CONFIRM', 'RELATIVE_STRENGTH_EXTENSION'];
@@ -77,40 +81,7 @@ function probeLaneScore(candidate, lane = 'base') {
 }
 
 function utility(candidate) {
-  const base = baseUtility(candidate);
-  const stable = Number.isFinite(candidate.stable_norm) ? candidate.stable_norm : 0.5;
-  const v42 = Number.isFinite(candidate.v42_norm) ? candidate.v42_norm : 0;
-  return Number((base * 0.40 + stable * 0.15 + v42 * 0.45).toFixed(6));
-}
-
-function pairPenalty(a, b) {
-  const distance = Math.abs((Number(a.pct) || 0) - (Number(b.pct) || 0));
-  return distance <= 1.5 ? 0.025 : 0;
-}
-
-function objective(selected) {
-  let score = selected.reduce((sum, item) => sum + utility(item), 0);
-  for (let i = 0; i < selected.length; i += 1) {
-    for (let j = i + 1; j < selected.length; j += 1) score -= pairPenalty(selected[i], selected[j]);
-  }
-  return Number(score.toFixed(6));
-}
-
-function exactQubo(candidates) {
-  const size = Math.min(candidates.length, MAX_QUBO_CANDIDATES);
-  let best = [];
-  let bestScore = -Infinity;
-  for (let mask = 1; mask < (1 << size); mask += 1) {
-    const selected = [];
-    for (let i = 0; i < size; i += 1) if (mask & (1 << i)) selected.push(candidates[i]);
-    if (selected.length > MAX_SELECTED) continue;
-    const score = objective(selected);
-    if (score > bestScore) {
-      bestScore = score;
-      best = selected;
-    }
-  }
-  return { method: 'LOCAL_QUBO_EXACT_PRODUCTION_V42', objective: bestScore, selected: best };
+  return Number(productionUtility({ ...candidate, base_utility: baseUtility(candidate) }, QUBO_V5_CONFIG).toFixed(6));
 }
 
 async function fetchJson(url) {
@@ -301,14 +272,18 @@ async function enrichV42(candidates) {
   }
   return mapWithConcurrency(candidates, PROBE_CONCURRENCY, async (candidate) => {
     try {
-      const features = v42Features(await klines(candidate.symbol, '5m', 290), btc);
+      const bars = await klines(candidate.symbol, '5m', 290);
+      const features = v42Features(bars, btc);
+      const quboReturns = [];
+      const last = bars.length - 2;
+      for (let k = Math.max(1, last - 23); k <= last; k += 1) quboReturns.push(pctFrom(bars[k - 1].c, bars[k].c));
       const parts = v42Parts(features);
       const freshEnough = features.r24 < 0.18 && features.r60 < 0.10 && features.r15 < 0.06;
       const passCount = freshEnough ? v42PassCount(parts) : 0;
-      return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough } };
+      return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough }, qubo_returns: quboReturns };
     } catch (error) {
       console.error(`V42_FEATURES_FAILED ${candidate.symbol} ${error.message}`);
-      return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null };
+      return { ...candidate, v42_pass_windows: 0, v42_norm: 0, v42_detail: null, qubo_returns: [] };
     }
   });
 }
@@ -334,7 +309,7 @@ async function main() {
   const market = await loadMarket();
   const probe = eligibleProbe(market.rows);
   if (!probe.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no base candidates', v42_hierarchy: V42_HIERARCHY }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42_QUBO_V5', reason: 'no base candidates', v42_hierarchy: V42_HIERARCHY }));
     return;
   }
 
@@ -342,7 +317,7 @@ async function main() {
   candidates = await enrichV42(candidates);
   const robust = candidates.filter((x) => x.v42_pass_windows >= V42_MIN_PASS_WINDOWS);
   if (!robust.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42_QUBO_V5', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
     return;
   }
 
@@ -359,7 +334,7 @@ async function main() {
       ok: true,
       notify: false,
       source: market.source,
-      mode: 'PRODUCTION_V42',
+      mode: 'PRODUCTION_V42_QUBO_V5',
       reason: 'no V4.2 candidate passed production quality gate',
       probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
       probed: candidates.length,
@@ -375,7 +350,7 @@ async function main() {
 
   productionCandidates.sort((a, b) => utility(b) - utility(a));
   const quboPool = productionCandidates.slice(0, MAX_QUBO_CANDIDATES);
-  const decision = exactQubo(quboPool);
+  const decision = solveHardwareReadyQubo(quboPool, QUBO_V5_CONFIG);
   const selected = [...decision.selected].sort((a, b) => utility(b) - utility(a));
   const candidate = selected[0];
   if (!candidate) {
@@ -383,7 +358,7 @@ async function main() {
       ok: true,
       notify: false,
       source: market.source,
-      mode: 'PRODUCTION_V42',
+      mode: 'PRODUCTION_V42_QUBO_V5',
       reason: 'QUBO selected none',
       probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
       robust_candidates: robust.length,
@@ -397,7 +372,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     notify: true,
-    mode: 'PRODUCTION_V42',
+    mode: 'PRODUCTION_V42_QUBO_V5',
     source: market.source,
     probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100',
     probed: candidates.length,
@@ -409,6 +384,11 @@ async function main() {
     qubo_method: decision.method,
     qubo_objective: decision.objective,
     qubo_selected_symbols: selected.map((item) => item.symbol),
+    qubo_model_version: decision.model_version,
+    qubo_hardware_ready: decision.hardware_ready,
+    qubo_hardware_schema: decision.hardware_schema,
+    qubo_solver: decision.solver,
+    qubo_model_stats: decision.model_stats,
     stable_agents: STABLE_AGENTS,
     v42_hierarchy: V42_HIERARCHY,
     v42_min_pass_windows: V42_MIN_PASS_WINDOWS,
