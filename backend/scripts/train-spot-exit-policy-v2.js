@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const HORIZON_HOURS = Math.max(12, Math.min(36, Number(process.env.EXIT_TRAIN_HORIZON_HOURS || 24)));
+const CONTEXT_HOURS = Math.max(24, Math.min(36, Number(process.env.EXIT_TRAIN_CONTEXT_HOURS || 24)));
 const EXIT_MATCH_HOURS = Math.max(HORIZON_HOURS, Math.min(72, Number(process.env.EXIT_TRAIN_MATCH_HOURS || 36)));
 const CONCURRENCY = Math.max(1, Math.min(10, Number(process.env.EXIT_TRAIN_CONCURRENCY || 8)));
 const MAX_PAGES = Math.max(10, Math.min(80, Number(process.env.EXIT_TRAIN_MAX_PAGES || 30)));
@@ -20,6 +21,18 @@ const CURRENT_CORE_POLICY = Object.freeze({
   stale_timeout_hours: 18,
   stale_max_gain_pct: 0.005,
   take_profit_pct: 0
+});
+
+const CURRENT_V61_POLICY = Object.freeze({
+  enabled: true,
+  mfe: 0.008,
+  dd: -0.008,
+  gap: 0.004,
+  r15: -0.001,
+  confirm: 0.005,
+  healthyPnl: 0.004,
+  healthyRs: -0.002,
+  healthyConfirm: 0.015
 });
 
 function n(value, fallback = NaN) {
@@ -45,6 +58,9 @@ function percentile(values = [], p = 0.5) {
   const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p)));
   return sorted[idx];
 }
+function ret(a, b) {
+  return a > 0 ? b / a - 1 : 0;
+}
 function parseNumber(body, regex) {
   const match = String(body || '').match(regex);
   return match ? n(match[1]) : NaN;
@@ -67,15 +83,19 @@ function parseSignal(issue = {}) {
   };
 }
 function classifyDecision(comments = []) {
-  const text = comments.map((comment) => String(comment.body || '')).join('\n');
-  const orderId = (text.match(/orderId:\s*([0-9]+)/i) || [])[1] || null;
-  if (/ejecut[oó] la compra Spot|compra Spot.*orderId|protecci[oó]n nativa fue armada/i.test(text)) {
-    return { decision: 'EXECUTED', order_id: orderId };
+  const sorted = [...comments].sort((a, b) => Date.parse(a.created_at || 0) - Date.parse(b.created_at || 0));
+  for (const comment of sorted) {
+    const body = String(comment.body || '');
+    const orderId = (body.match(/orderId:\s*([0-9]+)/i) || [])[1] || null;
+    if (/ejecut[oó] la compra Spot|compra Spot.*orderId|protecci[oó]n nativa fue armada/i.test(body)) {
+      return { decision: 'EXECUTED', order_id: orderId, execution_at: comment.created_at || null };
+    }
   }
+  const text = sorted.map((comment) => String(comment.body || '')).join('\n');
   if (/Oportunidad descartada autom[aá]ticamente|No se compr[oó]|SIGNAL_DECLINED/i.test(text)) {
-    return { decision: 'DECLINED', order_id: null };
+    return { decision: 'DECLINED', order_id: null, execution_at: null };
   }
-  return { decision: 'UNKNOWN', order_id: null };
+  return { decision: 'UNKNOWN', order_id: null, execution_at: null };
 }
 function parseExit(issue = {}) {
   const title = String(issue.title || '');
@@ -110,60 +130,142 @@ function dedupeExits(exits = []) {
   }
   return out;
 }
-function matchExit(signal, exits = []) {
-  const start = Date.parse(signal.created_at);
-  const end = start + EXIT_MATCH_HOURS * 3600000;
-  return exits
-    .filter((exit) => exit.symbol === signal.symbol)
-    .filter((exit) => {
-      const t = Date.parse(exit.created_at);
-      return t >= start && t <= end;
-    })
-    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0] || null;
+function oneToOneExitMatch(signals = [], exits = []) {
+  const used = new Set();
+  const result = new Map();
+  const orderedSignals = [...signals].sort((a, b) => Date.parse(a.execution_at || a.created_at) - Date.parse(b.execution_at || b.created_at));
+  for (const signal of orderedSignals) {
+    const start = Date.parse(signal.execution_at || signal.created_at);
+    const end = start + EXIT_MATCH_HOURS * 3600000;
+    const candidate = exits
+      .filter((exit) => exit.symbol === signal.symbol)
+      .filter((exit) => !used.has(exit.order_id || exit.issue_number))
+      .filter((exit) => {
+        const t = Date.parse(exit.created_at);
+        return t >= start && t <= end;
+      })
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+    if (!candidate) continue;
+    const key = candidate.order_id || candidate.issue_number;
+    used.add(key);
+    result.set(signal.issue_number, candidate);
+  }
+  return result;
 }
-function simulatePolicy(bars, entryPrice, policy, feePct = ROUND_TRIP_FEE_PCT) {
+function binarySearchBarIndex(bars, timeMs) {
+  let lo = 0, hi = bars.length - 1, best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const t = n(bars[mid][0], -Infinity);
+    if (t <= timeMs) {
+      best = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return best;
+}
+function legacyStop(entryPrice, high, policy) {
+  const mfe = high / entryPrice - 1;
+  let stop = entryPrice * (1 - policy.hard_stop_pct);
+  let reason = 'HARD_STOP';
+  if (mfe >= policy.break_even_trigger_pct) {
+    stop = Math.max(stop, entryPrice * (1 + policy.break_even_lock_pct));
+    reason = 'BREAK_EVEN';
+  }
+  if (mfe >= policy.trailing_trigger_pct) {
+    const trailing = high * (1 - policy.trailing_distance_pct);
+    if (trailing > stop) {
+      stop = trailing;
+      reason = 'TRAILING';
+    }
+  }
+  return { stop, reason };
+}
+function v61Features(bars, index, btcBars) {
+  if (index < 72) return null;
+  const t = n(bars[index][0]);
+  const bi = binarySearchBarIndex(btcBars, t);
+  if (bi < 48) return null;
+  const close = (row) => n(row[4], 0);
+  const high = (row) => n(row[2], 0);
+  const quote = (row) => n(row[7], 0);
+  const trades = (row) => n(row[8], 0);
+  const c = close(bars[index]);
+  const r15 = ret(close(bars[index - 3]), c);
+  const r60 = ret(close(bars[index - 12]), c);
+  const priorHigh60 = Math.max(...bars.slice(index - 12, index).map(high));
+  const base = mean(bars.slice(index - 72, index - 12).map(quote)) * 12;
+  let q30 = 0;
+  for (let k = index - 5; k <= index; k += 1) q30 += quote(bars[k]);
+  const vol30 = base > 0 ? q30 / (base / 2) : 1;
+  const btcR60 = ret(close(btcBars[bi - 12]), close(btcBars[bi]));
+  const rs60 = r60 - btcR60;
+  const breakout60 = priorHigh60 > 0 ? c / priorHigh60 - 1 : 0;
+  const r24 = index >= 288 ? ret(close(bars[index - 288]), c) : 0;
+  const confirm = 1.2 * breakout60 + 0.65 * rs60 + 0.35 * Math.log(Math.max(0.2, vol30))
+    - 0.8 * Math.max(0, r24 - 0.10) - 0.5 * Math.max(0, r60 - 0.06);
+  return { price: c, r15, r60, rs60, confirm, trades: trades(bars[index]) };
+}
+function maybeTightenV61({ bars, index, btcBars, entryPrice, high, currentStop, policy }) {
+  if (!policy?.enabled) return currentStop;
+  const f = v61Features(bars, index, btcBars);
+  if (!f) return currentStop;
+  const pnl = f.price / entryPrice - 1;
+  const mfe = high / entryPrice - 1;
+  const dd = f.price / high - 1;
+  const fading = mfe >= policy.mfe && dd <= policy.dd && f.r15 <= policy.r15 && f.confirm <= policy.confirm;
+  const healthy = pnl > policy.healthyPnl && f.rs60 >= policy.healthyRs && f.confirm >= policy.healthyConfirm;
+  if (!fading || healthy) return currentStop;
+  return Math.max(currentStop || 0, f.price * (1 - policy.gap));
+}
+function simulateStack(row, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY, feePct = ROUND_TRIP_FEE_PCT) {
+  const bars = row.bars;
+  const btcBars = row.btc_bars || [];
+  const entryPrice = row.entry_price;
   if (!Array.isArray(bars) || !bars.length || !(entryPrice > 0)) return null;
+  const entryTime = Date.parse(row.execution_at || row.created_at);
+  const entryIndex = Math.max(0, binarySearchBarIndex(bars, entryTime));
   let high = entryPrice;
+  let v61Stop = 0;
   let exitPrice = entryPrice;
   let reason = 'HORIZON';
   let ageHours = 0;
 
-  for (let i = 0; i < bars.length; i += 1) {
-    const row = bars[i];
-    const openTime = n(row[0]);
-    const highPrice = n(row[2]);
-    const lowPrice = n(row[3]);
-    const closePrice = n(row[4]);
+  for (let i = Math.max(entryIndex + 1, 1); i < bars.length; i += 1) {
+    const previousIndex = i - 1;
+    const previousHigh = n(bars[previousIndex][2], entryPrice);
+    high = Math.max(high, previousHigh);
+
+    v61Stop = maybeTightenV61({
+      bars,
+      index: previousIndex,
+      btcBars,
+      entryPrice,
+      high,
+      currentStop: v61Stop,
+      policy: v61Policy
+    });
+
+    const legacy = legacyStop(entryPrice, high, corePolicy);
+    const effectiveStop = Math.max(legacy.stop, v61Stop || 0);
+    const stopReason = v61Stop > legacy.stop + Number.EPSILON ? 'V61_TIGHTENED_STOP' : legacy.reason;
+
+    const rowBar = bars[i];
+    const highPrice = n(rowBar[2]);
+    const lowPrice = n(rowBar[3]);
+    const closePrice = n(rowBar[4]);
     if (!(highPrice > 0 && lowPrice > 0 && closePrice > 0)) continue;
-    ageHours = i * 5 / 60;
 
-    // Use only the high known before this candle to set protection.
-    // This avoids look-ahead from an unknown intrabar high/low ordering.
-    const mfe = high / entryPrice - 1;
-    let stop = entryPrice * (1 - policy.hard_stop_pct);
-    let stopReason = 'HARD_STOP';
-    if (mfe >= policy.break_even_trigger_pct) {
-      stop = Math.max(stop, entryPrice * (1 + policy.break_even_lock_pct));
-      stopReason = 'BREAK_EVEN';
-    }
-    if (mfe >= policy.trailing_trigger_pct) {
-      const trailingStop = high * (1 - policy.trailing_distance_pct);
-      if (trailingStop > stop) {
-        stop = trailingStop;
-        stopReason = 'TRAILING';
-      }
-    }
+    ageHours = (n(rowBar[0], entryTime) - entryTime) / 3600000;
+    const takeProfit = n(corePolicy.take_profit_pct, 0) > 0 ? entryPrice * (1 + corePolicy.take_profit_pct) : Infinity;
 
-    const takeProfit = n(policy.take_profit_pct, 0) > 0 ? entryPrice * (1 + policy.take_profit_pct) : Infinity;
-
-    // Conservative ordering when both are touched inside the same 5m candle.
-    if (lowPrice <= stop && highPrice >= takeProfit) {
-      exitPrice = stop;
+    if (lowPrice <= effectiveStop && highPrice >= takeProfit) {
+      exitPrice = effectiveStop;
       reason = stopReason;
       break;
     }
-    if (lowPrice <= stop) {
-      exitPrice = stop;
+    if (lowPrice <= effectiveStop) {
+      exitPrice = effectiveStop;
       reason = stopReason;
       break;
     }
@@ -173,19 +275,16 @@ function simulatePolicy(bars, entryPrice, policy, feePct = ROUND_TRIP_FEE_PCT) {
       break;
     }
 
-    // Only after surviving the candle does its high become available for
-    // the next candle's break-even/trailing decision.
     high = Math.max(high, highPrice);
-
     const gainAtClose = closePrice / entryPrice - 1;
-    if (ageHours >= policy.stale_timeout_hours && gainAtClose <= policy.stale_max_gain_pct) {
+    if (ageHours >= corePolicy.stale_timeout_hours && gainAtClose <= corePolicy.stale_max_gain_pct) {
       exitPrice = closePrice;
       reason = 'TIMEOUT_STALE';
       break;
     }
-
     exitPrice = closePrice;
-    if (!Number.isFinite(openTime)) continue;
+
+    if (ageHours >= HORIZON_HOURS) break;
   }
 
   const gross = exitPrice / entryPrice - 1;
@@ -197,28 +296,24 @@ function simulatePolicy(bars, entryPrice, policy, feePct = ROUND_TRIP_FEE_PCT) {
     age_hours: round(ageHours, 3)
   };
 }
-function policyGrid() {
+function v61Grid() {
   const policies = [];
-  for (const hard of [0.025, 0.035, 0.05]) {
-    for (const beTrigger of [0.025, 0.04, 0.05]) {
-      for (const beLock of [0.001, 0.003]) {
-        for (const trailTrigger of [0.04, 0.06, 0.08]) {
-          for (const trailDistance of [0.02, 0.035, 0.05, 0.06]) {
-            if (trailDistance >= trailTrigger + 0.015) continue;
-            for (const timeout of [9, 12, 18]) {
-              for (const takeProfit of [0, 0.04, 0.06]) {
-                policies.push({
-                  hard_stop_pct: hard,
-                  break_even_trigger_pct: beTrigger,
-                  break_even_lock_pct: beLock,
-                  trailing_trigger_pct: trailTrigger,
-                  trailing_distance_pct: trailDistance,
-                  stale_timeout_hours: timeout,
-                  stale_max_gain_pct: 0.005,
-                  take_profit_pct: takeProfit
-                });
-              }
-            }
+  for (const mfe of [0.008, 0.012, 0.018, 0.025]) {
+    for (const dd of [-0.008, -0.012, -0.018]) {
+      for (const gap of [0.004, 0.006, 0.01]) {
+        for (const r15 of [-0.002, -0.001, 0]) {
+          for (const confirm of [0, 0.005, 0.015]) {
+            policies.push({
+              enabled: true,
+              mfe,
+              dd,
+              gap,
+              r15,
+              confirm,
+              healthyPnl: CURRENT_V61_POLICY.healthyPnl,
+              healthyRs: CURRENT_V61_POLICY.healthyRs,
+              healthyConfirm: CURRENT_V61_POLICY.healthyConfirm
+            });
           }
         }
       }
@@ -226,11 +321,11 @@ function policyGrid() {
   }
   return policies;
 }
-function metrics(rows, policy) {
+function metrics(rows, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY) {
   const returns = [];
   const reasons = new Map();
   for (const row of rows) {
-    const result = simulatePolicy(row.bars, row.entry_price, policy);
+    const result = simulateStack(row, corePolicy, v61Policy);
     if (!result) continue;
     returns.push(result.return_pct);
     reasons.set(result.reason, (reasons.get(result.reason) || 0) + 1);
@@ -253,36 +348,32 @@ function metrics(rows, policy) {
   };
 }
 function objective(m) {
-  return (
-    m.mean_return_pct +
-    0.15 * m.median_return_pct +
-    1.5 * m.positive_rate +
-    0.08 * Math.min(m.profit_factor, 3) +
-    0.05 * m.p10_return_pct
-  );
+  return m.mean_return_pct
+    + 0.15 * m.median_return_pct
+    + 1.5 * m.positive_rate
+    + 0.08 * Math.min(m.profit_factor, 3)
+    + 0.05 * m.p10_return_pct;
 }
 function chronologicalSplit(rows) {
-  const ordered = [...rows].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-  const nRows = ordered.length;
-  const trainEnd = Math.max(1, Math.floor(nRows * 0.65));
-  const validationEnd = Math.max(trainEnd + 1, Math.floor(nRows * 0.80));
+  const ordered = [...rows].sort((a, b) => Date.parse(a.execution_at || a.created_at) - Date.parse(b.execution_at || b.created_at));
+  const total = ordered.length;
+  const trainEnd = Math.max(1, Math.floor(total * 0.65));
+  const validationEnd = Math.max(trainEnd + 1, Math.floor(total * 0.80));
   return {
     train: ordered.slice(0, trainEnd),
     validation: ordered.slice(trainEnd, validationEnd),
     holdout: ordered.slice(validationEnd)
   };
 }
-function trainPolicy(trainRows, validationRows) {
-  const baselineTrain = metrics(trainRows, CURRENT_CORE_POLICY);
-  const baselineValidation = metrics(validationRows, CURRENT_CORE_POLICY);
-  const candidates = policyGrid()
-    .map((policy) => ({ policy, train: metrics(trainRows, policy) }))
+function trainV61Policy(trainRows, validationRows) {
+  const baselineTrain = metrics(trainRows, CURRENT_CORE_POLICY, CURRENT_V61_POLICY);
+  const baselineValidation = metrics(validationRows, CURRENT_CORE_POLICY, CURRENT_V61_POLICY);
+
+  const candidates = v61Grid()
+    .map((policy) => ({ policy, train: metrics(trainRows, CURRENT_CORE_POLICY, policy) }))
     .sort((a, b) => objective(b.train) - objective(a.train))
     .slice(0, 30)
-    .map((candidate) => ({
-      ...candidate,
-      validation: metrics(validationRows, candidate.policy)
-    }))
+    .map((candidate) => ({ ...candidate, validation: metrics(validationRows, CURRENT_CORE_POLICY, candidate.policy) }))
     .filter((candidate) =>
       candidate.validation.mean_return_pct >= baselineValidation.mean_return_pct - 0.05 &&
       candidate.validation.positive_rate >= baselineValidation.positive_rate - 0.04
@@ -290,15 +381,15 @@ function trainPolicy(trainRows, validationRows) {
     .sort((a, b) => objective(b.validation) - objective(a.validation));
 
   const selected = candidates[0] || {
-    policy: CURRENT_CORE_POLICY,
+    policy: CURRENT_V61_POLICY,
     train: baselineTrain,
     validation: baselineValidation
   };
-  return { selected, baselineTrain, baselineValidation, candidates_considered: policyGrid().length };
+  return { selected, baselineTrain, baselineValidation, candidates_considered: v61Grid().length };
 }
-function evaluateHoldout(holdoutRows, candidatePolicy) {
-  const baseline = metrics(holdoutRows, CURRENT_CORE_POLICY);
-  const candidate = metrics(holdoutRows, candidatePolicy);
+function evaluateHoldout(holdoutRows, candidateV61) {
+  const baseline = metrics(holdoutRows, CURRENT_CORE_POLICY, CURRENT_V61_POLICY);
+  const candidate = metrics(holdoutRows, CURRENT_CORE_POLICY, candidateV61);
   const pass =
     holdoutRows.length >= 25 &&
     candidate.mean_return_pct >= baseline.mean_return_pct + 0.10 &&
@@ -365,11 +456,29 @@ async function loadRepoHistory(repo) {
   }
   return { issues, comments, commentsByIssue };
 }
-async function loadBars(signal) {
-  const start = Date.parse(signal.created_at);
-  const end = start + HORIZON_HOURS * 3600000;
+async function loadSymbolBars(signal) {
+  const executionTime = Date.parse(signal.execution_at || signal.created_at);
+  const start = executionTime - CONTEXT_HOURS * 3600000;
+  const end = executionTime + HORIZON_HOURS * 3600000;
   const url = `https://data-api.binance.vision/api/v3/klines?symbol=${encodeURIComponent(signal.symbol)}&interval=5m&startTime=${start}&endTime=${end}&limit=1000`;
   return fetchJson(url, { headers: { 'User-Agent': 'proypers25-exit-policy-training' } });
+}
+async function loadBtcBars(startMs, endMs) {
+  const rows = [];
+  let cursor = startMs;
+  const step = 5 * 60 * 1000;
+  while (cursor < endMs) {
+    const url = `https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime=${cursor}&endTime=${endMs}&limit=1000`;
+    const page = await fetchJson(url, { headers: { 'User-Agent': 'proypers25-exit-policy-training' } });
+    if (!Array.isArray(page) || !page.length) break;
+    rows.push(...page);
+    const last = n(page[page.length - 1][0], cursor);
+    const next = last + step;
+    if (next <= cursor) break;
+    cursor = next;
+    if (page.length < 1000) break;
+  }
+  return rows;
 }
 async function mapLimit(items, limit, mapper) {
   const out = new Array(items.length);
@@ -388,29 +497,36 @@ async function buildDataset(repo, now = Date.now()) {
   const history = await loadRepoHistory(repo);
   const exits = dedupeExits(history.issues.map(parseExit).filter(Boolean));
   const signals = history.issues.map(parseSignal).filter(Boolean);
-  const mature = signals
+  const executed = signals
     .filter((signal) => signal.lane === 'CORE')
-    .filter((signal) => now - Date.parse(signal.created_at) >= HORIZON_HOURS * 3600000)
-    .map((signal) => ({
-      ...signal,
-      decision: classifyDecision(history.commentsByIssue.get(signal.issue_number) || [])
-    }))
-    .filter((signal) => signal.decision.decision === 'EXECUTED');
+    .map((signal) => ({ ...signal, ...classifyDecision(history.commentsByIssue.get(signal.issue_number) || []) }))
+    .filter((signal) => signal.decision === 'EXECUTED' && signal.execution_at)
+    .filter((signal) => now - Date.parse(signal.execution_at) >= HORIZON_HOURS * 3600000);
 
-  const rows = await mapLimit(mature, CONCURRENCY, async (signal) => {
+  const exitMatches = oneToOneExitMatch(executed, exits);
+  const minTime = Math.min(...executed.map((x) => Date.parse(x.execution_at))) - CONTEXT_HOURS * 3600000;
+  const maxTime = Math.max(...executed.map((x) => Date.parse(x.execution_at))) + HORIZON_HOURS * 3600000;
+  const btcAll = await loadBtcBars(minTime, maxTime);
+
+  const rows = await mapLimit(executed, CONCURRENCY, async (signal) => {
     try {
-      const bars = await loadBars(signal);
-      if (!Array.isArray(bars) || bars.length < 24) return null;
-      const actualExit = matchExit(signal, exits);
+      const bars = await loadSymbolBars(signal);
+      if (!Array.isArray(bars) || bars.length < 100) return null;
+      const actualExit = exitMatches.get(signal.issue_number) || null;
       const entryPrice = actualExit && actualExit.entry_price > 0 ? actualExit.entry_price : signal.signal_price;
+      const start = Date.parse(signal.execution_at) - CONTEXT_HOURS * 3600000;
+      const end = Date.parse(signal.execution_at) + HORIZON_HOURS * 3600000;
+      const btcBars = btcAll.filter((bar) => n(bar[0]) >= start && n(bar[0]) <= end);
       return {
         issue_number: signal.issue_number,
         created_at: signal.created_at,
+        execution_at: signal.execution_at,
         symbol: signal.symbol,
         entry_price: entryPrice,
         entry_source: actualExit && actualExit.entry_price > 0 ? 'MATCHED_EXIT' : 'SIGNAL_PRICE',
         actual_exit: actualExit,
-        bars
+        bars,
+        btc_bars: btcBars
       };
     } catch (error) {
       console.warn(`EXIT_TRAIN_SAMPLE_SKIPPED issue=${signal.issue_number} symbol=${signal.symbol} reason=${error.message}`);
@@ -422,7 +538,8 @@ async function buildDataset(repo, now = Date.now()) {
     rows: rows.filter(Boolean),
     exits,
     signal_count: signals.length,
-    core_executed_count: mature.length,
+    core_executed_count: executed.length,
+    matched_exit_count: [...exitMatches.values()].length,
     issues_scanned: history.issues.length,
     comments_scanned: history.comments.length
   };
@@ -447,27 +564,30 @@ async function main() {
   if (dataset.rows.length < 80) throw new Error(`Insufficient executed CORE history: ${dataset.rows.length}`);
 
   const split = chronologicalSplit(dataset.rows);
-  const trained = trainPolicy(split.train, split.validation);
+  const trained = trainV61Policy(split.train, split.validation);
   const holdout = evaluateHoldout(split.holdout, trained.selected.policy);
   const recommendation = holdout.passed_for_production ? 'PROMOTE' : 'KEEP_CURRENT';
 
   const report = {
     ok: true,
-    version: 'SPOT_EXIT_POLICY_HISTORICAL_V2_2026_09_18',
+    version: 'SPOT_EXIT_STACK_HISTORICAL_V3_2026_09_18',
     generated_at: new Date().toISOString(),
     source: 'GITHUB_EXECUTED_CORE_SIGNALS_PLUS_BINANCE_PUBLIC_5M_KLINES',
     round_trip_fee_assumption_pct: round(ROUND_TRIP_FEE_PCT * 100, 4),
     horizon_hours: HORIZON_HOURS,
+    context_hours: CONTEXT_HOURS,
     issues_scanned: dataset.issues_scanned,
     comments_scanned: dataset.comments_scanned,
     historical_signals_found: dataset.signal_count,
     executed_core_signals_found: dataset.core_executed_count,
+    matched_unique_exits: dataset.matched_exit_count,
     reconstructed_core_trades: dataset.rows.length,
     train_rows: split.train.length,
     validation_rows: split.validation.length,
     holdout_rows: split.holdout.length,
-    current_policy: CURRENT_CORE_POLICY,
-    trained_policy: trained.selected.policy,
+    current_core_policy: CURRENT_CORE_POLICY,
+    current_v61_policy: CURRENT_V61_POLICY,
+    trained_v61_policy: trained.selected.policy,
     train_metrics: {
       baseline: trained.baselineTrain,
       candidate: trained.selected.train
@@ -487,13 +607,14 @@ async function main() {
     rows: dataset.rows.map((row) => ({
       issue_number: row.issue_number,
       created_at: row.created_at,
+      execution_at: row.execution_at,
       symbol: row.symbol,
       entry_price: row.entry_price,
       entry_source: row.entry_source,
       actual_exit_pnl_pct: row.actual_exit?.pnl_pct ?? null,
       actual_exit_reason: row.actual_exit?.reason ?? null,
-      current_policy: simulatePolicy(row.bars, row.entry_price, CURRENT_CORE_POLICY),
-      trained_policy: simulatePolicy(row.bars, row.entry_price, trained.selected.policy)
+      current_stack: simulateStack(row, CURRENT_CORE_POLICY, CURRENT_V61_POLICY),
+      trained_stack: simulateStack(row, CURRENT_CORE_POLICY, trained.selected.policy)
     }))
   };
 
@@ -505,11 +626,12 @@ async function main() {
     ok: true,
     version: report.version,
     reconstructed_core_trades: report.reconstructed_core_trades,
+    matched_unique_exits: report.matched_unique_exits,
     train: report.train_rows,
     validation: report.validation_rows,
     holdout: report.holdout_rows,
-    current_policy: report.current_policy,
-    trained_policy: report.trained_policy,
+    current_v61_policy: report.current_v61_policy,
+    trained_v61_policy: report.trained_v61_policy,
     holdout_evaluation: report.holdout_evaluation,
     actual_exit_history: report.actual_exit_history,
     recommendation,
@@ -528,15 +650,19 @@ if (require.main === module) {
 
 module.exports = {
   CURRENT_CORE_POLICY,
+  CURRENT_V61_POLICY,
   parseSignal,
   classifyDecision,
   parseExit,
   dedupeExits,
-  matchExit,
-  simulatePolicy,
-  policyGrid,
+  oneToOneExitMatch,
+  legacyStop,
+  v61Features,
+  maybeTightenV61,
+  simulateStack,
+  v61Grid,
   metrics,
   chronologicalSplit,
-  trainPolicy,
+  trainV61Policy,
   evaluateHoldout
 };
