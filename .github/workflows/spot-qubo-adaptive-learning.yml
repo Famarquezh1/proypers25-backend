@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
       - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/services/spotMarketRegime.js'
       - 'backend/config/spot-qubo-production-v5.json'
       - 'backend/tests/spotQuboCounterfactualLearning.test.js'
       - '.github/workflows/spot-qubo-adaptive-learning.yml'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
       - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/services/spotMarketRegime.js'
       - 'backend/config/spot-qubo-production-v5.json'
       - 'backend/tests/spotQuboCounterfactualLearning.test.js'
       - '.github/workflows/spot-qubo-adaptive-learning.yml'
@@ -38,6 +40,8 @@ jobs:
       QUBO_CF_HORIZON_HOURS: '6'
       QUBO_CF_CONCURRENCY: '5'
       QUBO_CF_MIN_SAMPLES: '24'
+      QUBO_CF_EXIT_MATCH_HOURS: '24'
+      QUBO_CF_REGIME_MIN_SAMPLES: '18'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,6 +52,7 @@ jobs:
         run: |
           node --check backend/scripts/train-spot-qubo-counterfactual-v5.js
           node --check backend/tests/spotQuboCounterfactualLearning.test.js
+          node --check backend/services/spotMarketRegime.js
           node backend/tests/spotQuboCounterfactualLearning.test.js
 
       - name: Learn from executed and declined real opportunities
@@ -83,6 +88,10 @@ jobs:
             echo "- Rechazadas que habrían alcanzado +3% antes de -5%: $(jq -r '.training.decision_summary.declined_missed_wins' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Rechazadas que evitaron -5% antes de +3%: $(jq -r '.training.decision_summary.declined_avoided_losses' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Pesos productivos: $(jq -c '.weights' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Pesos por régimen promovidos: $(jq -c '.regime_weights // {}' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Muestras con salida real vinculada: $(jq -r '.training.exit_quality_samples // 0' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Regímenes: $(jq -c '.training.regime_stats // []' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Principales motivos de rechazo: $(jq -c '.training.rejection_reason_stats[0:5] // []' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo '- GCloud/Firestore: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- PC local: no se usa para este entrenamiento' >> "$GITHUB_STEP_SUMMARY"
