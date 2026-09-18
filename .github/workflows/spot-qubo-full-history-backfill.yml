@@ -1,0 +1,87 @@
+name: Spot QUBO Full History Backfill
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-qubo-full-history-v5.js'
+      - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
+      - '.github/workflows/spot-qubo-full-history-backfill.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-qubo-full-history-v5.js'
+      - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
+      - '.github/workflows/spot-qubo-full-history-backfill.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-qubo-full-history-backfill
+  cancel-in-progress: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      QUBO_HISTORY_HORIZON_HOURS: '6'
+      QUBO_HISTORY_EXIT_MATCH_HOURS: '36'
+      QUBO_HISTORY_CONCURRENCY: '8'
+      QUBO_HISTORY_MAX_PAGES: '30'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit tests
+        run: |
+          node --check backend/scripts/train-spot-qubo-full-history-v5.js
+          node --check backend/tests/spotQuboFullHistoryBackfill.test.js
+          node backend/tests/spotQuboFullHistoryBackfill.test.js
+
+      - name: Reconstruct full Spot history and evaluate learned QUBO
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node backend/scripts/train-spot-qubo-full-history-v5.js | tee qubo-full-history.log
+          test -s spot-qubo-history-backfill-report.json
+          test -s spot-qubo-history-backfill-evidence.json
+          test "$(jq -r '.ok' spot-qubo-history-backfill-report.json)" = "true"
+          test "$(jq -r '.holdout_rows > 0' spot-qubo-history-backfill-report.json)" = "true"
+
+      - name: Upload historical learning evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-qubo-full-history-backfill
+          path: |
+            spot-qubo-history-backfill-report.json
+            spot-qubo-history-backfill-evidence.json
+            qubo-full-history.log
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### QUBO V5 full-history backfill' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-qubo-history-backfill-report.json ]; then
+            echo "- Señales históricas encontradas: $(jq -r '.spot_signals_found' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Muestras reconstruidas: $(jq -r '.mature_rows_reconstructed' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Muestras con features QUBO completas: $(jq -r '.complete_feature_rows' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Train/Holdout: $(jq -r '.train_rows' spot-qubo-history-backfill-report.json)/$(jq -r '.holdout_rows' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Pesos aprendidos: $(jq -c '.learned_model.weights' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Fuerza de prior histórico: $(jq -r '.learned_model.history_strength' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Spearman base → aprendido: $(jq -r '.evaluation.baseline_spearman' spot-qubo-history-backfill-report.json) → $(jq -r '.evaluation.candidate_spearman' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Target top quartile base → aprendido: $(jq -r '.evaluation.baseline_top_quartile_target_pct' spot-qubo-history-backfill-report.json)% → $(jq -r '.evaluation.candidate_top_quartile_target_pct' spot-qubo-history-backfill-report.json)%" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Win rate top quartile base → aprendido: $(jq -r '.evaluation.baseline_top_quartile_win_rate' spot-qubo-history-backfill-report.json) → $(jq -r '.evaluation.candidate_top_quartile_win_rate' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Salidas únicas históricas: $(jq -r '.exit_history.unique_exit_orders' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Evaluación para producción: $(jq -r '.promotion_recommendation' spot-qubo-history-backfill-report.json)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '- Evaluación cronológica: sí; holdout posterior al train' >> "$GITHUB_STEP_SUMMARY"
+          echo '- GCloud/Firestore: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Órdenes reales durante entrenamiento: no' >> "$GITHUB_STEP_SUMMARY"
