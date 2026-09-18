@@ -1,0 +1,88 @@
+name: Spot QUBO Counterfactual Learning
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
+      - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/config/spot-qubo-production-v5.json'
+      - 'backend/tests/spotQuboCounterfactualLearning.test.js'
+      - '.github/workflows/spot-qubo-adaptive-learning.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
+      - 'backend/services/spotQuboProductionV5.js'
+      - 'backend/config/spot-qubo-production-v5.json'
+      - 'backend/tests/spotQuboCounterfactualLearning.test.js'
+      - '.github/workflows/spot-qubo-adaptive-learning.yml'
+  schedule:
+    - cron: '19 */3 * * *'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-qubo-counterfactual-learning
+  cancel-in-progress: true
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      QUBO_CF_MAX_SIGNALS: '160'
+      QUBO_CF_HORIZON_HOURS: '6'
+      QUBO_CF_CONCURRENCY: '5'
+      QUBO_CF_MIN_SAMPLES: '24'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit tests
+        run: |
+          node --check backend/scripts/train-spot-qubo-counterfactual-v5.js
+          node --check backend/tests/spotQuboCounterfactualLearning.test.js
+          node backend/tests/spotQuboCounterfactualLearning.test.js
+
+      - name: Learn from executed and declined real opportunities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node backend/scripts/train-spot-qubo-counterfactual-v5.js | tee qubo-counterfactual-learning.log
+          test -s spot-qubo-adaptive-v5.json
+          test -s spot-qubo-counterfactual-evidence.json
+          test "$(jq -r '.mode' spot-qubo-adaptive-v5.json)" = "PRODUCTION"
+          test "$(jq -r '.adaptive' spot-qubo-adaptive-v5.json)" = "true"
+
+      - name: Upload bounded adaptive model
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-qubo-adaptive-v5
+          path: |
+            spot-qubo-adaptive-v5.json
+            spot-qubo-counterfactual-evidence.json
+            qubo-counterfactual-learning.log
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### QUBO V5 counterfactual learning' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-qubo-adaptive-v5.json ]; then
+            echo "- Estado: $(jq -r '.adaptive_state' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Muestras maduras: $(jq -r '.training.samples' spot-qubo-adaptive-v5.json) / máximo persistido en memoria de trabajo: 160" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Ejecutadas: $(jq -r '.training.decision_summary.executed' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Rechazadas: $(jq -r '.training.decision_summary.declined' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Rechazadas que habrían alcanzado +3% antes de -5%: $(jq -r '.training.decision_summary.declined_missed_wins' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Rechazadas que evitaron -5% antes de +3%: $(jq -r '.training.decision_summary.declined_avoided_losses' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Pesos productivos: $(jq -c '.weights' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '- GCloud/Firestore: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- PC local: no se usa para este entrenamiento' >> "$GITHUB_STEP_SUMMARY"

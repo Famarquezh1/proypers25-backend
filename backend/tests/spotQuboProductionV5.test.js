@@ -3,6 +3,7 @@
 const assert = require('assert');
 const {
   CONFIG,
+  validateAdaptiveConfig,
   METHOD,
   productionUtility,
   pairPenalty,
@@ -24,6 +25,18 @@ function c(symbol, base, stable, v42, pct, returns) {
 (function trainedWeightsAreProduction() {
   assert.strictEqual(CONFIG.mode, 'PRODUCTION');
   assert.deepStrictEqual(CONFIG.weights, { base: 0.55, stable: 0.05, v42: 0.40 });
+})();
+
+(function adaptiveConfigRequiresSafeProductionWeights() {
+  const good = validateAdaptiveConfig({
+    mode: 'PRODUCTION',
+    adaptive: true,
+    model_version: 'TEST',
+    weights: { base: 0.50, stable: 0.10, v42: 0.40 }
+  });
+  assert(good);
+  assert.deepStrictEqual(good.weights, { base: 0.50, stable: 0.10, v42: 0.40 });
+  assert.strictEqual(validateAdaptiveConfig({ mode: 'PRODUCTION', adaptive: true, weights: { base: 0.9, stable: 0.05, v42: 0.20 } }), null);
 })();
 
 (function utilityUsesTrainedWeights() {

@@ -27,8 +27,36 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Load latest adaptive QUBO V5 model
+        id: qubomodel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          rm -rf .qubo-adaptive
+          mkdir -p .qubo-adaptive
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-qubo-adaptive-learning.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null)
+          if [ -z "$RUN_ID" ]; then
+            echo 'status=STATIC_BASE' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name spot-qubo-adaptive-v5 --dir .qubo-adaptive >/dev/null 2>&1
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ] || [ ! -f .qubo-adaptive/spot-qubo-adaptive-v5.json ]; then
+            echo 'status=STATIC_BASE' >> "$GITHUB_OUTPUT"
+            echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'status=ADAPTIVE_LOADED' >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "model_version=$(jq -r '.model_version' .qubo-adaptive/spot-qubo-adaptive-v5.json)" >> "$GITHUB_OUTPUT"
+          echo "adaptive_state=$(jq -r '.adaptive_state' .qubo-adaptive/spot-qubo-adaptive-v5.json)" >> "$GITHUB_OUTPUT"
+
       - name: Run production Spot QUBO radar with V4.2 + active Spot filter
         id: scan
+        env:
+          QUBO_V5_ADAPTIVE_CONFIG: ${{ github.workspace }}/.qubo-adaptive/spot-qubo-adaptive-v5.json
         shell: bash
         run: |
           set -euo pipefail
@@ -54,6 +82,11 @@ jobs:
           echo "qubo_hardware_ready=$(printf '%s' "$RESULT" | jq -r '.qubo_hardware_ready // false')" >> "$GITHUB_OUTPUT"
           echo "qubo_solver=$(printf '%s' "$RESULT" | jq -r '.qubo_solver // "unknown"')" >> "$GITHUB_OUTPUT"
           echo "qubo_binary_variables=$(printf '%s' "$RESULT" | jq -r '.qubo_model_stats.total_binary_variables // 0')" >> "$GITHUB_OUTPUT"
+          echo "qubo_adaptive=$(printf '%s' "$RESULT" | jq -r '.qubo_adaptive // false')" >> "$GITHUB_OUTPUT"
+          echo "qubo_adaptive_state=$(printf '%s' "$RESULT" | jq -r '.qubo_adaptive_state // "STATIC_BASE"')" >> "$GITHUB_OUTPUT"
+          echo "qubo_weights=$(printf '%s' "$RESULT" | jq -c '.qubo_weights // {}')" >> "$GITHUB_OUTPUT"
+          echo "base_utility=$(printf '%s' "$RESULT" | jq -r '.base_utility // 0')" >> "$GITHUB_OUTPUT"
+          echo "stable_norm=$(printf '%s' "$RESULT" | jq -r '.stable_norm // 0')" >> "$GITHUB_OUTPUT"
           echo "v42_pass_windows=$(printf '%s' "$RESULT" | jq -r '.v42_pass_windows')" >> "$GITHUB_OUTPUT"
           echo "v42_norm=$(printf '%s' "$RESULT" | jq -r '.v42_norm')" >> "$GITHUB_OUTPUT"
           echo "v42_ignition=$(printf '%s' "$RESULT" | jq -r '.v42_detail.ignition')" >> "$GITHUB_OUTPUT"
@@ -159,6 +192,11 @@ jobs:
           QUBO_HARDWARE_READY: ${{ steps.scan.outputs.qubo_hardware_ready }}
           QUBO_SOLVER: ${{ steps.scan.outputs.qubo_solver }}
           QUBO_BINARY_VARIABLES: ${{ steps.scan.outputs.qubo_binary_variables }}
+          QUBO_ADAPTIVE: ${{ steps.scan.outputs.qubo_adaptive }}
+          QUBO_ADAPTIVE_STATE: ${{ steps.scan.outputs.qubo_adaptive_state }}
+          QUBO_WEIGHTS: ${{ steps.scan.outputs.qubo_weights }}
+          BASE_UTILITY: ${{ steps.scan.outputs.base_utility }}
+          STABLE_NORM: ${{ steps.scan.outputs.stable_norm }}
           V42_PASS: ${{ steps.scan.outputs.v42_pass_windows }}
           V42_NORM: ${{ steps.scan.outputs.v42_norm }}
           V42_IGNITION: ${{ steps.scan.outputs.v42_ignition }}
@@ -171,7 +209,7 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
             'Proypers25 detectó una oportunidad Spot en producción con V4.2 y QUBO V5 hardware-ready.' \
             "- Símbolo: $SYMBOL" \
             "- Cambio 24h: +${PCT}%" \
@@ -183,6 +221,8 @@ jobs:
             "- Objetivo QUBO: $QUBO_OBJECTIVE" \
             "- Selección QUBO: $QUBO_SELECTED" \
             "- QUBO V5: modelo=$QUBO_MODEL_VERSION | solver=$QUBO_SOLVER | hardware_ready=$QUBO_HARDWARE_READY | variables_binarias=$QUBO_BINARY_VARIABLES" \
+            "- QUBO aprendizaje: adaptive=$QUBO_ADAPTIVE | estado=$QUBO_ADAPTIVE_STATE | weights=$QUBO_WEIGHTS" \
+            "- QUBO features: base=$BASE_UTILITY | stable=$STABLE_NORM | v42=$V42_NORM" \
             "- V4.2 robustez: $V42_PASS/3 ventanas | score: $V42_NORM" \
             "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
             "- V8 HUNTER shadow independiente: estado=$V8_STATUS | candidatos=$V8_SYMBOLS | coincide con V4.2=$V8_OVERLAP" \
@@ -207,10 +247,11 @@ jobs:
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- Universo productivo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Ranking productivo QUBO V5 entrenado: base 55% + stable 5% + V4.2 40%' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ranking productivo QUBO V5: weights=${{ steps.scan.outputs.qubo_weights || '{}' }} | adaptive=${{ steps.scan.outputs.qubo_adaptive || 'false' }} | estado=${{ steps.scan.outputs.qubo_adaptive_state || 'STATIC_BASE' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- ENTRY-first: retirado de producción tras fallar holdouts frescos R5' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO V5: BQM binario normalizado, restricción de cardinalidad codificada con slack bits, correlación como término cuadrático; selección final en producción' >> "$GITHUB_STEP_SUMMARY"
           echo "- QUBO solver actual: ${{ steps.scan.outputs.qubo_solver || 'n/a' }} | hardware-ready=${{ steps.scan.outputs.qubo_hardware_ready || 'false' }} | variables=${{ steps.scan.outputs.qubo_binary_variables || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- QUBO learner artifact: ${{ steps.qubomodel.outputs.status || 'STATIC_BASE' }} | run=${{ steps.qubomodel.outputs.run_id || 'n/a' }} | model=${{ steps.qubomodel.outputs.model_version || 'base' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER: scanner independiente cada 5m; peso de ejecución = 0; no bloquea ni habilita órdenes' >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER model: entrenamiento diario separado para evitar reentrenar 7 días en cada scan' >> "$GITHUB_STEP_SUMMARY"
           echo '- Evidencia V8: artifacts solo cuando existen candidatos; cohortes V8_ONLY o BOTH' >> "$GITHUB_STEP_SUMMARY"

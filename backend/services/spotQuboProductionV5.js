@@ -1,6 +1,46 @@
 'use strict';
 
-const CONFIG = require('../config/spot-qubo-production-v5.json');
+const fs = require('fs');
+const path = require('path');
+const BASE_CONFIG = require('../config/spot-qubo-production-v5.json');
+
+function validateAdaptiveConfig(candidate) {
+  if (!candidate || candidate.mode !== 'PRODUCTION' || candidate.adaptive !== true) return null;
+  const weights = candidate.weights || {};
+  const base = Number(weights.base);
+  const stable = Number(weights.stable);
+  const v42 = Number(weights.v42);
+  if (![base, stable, v42].every(Number.isFinite)) return null;
+  if (base < 0.20 || stable < 0.02 || v42 < 0.15) return null;
+  if (Math.abs(base + stable + v42 - 1) > 0.000001) return null;
+  return {
+    ...BASE_CONFIG,
+    ...candidate,
+    qubo: { ...BASE_CONFIG.qubo, ...(candidate.qubo || {}) },
+    weights: { base, stable, v42 }
+  };
+}
+
+function loadProductionConfig() {
+  const configuredPath = String(process.env.QUBO_V5_ADAPTIVE_CONFIG || '').trim();
+  if (!configuredPath) return BASE_CONFIG;
+  const resolved = path.resolve(configuredPath);
+  if (!fs.existsSync(resolved)) return BASE_CONFIG;
+  try {
+    const adaptive = validateAdaptiveConfig(JSON.parse(fs.readFileSync(resolved, 'utf8')));
+    if (!adaptive) {
+      console.warn(`QUBO_ADAPTIVE_CONFIG_REJECTED path=${resolved}`);
+      return BASE_CONFIG;
+    }
+    console.warn(`QUBO_ADAPTIVE_CONFIG_LOADED model=${adaptive.model_version} state=${adaptive.adaptive_state || 'unknown'} weights=${JSON.stringify(adaptive.weights)}`);
+    return adaptive;
+  } catch (error) {
+    console.warn(`QUBO_ADAPTIVE_CONFIG_FAILED path=${resolved} reason=${error.message}`);
+    return BASE_CONFIG;
+  }
+}
+
+const CONFIG = loadProductionConfig();
 
 const METHOD = 'LOCAL_QUBO_BQM_EXACT_PRODUCTION_V5';
 const HARDWARE_SCHEMA = 'BINARY_QUADRATIC_MODEL_QUBO_V1';
@@ -203,7 +243,10 @@ function solveHardwareReadyQubo(candidates = [], config = CONFIG) {
 }
 
 module.exports = {
+  BASE_CONFIG,
   CONFIG,
+  validateAdaptiveConfig,
+  loadProductionConfig,
   METHOD,
   HARDWARE_SCHEMA,
   baseUtility,
