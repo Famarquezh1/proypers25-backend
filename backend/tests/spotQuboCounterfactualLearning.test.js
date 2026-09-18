@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const { classifyMarketRegime } = require('../services/spotMarketRegime');
 const {
   parseSignal,
   classifyDecision,
@@ -16,6 +17,19 @@ const {
   summarizeRejectionReasons,
   summarizeRegimes
 } = require('../scripts/train-spot-qubo-counterfactual-v5');
+
+(function marketRegimeUsesOnlyPriorBars() {
+  const start = Date.UTC(2026, 8, 17, 0, 0, 0);
+  const bars = [];
+  let price = 100;
+  for (let i = 0; i < 289; i += 1) {
+    price *= 1.00008;
+    bars.push([start + i * 300000, 0, 0, 0, price]);
+  }
+  const result = classifyMarketRegime(bars, bars[bars.length - 1][0]);
+  assert(['BULL', 'MIXED', 'RANGE', 'VOLATILE'].includes(result.regime));
+  assert(result.r4h > 0);
+})();
 
 (function parsesLegacyCoreSignal() {
   const issue = {
