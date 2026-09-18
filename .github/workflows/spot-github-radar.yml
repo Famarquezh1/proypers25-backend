@@ -85,6 +85,8 @@ jobs:
           echo "qubo_adaptive=$(printf '%s' "$RESULT" | jq -r '.qubo_adaptive // false')" >> "$GITHUB_OUTPUT"
           echo "qubo_adaptive_state=$(printf '%s' "$RESULT" | jq -r '.qubo_adaptive_state // "STATIC_BASE"')" >> "$GITHUB_OUTPUT"
           echo "qubo_weights=$(printf '%s' "$RESULT" | jq -c '.qubo_weights // {}')" >> "$GITHUB_OUTPUT"
+          echo "qubo_effective_weights=$(printf '%s' "$RESULT" | jq -c '.qubo_effective_weights // .qubo_weights // {}')" >> "$GITHUB_OUTPUT"
+          echo "market_regime=$(printf '%s' "$RESULT" | jq -r '.market_regime // "UNKNOWN"')" >> "$GITHUB_OUTPUT"
           echo "base_utility=$(printf '%s' "$RESULT" | jq -r '.base_utility // 0')" >> "$GITHUB_OUTPUT"
           echo "stable_norm=$(printf '%s' "$RESULT" | jq -r '.stable_norm // 0')" >> "$GITHUB_OUTPUT"
           echo "v42_pass_windows=$(printf '%s' "$RESULT" | jq -r '.v42_pass_windows')" >> "$GITHUB_OUTPUT"
@@ -195,6 +197,8 @@ jobs:
           QUBO_ADAPTIVE: ${{ steps.scan.outputs.qubo_adaptive }}
           QUBO_ADAPTIVE_STATE: ${{ steps.scan.outputs.qubo_adaptive_state }}
           QUBO_WEIGHTS: ${{ steps.scan.outputs.qubo_weights }}
+          QUBO_EFFECTIVE_WEIGHTS: ${{ steps.scan.outputs.qubo_effective_weights }}
+          MARKET_REGIME: ${{ steps.scan.outputs.market_regime }}
           BASE_UTILITY: ${{ steps.scan.outputs.base_utility }}
           STABLE_NORM: ${{ steps.scan.outputs.stable_norm }}
           V42_PASS: ${{ steps.scan.outputs.v42_pass_windows }}
@@ -209,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="[SPOT SIGNAL] $SYMBOL +${PCT}%"
-          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
+          BODY=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s' \
             'Proypers25 detectó una oportunidad Spot en producción con V4.2 y QUBO V5 hardware-ready.' \
             "- Símbolo: $SYMBOL" \
             "- Cambio 24h: +${PCT}%" \
@@ -222,6 +226,7 @@ jobs:
             "- Selección QUBO: $QUBO_SELECTED" \
             "- QUBO V5: modelo=$QUBO_MODEL_VERSION | solver=$QUBO_SOLVER | hardware_ready=$QUBO_HARDWARE_READY | variables_binarias=$QUBO_BINARY_VARIABLES" \
             "- QUBO aprendizaje: adaptive=$QUBO_ADAPTIVE | estado=$QUBO_ADAPTIVE_STATE | weights=$QUBO_WEIGHTS" \
+            "- QUBO contexto: regime=$MARKET_REGIME | effective_weights=$QUBO_EFFECTIVE_WEIGHTS" \
             "- QUBO features: base=$BASE_UTILITY | stable=$STABLE_NORM | v42=$V42_NORM" \
             "- V4.2 robustez: $V42_PASS/3 ventanas | score: $V42_NORM" \
             "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
@@ -247,7 +252,7 @@ jobs:
           echo '- GCP usado: no' >> "$GITHUB_STEP_SUMMARY"
           echo '- Universo productivo: solo símbolos Binance Spot USDT activos (TRADING)' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: gate de admisión se mantiene intacto' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Ranking productivo QUBO V5: weights=${{ steps.scan.outputs.qubo_weights || '{}' }} | adaptive=${{ steps.scan.outputs.qubo_adaptive || 'false' }} | estado=${{ steps.scan.outputs.qubo_adaptive_state || 'STATIC_BASE' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ranking productivo QUBO V5: weights=${{ steps.scan.outputs.qubo_effective_weights || steps.scan.outputs.qubo_weights || '{}' }} | regime=${{ steps.scan.outputs.market_regime || 'UNKNOWN' }} | adaptive=${{ steps.scan.outputs.qubo_adaptive || 'false' }} | estado=${{ steps.scan.outputs.qubo_adaptive_state || 'STATIC_BASE' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- ENTRY-first: retirado de producción tras fallar holdouts frescos R5' >> "$GITHUB_STEP_SUMMARY"
           echo '- QUBO V5: BQM binario normalizado, restricción de cardinalidad codificada con slack bits, correlación como término cuadrático; selección final en producción' >> "$GITHUB_STEP_SUMMARY"
           echo "- QUBO solver actual: ${{ steps.scan.outputs.qubo_solver || 'n/a' }} | hardware-ready=${{ steps.scan.outputs.qubo_hardware_ready || 'false' }} | variables=${{ steps.scan.outputs.qubo_binary_variables || '0' }}" >> "$GITHUB_STEP_SUMMARY"
