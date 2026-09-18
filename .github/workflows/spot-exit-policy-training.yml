@@ -6,12 +6,14 @@ on:
     branches: [main]
     paths:
       - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
       - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
       - '.github/workflows/spot-exit-policy-training.yml'
   push:
     branches: [main]
     paths:
       - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
       - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
       - '.github/workflows/spot-exit-policy-training.yml'
 
