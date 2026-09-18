@@ -11,6 +11,7 @@ on:
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/config/spot-exit-policy-v2.json'
       - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
       - '.github/workflows/spot-exit-policy-training.yml'
       - 'backend/scripts/github-spot-orphan-protect.js'
@@ -66,6 +67,9 @@ jobs:
           grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
+          grep -q '"mode": "CANDIDATE"' backend/config/spot-exit-policy-v2.json
+          grep -q '"mfe": 0.018' backend/config/spot-exit-policy-v2.json
+          grep -q '"confirm": 0.015' backend/config/spot-exit-policy-v2.json
           grep -q "passed_for_production" backend/scripts/train-spot-exit-policy-v2.js
           grep -q "Entrenamiento: inmediato con histórico existente" .github/workflows/spot-exit-policy-training.yml
           grep -q "github-spot-orphan-protect.js" backend/scripts/github-spot-auto-exit.js
