@@ -55,6 +55,9 @@ jobs:
           set -euo pipefail
           grep -q "github-spot-v61-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -q "github-spot-auto-exit-legacy-v10-aware.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "isNotionalFilterError" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "github-spot-orphan-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
