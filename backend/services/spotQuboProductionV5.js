@@ -13,11 +13,22 @@ function validateAdaptiveConfig(candidate) {
   if (![base, stable, v42].every(Number.isFinite)) return null;
   if (base < 0.20 || stable < 0.02 || v42 < 0.15) return null;
   if (Math.abs(base + stable + v42 - 1) > 0.000001) return null;
+  const regimeWeights = {};
+  for (const [regime, value] of Object.entries(candidate.regime_weights || {})) {
+    const rb = Number(value?.base);
+    const rs = Number(value?.stable);
+    const rv = Number(value?.v42);
+    if (![rb, rs, rv].every(Number.isFinite)) continue;
+    if (rb < 0.20 || rs < 0.02 || rv < 0.15) continue;
+    if (Math.abs(rb + rs + rv - 1) > 0.000001) continue;
+    regimeWeights[String(regime).toUpperCase()] = { base: rb, stable: rs, v42: rv };
+  }
   return {
     ...BASE_CONFIG,
     ...candidate,
     qubo: { ...BASE_CONFIG.qubo, ...(candidate.qubo || {}) },
-    weights: { base, stable, v42 }
+    weights: { base, stable, v42 },
+    regime_weights: regimeWeights
   };
 }
 
@@ -75,7 +86,8 @@ function baseUtility(candidate = {}) {
 }
 
 function productionUtility(candidate = {}, config = CONFIG) {
-  const w = config.weights || {};
+  const regime = String(candidate.market_regime || '').toUpperCase();
+  const w = config.regime_weights?.[regime] || config.weights || {};
   return round(
     baseUtility(candidate) * n(w.base, 0.55) +
     clamp(candidate.stable_norm) * n(w.stable, 0.05) +

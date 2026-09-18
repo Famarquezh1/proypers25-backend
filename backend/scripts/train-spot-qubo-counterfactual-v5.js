@@ -5,10 +5,13 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const BASE_CONFIG = require('../config/spot-qubo-production-v5.json');
+const { classifyMarketRegime } = require('../services/spotMarketRegime');
 const MAX_SIGNALS = Math.max(40, Math.min(200, Number(process.env.QUBO_CF_MAX_SIGNALS || 160)));
 const HORIZON_HOURS = Math.max(3, Math.min(24, Number(process.env.QUBO_CF_HORIZON_HOURS || 6)));
 const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.QUBO_CF_CONCURRENCY || 5)));
 const MIN_SAMPLES = Math.max(16, Math.min(80, Number(process.env.QUBO_CF_MIN_SAMPLES || 24)));
+const EXIT_MATCH_HOURS = Math.max(HORIZON_HOURS, Math.min(72, Number(process.env.QUBO_CF_EXIT_MATCH_HOURS || 24)));
+const REGIME_MIN_SAMPLES = Math.max(12, Math.min(40, Number(process.env.QUBO_CF_REGIME_MIN_SAMPLES || 18)));
 const OUTPUT = process.env.QUBO_CF_OUTPUT || path.join(process.cwd(), 'spot-qubo-adaptive-v5.json');
 const EVIDENCE_OUTPUT = process.env.QUBO_CF_EVIDENCE_OUTPUT || path.join(process.cwd(), 'spot-qubo-counterfactual-evidence.json');
 
@@ -78,13 +81,47 @@ function parseSignal(issue = {}) {
     qubo_method: qmethod
   };
 }
-function classifyDecision(comments = []) {
+function classifyDecisionDetail(comments = []) {
   const text = comments.map((comment) => String(comment.body || '')).join('\n');
-  if (/ejecut[oó] la compra Spot|compra Spot.*orderId|protecci[oó]n nativa fue armada/i.test(text)) return 'EXECUTED';
-  if (/Oportunidad descartada autom[aá]ticamente|No se compr[oó]|SIGNAL_DECLINED/i.test(text)) return 'DECLINED';
-  if (/problema t[eé]cnico|No asumir compra/i.test(text)) return 'TECHNICAL';
-  return 'UNKNOWN';
+  const orderId = (text.match(/orderId:\s*([0-9]+)/i) || [])[1] || null;
+  if (/ejecut[oó] la compra Spot|compra Spot.*orderId|protecci[oó]n nativa fue armada/i.test(text)) {
+    return { decision: 'EXECUTED', reason: 'EXECUTED', order_id: orderId };
+  }
+  if (/Oportunidad descartada autom[aá]ticamente|No se compr[oó]|SIGNAL_DECLINED/i.test(text)) {
+    const reason = (text.match(/Motivo:\s*([^\r\n]+)/i) || [])[1] || 'DECLINED_UNSPECIFIED';
+    return { decision: 'DECLINED', reason: reason.trim().slice(0, 180), order_id: null };
+  }
+  if (/problema t[eé]cnico|No asumir compra/i.test(text)) {
+    return { decision: 'TECHNICAL', reason: 'TECHNICAL_FAILURE', order_id: null };
+  }
+  return { decision: 'UNKNOWN', reason: 'UNKNOWN', order_id: null };
 }
+function classifyDecision(comments = []) {
+  return classifyDecisionDetail(comments).decision;
+}
+function parseExitIssue(issue = {}) {
+  const body = String(issue.body || '');
+  const symbol = (body.match(/^- Símbolo:\s*([^\s]+USDT)\s*$/mi) || [])[1];
+  const reason = (body.match(/^- Motivo:\s*(.+)$/mi) || [])[1] || null;
+  const entry = parseNumber(body, /^- Entrada aprox\.:\s*([0-9.eE+-]+)/mi);
+  const exit = parseNumber(body, /^- Salida aprox\.:\s*([0-9.eE+-]+)/mi);
+  const pnl = parseNumber(body, /^- PnL aprox\.:\s*([+-]?[0-9.]+)%/mi);
+  if (!symbol || !Number.isFinite(pnl)) return null;
+  return { issue_number: issue.number, created_at: issue.created_at, symbol, reason, entry_price: entry, exit_price: exit, pnl_pct: pnl };
+}
+
+function matchActualExit(signal, exits = []) {
+  const start = Date.parse(signal.created_at);
+  const end = start + EXIT_MATCH_HOURS * 3600000;
+  return exits
+    .filter((exit) => exit.symbol === signal.symbol)
+    .filter((exit) => {
+      const t = Date.parse(exit.created_at);
+      return t >= start && t <= end;
+    })
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0] || null;
+}
+
 function firstTouchOutcome(bars, entry, tpPct = 0.03, slPct = 0.05) {
   const tp = entry * (1 + tpPct);
   const sl = entry * (1 - slPct);
@@ -120,6 +157,17 @@ function outcomeMetrics(bars, entry) {
     first_touch_3pct_vs_5pct: firstTouchOutcome(bars, entry)
   };
 }
+function exitQuality(actualExit, outcome) {
+  if (!actualExit || !outcome) return null;
+  const capture = outcome.mfe_pct > 0.05 ? actualExit.pnl_pct / outcome.mfe_pct : null;
+  return {
+    reason: actualExit.reason || 'UNKNOWN_EXIT',
+    actual_pnl_pct: round(actualExit.pnl_pct, 4),
+    capture_ratio: capture === null ? null : round(Math.max(-2, Math.min(2, capture)), 4),
+    regret_vs_mfe_pct: round(outcome.mfe_pct - actualExit.pnl_pct, 4)
+  };
+}
+
 function ranks(values) {
   const sorted = values.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
   const out = new Array(values.length);
@@ -211,6 +259,61 @@ function trainAdaptiveWeights(rows, current = BASE_CONFIG.weights) {
     candidate_holdout_spearman: round(candidateHoldout, 6)
   };
 }
+function trainRegimeWeights(rows, globalWeights) {
+  const out = {};
+  const regimes = [...new Set(rows.map((row) => row.market_regime).filter((x) => x && x !== 'UNKNOWN'))];
+  for (const regime of regimes) {
+    const subset = rows.filter((row) => row.market_regime === regime);
+    if (subset.length < REGIME_MIN_SAMPLES) continue;
+    const trained = trainAdaptiveWeights(subset, globalWeights);
+    out[regime] = {
+      samples: subset.length,
+      promoted: trained.promoted,
+      reason: trained.reason,
+      weights: trained.promoted ? trained.weights : globalWeights,
+      candidate_weights: trained.candidate_weights || globalWeights,
+      current_holdout_spearman: trained.current_holdout_spearman,
+      candidate_holdout_spearman: trained.candidate_holdout_spearman
+    };
+  }
+  return out;
+}
+
+function summarizeRejectionReasons(rows) {
+  const map = new Map();
+  for (const row of rows.filter((x) => x.decision === 'DECLINED')) {
+    const key = String(row.decision_reason || 'DECLINED_UNSPECIFIED').slice(0, 180);
+    const item = map.get(key) || { reason: key, samples: 0, missed_wins: 0, avoided_losses: 0, target_sum: 0 };
+    item.samples += 1;
+    if (row.first_touch_3pct_vs_5pct === 'WIN') item.missed_wins += 1;
+    if (row.first_touch_3pct_vs_5pct === 'LOSS') item.avoided_losses += 1;
+    item.target_sum += n(row.target_pct, 0);
+    map.set(key, item);
+  }
+  return [...map.values()]
+    .map((item) => ({ ...item, mean_target_pct: round(item.target_sum / Math.max(1, item.samples), 4) }))
+    .sort((a, b) => b.samples - a.samples || b.missed_wins - a.missed_wins)
+    .slice(0, 20);
+}
+
+function summarizeRegimes(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = row.market_regime || 'UNKNOWN';
+    const item = map.get(key) || { regime: key, samples: 0, wins: 0, target_sum: 0 };
+    item.samples += 1;
+    if (row.first_touch_3pct_vs_5pct === 'WIN') item.wins += 1;
+    item.target_sum += n(row.target_pct, 0);
+    map.set(key, item);
+  }
+  return [...map.values()].map((item) => ({
+    regime: item.regime,
+    samples: item.samples,
+    win_rate: round(item.wins / Math.max(1, item.samples), 4),
+    mean_target_pct: round(item.target_sum / Math.max(1, item.samples), 4)
+  }));
+}
+
 function summarizeDecisions(rows) {
   const count = (predicate) => rows.filter(predicate).length;
   return {
@@ -256,7 +359,34 @@ async function loadSignalIssues(repo) {
 }
 async function loadDecision(repo, number) {
   const comments = await githubJson(`https://api.github.com/repos/${repo}/issues/${number}/comments?per_page=100`);
-  return classifyDecision(Array.isArray(comments) ? comments : []);
+  return classifyDecisionDetail(Array.isArray(comments) ? comments : []);
+}
+async function loadExitIssues(repo) {
+  const query = encodeURIComponent(`repo:${repo} is:issue in:title "[SPOT EXIT]"`);
+  const items = [];
+  for (let page = 1; page <= 4 && items.length < 300; page += 1) {
+    const data = await githubJson(`https://api.github.com/search/issues?q=${query}&sort=created&order=desc&per_page=100&page=${page}`);
+    for (const issue of data.items || []) items.push(issue);
+    if (!(data.items || []).length) break;
+  }
+  return items.map(parseExitIssue).filter(Boolean);
+}
+async function loadBtcHistory(startMs, endMs) {
+  const out = [];
+  let cursor = startMs;
+  const step = 5 * 60 * 1000;
+  while (cursor < endMs) {
+    const url = `https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime=${cursor}&endTime=${endMs}&limit=1000`;
+    const rows = await fetchJson(url, { headers: { 'User-Agent': 'proypers25-qubo-counterfactual-learning' } });
+    if (!Array.isArray(rows) || !rows.length) break;
+    out.push(...rows);
+    const last = n(rows[rows.length - 1][0], cursor);
+    const next = last + step;
+    if (next <= cursor) break;
+    cursor = next;
+    if (rows.length < 1000) break;
+  }
+  return out;
 }
 async function loadForwardBars(signal) {
   const start = Date.parse(signal.created_at);
@@ -285,16 +415,42 @@ async function buildEvidence(repo, now = Date.now()) {
     .filter(Boolean)
     .filter((signal) => now - Date.parse(signal.created_at) >= horizonMs);
 
+  if (!mature.length) return [];
+  const [exits, btcBars] = await Promise.all([
+    loadExitIssues(repo),
+    loadBtcHistory(
+      Math.min(...mature.map((x) => Date.parse(x.created_at))) - 24 * 3600000,
+      Math.max(...mature.map((x) => Date.parse(x.created_at))) + 5 * 60 * 1000
+    )
+  ]);
+
   const rows = await mapLimit(mature, CONCURRENCY, async (signal) => {
     try {
-      const [decision, bars] = await Promise.all([
+      const [decisionDetail, bars] = await Promise.all([
         loadDecision(repo, signal.issue_number),
         loadForwardBars(signal)
       ]);
-      if (!['EXECUTED', 'DECLINED'].includes(decision)) return null;
+      if (!['EXECUTED', 'DECLINED'].includes(decisionDetail.decision)) return null;
       const outcome = outcomeMetrics(bars, signal.price);
       if (!outcome) return null;
-      return { ...signal, decision, ...outcome };
+      const regime = classifyMarketRegime(btcBars, Date.parse(signal.created_at));
+      const actualExit = decisionDetail.decision === 'EXECUTED' ? matchActualExit(signal, exits) : null;
+      return {
+        ...signal,
+        decision: decisionDetail.decision,
+        decision_reason: decisionDetail.reason,
+        entry_order_id: decisionDetail.order_id,
+        market_regime: regime.regime,
+        market_regime_detail: {
+          r1h: round(regime.r1h, 6),
+          r4h: round(regime.r4h, 6),
+          r24h: round(regime.r24h, 6),
+          vol4h: round(regime.vol4h, 6)
+        },
+        actual_exit: actualExit,
+        exit_quality: exitQuality(actualExit, outcome),
+        ...outcome
+      };
     } catch (error) {
       console.warn(`COUNTERFACTUAL_SAMPLE_SKIPPED issue=${signal.issue_number} symbol=${signal.symbol} reason=${error.message}`);
       return null;
@@ -302,8 +458,13 @@ async function buildEvidence(repo, now = Date.now()) {
   });
   return rows.filter(Boolean);
 }
+
 function writeResults(rows, trained) {
   const decisionSummary = summarizeDecisions(rows);
+  const rejectionReasonStats = summarizeRejectionReasons(rows);
+  const regimeStats = summarizeRegimes(rows);
+  const regimeTraining = trainRegimeWeights(rows, trained.weights);
+  const regimeWeights = Object.fromEntries(Object.entries(regimeTraining).filter(([, value]) => value.promoted).map(([key, value]) => [key, value.weights]));
   const model = {
     model_version: `QUBO_V5_ADAPTIVE_COUNTERFACTUAL_${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 12)}`,
     mode: 'PRODUCTION',
@@ -327,9 +488,14 @@ function writeResults(rows, trained) {
       current_holdout_spearman: trained.current_holdout_spearman,
       candidate_holdout_spearman: trained.candidate_holdout_spearman,
       candidate_weights: trained.candidate_weights || trained.weights,
-      decision_summary: decisionSummary
+      decision_summary: decisionSummary,
+      rejection_reason_stats: rejectionReasonStats,
+      regime_stats: regimeStats,
+      regime_training: regimeTraining,
+      exit_quality_samples: rows.filter((row) => row.exit_quality).length
     },
     weights: trained.weights,
+    regime_weights: regimeWeights,
     qubo: BASE_CONFIG.qubo
   };
   const evidence = {
@@ -341,6 +507,9 @@ function writeResults(rows, trained) {
       created_at: row.created_at,
       symbol: row.symbol,
       decision: row.decision,
+      decision_reason: row.decision_reason,
+      market_regime: row.market_regime,
+      market_regime_detail: row.market_regime_detail,
       base: round(row.base, 6),
       stable: round(row.stable, 6),
       v42: round(row.v42, 6),
@@ -348,7 +517,9 @@ function writeResults(rows, trained) {
       mfe_pct: row.mfe_pct,
       mae_pct: row.mae_pct,
       target_pct: row.target_pct,
-      first_touch_3pct_vs_5pct: row.first_touch_3pct_vs_5pct
+      first_touch_3pct_vs_5pct: row.first_touch_3pct_vs_5pct,
+      actual_exit: row.actual_exit,
+      exit_quality: row.exit_quality
     }))
   };
   fs.writeFileSync(OUTPUT, JSON.stringify(model, null, 2));
@@ -374,6 +545,10 @@ async function main() {
     current_holdout_spearman: trained.current_holdout_spearman,
     candidate_holdout_spearman: trained.candidate_holdout_spearman,
     decisions: model.training.decision_summary,
+    regime_weights: model.regime_weights,
+    regime_stats: model.training.regime_stats,
+    top_rejection_reasons: model.training.rejection_reason_stats.slice(0, 5),
+    exit_quality_samples: model.training.exit_quality_samples,
     bounded_history: MAX_SIGNALS,
     horizon_hours: HORIZON_HOURS,
     memory_rss_mb: round(rssMb, 2),
@@ -393,9 +568,16 @@ module.exports = {
   baseUtility,
   parseSignal,
   classifyDecision,
+  classifyDecisionDetail,
+  parseExitIssue,
+  matchActualExit,
+  exitQuality,
   firstTouchOutcome,
   outcomeMetrics,
   spearman,
   trainAdaptiveWeights,
-  summarizeDecisions
+  trainRegimeWeights,
+  summarizeDecisions,
+  summarizeRejectionReasons,
+  summarizeRegimes
 };

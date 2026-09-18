@@ -44,6 +44,18 @@ function c(symbol, base, stable, v42, pct, returns) {
   assert(Math.abs(value - (0.8 * 0.55 + 0.6 * 0.05 + 0.9 * 0.40)) < 1e-8);
 })();
 
+(function regimeSpecificWeightsOverrideGlobalWeights() {
+  const candidate = c('REGIMEUSDT', 0.8, 0.2, 0.6, 7, []);
+  candidate.market_regime = 'BULL';
+  const config = {
+    ...CONFIG,
+    weights: { base: 0.55, stable: 0.05, v42: 0.40 },
+    regime_weights: { BULL: { base: 0.30, stable: 0.10, v42: 0.60 } }
+  };
+  const value = productionUtility(candidate, config);
+  assert(Math.abs(value - (0.8 * 0.30 + 0.2 * 0.10 + 0.6 * 0.60)) < 1e-8);
+})();
+
 (function correlatedAssetsReceiveDiversificationPenalty() {
   const a = c('AAAUSDT', 0.8, 0.6, 0.9, 8, [0.01,0.02,0.01,0.03,0.01,0.02,0.01,0.03,0.02,0.01]);
   const b = c('BBBUSDT', 0.8, 0.6, 0.9, 8.5, [0.011,0.021,0.011,0.031,0.011,0.021,0.011,0.031,0.021,0.011]);
