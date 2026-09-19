@@ -22,6 +22,7 @@ on:
       - 'backend/tests/localPretradeGuard.test.js'
       - 'backend/tests/marketManipulationRisk.test.js'
       - '.github/workflows/spot-v61-production-check.yml'
+      - '.github/workflows/spot-auto-exit-local.yml'
 
 permissions:
   contents: read
@@ -62,6 +63,12 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "github-spot-v61-protect.js" backend/scripts/github-spot-auto-exit.js
+          grep -q "workflow_run:" .github/workflows/spot-auto-exit-local.yml
+          grep -q "Spot GitHub Radar" .github/workflows/spot-auto-exit-local.yml
+          grep -q "Spot Microflow Hunter V10" .github/workflows/spot-auto-exit-local.yml
+          grep -q "Spot Autonomous Validation & Execution" .github/workflows/spot-auto-exit-local.yml
+          grep -q "github.event.workflow_run.conclusion == 'success'" .github/workflows/spot-auto-exit-local.yml
+          grep -q "cancel-in-progress: false" .github/workflows/spot-auto-exit-local.yml
           grep -q "github-spot-auto-exit-legacy-v10-aware.js" backend/scripts/github-spot-auto-exit.js
           grep -q "isNotionalFilterError" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js

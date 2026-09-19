@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - Spot GitHub Radar
+      - Spot Microflow Hunter V10
+      - Spot Autonomous Validation & Execution
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -16,6 +23,12 @@ concurrency:
 jobs:
   exit:
     name: Monitor and sell managed Spot positions
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     env:
@@ -30,6 +43,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Log cadence trigger
+        shell: powershell
+        run: |
+          Write-Host "AUTO_EXIT_TRIGGER event=${{ github.event_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_run") {
+            Write-Host "AUTO_EXIT_TRIGGER_SOURCE workflow=${{ github.event.workflow_run.name }} run_id=${{ github.event.workflow_run.id }} conclusion=${{ github.event.workflow_run.conclusion }} head_branch=${{ github.event.workflow_run.head_branch }}"
+          }
 
       - name: Monitor positions and execute protective Spot sells
         working-directory: backend
