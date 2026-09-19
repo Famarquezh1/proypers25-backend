@@ -2,6 +2,8 @@ name: Spot V6.1 Production Check
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     paths:
       - 'backend/scripts/github-spot-manual-execution.js'
@@ -115,6 +117,12 @@ jobs:
           grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
           grep -Fq "'XEC'" backend/scripts/github-spot-orphan-protect.js
           grep -q "ORPHAN_PROTECT_OK" backend/scripts/github-spot-orphan-protect.js
+          grep -q "managedCoreProtectionSymbols" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "isProypersSpotBuyOrder" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "ORPHAN_SKIP_CORE_MANAGED" backend/scripts/github-spot-orphan-protect.js
+          grep -q "CORE_MANAGED_PROTECTION" backend/scripts/github-spot-orphan-audit.js
+          grep -q "MANUAL_OR_UNKNOWN" backend/services/spotOrphanProtection.js
+          grep -q "px25b_" backend/services/spotOrphanProtection.js
           grep -q "V61_SCORE_ANCHOR" backend/scripts/github-spot-manual-execution.js
           grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "manipulation_risk=" backend/scripts/github-spot-manual-execution-v10-aware.js
