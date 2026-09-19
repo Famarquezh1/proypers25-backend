@@ -151,7 +151,7 @@ async function notifyExitOnce({ symbol, reason, orderId, entryPrice, exitPrice, 
 
   await githubRequest('/issues', {
     method: 'POST',
-    body: JSON.stringify({ title, body, assignees: ['Famarquezh1'] })
+    body: JSON.stringify({ title, body })
   });
   console.log(`EXIT_NOTIFICATION_CREATED symbol=${symbol} reason=${reason} orderId=${orderId}`);
 }

@@ -114,7 +114,7 @@ jobs:
             '- Política V10: TP 3% / stop 1.2% / timeout 3h' \
             '- Máximo real: 10 USDT, Spot only' \
             '- Acción: revalidación autónoma local antes de cualquier compra.')
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
           echo 'created=true' >> "$GITHUB_OUTPUT"
 
       - name: Dispatch autonomous local validator
