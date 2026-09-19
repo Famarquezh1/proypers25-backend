@@ -1,7 +1,18 @@
 'use strict';
 
 const assert=require('assert');
+const PRODUCTION=require('../config/spot-exit-policy-v2.json');
 const {coreGrid,splitRows,devGate,holdoutGate}=require('../scripts/train-spot-core-exit-intensive-v4');
+
+(function promotedPolicy(){
+  assert.strictEqual(PRODUCTION.mode,'PRODUCTION');
+  assert.strictEqual(PRODUCTION.model_version,'SPOT_EXIT_POLICY_V3_INTENSIVE_2026_09_19');
+  assert.strictEqual(PRODUCTION.core.break_even_lock_pct,0.003);
+  assert.strictEqual(PRODUCTION.core.trailing_distance_pct,0.04);
+  assert.strictEqual(PRODUCTION.core.stale_timeout_hours,24);
+  assert(PRODUCTION.intensive_core_reference.holdout_after.mean_return_pct > PRODUCTION.intensive_core_reference.holdout_before.mean_return_pct);
+  assert(PRODUCTION.intensive_core_reference.holdout_after.profit_factor > PRODUCTION.intensive_core_reference.holdout_before.profit_factor);
+})();
 
 (function grid(){
   const g=coreGrid();
