@@ -134,6 +134,12 @@ function classifyProtectionOrder(order = {}) {
   return { kind: 'MANUAL_OR_UNKNOWN', owned: false, managedBy: null };
 }
 
+function isProypersSpotBuyOrder(order = {}) {
+  if (String(order.side || '').toUpperCase() !== 'BUY' || String(order.status || '').toUpperCase() !== 'FILLED') return false;
+  const id = String(order.clientOrderId || '');
+  return id.startsWith('proypers-gh-') || id.startsWith('px25b_');
+}
+
 function managedCoreProtectionSymbols(openOrders = []) {
   return [...new Set((Array.isArray(openOrders) ? openOrders : [])
     .filter((order) => {
@@ -161,6 +167,7 @@ module.exports = {
   decideProfitProtection,
   isOpenSellOrder,
   classifyProtectionOrder,
+  isProypersSpotBuyOrder,
   managedCoreProtectionSymbols,
   protectionInventory
 };
