@@ -60,6 +60,7 @@ jobs:
           node --check backend/tests/spotExitPolicyIntensiveTraining.test.js
           node --check backend/tests/spotExitPolicyHistoricalTraining.test.js
           node --check backend/scripts/github-spot-orphan-protect.js
+          node --check backend/scripts/github-spot-orphan-audit.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
           node --check backend/services/marketManipulationRisk.js
