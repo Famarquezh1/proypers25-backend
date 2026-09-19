@@ -1,21 +1,22 @@
 'use strict';
 
 const crypto = require('crypto');
+const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
 const GH_TOKEN = process.env.GITHUB_TOKEN || '';
 const REPOSITORY = process.env.GITHUB_REPOSITORY || '';
 
-const HARD_STOP_PCT = 0.05;
-const BREAK_EVEN_TRIGGER_PCT = 0.05;
-const BREAK_EVEN_LOCK_PCT = 0.002;
-const TRAILING_TRIGGER_PCT = 0.08;
-// CORE runner trail: V6.1 executes first and tightens fading momentum; while
-// healthy, keep wider room so exceptional winners are not cut by normal noise.
-const TRAILING_DISTANCE_PCT = 0.06;
-const STALE_TIMEOUT_HOURS = 18;
-const STALE_TIMEOUT_MAX_GAIN_PCT = 0.005;
+if (EXIT_POLICY.mode !== 'PRODUCTION') throw new Error(`Exit policy must be PRODUCTION, got ${EXIT_POLICY.mode}`);
+const CORE_EXIT = EXIT_POLICY.core;
+const HARD_STOP_PCT = Number(CORE_EXIT.hard_stop_pct);
+const BREAK_EVEN_TRIGGER_PCT = Number(CORE_EXIT.break_even_trigger_pct);
+const BREAK_EVEN_LOCK_PCT = Number(CORE_EXIT.break_even_lock_pct);
+const TRAILING_TRIGGER_PCT = Number(CORE_EXIT.trailing_trigger_pct);
+const TRAILING_DISTANCE_PCT = Number(CORE_EXIT.trailing_distance_pct);
+const STALE_TIMEOUT_HOURS = Number(CORE_EXIT.stale_timeout_hours);
+const STALE_TIMEOUT_MAX_GAIN_PCT = Number(CORE_EXIT.stale_max_gain_pct);
 const MAX_MANAGED_AGE_DAYS = 7;
 const STOP_LIMIT_GAP_PCT = 0.006;
 const BASES = [
@@ -405,7 +406,7 @@ async function main() {
     }
   }
 
-  console.log(`EXIT_ENGINE_OK managed_symbols=${symbols.length} open_positions=${openCount} sells=${soldCount} protection_updates=${protectedCount}`);
+  console.log(`EXIT_ENGINE_OK managed_symbols=${symbols.length} open_positions=${openCount} sells=${soldCount} protection_updates=${protectedCount} model=${EXIT_POLICY.model_version}`);
 }
 
 main().catch((error) => fail(error.message || String(error)));
