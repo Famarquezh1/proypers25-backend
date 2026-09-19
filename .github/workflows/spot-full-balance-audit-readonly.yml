@@ -2,6 +2,14 @@ name: Spot Full Balance Audit Read Only
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/audit-spot-balances-readonly.js'
+      - 'backend/scripts/github-spot-orphan-protect.js'
+      - 'backend/services/spotOrphanProtection.js'
+      - 'backend/tests/spotOrphanProtection.test.js'
+      - '.github/workflows/spot-full-balance-audit-readonly.yml'
   push:
     branches: [main]
     paths:
@@ -13,6 +21,7 @@ permissions:
 
 jobs:
   audit:
+    name: GET-only Binance Spot balance and open-order audit
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     env:
@@ -26,6 +35,12 @@ jobs:
       - name: Syntax check
         shell: powershell
         run: node --check backend/scripts/audit-spot-balances-readonly.js
-      - name: Audit every nonzero Spot balance without trading
+      - name: Assert audit contains no Binance write method
+        shell: powershell
+        run: |
+          $content = Get-Content backend/scripts/audit-spot-balances-readonly.js -Raw
+          if ($content -match "signed\s*\([^\)]*'POST'" -or $content -match "signed\s*\([^\)]*'DELETE'" -or $content -match "method:\s*'POST'" -or $content -match "method:\s*'DELETE'") { throw 'Read-only audit contains a write method' }
+          Write-Host 'GET-only audit guard OK'
+      - name: Audit every nonzero Spot balance and active lock without trading
         shell: powershell
         run: node backend/scripts/audit-spot-balances-readonly.js
