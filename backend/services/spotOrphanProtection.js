@@ -144,7 +144,7 @@ function managedCoreProtectionSymbols(openOrders = []) {
   return [...new Set((Array.isArray(openOrders) ? openOrders : [])
     .filter((order) => {
       const classification = classifyProtectionOrder(order);
-      return classification.kind === 'CORE_PROTECTION' || classification.kind === 'V61_PROTECTION';
+      return classification.kind === 'CORE_PROTECTION';
     })
     .map((order) => String(order.symbol || '').toUpperCase())
     .filter(Boolean))];
