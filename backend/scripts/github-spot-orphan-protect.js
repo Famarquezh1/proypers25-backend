@@ -5,7 +5,8 @@ const {
   DEFAULTS,
   reconstructInventory,
   historyCoversBalance,
-  decideProfitProtection
+  decideProfitProtection,
+  protectionInventory
 } = require('../services/spotOrphanProtection');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
@@ -242,10 +243,23 @@ async function main() {
         continue;
       }
 
-      const orphanStop = (openOrders || [])
-        .filter((order) => order.side === 'SELL' && ['NEW', 'PARTIALLY_FILLED'].includes(order.status))
-        .filter((order) => String(order.clientOrderId || '').startsWith(ORPHAN_PREFIX))
-        .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))[0];
+      const protectionState = protectionInventory(openOrders);
+      if (protectionState.unsafe.length) {
+        console.log(`ORPHAN_SKIP_UNSAFE_ORDER symbol=${symbol} orders=${protectionState.unsafe.map((row) => row.order.orderId).join(',')}`);
+        skipped += 1;
+        continue;
+      }
+      if (protectionState.core.length) {
+        console.log(`ORPHAN_SKIP_CORE_MANAGED symbol=${symbol} orders=${protectionState.core.map((row) => row.order.orderId).join(',')} reason=native_core_or_v61_protection`);
+        skipped += 1;
+        continue;
+      }
+      if (protectionState.orphan.length > 1) {
+        console.log(`ORPHAN_SKIP_DUPLICATE_PROTECTION symbol=${symbol} orders=${protectionState.orphan.map((row) => row.order.orderId).join(',')}`);
+        skipped += 1;
+        continue;
+      }
+      const orphanStop = protectionState.orphan[0]?.order || null;
       const orphanLocked = orphanStop ? Math.max(0, Number(orphanStop.origQty || 0) - Number(orphanStop.executedQty || 0)) : 0;
       const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       const free = Number(balanceRow(refreshed, asset).free || 0);
