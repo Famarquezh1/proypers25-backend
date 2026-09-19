@@ -94,7 +94,7 @@ assert.deepStrictEqual(classifyProtectionOrder(orphanProtect), { kind: 'ORPHAN_P
 assert.deepStrictEqual(classifyProtectionOrder(manualStop), { kind: 'MANUAL_OR_UNKNOWN', owned: false, managedBy: null });
 assert.deepStrictEqual(
   managedCoreProtectionSymbols([sagaProtect, openProtect, v61Protect, orphanProtect, manualStop]).sort(),
-  ['MSTRBUSDT', 'OPENUSDT', 'SAGAUSDT']
+  ['OPENUSDT', 'SAGAUSDT']
 );
 assert.strictEqual(isProypersSpotBuyOrder({ side: 'BUY', status: 'FILLED', clientOrderId: 'proypers-gh-1789458890000' }), true);
 assert.strictEqual(isProypersSpotBuyOrder({ side: 'BUY', status: 'FILLED', clientOrderId: 'px25b_abcdef' }), true);
