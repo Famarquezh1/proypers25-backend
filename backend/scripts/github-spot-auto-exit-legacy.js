@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
+const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -106,16 +107,26 @@ async function githubRequest(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function managedSymbols() {
+async function managedSymbols(base) {
   const since = Date.now() - MAX_MANAGED_AGE_DAYS * 86400000;
-  const issues = await githubRequest('/issues?state=closed&per_page=100&sort=updated&direction=desc');
-  if (!Array.isArray(issues)) return [];
-  return [...new Set(issues
+  const [issues, openOrders] = await Promise.all([
+    githubRequest('/issues?state=closed&per_page=100&sort=updated&direction=desc')
+      .catch((error) => {
+        console.warn(`EXIT_SCOPE_GITHUB_FALLBACK error=${error.message || error}`);
+        return [];
+      }),
+    signed(base, 'GET', '/api/v3/openOrders')
+  ]);
+  const issueSymbols = (Array.isArray(issues) ? issues : [])
     .filter((issue) => issue.state_reason === 'completed')
     .filter((issue) => new Date(issue.created_at).getTime() >= since)
     .map((issue) => String(issue.title || '').match(/^\[SPOT SIGNAL\] ([A-Z0-9]+USDT)\b/))
     .filter(Boolean)
-    .map((match) => match[1]))];
+    .map((match) => match[1]);
+  const protectionSymbols = managedCoreProtectionSymbols(openOrders);
+  const symbols = [...new Set([...issueSymbols, ...protectionSymbols])];
+  console.log(`EXIT_SCOPE issue_symbols=${issueSymbols.length} native_protection_symbols=${protectionSymbols.length} total=${symbols.length}`);
+  return symbols;
 }
 
 async function notifyExitOnce({ symbol, reason, orderId, entryPrice, exitPrice, pnlPct }) {
@@ -302,7 +313,7 @@ async function main() {
   const [initialAccount, restrictions, symbols] = await Promise.all([
     signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),
     signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),
-    managedSymbols()
+    managedSymbols(base)
   ]);
 
   if (initialAccount.canTrade !== true) fail('Binance account cannot trade');
@@ -320,7 +331,7 @@ async function main() {
   for (const symbol of symbols) {
     const orders = await signed(base, 'GET', '/api/v3/allOrders', { symbol, limit: '100' });
     const managedBuys = orders
-      .filter((o) => o.side === 'BUY' && o.status === 'FILLED' && String(o.clientOrderId || '').startsWith('proypers-gh-'))
+      .filter(isProypersSpotBuyOrder)
       .sort((a, b) => Number(a.updateTime || a.time) - Number(b.updateTime || b.time));
     if (!managedBuys.length) continue;
 
