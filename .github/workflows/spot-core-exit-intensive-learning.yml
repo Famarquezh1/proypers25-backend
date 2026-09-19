@@ -9,6 +9,17 @@ on:
       - 'backend/scripts/train-spot-core-exit-intensive-v4.js'
       - 'backend/tests/spotCoreExitIntensiveTraining.test.js'
       - '.github/workflows/spot-core-exit-intensive-learning.yml'
+      - 'backend/config/spot-exit-policy-v2.json'
+      - 'backend/scripts/github-spot-auto-exit-legacy.js'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/scripts/train-spot-core-exit-intensive-v4.js'
+      - 'backend/tests/spotCoreExitIntensiveTraining.test.js'
+      - '.github/workflows/spot-core-exit-intensive-learning.yml'
+      - 'backend/config/spot-exit-policy-v2.json'
+      - 'backend/scripts/github-spot-auto-exit-legacy.js'
 
 permissions:
   contents: read
