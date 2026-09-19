@@ -1,0 +1,31 @@
+name: Spot Full Balance Audit Read Only
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/audit-spot-balances-readonly.js'
+      - '.github/workflows/spot-full-balance-audit-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    env:
+      BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        shell: powershell
+        run: node --check backend/scripts/audit-spot-balances-readonly.js
+      - name: Audit every nonzero Spot balance without trading
+        shell: powershell
+        run: node backend/scripts/audit-spot-balances-readonly.js
