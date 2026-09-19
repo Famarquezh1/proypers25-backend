@@ -11,6 +11,12 @@ on:
       - 'backend/scripts/github-spot-auto-exit-legacy.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/scripts/train-spot-exit-policy-intensive-v4.js'
+      - 'backend/scripts/train-spot-core-exit-intensive-v4.js'
+      - 'backend/tests/spotCoreExitIntensiveTraining.test.js'
+      - '.github/workflows/spot-core-exit-intensive-learning.yml'
+      - 'backend/tests/spotExitPolicyIntensiveTraining.test.js'
+      - '.github/workflows/spot-exit-intensive-learning.yml'
       - 'backend/config/spot-exit-policy-v2.json'
       - 'backend/tests/spotExitPolicyHistoricalTraining.test.js'
       - '.github/workflows/spot-exit-policy-training.yml'
@@ -46,13 +52,20 @@ jobs:
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/train-spot-exit-policy-v2.js
+          node --check backend/scripts/train-spot-exit-policy-intensive-v4.js
+          node --check backend/scripts/train-spot-core-exit-intensive-v4.js
+          node --check backend/tests/spotCoreExitIntensiveTraining.test.js
+          node --check backend/tests/spotExitPolicyIntensiveTraining.test.js
           node --check backend/tests/spotExitPolicyHistoricalTraining.test.js
           node --check backend/scripts/github-spot-orphan-protect.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
           node --check backend/services/marketManipulationRisk.js
       - name: Historical exit-policy training tests
-        run: node backend/tests/spotExitPolicyHistoricalTraining.test.js
+        run: |
+          node backend/tests/spotExitPolicyHistoricalTraining.test.js
+          node backend/tests/spotExitPolicyIntensiveTraining.test.js
+          node backend/tests/spotCoreExitIntensiveTraining.test.js
       - name: Orphan balance policy tests
         run: node backend/tests/spotOrphanProtection.test.js
       - name: Local pretrade guard tests
@@ -77,11 +90,25 @@ jobs:
           grep -q '"mode": "PRODUCTION"' backend/config/spot-exit-policy-v2.json
           grep -q '"mfe": 0.018' backend/config/spot-exit-policy-v2.json
           grep -q '"confirm": 0.015' backend/config/spot-exit-policy-v2.json
+          grep -q '"break_even_lock_pct": 0.003' backend/config/spot-exit-policy-v2.json
+          grep -q '"trailing_distance_pct": 0.04' backend/config/spot-exit-policy-v2.json
+          grep -q '"stale_timeout_hours": 24' backend/config/spot-exit-policy-v2.json
+          grep -q "spot-exit-policy-v2.json" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "const CORE_EXIT = EXIT_POLICY.core" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "EXIT_POLICY.mode !== 'PRODUCTION'" backend/scripts/github-spot-auto-exit-legacy.js
+          ! grep -q "BREAK_EVEN_LOCK_PCT = 0.002" backend/scripts/github-spot-auto-exit-legacy.js
+          ! grep -q "TRAILING_DISTANCE_PCT = 0.06" backend/scripts/github-spot-auto-exit-legacy.js
+          ! grep -q "STALE_TIMEOUT_HOURS = 18" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "spot-exit-policy-v2.json" backend/scripts/github-spot-v61-protect.js
           grep -q "const V61=EXIT_POLICY.v61" backend/scripts/github-spot-v61-protect.js
           grep -q "EXIT_POLICY.mode!=='PRODUCTION'" backend/scripts/github-spot-v61-protect.js
           ! grep -q "mfe:.008,dd:-.008,gap:.004,r15:-.001,confirm:.005" backend/scripts/github-spot-v61-protect.js
           grep -q "passed_for_production" backend/scripts/train-spot-exit-policy-v2.js
+          grep -q "finalGate" backend/scripts/train-spot-exit-policy-intensive-v4.js
+          grep -q "candidates_tested" backend/scripts/train-spot-exit-policy-intensive-v4.js
+          grep -q "cadence_15m" backend/scripts/train-spot-exit-policy-intensive-v4.js
+          grep -q "holdoutGate" backend/scripts/train-spot-core-exit-intensive-v4.js
+          grep -q "candidates_tested" backend/scripts/train-spot-core-exit-intensive-v4.js
           grep -q "Entrenamiento: inmediato con histórico existente" .github/workflows/spot-exit-policy-training.yml
           grep -q "github-spot-orphan-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js

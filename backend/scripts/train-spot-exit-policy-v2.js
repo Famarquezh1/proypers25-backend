@@ -200,13 +200,14 @@ function maybeTightenV61({ bars, index, btcBars, entryPrice, high, currentStop, 
   if (!fading || healthy) return currentStop;
   return Math.max(currentStop || 0, f.price * (1 - policy.gap));
 }
-function simulateStack(row, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY, feePct = ROUND_TRIP_FEE_PCT) {
+function simulateStack(row, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY, feePct = ROUND_TRIP_FEE_PCT, options = {}) {
   const bars = row.bars;
   const btcBars = row.btc_bars || [];
   const entryPrice = row.entry_price;
   if (!Array.isArray(bars) || !bars.length || !(entryPrice > 0)) return null;
   const entryTime = Date.parse(row.execution_at || row.created_at);
   const entryIndex = Math.max(0, binarySearchBarIndex(bars, entryTime));
+  const decisionStepBars = Math.max(1, Number(options.decisionStepBars || 1));
   let high = entryPrice;
   let v61Stop = 0;
   let exitPrice = entryPrice;
@@ -218,15 +219,17 @@ function simulateStack(row, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURREN
     const previousHigh = n(bars[previousIndex][2], entryPrice);
     high = Math.max(high, previousHigh);
 
-    v61Stop = maybeTightenV61({
-      bars,
-      index: previousIndex,
-      btcBars,
-      entryPrice,
-      high,
-      currentStop: v61Stop,
-      policy: v61Policy
-    });
+    if ((previousIndex - entryIndex) % decisionStepBars === 0) {
+      v61Stop = maybeTightenV61({
+        bars,
+        index: previousIndex,
+        btcBars,
+        entryPrice,
+        high,
+        currentStop: v61Stop,
+        policy: v61Policy
+      });
+    }
 
     const legacy = legacyStop(entryPrice, high, corePolicy);
     const effectiveStop = Math.max(legacy.stop, v61Stop || 0);
@@ -303,11 +306,11 @@ function v61Grid() {
   }
   return policies;
 }
-function metrics(rows, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY) {
+function metrics(rows, corePolicy = CURRENT_CORE_POLICY, v61Policy = CURRENT_V61_POLICY, options = {}) {
   const returns = [];
   const reasons = new Map();
   for (const row of rows) {
-    const result = simulateStack(row, corePolicy, v61Policy);
+    const result = simulateStack(row, corePolicy, v61Policy, Number.isFinite(Number(options.feePct)) ? Number(options.feePct) : ROUND_TRIP_FEE_PCT, options);
     if (!result) continue;
     returns.push(result.return_pct);
     reasons.set(result.reason, (reasons.get(result.reason) || 0) + 1);
@@ -646,5 +649,8 @@ module.exports = {
   metrics,
   chronologicalSplit,
   trainV61Policy,
-  evaluateHoldout
+  evaluateHoldout,
+  objective,
+  binarySearchBarIndex,
+  buildDataset
 };

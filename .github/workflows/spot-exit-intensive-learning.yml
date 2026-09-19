@@ -1,0 +1,94 @@
+name: Spot Exit Intensive Learning V4
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/scripts/train-spot-exit-policy-intensive-v4.js'
+      - 'backend/tests/spotExitPolicyIntensiveTraining.test.js'
+      - '.github/workflows/spot-exit-intensive-learning.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/scripts/train-spot-exit-policy-intensive-v4.js'
+      - 'backend/tests/spotExitPolicyIntensiveTraining.test.js'
+      - '.github/workflows/spot-exit-intensive-learning.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-exit-intensive-learning-v4
+  cancel-in-progress: true
+
+jobs:
+  intensive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXIT_TRAIN_HORIZON_HOURS: '24'
+      EXIT_TRAIN_CONTEXT_HOURS: '24'
+      EXIT_TRAIN_MATCH_HOURS: '36'
+      EXIT_TRAIN_CONCURRENCY: '8'
+      EXIT_TRAIN_MAX_PAGES: '30'
+      EXIT_TRAIN_FEE_PCT: '0.002'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Intensive training unit tests
+        run: |
+          node --check backend/scripts/train-spot-exit-policy-v2.js
+          node --check backend/scripts/train-spot-exit-policy-intensive-v4.js
+          node --check backend/tests/spotExitPolicyIntensiveTraining.test.js
+          node backend/tests/spotExitPolicyIntensiveTraining.test.js
+
+      - name: Run intensive historical walk-forward training now
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node backend/scripts/train-spot-exit-policy-intensive-v4.js | tee spot-exit-intensive.log
+          test -s spot-exit-intensive-report.json
+          test -s spot-exit-intensive-evidence.json
+          test "$(jq -r '.ok' spot-exit-intensive-report.json)" = "true"
+          test "$(jq -r '.methodology.candidates_tested >= 1000' spot-exit-intensive-report.json)" = "true"
+          test "$(jq -r '.methodology.untouched_holdout_rows >= 25' spot-exit-intensive-report.json)" = "true"
+
+      - name: Upload intensive learning evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-exit-intensive-v4
+          path: |
+            spot-exit-intensive-report.json
+            spot-exit-intensive-evidence.json
+            spot-exit-intensive.log
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Spot Exit Intensive Learning V4' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-exit-intensive-report.json ]; then
+            echo "- Histórico CORE reconstruido: $(jq -r '.reconstructed_core_trades' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Candidatos evaluados: $(jq -r '.methodology.candidates_tested' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Walk-forward folds: $(jq -c '.methodology.walk_forward_folds' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Holdout intacto: $(jq -r '.methodology.untouched_holdout_rows' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Política actual: $(jq -c '.current_policy' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Política seleccionada: $(jq -c '.selected_policy' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Recomendación: $(jq -r '.promotion_recommendation' spot-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$(jq -r '.selected_policy != null' spot-exit-intensive-report.json)" = "true" ]; then
+              echo "- Holdout normal mean Δ: $(jq -r '.selected_holdout.deltas.normal.mean_return_pct' spot-exit-intensive-report.json) pp" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Holdout fee-stress mean Δ: $(jq -r '.selected_holdout.deltas.fee_stress.mean_return_pct' spot-exit-intensive-report.json) pp" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Holdout cadence-10m mean Δ: $(jq -r '.selected_holdout.deltas.cadence_10m.mean_return_pct' spot-exit-intensive-report.json) pp" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Holdout cadence-15m mean Δ: $(jq -r '.selected_holdout.deltas.cadence_15m.mean_return_pct' spot-exit-intensive-report.json) pp" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo '- Entrenamiento intensivo: inmediato; no espera meses' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Órdenes reales durante entrenamiento: no' >> "$GITHUB_STEP_SUMMARY"
