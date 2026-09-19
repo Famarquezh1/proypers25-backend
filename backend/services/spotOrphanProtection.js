@@ -102,9 +102,72 @@ function decideProfitProtection({ entryPrice, currentPrice, recentHigh, tickSize
   };
 }
 
+
+function isOpenSellOrder(order = {}) {
+  return String(order.side || '').toUpperCase() === 'SELL' &&
+    ['NEW', 'PARTIALLY_FILLED'].includes(String(order.status || '').toUpperCase());
+}
+
+function classifyProtectionOrder(order = {}) {
+  const id = String(order.clientOrderId || '');
+  if (!isOpenSellOrder(order)) return { kind: 'NOT_OPEN_SELL', owned: false, managedBy: null };
+  if (id.startsWith('proypers-gh-protect-v61-')) {
+    return { kind: 'V61_PROTECTION', owned: true, managedBy: 'V61' };
+  }
+  if (id.startsWith('proypers-gh-protect-')) {
+    return { kind: 'CORE_PROTECTION', owned: true, managedBy: 'CORE' };
+  }
+  if (id.startsWith('proypers-gh-orphan-')) {
+    return { kind: 'ORPHAN_PROTECTION', owned: true, managedBy: 'ORPHAN' };
+  }
+  const knownOther = [
+    'proypers-gh-exit-',
+    'proypers-gh-v10-',
+    'proypers-gh-',
+    'px25b_',
+    'px25x_',
+    'px25lr_',
+    'px25xec_',
+    'px25ghxec_'
+  ].some((prefix) => id.startsWith(prefix));
+  if (knownOther) return { kind: 'PROYPERS_OTHER', owned: true, managedBy: null };
+  return { kind: 'MANUAL_OR_UNKNOWN', owned: false, managedBy: null };
+}
+
+function isProypersSpotBuyOrder(order = {}) {
+  if (String(order.side || '').toUpperCase() !== 'BUY' || String(order.status || '').toUpperCase() !== 'FILLED') return false;
+  const id = String(order.clientOrderId || '');
+  return id.startsWith('proypers-gh-') || id.startsWith('px25b_');
+}
+
+function managedCoreProtectionSymbols(openOrders = []) {
+  return [...new Set((Array.isArray(openOrders) ? openOrders : [])
+    .filter((order) => {
+      const classification = classifyProtectionOrder(order);
+      return classification.kind === 'CORE_PROTECTION';
+    })
+    .map((order) => String(order.symbol || '').toUpperCase())
+    .filter(Boolean))];
+}
+
+function protectionInventory(openOrders = []) {
+  const rows = (Array.isArray(openOrders) ? openOrders : [])
+    .filter(isOpenSellOrder)
+    .map((order) => ({ order, classification: classifyProtectionOrder(order) }));
+  const core = rows.filter((row) => ['CORE_PROTECTION', 'V61_PROTECTION'].includes(row.classification.kind));
+  const orphan = rows.filter((row) => row.classification.kind === 'ORPHAN_PROTECTION');
+  const unsafe = rows.filter((row) => !row.classification.owned || row.classification.kind === 'PROYPERS_OTHER');
+  return { rows, core, orphan, unsafe };
+}
+
 module.exports = {
   DEFAULTS,
   reconstructInventory,
   historyCoversBalance,
-  decideProfitProtection
+  decideProfitProtection,
+  isOpenSellOrder,
+  classifyProtectionOrder,
+  isProypersSpotBuyOrder,
+  managedCoreProtectionSymbols,
+  protectionInventory
 };

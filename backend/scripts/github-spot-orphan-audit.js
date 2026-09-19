@@ -5,7 +5,8 @@ const {
   DEFAULTS,
   reconstructInventory,
   historyCoversBalance,
-  decideProfitProtection
+  decideProfitProtection,
+  protectionInventory
 } = require('../services/spotOrphanProtection');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
@@ -113,10 +114,23 @@ async function main() {
         continue;
       }
 
-      const orphanStop = (openOrders || [])
-        .filter((order) => order.side === 'SELL' && ['NEW', 'PARTIALLY_FILLED'].includes(order.status))
-        .filter((order) => String(order.clientOrderId || '').startsWith(ORPHAN_PREFIX))
-        .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))[0];
+      const protectionState = protectionInventory(openOrders);
+      if (protectionState.unsafe.length) {
+        note(counts, 'UNSAFE_MANUAL_OR_UNKNOWN_ORDER');
+        console.log(`ORPHAN_AUDIT symbol=${symbol} status=SKIP reason=UNSAFE_MANUAL_OR_UNKNOWN_ORDER orders=${protectionState.unsafe.map((row) => row.order.orderId).join(',')}`);
+        continue;
+      }
+      if (protectionState.core.length) {
+        note(counts, 'CORE_MANAGED_PROTECTION');
+        console.log(`ORPHAN_AUDIT symbol=${symbol} status=ALREADY_MANAGED reason=CORE_MANAGED_PROTECTION orders=${protectionState.core.map((row) => row.order.orderId).join(',')} total_locked=${candidate.locked}`);
+        continue;
+      }
+      if (protectionState.orphan.length > 1) {
+        note(counts, 'DUPLICATE_ORPHAN_PROTECTION');
+        console.log(`ORPHAN_AUDIT symbol=${symbol} status=SKIP reason=DUPLICATE_ORPHAN_PROTECTION orders=${protectionState.orphan.map((row) => row.order.orderId).join(',')}`);
+        continue;
+      }
+      const orphanStop = protectionState.orphan[0]?.order || null;
       const orphanLocked = orphanStop ? Math.max(0, Number(orphanStop.origQty || 0) - Number(orphanStop.executedQty || 0)) : 0;
       const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       const free = Number(balanceRow(refreshed, asset).free || 0);

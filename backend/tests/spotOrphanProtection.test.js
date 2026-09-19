@@ -4,7 +4,11 @@ const assert = require('assert');
 const {
   reconstructInventory,
   historyCoversBalance,
-  decideProfitProtection
+  decideProfitProtection,
+  classifyProtectionOrder,
+  isProypersSpotBuyOrder,
+  managedCoreProtectionSymbols,
+  protectionInventory
 } = require('../services/spotOrphanProtection');
 const {
   DEFAULT_SELECTION_GUARD,
@@ -41,6 +45,64 @@ assert.strictEqual(breakEven.stopPrice, 100.2);
 
 const unarmed = decideProfitProtection({ entryPrice: 100, currentPrice: 102, recentHigh: 104, tickSize: 0.01 });
 assert.strictEqual(unarmed.action, 'HOLD_UNARMED');
+
+const sagaProtect = {
+  symbol: 'SAGAUSDT',
+  side: 'SELL',
+  type: 'STOP_LOSS',
+  status: 'NEW',
+  orderId: 2125698407,
+  clientOrderId: 'proypers-gh-protect-1789458891209',
+  origQty: '795.8',
+  executedQty: '0'
+};
+const openProtect = {
+  symbol: 'OPENUSDT',
+  side: 'SELL',
+  type: 'STOP_LOSS',
+  status: 'NEW',
+  orderId: 377901699,
+  clientOrderId: 'proypers-gh-protect-1789288437265',
+  origQty: '75.1',
+  executedQty: '0'
+};
+const v61Protect = {
+  symbol: 'MSTRBUSDT',
+  side: 'SELL',
+  type: 'STOP_LOSS',
+  status: 'NEW',
+  clientOrderId: 'proypers-gh-protect-v61-mu8d6mz2'
+};
+const orphanProtect = {
+  symbol: 'TESTUSDT',
+  side: 'SELL',
+  type: 'STOP_LOSS',
+  status: 'NEW',
+  clientOrderId: 'proypers-gh-orphan-test'
+};
+const manualStop = {
+  symbol: 'MANUALUSDT',
+  side: 'SELL',
+  type: 'STOP_LOSS',
+  status: 'NEW',
+  clientOrderId: 'web_123456'
+};
+
+assert.deepStrictEqual(classifyProtectionOrder(sagaProtect), { kind: 'CORE_PROTECTION', owned: true, managedBy: 'CORE' });
+assert.deepStrictEqual(classifyProtectionOrder(v61Protect), { kind: 'V61_PROTECTION', owned: true, managedBy: 'V61' });
+assert.deepStrictEqual(classifyProtectionOrder(orphanProtect), { kind: 'ORPHAN_PROTECTION', owned: true, managedBy: 'ORPHAN' });
+assert.deepStrictEqual(classifyProtectionOrder(manualStop), { kind: 'MANUAL_OR_UNKNOWN', owned: false, managedBy: null });
+assert.deepStrictEqual(
+  managedCoreProtectionSymbols([sagaProtect, openProtect, v61Protect, orphanProtect, manualStop]).sort(),
+  ['OPENUSDT', 'SAGAUSDT']
+);
+assert.strictEqual(isProypersSpotBuyOrder({ side: 'BUY', status: 'FILLED', clientOrderId: 'proypers-gh-1789458890000' }), true);
+assert.strictEqual(isProypersSpotBuyOrder({ side: 'BUY', status: 'FILLED', clientOrderId: 'px25b_abcdef' }), true);
+assert.strictEqual(isProypersSpotBuyOrder({ side: 'BUY', status: 'FILLED', clientOrderId: 'manual-buy' }), false);
+const protectionState = protectionInventory([sagaProtect, orphanProtect, manualStop]);
+assert.strictEqual(protectionState.core.length, 1);
+assert.strictEqual(protectionState.orphan.length, 1);
+assert.strictEqual(protectionState.unsafe.length, 1);
 
 assert.strictEqual(DEFAULT_SELECTION_GUARD.minQuoteVolumeUsdt, 750000);
 assert.strictEqual(DEFAULT_SELECTION_GUARD.minRecent15mReturn, -0.025);
