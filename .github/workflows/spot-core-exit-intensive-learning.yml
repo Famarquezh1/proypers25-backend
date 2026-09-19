@@ -1,0 +1,70 @@
+name: Spot CORE Exit Intensive Learning V4
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-exit-policy-v2.js'
+      - 'backend/scripts/train-spot-core-exit-intensive-v4.js'
+      - 'backend/tests/spotCoreExitIntensiveTraining.test.js'
+      - '.github/workflows/spot-core-exit-intensive-learning.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: spot-core-exit-intensive-learning-v4
+  cancel-in-progress: true
+
+jobs:
+  intensive-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXIT_TRAIN_HORIZON_HOURS: '24'
+      EXIT_TRAIN_CONTEXT_HOURS: '24'
+      EXIT_TRAIN_MATCH_HOURS: '36'
+      EXIT_TRAIN_CONCURRENCY: '8'
+      EXIT_TRAIN_MAX_PAGES: '30'
+      EXIT_TRAIN_FEE_PCT: '0.002'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Unit tests
+        run: |
+          node --check backend/scripts/train-spot-core-exit-intensive-v4.js
+          node backend/tests/spotCoreExitIntensiveTraining.test.js
+      - name: Run intensive CORE exit search now
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node backend/scripts/train-spot-core-exit-intensive-v4.js | tee spot-core-exit-intensive.log
+          test -s spot-core-exit-intensive-report.json
+          test "$(jq -r '.ok' spot-core-exit-intensive-report.json)" = "true"
+          test "$(jq -r '.candidates_tested >= 500' spot-core-exit-intensive-report.json)" = "true"
+          test "$(jq -r '.untouched_holdout_rows >= 25' spot-core-exit-intensive-report.json)" = "true"
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-core-exit-intensive-v4
+          path: |
+            spot-core-exit-intensive-report.json
+            spot-core-exit-intensive.log
+          retention-days: 30
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Spot CORE Exit Intensive Learning V4' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f spot-core-exit-intensive-report.json ]; then
+            echo "- Candidatos: $(jq -r '.candidates_tested' spot-core-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- CORE reconstruidas: $(jq -r '.reconstructed_core_trades' spot-core-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Holdout: $(jq -r '.untouched_holdout_rows' spot-core-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Política seleccionada: $(jq -c '.selected_core_policy' spot-core-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Recomendación: $(jq -r '.promotion_recommendation' spot-core-exit-intensive-report.json)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '- Órdenes reales durante entrenamiento: no' >> "$GITHUB_STEP_SUMMARY"
