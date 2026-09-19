@@ -115,7 +115,7 @@ async function notifyExitOnce({ symbol, reason, orderId, entryPrice, exitPrice, 
   ].join('\n');
   await githubRequest('/issues', {
     method: 'POST',
-    body: JSON.stringify({ title: `[SPOT EXIT] ${symbol} ${reason}`, body, assignees: ['Famarquezh1'] })
+    body: JSON.stringify({ title: `[SPOT EXIT] ${symbol} ${reason}`, body })
   });
 }
 
