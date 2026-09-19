@@ -232,7 +232,7 @@ jobs:
             "- V4.2 ignition: $V42_IGNITION | confirm: $V42_CONFIRM | extension: $V42_EXTENSION" \
             "- V8 HUNTER shadow independiente: estado=$V8_STATUS | candidatos=$V8_SYMBOLS | coincide con V4.2=$V8_OVERLAP" \
             'V8 HUNTER es solo evidencia independiente: no habilita, bloquea, prioriza ni modifica la orden. Acción real: validación y ejecución autónoma V4.2/QUBO en el runner local.')
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY" --assignee Famarquezh1
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
 
       - name: Dispatch autonomous local validator
         if: steps.scan.outputs.notify == 'true'
