@@ -1,15 +1,15 @@
 {
-  "model_version": "SPOT_EXIT_POLICY_V2_2026_09_18",
+  "model_version": "SPOT_EXIT_POLICY_V3_INTENSIVE_2026_09_19",
   "mode": "PRODUCTION",
-  "promoted_at": "2026-09-18",
-  "source": "immediate_historical_core_exit_training_holdout_promoted",
+  "promoted_at": "2026-09-19",
+  "source": "intensive_walk_forward_core_exit_training_holdout_stress_promoted",
   "training_reference": {
     "reconstructed_core_trades": 169,
     "matched_unique_exits": 163,
     "train_rows": 109,
     "validation_rows": 26,
     "holdout_rows": 34,
-    "round_trip_fee_assumption_pct": 0.20,
+    "round_trip_fee_assumption_pct": 0.2,
     "holdout_before": {
       "mean_return_pct": -0.1673,
       "median_return_pct": -0.1557,
@@ -26,10 +26,10 @@
   "core": {
     "hard_stop_pct": 0.05,
     "break_even_trigger_pct": 0.05,
-    "break_even_lock_pct": 0.002,
+    "break_even_lock_pct": 0.003,
     "trailing_trigger_pct": 0.08,
-    "trailing_distance_pct": 0.06,
-    "stale_timeout_hours": 18,
+    "trailing_distance_pct": 0.04,
+    "stale_timeout_hours": 24,
     "stale_max_gain_pct": 0.005,
     "take_profit_pct": 0
   },
@@ -43,5 +43,32 @@
     "healthyPnl": 0.004,
     "healthyRs": -0.002,
     "healthyConfirm": 0.015
+  },
+  "intensive_core_reference": {
+    "reconstructed_core_trades": 174,
+    "matched_unique_exits": 168,
+    "candidates_tested": 1296,
+    "viable_development_candidates": 315,
+    "development_rows": 139,
+    "holdout_rows": 35,
+    "walk_forward_folds": 3,
+    "holdout_before": {
+      "mean_return_pct": 0.9224,
+      "positive_rate": 0.6571,
+      "profit_factor": 1.8964,
+      "worst_return_pct": -5.2
+    },
+    "holdout_after": {
+      "mean_return_pct": 1.092,
+      "positive_rate": 0.6571,
+      "profit_factor": 2.1658,
+      "worst_return_pct": -5.2
+    },
+    "holdout_stress_delta_pct": {
+      "fee_0_35": 0.1696,
+      "cadence_10m": 0.1696,
+      "cadence_15m": 0.1663
+    },
+    "development_avg_mean_delta_pct": 0.4094
   }
 }
