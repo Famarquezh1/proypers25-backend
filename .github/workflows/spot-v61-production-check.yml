@@ -26,6 +26,8 @@ on:
       - 'backend/services/spotOrphanProtection.js'
       - 'backend/services/localPretradeGuard.js'
       - 'backend/services/marketManipulationRisk.js'
+      - 'backend/services/spotGrowthExitPolicy.js'
+      - 'backend/tests/spotGrowthExitPolicy.test.js'
       - 'backend/tests/spotOrphanProtection.test.js'
       - 'backend/tests/localPretradeGuard.test.js'
       - 'backend/tests/marketManipulationRisk.test.js'
@@ -64,6 +66,8 @@ jobs:
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
           node --check backend/services/marketManipulationRisk.js
+          node --check backend/services/spotGrowthExitPolicy.js
+          node --check backend/tests/spotGrowthExitPolicy.test.js
       - name: Historical exit-policy training tests
         run: |
           node backend/tests/spotExitPolicyHistoricalTraining.test.js
@@ -75,6 +79,8 @@ jobs:
         run: node backend/tests/localPretradeGuard.test.js
       - name: Defensive manipulation risk tests
         run: node backend/tests/marketManipulationRisk.test.js
+      - name: Growth exit overlay tests
+        run: node backend/tests/spotGrowthExitPolicy.test.js
       - name: Confirm production wiring
         run: |
           set -euo pipefail
@@ -87,6 +93,9 @@ jobs:
           grep -q "cancel-in-progress: false" .github/workflows/spot-auto-exit-local.yml
           grep -q "github-spot-auto-exit-legacy-v10-aware.js" backend/scripts/github-spot-auto-exit.js
           grep -q "isNotionalFilterError" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "decideCoreGrowthExit" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "MOMENTUM_FAILURE" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "NO_PROGRESS" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
@@ -95,6 +104,10 @@ jobs:
           grep -q '"confirm": 0.015' backend/config/spot-exit-policy-v2.json
           grep -q '"break_even_lock_pct": 0.003' backend/config/spot-exit-policy-v2.json
           grep -q '"trailing_distance_pct": 0.04' backend/config/spot-exit-policy-v2.json
+          grep -q '"momentum_fail_hours": 1.5' backend/config/spot-exit-policy-v2.json
+          grep -q '"momentum_fail_max_gain_pct": -0.015' backend/config/spot-exit-policy-v2.json
+          grep -q '"no_progress_hours": 6' backend/config/spot-exit-policy-v2.json
+          grep -q '"no_progress_max_gain_pct": 0.005' backend/config/spot-exit-policy-v2.json
           grep -q '"stale_timeout_hours": 24' backend/config/spot-exit-policy-v2.json
           grep -q "spot-exit-policy-v2.json" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "const CORE_EXIT = EXIT_POLICY.core" backend/scripts/github-spot-auto-exit-legacy.js
