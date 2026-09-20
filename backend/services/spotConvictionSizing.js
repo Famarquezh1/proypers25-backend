@@ -2,7 +2,8 @@
 
 const NORMAL_POSITION_USDT = 15;
 const HIGH_CONVICTION_POSITION_USDT = 30;
-const EXCEPTIONAL_CONVICTION_POSITION_USDT = 40;
+const EXCEPTIONAL_CONVICTION_POSITION_USDT = 50;
+const V10_EXCEPTIONAL_CONVICTION_POSITION_USDT = 40;
 const LEVERAGED_POSITION_USDT = 5;
 const MIN_CASH_RESERVE_USDT = 40;
 const CASH_RESERVE_PCT = 0.20;
@@ -27,7 +28,7 @@ function classifyConviction(input = {}) {
     const winRate = n(input.calibrationWinRate, 0);
 
     if (scoreEdge >= 1.45 && marginEdge >= 1.75 && winRate >= 0.60) {
-      return { tier: 'EXCEPTIONAL', cap_usdt: EXCEPTIONAL_CONVICTION_POSITION_USDT, score_edge: scoreEdge, margin_edge: marginEdge };
+      return { tier: 'EXCEPTIONAL', cap_usdt: V10_EXCEPTIONAL_CONVICTION_POSITION_USDT, score_edge: scoreEdge, margin_edge: marginEdge };
     }
     if (scoreEdge >= 1.20 && marginEdge >= 1.20 && winRate >= 0.58) {
       return { tier: 'HIGH', cap_usdt: HIGH_CONVICTION_POSITION_USDT, score_edge: scoreEdge, margin_edge: marginEdge };
@@ -86,6 +87,7 @@ module.exports = {
   NORMAL_POSITION_USDT,
   HIGH_CONVICTION_POSITION_USDT,
   EXCEPTIONAL_CONVICTION_POSITION_USDT,
+  V10_EXCEPTIONAL_CONVICTION_POSITION_USDT,
   LEVERAGED_POSITION_USDT,
   MIN_CASH_RESERVE_USDT,
   CASH_RESERVE_PCT,

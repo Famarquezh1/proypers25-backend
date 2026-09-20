@@ -10,7 +10,7 @@ const ENTRY_COOLDOWN_MS = 7 * 60 * 1000;
 const BURST_WINDOW_MS = 30 * 60 * 1000;
 const EXTENDED_24H_PCT = 12;
 const HIGH_CORRELATION = 0.88;
-const HIGH_QUALITY_NORM = 0.93;
+const HIGH_QUALITY_NORM = 0.94;
 const ELITE_QUALITY_NORM = 0.97;
 
 function clamp(value, min = 0, max = 1) {
@@ -169,10 +169,19 @@ function evaluateSpotEntryBurstGate({
     return { allow: false, reason: `correlated entry blocked (max 2h correlation ${maxCorrelation.toFixed(3)})`, code: 'CORRELATED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
   }
 
+  if (!highQuality) {
+    return {
+      allow: false,
+      reason: `CORE real entry requires 3/3 V4.2 quality and norm >= ${HIGH_QUALITY_NORM}`,
+      code: 'CORE_QUALITY_REQUIRED',
+      diagnostics: { passCount, norm, recentEntries7m: recent.length, recentEntries30m: burst.length, maxCorrelation }
+    };
+  }
+
   return {
     allow: true,
-    reason: highQuality ? 'high-conviction entry admitted' : 'normal entry cadence',
-    code: highQuality ? 'HIGH_CONVICTION_ADMITTED' : 'NORMAL_ADMITTED',
+    reason: 'high-conviction entry admitted',
+    code: 'HIGH_CONVICTION_ADMITTED',
     diagnostics: { passCount, norm, recentEntries7m: recent.length, recentEntries30m: burst.length, maxCorrelation }
   };
 }

@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
+const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -378,14 +379,19 @@ async function main() {
       .filter((o) => String(o.clientOrderId || '').startsWith('proypers-gh-protect-'))
       .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))[0];
 
+    const growthExit = String(buy.clientOrderId || '').startsWith('proypers-gh-v10-')
+      ? { reason: null }
+      : decideCoreGrowthExit({ ageHours, gainPct, recentHighPct: recentHigh / entryPrice - 1, policy: CORE_EXIT });
+
     let reason = null;
     if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';
+    else if (growthExit.reason) reason = growthExit.reason;
     else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';
 
     console.log(`MONITOR symbol=${symbol} entry=${entryPrice} current=${currentPrice} gain_pct=${(gainPct * 100).toFixed(3)} high=${recentHigh} stop=${stopPrice} protection=${protection} age_h=${ageHours.toFixed(2)} native_stop=${openProtect?.orderId || 'none'} action=${reason || 'HOLD'}`);
 
     if (reason) {
-      if (openProtect && reason !== 'TIMEOUT_STALE') {
+      if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {
         console.log(`EXIT_NATIVE_PENDING symbol=${symbol} reason=${reason} orderId=${openProtect.orderId}`);
         continue;
       }
