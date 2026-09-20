@@ -10,7 +10,7 @@ function quality(passCount, norm) {
   return { passCount, norm };
 }
 
-(function normalCadenceStaysOpen() {
+(function normalCoreCadenceIsBlocked() {
   const result = evaluateSpotEntryBurstGate({
     lane: 'CORE',
     symbol: 'AAAUSDT',
@@ -18,8 +18,20 @@ function quality(passCount, norm) {
     managedPositions: [],
     v42Quality: quality(2, 0.72)
   });
+  assert.strictEqual(result.allow, false);
+  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
+})();
+
+(function isolatedHighQualityCoreIsAdmitted() {
+  const result = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'AAAUSDT',
+    currentPct: 5,
+    managedPositions: [],
+    v42Quality: quality(3, 0.95)
+  });
   assert.strictEqual(result.allow, true);
-  assert.strictEqual(result.code, 'NORMAL_ADMITTED');
+  assert.strictEqual(result.code, 'HIGH_CONVICTION_ADMITTED');
 })();
 
 (function blocksSameManagedSymbolImmediately() {
