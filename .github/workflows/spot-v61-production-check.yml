@@ -129,9 +129,9 @@ jobs:
           grep -q '"mfe_pct": 0.25, "distance_pct": 0.035' backend/config/spot-exit-policy-v2.json
           grep -q '"mfe_pct": 0.50, "distance_pct": 0.03' backend/config/spot-exit-policy-v2.json
           grep -q '"mfe_pct": 1.00, "distance_pct": 0.025' backend/config/spot-exit-policy-v2.json
-          grep -q '"momentum_fail_hours": 1.5' backend/config/spot-exit-policy-v2.json
+          grep -q '"momentum_fail_hours": 1' backend/config/spot-exit-policy-v2.json
           grep -q '"momentum_fail_max_gain_pct": -0.015' backend/config/spot-exit-policy-v2.json
-          grep -q '"no_progress_hours": 6' backend/config/spot-exit-policy-v2.json
+          grep -q '"no_progress_hours": 3' backend/config/spot-exit-policy-v2.json
           grep -q '"no_progress_max_gain_pct": 0.005' backend/config/spot-exit-policy-v2.json
           grep -q '"stale_timeout_hours": 24' backend/config/spot-exit-policy-v2.json
           grep -q "spot-exit-policy-v2.json" backend/scripts/github-spot-auto-exit-legacy.js
