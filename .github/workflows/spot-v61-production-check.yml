@@ -27,7 +27,11 @@ on:
       - 'backend/services/localPretradeGuard.js'
       - 'backend/services/marketManipulationRisk.js'
       - 'backend/services/spotGrowthExitPolicy.js'
+      - 'backend/services/spotProgressiveTrailing.js'
+      - 'backend/services/spotManagedResidual.js'
       - 'backend/tests/spotGrowthExitPolicy.test.js'
+      - 'backend/tests/spotProgressiveTrailing.test.js'
+      - 'backend/tests/spotManagedResidual.test.js'
       - 'backend/tests/spotOrphanProtection.test.js'
       - 'backend/tests/localPretradeGuard.test.js'
       - 'backend/tests/marketManipulationRisk.test.js'
@@ -67,7 +71,11 @@ jobs:
           node --check backend/services/localPretradeGuard.js
           node --check backend/services/marketManipulationRisk.js
           node --check backend/services/spotGrowthExitPolicy.js
+          node --check backend/services/spotProgressiveTrailing.js
+          node --check backend/services/spotManagedResidual.js
           node --check backend/tests/spotGrowthExitPolicy.test.js
+          node --check backend/tests/spotProgressiveTrailing.test.js
+          node --check backend/tests/spotManagedResidual.test.js
       - name: Historical exit-policy training tests
         run: |
           node backend/tests/spotExitPolicyHistoricalTraining.test.js
@@ -80,7 +88,10 @@ jobs:
       - name: Defensive manipulation risk tests
         run: node backend/tests/marketManipulationRisk.test.js
       - name: Growth exit overlay tests
-        run: node backend/tests/spotGrowthExitPolicy.test.js
+        run: |
+          node backend/tests/spotGrowthExitPolicy.test.js
+          node backend/tests/spotProgressiveTrailing.test.js
+          node backend/tests/spotManagedResidual.test.js
       - name: Confirm production wiring
         run: |
           set -euo pipefail
@@ -94,6 +105,10 @@ jobs:
           grep -q "github-spot-auto-exit-legacy-v10-aware.js" backend/scripts/github-spot-auto-exit.js
           grep -q "isNotionalFilterError" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "decideCoreGrowthExit" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "resolveTrailingDistance" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "resolveManagedResidual" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "RESIDUAL_MONITOR_ACTIVE" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "EXIT_NATIVE_STALE" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "MOMENTUM_FAILURE" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "NO_PROGRESS" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "PROTECTION_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
@@ -104,6 +119,9 @@ jobs:
           grep -q '"confirm": 0.015' backend/config/spot-exit-policy-v2.json
           grep -q '"break_even_lock_pct": 0.003' backend/config/spot-exit-policy-v2.json
           grep -q '"trailing_distance_pct": 0.04' backend/config/spot-exit-policy-v2.json
+          grep -q '"mfe_pct": 0.25, "distance_pct": 0.035' backend/config/spot-exit-policy-v2.json
+          grep -q '"mfe_pct": 0.50, "distance_pct": 0.03' backend/config/spot-exit-policy-v2.json
+          grep -q '"mfe_pct": 1.00, "distance_pct": 0.025' backend/config/spot-exit-policy-v2.json
           grep -q '"momentum_fail_hours": 1.5' backend/config/spot-exit-policy-v2.json
           grep -q '"momentum_fail_max_gain_pct": -0.015' backend/config/spot-exit-policy-v2.json
           grep -q '"no_progress_hours": 6' backend/config/spot-exit-policy-v2.json

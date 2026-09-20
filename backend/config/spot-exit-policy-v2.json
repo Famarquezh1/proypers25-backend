@@ -29,6 +29,11 @@
     "break_even_lock_pct": 0.003,
     "trailing_trigger_pct": 0.08,
     "trailing_distance_pct": 0.04,
+    "trailing_tiers": [
+      { "mfe_pct": 0.25, "distance_pct": 0.035 },
+      { "mfe_pct": 0.50, "distance_pct": 0.03 },
+      { "mfe_pct": 1.00, "distance_pct": 0.025 }
+    ],
     "momentum_fail_hours": 1.5,
     "momentum_fail_max_gain_pct": -0.015,
     "no_progress_hours": 6,
