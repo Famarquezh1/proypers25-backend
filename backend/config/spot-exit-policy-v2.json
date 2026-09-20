@@ -29,6 +29,10 @@
     "break_even_lock_pct": 0.003,
     "trailing_trigger_pct": 0.08,
     "trailing_distance_pct": 0.04,
+    "momentum_fail_hours": 1.5,
+    "momentum_fail_max_gain_pct": -0.015,
+    "no_progress_hours": 6,
+    "no_progress_max_gain_pct": 0.005,
     "stale_timeout_hours": 24,
     "stale_max_gain_pct": 0.005,
     "take_profit_pct": 0
