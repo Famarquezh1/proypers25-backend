@@ -30,14 +30,14 @@ patch(
 );
 
 patch(
-  "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-  "let reason = null;\n    if (isV10Hunter && gainPct >= 0.03) reason = 'V10_TAKE_PROFIT';\n    else if (isV10Hunter && ageHours >= 3) reason = 'V10_TIMEOUT_3H';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+  "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+  "let reason = null;\n    if (isV10Hunter && gainPct >= 0.03) reason = 'V10_TAKE_PROFIT';\n    else if (isV10Hunter && ageHours >= 3) reason = 'V10_TIMEOUT_3H';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (!isV10Hunter && growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
   'V10 exit rules'
 );
 
 patch(
-  "if (openProtect && reason !== 'TIMEOUT_STALE') {",
-  "if (openProtect && !['TIMEOUT_STALE', 'V10_TAKE_PROFIT', 'V10_TIMEOUT_3H'].includes(reason)) {",
+  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {",
+  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'V10_TAKE_PROFIT', 'V10_TIMEOUT_3H'].includes(reason)) {",
   'market exit permission'
 );
 
