@@ -48,6 +48,22 @@ assert.strictEqual(resolveConvictionPosition({
 
 assert.strictEqual(resolveConvictionPosition({
   lane: 'CORE', v61Score: 1.10, v42PassCount: 3, v42Norm: 0.99,
+  usdtFree: 300, baseFraction: 0.20
+}).quote_order_qty, 50);
+
+assert.strictEqual(resolveConvictionPosition({
+  lane: 'V10_HUNTER',
+  microflowScore: 0.0030,
+  microflowCut: 0.0018,
+  microflowMargin: 0.0015,
+  microflowMarginCut: 0.0007,
+  calibrationWinRate: 0.62,
+  usdtFree: 300,
+  baseFraction: 0.20
+}).quote_order_qty, 40);
+
+assert.strictEqual(resolveConvictionPosition({
+  lane: 'CORE', v61Score: 1.10, v42PassCount: 3, v42Norm: 0.99,
   usdtFree: 200, baseFraction: 0.20, isLeveraged: true
 }).quote_order_qty, 5);
 
