@@ -105,6 +105,18 @@ function quality(passCount, norm) {
   assert.strictEqual(result.code, 'EXTENDED_ENTRY');
 })();
 
+(function extendedEntryBlocksEvenEliteQuality() {
+  const result = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'AAAUSDT',
+    currentPct: 12,
+    managedPositions: [],
+    v42Quality: quality(3, 0.99)
+  });
+  assert.strictEqual(result.allow, false);
+  assert.strictEqual(result.code, 'EXTENDED_ENTRY');
+})();
+
 (function correlatedEntryNeedsEliteQuality() {
   const result = evaluateSpotEntryBurstGate({
     lane: 'CORE',
