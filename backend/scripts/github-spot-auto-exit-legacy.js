@@ -3,6 +3,8 @@
 const crypto = require('crypto');
 const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
+const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing');
+const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');
 const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
@@ -217,7 +219,9 @@ function protectionParams(info, entryPrice, recentHigh) {
     protection = 'BREAK_EVEN';
   }
   if (recentHigh / entryPrice - 1 >= TRAILING_TRIGGER_PCT) {
-    rawStop = Math.max(rawStop, recentHigh * (1 - TRAILING_DISTANCE_PCT));
+    const mfePct = recentHigh / entryPrice - 1;
+    const trailingDistancePct = resolveTrailingDistance(mfePct, TRAILING_DISTANCE_PCT, CORE_EXIT.trailing_tiers);
+    rawStop = Math.max(rawStop, recentHigh * (1 - trailingDistancePct));
     protection = 'TRAILING';
   }
   return {
@@ -343,18 +347,8 @@ async function main() {
     const entryPrice = executedQty > 0 ? quoteQty / executedQty : 0;
     if (!(entryPrice > 0 && executedQty > 0)) continue;
 
-    const filledExit = orders
-      .filter((o) => o.side === 'SELL' && o.status === 'FILLED' && Number(o.updateTime || o.time || 0) > buyTime)
-      .filter((o) => String(o.clientOrderId || '').startsWith('proypers-gh-exit-') || String(o.clientOrderId || '').startsWith('proypers-gh-protect-'))
-      .sort((a, b) => Number(b.updateTime || b.time) - Number(a.updateTime || a.time))[0];
-    if (filledExit) {
-      const exitQty = Number(filledExit.executedQty || 0);
-      const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : entryPrice;
-      const pnlPct = exitPrice / entryPrice - 1;
-      const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
-      await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice, exitPrice, pnlPct });
-      continue;
-    }
+    const openProtect = latestOpenProtection(orders, buyTime);
+    const filledExit = latestFilledExit(orders, buyTime);
 
     const [ticker, exchangeInfo, account] = await Promise.all([
       request(base, `/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`),
@@ -366,38 +360,89 @@ async function main() {
     if (!(currentPrice > 0) || !info || info.status !== 'TRADING' || info.isSpotTradingAllowed !== true) continue;
 
     const ownedTotal = totalBalance(account, info.baseAsset);
-    if (!(ownedTotal > 0)) continue;
+    if (!(ownedTotal > 0)) {
+      if (filledExit) {
+        const exitQty = Number(filledExit.executedQty || 0);
+        const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : entryPrice;
+        const pnlPct = exitPrice / entryPrice - 1;
+        const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
+        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice, exitPrice, pnlPct });
+      }
+      continue;
+    }
+
+    let residualTrades = [];
+    if (filledExit && openProtect) {
+      residualTrades = await signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }).catch((error) => {
+        console.warn(`RESIDUAL_TRADES_UNAVAILABLE symbol=${symbol} error=${error.message || error}`);
+        return [];
+      });
+    }
+
+    const managed = resolveManagedResidual({
+      buy,
+      orders,
+      trades: residualTrades,
+      ownedTotal,
+      baseAsset: info.baseAsset
+    });
+
+    if (!managed.active) {
+      if (filledExit) {
+        const exitQty = Number(filledExit.executedQty || 0);
+        const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : entryPrice;
+        const pnlPct = exitPrice / entryPrice - 1;
+        const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
+        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice, exitPrice, pnlPct });
+      }
+      continue;
+    }
+
+    if (filledExit) {
+      const exitQty = Number(filledExit.executedQty || 0);
+      const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : managed.entryPrice;
+      const pnlPct = exitPrice / managed.entryPrice - 1;
+      const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
+      await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice: managed.entryPrice, exitPrice, pnlPct });
+    }
+
+    const effectiveEntryPrice = managed.entryPrice;
+    const effectiveStartTime = managed.startTime || buyTime;
+    const managedQty = managed.managedQty;
 
     openCount += 1;
-    const ageHours = (Date.now() - buyTime) / 3600000;
-    const gainPct = currentPrice / entryPrice - 1;
-    const recentHigh = await getHighSince(base, symbol, buyTime, entryPrice, currentPrice);
-    const { stopPrice, protection, tickSize } = protectionParams(info, entryPrice, recentHigh);
-
-    const openProtect = orders
-      .filter((o) => o.side === 'SELL' && ['NEW', 'PARTIALLY_FILLED'].includes(o.status) && Number(o.time || 0) > buyTime)
-      .filter((o) => String(o.clientOrderId || '').startsWith('proypers-gh-protect-'))
-      .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))[0];
+    const ageHours = (Date.now() - effectiveStartTime) / 3600000;
+    const gainPct = currentPrice / effectiveEntryPrice - 1;
+    const recentHigh = await getHighSince(base, symbol, effectiveStartTime, effectiveEntryPrice, currentPrice);
+    const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);
+    if (managed.residualMode) {
+      console.log(`RESIDUAL_MONITOR_ACTIVE symbol=${symbol} qty=${managedQty} entry=${effectiveEntryPrice} current=${currentPrice} open_protect=${openProtect?.orderId || 'none'}`);
+    }
 
     const growthExit = String(buy.clientOrderId || '').startsWith('proypers-gh-v10-')
       ? { reason: null }
-      : decideCoreGrowthExit({ ageHours, gainPct, recentHighPct: recentHigh / entryPrice - 1, policy: CORE_EXIT });
+      : decideCoreGrowthExit({ ageHours, gainPct, recentHighPct: recentHigh / effectiveEntryPrice - 1, policy: CORE_EXIT });
 
     let reason = null;
     if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';
     else if (growthExit.reason) reason = growthExit.reason;
     else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';
 
-    console.log(`MONITOR symbol=${symbol} entry=${entryPrice} current=${currentPrice} gain_pct=${(gainPct * 100).toFixed(3)} high=${recentHigh} stop=${stopPrice} protection=${protection} age_h=${ageHours.toFixed(2)} native_stop=${openProtect?.orderId || 'none'} action=${reason || 'HOLD'}`);
+    console.log(`MONITOR symbol=${symbol} entry=${effectiveEntryPrice} current=${currentPrice} gain_pct=${(gainPct * 100).toFixed(3)} high=${recentHigh} stop=${stopPrice} protection=${protection} age_h=${ageHours.toFixed(2)} native_stop=${openProtect?.orderId || 'none'} residual=${managed.residualMode} action=${reason || 'HOLD'}`);
 
+    const existingStop = Number(openProtect?.stopPrice || 0);
+    const nativeStopCurrent = openProtect && existingStop + Math.max(tickSize * 0.5, Number.EPSILON) >= stopPrice;
     if (reason) {
       if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {
-        console.log(`EXIT_NATIVE_PENDING symbol=${symbol} reason=${reason} orderId=${openProtect.orderId}`);
-        continue;
+        if (nativeStopCurrent) {
+          console.log(`EXIT_NATIVE_PENDING symbol=${symbol} reason=${reason} orderId=${openProtect.orderId}`);
+          continue;
+        }
+        console.log(`EXIT_NATIVE_STALE symbol=${symbol} reason=${reason} orderId=${openProtect.orderId} existing_stop=${existingStop} desired_stop=${stopPrice}`);
       }
       if (openProtect) await cancelProtection(base, symbol, openProtect);
       try {
-        await marketSell(base, info, symbol, executedQty, reason, entryPrice, currentPrice);
+        await marketSell(base, info, symbol, managedQty, reason, effectiveEntryPrice, currentPrice);
         soldCount += 1;
       } catch (error) {
         if (!isNotionalFilterError(error)) throw error;
@@ -406,13 +451,12 @@ async function main() {
       continue;
     }
 
-    const existingStop = Number(openProtect?.stopPrice || 0);
     const shouldUpgrade = openProtect && stopPrice > existingStop + Math.max(tickSize * 0.5, Number.EPSILON);
     if (!openProtect || shouldUpgrade) {
       if (openProtect) await cancelProtection(base, symbol, openProtect);
       const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       const free = freeBalance(refreshed, info.baseAsset);
-      const quantity = Math.min(executedQty, free);
+      const quantity = Math.min(managedQty, free);
       try {
         await placeProtection(base, info, symbol, quantity, stopPrice);
         protectedCount += 1;
