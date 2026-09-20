@@ -162,8 +162,8 @@ function evaluateSpotEntryBurstGate({
   if (burst.length >= 2 && !highQuality) {
     return { allow: false, reason: `entry burst requires 3/3 V4.2 quality (${burst.length} recent managed positions)`, code: 'BURST_QUALITY', diagnostics: { passCount, norm, maxCorrelation } };
   }
-  if (Number(currentPct) >= EXTENDED_24H_PCT && !highQuality) {
-    return { allow: false, reason: `extended entry ${Number(currentPct).toFixed(2)}% requires high V4.2 quality`, code: 'EXTENDED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
+  if (Number(currentPct) >= EXTENDED_24H_PCT) {
+    return { allow: false, reason: `CORE entry blocked at ${Number(currentPct).toFixed(2)}% 24h extension (hard limit ${EXTENDED_24H_PCT}%)`, code: 'EXTENDED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
   }
   if (maxCorrelation !== null && maxCorrelation >= HIGH_CORRELATION && !eliteQuality) {
     return { allow: false, reason: `correlated entry blocked (max 2h correlation ${maxCorrelation.toFixed(3)})`, code: 'CORRELATED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
