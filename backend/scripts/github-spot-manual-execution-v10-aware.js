@@ -16,6 +16,7 @@ const {
 const { runLocalPretradeGuard } = require('../services/localPretradeGuard');
 const { classifySpotAsset } = require('../services/spotAssetClassification');
 const { resolveConvictionPosition, LEVERAGED_POSITION_USDT } = require('../services/spotConvictionSizing');
+const { estimateAccountEquityUsdt, estimateManagedExposureUsdt, resolveGrowthPosition } = require('../services/spotGrowthEngine');
 
 const LEVERAGED_GITHUB_MAX_USDT = LEVERAGED_POSITION_USDT;
 const LEVERAGED_GITHUB_MIN_V61_SCORE = 0.4487136592494857;
@@ -38,7 +39,7 @@ patch(
 
 patch(
   'const MIN_USDT = 10;\nconst MAX_USDT = 100;',
-  'const MIN_USDT = 5;\nconst MAX_USDT = 50;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
+  'const MIN_USDT = 5;\nconst MAX_USDT = 70;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
   'entry sizing'
 );
 
@@ -50,7 +51,7 @@ patch(
 
 patch(
   "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT')\n  ]);",
-  "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars, openOrders] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT'),\n    signed(base, 'GET', '/api/v3/openOrders').catch((error) => { console.warn(`ENTRY_GATE_OPEN_ORDERS_UNAVAILABLE ${error.message || error}`); return []; })\n  ]);",
+  "const [ticker, account, restrictions, exchangeInfo, symbolBars, btcBars, openOrders, allPrices] = await Promise.all([\n    request(base, `/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),\n    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),\n    signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),\n    request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`),\n    fiveMinuteBars(base, SYMBOL), fiveMinuteBars(base, 'BTCUSDT'),\n    signed(base, 'GET', '/api/v3/openOrders').catch((error) => { console.warn(`ENTRY_GATE_OPEN_ORDERS_UNAVAILABLE ${error.message || error}`); return []; }),\n    request(base, '/api/v3/ticker/price').catch((error) => { console.warn(`GROWTH_ENGINE_PRICES_UNAVAILABLE ${error.message || error}`); return []; })\n  ]);",
   'managed position inventory'
 );
 
@@ -62,7 +63,7 @@ patch(
 
 patch(
   "const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);",
-  "const assetClassification = classifySpotAsset(SYMBOL);\n  if (assetClassification.is_leveraged && (!Number.isFinite(score) || score < LEVERAGED_GITHUB_MIN_V61_SCORE)) decline(`Leveraged tokenized asset requires stronger entry score (${Number.isFinite(score) ? score.toFixed(6) : 'unavailable'} < ${LEVERAGED_GITHUB_MIN_V61_SCORE})`);\n  const usdtFree = freeBalance(account, 'USDT');\n  const convictionSizing = resolveConvictionPosition({ lane: SIGNAL_LANE, v61Score: score, v42PassCount: v42Quality.passCount, v42Norm: v42Quality.norm, microflowScore: SIGNAL_MICROFLOW_SCORE, microflowCut: SIGNAL_MICROFLOW_CUT, microflowMargin: SIGNAL_MICROFLOW_MARGIN, microflowMarginCut: SIGNAL_MICROFLOW_MARGIN_CUT, calibrationWinRate: SIGNAL_CALIBRATION_WIN_RATE, usdtFree, baseFraction: fraction, isLeveraged: assetClassification.is_leveraged });\n  if (SIGNAL_LANE === 'CORE' && convictionSizing.tier === 'NORMAL') decline('CORE real entry requires HIGH or EXCEPTIONAL conviction');\n  const quoteOrderQty = Math.min(MAX_USDT, convictionSizing.quote_order_qty);",
+  "const assetClassification = classifySpotAsset(SYMBOL);\n  if (assetClassification.is_leveraged && (!Number.isFinite(score) || score < LEVERAGED_GITHUB_MIN_V61_SCORE)) decline(`Leveraged tokenized asset requires stronger entry score (${Number.isFinite(score) ? score.toFixed(6) : 'unavailable'} < ${LEVERAGED_GITHUB_MIN_V61_SCORE})`);\n  const usdtFree = freeBalance(account, 'USDT');\n  const convictionSizing = resolveConvictionPosition({ lane: SIGNAL_LANE, v61Score: score, v42PassCount: v42Quality.passCount, v42Norm: v42Quality.norm, microflowScore: SIGNAL_MICROFLOW_SCORE, microflowCut: SIGNAL_MICROFLOW_CUT, microflowMargin: SIGNAL_MICROFLOW_MARGIN, microflowMarginCut: SIGNAL_MICROFLOW_MARGIN_CUT, calibrationWinRate: SIGNAL_CALIBRATION_WIN_RATE, usdtFree, baseFraction: fraction, isLeveraged: assetClassification.is_leveraged });\n  if (SIGNAL_LANE === 'CORE' && convictionSizing.tier === 'NORMAL') decline('CORE real entry requires HIGH or EXCEPTIONAL conviction');\n  const growthEquityUsdt = estimateAccountEquityUsdt(account, allPrices);\n  const growthManagedExposureUsdt = estimateManagedExposureUsdt(openOrders, allPrices);\n  const growthSizing = resolveGrowthPosition({ lane: SIGNAL_LANE, tier: convictionSizing.tier, equityUsdt: growthEquityUsdt, usdtFree, managedExposureUsdt: growthManagedExposureUsdt, baseQuoteOrderQty: convictionSizing.quote_order_qty, isLeveraged: assetClassification.is_leveraged });\n  const quoteOrderQty = Math.min(MAX_USDT, growthSizing.quote_order_qty);\n  if (SIGNAL_LANE === 'CORE' && growthSizing.enabled && quoteOrderQty < MIN_USDT) decline(`Growth engine portfolio cap/reserve blocked entry (equity=${growthEquityUsdt}, exposure=${growthManagedExposureUsdt}, free=${usdtFree})`);\n  console.log(`GROWTH_ENGINE_V1 lane=${SIGNAL_LANE} tier=${convictionSizing.tier} equity_usdt=${growthEquityUsdt} exposure_usdt=${growthManagedExposureUsdt} reserve_usdt=${growthSizing.reserve_usdt ?? convictionSizing.reserve_usdt} tier_cap_usdt=${growthSizing.tier_cap_usdt ?? convictionSizing.cap_usdt} quote_order_qty=${quoteOrderQty} reason=${growthSizing.reason}`);",
   'conviction-aware sizing'
 );
 
