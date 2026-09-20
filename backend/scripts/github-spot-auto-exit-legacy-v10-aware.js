@@ -24,8 +24,8 @@ patch(
 );
 
 patch(
-  'const { stopPrice, protection, tickSize } = protectionParams(info, entryPrice, recentHigh);',
-  "const baseProtection = protectionParams(info, entryPrice, recentHigh);\n    const v10PriceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');\n    const v10StopPrice = v10PriceFilter ? floorToStep(entryPrice * (1 - 0.012), v10PriceFilter.tickSize) : baseProtection.stopPrice;\n    const stopPrice = isV10Hunter ? Math.max(baseProtection.stopPrice, v10StopPrice) : baseProtection.stopPrice;\n    const protection = isV10Hunter && stopPrice === v10StopPrice ? 'V10_HARD_STOP' : baseProtection.protection;\n    const tickSize = baseProtection.tickSize;",
+  'const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);',
+  "const baseProtection = protectionParams(info, effectiveEntryPrice, recentHigh);\n    const v10PriceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');\n    const v10StopPrice = v10PriceFilter ? floorToStep(effectiveEntryPrice * (1 - 0.012), v10PriceFilter.tickSize) : baseProtection.stopPrice;\n    const stopPrice = isV10Hunter ? Math.max(baseProtection.stopPrice, v10StopPrice) : baseProtection.stopPrice;\n    const protection = isV10Hunter && stopPrice === v10StopPrice ? 'V10_HARD_STOP' : baseProtection.protection;\n    const tickSize = baseProtection.tickSize;",
   'V10 stop recovery'
 );
 
