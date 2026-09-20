@@ -34,9 +34,9 @@
       { "mfe_pct": 0.50, "distance_pct": 0.03 },
       { "mfe_pct": 1.00, "distance_pct": 0.025 }
     ],
-    "momentum_fail_hours": 1.5,
+    "momentum_fail_hours": 1,
     "momentum_fail_max_gain_pct": -0.015,
-    "no_progress_hours": 6,
+    "no_progress_hours": 3,
     "no_progress_max_gain_pct": 0.005,
     "stale_timeout_hours": 24,
     "stale_max_gain_pct": 0.005,
