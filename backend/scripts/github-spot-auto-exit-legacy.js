@@ -5,6 +5,7 @@ const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
 const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing');
 const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');
+const { highHistoryCadence } = require('../services/spotHighHistoryPolicy');
 const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
@@ -188,11 +189,12 @@ async function getHighSince(base, symbol, startTime, entryPrice, currentPrice) {
   let high = Math.max(entryPrice, currentPrice);
   let cursor = Number(startTime);
   const end = Date.now();
-  const intervalMs = 5 * 60 * 1000;
+  const cadence = highHistoryCadence(cursor, end);
+  const intervalMs = cadence.interval_ms;
 
   try {
-    for (let page = 0; page < 4 && cursor < end; page += 1) {
-      const params = new URLSearchParams({ symbol, interval: '5m', startTime: String(cursor), endTime: String(end), limit: '1000' });
+    for (let page = 0; page < cadence.max_pages && cursor < end; page += 1) {
+      const params = new URLSearchParams({ symbol, interval: cadence.interval, startTime: String(cursor), endTime: String(end), limit: '1000' });
       const rows = await request(base, `/api/v3/klines?${params}`);
       if (!Array.isArray(rows) || !rows.length) break;
       high = Math.max(high, ...rows.map((r) => Number(r[2] || 0)));
@@ -202,6 +204,7 @@ async function getHighSince(base, symbol, startTime, entryPrice, currentPrice) {
       cursor = next;
       if (rows.length < 1000) break;
     }
+    console.log(`HIGH_HISTORY symbol=${symbol} interval=${cadence.interval} high=${high} start=${startTime}`);
   } catch (error) {
     console.log(`HIGH_HISTORY_FALLBACK symbol=${symbol} error=${error.message || error}`);
   }
