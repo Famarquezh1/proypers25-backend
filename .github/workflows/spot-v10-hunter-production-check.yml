@@ -10,9 +10,12 @@ on:
       - 'backend/services/spotAssetClassification.js'
       - 'backend/services/spotEntryBurstGate.js'
       - 'backend/services/spotConvictionSizing.js'
+      - 'backend/services/spotGrowthEngine.js'
+      - 'backend/config/spot-growth-engine-v1.json'
       - 'backend/tests/spotAssetClassification.test.js'
       - 'backend/tests/spotEntryBurstGate.test.js'
       - 'backend/tests/spotConvictionSizing.test.js'
+      - 'backend/tests/spotGrowthEngine.test.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - '.github/workflows/spot-manual-approval.yml'
@@ -45,9 +48,11 @@ jobs:
           node --check backend/services/spotAssetClassification.js
           node --check backend/services/spotEntryBurstGate.js
           node --check backend/services/spotConvictionSizing.js
+          node --check backend/services/spotGrowthEngine.js
           node --check backend/tests/spotAssetClassification.test.js
           node --check backend/tests/spotEntryBurstGate.test.js
           node --check backend/tests/spotConvictionSizing.test.js
+          node --check backend/tests/spotGrowthEngine.test.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-auto-exit.js
 
@@ -56,6 +61,7 @@ jobs:
           node backend/tests/spotEntryBurstGate.test.js
           node backend/tests/spotAssetClassification.test.js
           node backend/tests/spotConvictionSizing.test.js
+          node backend/tests/spotGrowthEngine.test.js
       - name: V10 exit wrapper patch compatibility
         shell: bash
         run: |
@@ -80,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "const MAX_USDT = 50" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "const MAX_USDT = 70" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "const MIN_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "DUPLICATE_POSITION_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "LEVERAGED_GITHUB_MAX_USDT = LEVERAGED_POSITION_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
@@ -104,6 +110,10 @@ jobs:
           grep -q "CORRELATED_ENTRY" backend/services/spotEntryBurstGate.js
           grep -q "CORE_QUALITY_REQUIRED" backend/services/spotEntryBurstGate.js
           grep -q "resolveConvictionPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "resolveGrowthPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "GROWTH_ENGINE_V1" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q '"max_deployed_equity_pct": 0.65' backend/config/spot-growth-engine-v1.json
+          grep -q '"exceptional_cap_usdt": 70' backend/config/spot-growth-engine-v1.json
           grep -q "SIGNAL_MICROFLOW_SCORE" .github/workflows/spot-manual-approval.yml
           grep -q "V10_HARD_STOP_PCT = 0.012" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "V10_TAKE_PROFIT" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
@@ -112,7 +122,7 @@ jobs:
           grep -q "github-spot-manual-execution-v10-aware.js" .github/workflows/spot-manual-approval.yml
           grep -q "cron: '7,22,37,52 \* \* \* \*'" .github/workflows/spot-microflow-hunter-v10.yml
           grep -q "CORE V4.2 5m: intacto" .github/workflows/spot-microflow-hunter-v10.yml
-          echo 'V10 lane invariants preserved: CORE requires high quality, CORE sizing 15/30/50 with NORMAL blocked from real entry, V10 exceptional capped at 40 USDT, 5 USDT leveraged cap, cash reserve, stronger leveraged entry score and tighter leveraged stop.'
+          echo 'V10 lane invariants preserved: CORE requires high quality, Growth Engine compounds HIGH/EXCEPTIONAL from equity with 70 USDT hard executor cap, V10 exceptional remains capped at 40 USDT, leveraged assets remain 5 USDT.'
 
       - name: Read-only V10 Hunter live smoke
         shell: bash
