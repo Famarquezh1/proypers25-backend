@@ -1,0 +1,62 @@
+name: Spot Holy Grail Discriminant Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-holy-grail-discriminant.js'
+      - '.github/workflows/spot-holy-grail-discriminant.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-holy-grail-discriminant
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HIST_POOL_SIZE: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/train-spot-holy-grail-discriminant.js
+          grep -q "production_mutation:false" backend/scripts/train-spot-holy-grail-discriminant.js
+          ! grep -q "api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/train-spot-holy-grail-discriminant.js
+      - name: Train causal discriminant
+        run: node backend/scripts/train-spot-holy-grail-discriminant.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-holy-grail-discriminant-${{ github.run_id }}
+          path: backend/training-output/spot-holy-grail-discriminant.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-holy-grail-discriminant.json');
+          console.log('### Holy Grail Discriminant — research only');
+          console.log(`- Dev positive/negative: ${r.labels.development_positive}/${r.labels.development_negative}`);
+          console.log(`- Selected calibration: ${r.selected_calibration ? `lambda=${r.selected_calibration.lambda}, keep=${r.selected_calibration.keep}` : 'none'}`);
+          console.log(`- Confirmation pass: ${r.confirmation_pass}`);
+          console.log(`- Decision: ${r.decision.label}`);
+          if(r.confirmation_delta){
+            console.log(`- Δ net growth: ${(100*r.confirmation_delta.net_growth).toFixed(3)} pp`);
+            console.log(`- Δ avg net return: ${(100*r.confirmation_delta.avg_net_ret).toFixed(3)} pp`);
+            console.log(`- Δ max drawdown: ${(100*r.confirmation_delta.max_drawdown).toFixed(3)} pp`);
+            console.log(`- Δ +5% precision: ${(100*r.confirmation_delta.winner5_precision).toFixed(2)} pp`);
+          }
+          NODE
