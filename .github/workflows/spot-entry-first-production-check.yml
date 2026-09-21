@@ -8,6 +8,7 @@ on:
       - 'backend/scripts/github-spot-production-radar-v42-active.js'
       - 'backend/scripts/train-spot-qubo-v5.js'
       - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
+      - 'backend/scripts/update-spot-radar-rejection-ledger.js'
       - 'backend/scripts/train-spot-qubo-full-history-v5.js'
       - 'backend/services/spotQuboProductionV5.js'
       - 'backend/services/spotMarketRegime.js'
@@ -15,6 +16,7 @@ on:
       - 'backend/config/spot-qubo-training-snapshot-v5.json'
       - 'backend/tests/spotQuboProductionV5.test.js'
       - 'backend/tests/spotQuboCounterfactualLearning.test.js'
+      - 'backend/tests/spotRadarRejectionLedger.test.js'
       - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
@@ -87,11 +89,13 @@ jobs:
           node --check backend/scripts/github-spot-production-radar-v42-active.js
           node --check backend/scripts/train-spot-qubo-v5.js
           node --check backend/scripts/train-spot-qubo-counterfactual-v5.js
+          node --check backend/scripts/update-spot-radar-rejection-ledger.js
           node --check backend/scripts/train-spot-qubo-full-history-v5.js
           node --check backend/services/spotQuboProductionV5.js
           node --check backend/services/spotMarketRegime.js
           node --check backend/tests/spotQuboProductionV5.test.js
           node --check backend/tests/spotQuboCounterfactualLearning.test.js
+          node --check backend/tests/spotRadarRejectionLedger.test.js
           node --check backend/tests/spotQuboFullHistoryBackfill.test.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
           node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
@@ -111,6 +115,7 @@ jobs:
           node backend/scripts/train-spot-qubo-v5.js --verify
           node backend/tests/spotQuboProductionV5.test.js
           node backend/tests/spotQuboCounterfactualLearning.test.js
+          node backend/tests/spotRadarRejectionLedger.test.js
           node backend/tests/spotQuboFullHistoryBackfill.test.js
       - name: XEC native protection tests
         run: node backend/tests/githubXecNativeProtection.test.js
@@ -141,6 +146,10 @@ jobs:
           grep -q "spot-qubo-adaptive-learning.yml" .github/workflows/spot-github-radar.yml
           grep -q "QUBO_CF_MAX_SIGNALS: '160'" .github/workflows/spot-qubo-adaptive-learning.yml
           grep -q "includes_declined: true" backend/scripts/train-spot-qubo-counterfactual-v5.js
+          grep -q "includes_preapproval_declined: true" backend/scripts/train-spot-qubo-counterfactual-v5.js
+          grep -q "parsePreapprovalRejection" backend/scripts/train-spot-qubo-counterfactual-v5.js
+          grep -q "learning_rejections" backend/scripts/github-spot-production-radar-v42.js
+          grep -q "spot-radar-rejection-ledger" .github/workflows/spot-github-radar.yml
           grep -q "declined_missed_wins" backend/scripts/train-spot-qubo-counterfactual-v5.js
           grep -q "rejection_reason_stats" backend/scripts/train-spot-qubo-counterfactual-v5.js
           grep -q "exit_quality_samples" backend/scripts/train-spot-qubo-counterfactual-v5.js
@@ -191,4 +200,4 @@ jobs:
           if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
           console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
           NODE
-          echo 'V4.2/QUBO V5 remains production authority. Learning now includes executed/declined outcomes, MFE/MAE, rejection reason, BTC market regime and actual exit quality; regime weights promote only on holdout improvement. History remains bounded to 160 signals with no GCloud/Firestore or PC-local training memory.'
+          echo 'V4.2/QUBO V5 remains production authority. Learning includes executed, validator-declined and bounded pre-approval Radar rejects as counterfactual evidence; no rejected sample can directly trigger an order. Weight promotion still requires holdout improvement.'
