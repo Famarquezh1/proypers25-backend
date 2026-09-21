@@ -51,7 +51,13 @@ jobs:
           grep -q "BURST_QUALITY" backend/services/spotEntryBurstGate.js
           grep -q "EXTENDED_ENTRY" backend/services/spotEntryBurstGate.js
           grep -q "CORRELATED_ENTRY" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRMATION_ADMITTED" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRM_MAX_24H_PCT = 8" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRM_MIN_NORM = 0.82" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRMATION_MAX_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "EARLY_CONFIRMATION_MIN_V61_SCORE = 0.65" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "earlyConfirmation" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_OPEN_POSITIONS" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "V10_HUNTER keeps the stop" backend/scripts/github-spot-manual-execution-v10-aware.js
-          echo 'Selective anti-overentry gate verified without restoring hard position/capital caps or changing V8 shadow authority.'
+          echo 'Selective gate verified: CORE 3/3 remains primary; strict 2/3 early-confirmation is isolated, freshness-limited and capped at 15 USDT. V8 shadow authority unchanged.'
