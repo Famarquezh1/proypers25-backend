@@ -13,6 +13,7 @@ on:
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
       - "backend/services/spotLiveEvidence.js"
+      - "backend/services/spotV21ShadowRouter.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotEntryFirstSelector.js"
       - "backend/services/paperToRealEntryGate.js"
@@ -34,6 +35,7 @@ on:
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/tests/spotLiveEvidence.test.js"
+      - "backend/tests/spotV21ShadowRouter.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotEntryFirstSelector.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
@@ -56,6 +58,7 @@ on:
       - "backend/services/spotStrategyPromotionController.js"
       - "backend/services/spotCycleObservability.js"
       - "backend/services/spotLiveEvidence.js"
+      - "backend/services/spotV21ShadowRouter.js"
       - "backend/services/spotEarlyMomentumRadar.js"
       - "backend/services/spotEntryFirstSelector.js"
       - "backend/services/paperToRealEntryGate.js"
@@ -77,6 +80,7 @@ on:
       - "backend/tests/spotStrategyPromotion.test.js"
       - "backend/tests/spotCycleObservability.test.js"
       - "backend/tests/spotLiveEvidence.test.js"
+      - "backend/tests/spotV21ShadowRouter.test.js"
       - "backend/tests/earlyMomentumRadar.test.js"
       - "backend/tests/spotEntryFirstSelector.test.js"
       - "backend/tests/spotGemRadarProductiveSelection.test.js"
@@ -116,6 +120,7 @@ jobs:
           node --check backend/services/spotStrategyPromotionController.js
           node --check backend/services/spotCycleObservability.js
           node --check backend/services/spotLiveEvidence.js
+          node --check backend/services/spotV21ShadowRouter.js
           node --check backend/services/spotEarlyMomentumRadar.js
           node --check backend/services/spotEntryFirstSelector.js
           node --check backend/services/paperToRealEntryGate.js
@@ -144,6 +149,7 @@ jobs:
           node -e "require('./backend/services/spotGemRadar')"
           node -e "require('./backend/services/spotLocalQuboOptimizer')"
           node -e "require('./backend/services/spotQuantEntryDecision')"
+          node -e "require('./backend/services/spotV21ShadowRouter')"
 
       - name: Verify one real execution route
         run: |
@@ -164,6 +170,9 @@ jobs:
 
       - name: Spot live evidence unit tests
         run: node backend/tests/spotLiveEvidence.test.js
+
+      - name: V21 shadow-live isolation tests
+        run: node backend/tests/spotV21ShadowRouter.test.js
 
       - name: Early momentum radar unit tests
         run: node backend/tests/earlyMomentumRadar.test.js
