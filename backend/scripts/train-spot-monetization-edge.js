@@ -3,9 +3,6 @@
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const SOURCE=path.join(__dirname,'train-spot-momentum-continuation-historical.js');
 const OUTPUT=path.join(__dirname,'..','training-output','spot-monetization-edge.json');
-const DELAYS=[0,1,2,3,4];
-const LAMBDAS=[.1,.3,1,3];
-const ROUTE_Q=[0,.50,.70,.85];
 
 function loadBase(){
   let src=fs.readFileSync(SOURCE,'utf8').replace(/\nmain\(\)\.catch[\s\S]*$/,'');
@@ -14,64 +11,38 @@ function loadBase(){
   vm.runInContext(src,c,{filename:SOURCE});return c.__me;
 }
 function avg(x){return x.length?x.reduce((a,b)=>a+b,0)/x.length:0}
-function sd(x){const m=avg(x);return Math.sqrt(avg(x.map(v=>(v-m)**2)))||1}
-function qtl(x,q){if(!x.length)return 0;const a=[...x].sort((a,b)=>a-b),p=(a.length-1)*q,i=Math.floor(p),f=p-i;return a[i]+(a[Math.min(a.length-1,i+1)]-a[i])*f}
-function logSafe(x){return Math.log(Math.max(.2,Number(x)||.2))}
-
-const FEATURES=['trade_accel','breakout60','breakout240','breakout_x_volume','r15','r60','r240','rs60','extension','vol_slope','continuation','confirm','ret5','ret15','ret30','rv15','down_ratio30','body','upper_wick','lower_wick','range','vol_jump'];
-function vec(s){
-  const f=s.f||{},d=s.productionV42?.detail||{},a=s.series,i=s.index;
-  const px=k=>Number(a[Math.max(0,i-k)]?.c||0),ret=k=>px(k)>0&&px(0)>0?px(0)/px(k)-1:0;
-  const rs=[];for(let k=Math.max(1,i-5);k<=i;k++){const p=Number(a[k-1]?.c||0),z=Number(a[k]?.c||0);rs.push(p>0&&z>0?z/p-1:0)}
-  const row=a[i]||{},o=Number(row.o||0),h=Number(row.h||0),l=Number(row.l||0),cl=Number(row.c||0),rg=Math.max(1e-12,h-l);
-  const qs=a.slice(Math.max(0,i-5),i+1).map(x=>Math.log1p(Number(x.q||0))),ql=Math.log1p(Number(row.q||0));
-  return [
-    logSafe(f.tradeAccel),Number(f.breakout60||0),Number(f.breakout240||0),Math.max(0,Number(f.breakout60||0))*logSafe(f.vol15),
-    Number(f.r15||0),Number(f.r60||0),Number(f.r240||0),Number(f.rs60||0),Number(d.extension||0),logSafe(f.vol15)-logSafe(f.vol30),Number(s.continuationScore||0),Number(d.confirm||0),
-    ret(1),ret(3),ret(6),sd(rs.slice(-3)),rs.length?rs.filter(x=>x<0).length/rs.length:0,(cl-o)/Math.max(1e-12,o),(h-Math.max(o,cl))/rg,(Math.min(o,cl)-l)/rg,rg/Math.max(1e-12,o),ql-avg(qs)
-  ].map(x=>Number.isFinite(x)?x:0);
-}
-function solve(A,y){
-  const n=y.length,M=A.map((r,i)=>[...r,y[i]]);
-  for(let c=0;c<n;c++){let p=c;for(let i=c+1;i<n;i++)if(Math.abs(M[i][c])>Math.abs(M[p][c]))p=i;if(Math.abs(M[p][c])<1e-12)return null;[M[c],M[p]]=[M[p],M[c]];const d=M[c][c];for(let j=c;j<=n;j++)M[c][j]/=d;for(let i=0;i<n;i++){if(i===c)continue;const f=M[i][c];for(let j=c;j<=n;j++)M[i][j]-=f*M[c][j]}}
-  return M.map(r=>r[n]);
-}
-function fit(rows,lambda){
-  if(rows.length<30)return null;
-  const X=rows.map(x=>vec(x.s)),p=X[0].length,mean=Array(p).fill(0),scale=Array(p).fill(1);
-  for(let j=0;j<p;j++){const col=X.map(x=>x[j]);mean[j]=avg(col);scale[j]=sd(col)}
-  const d=p+1,A=Array.from({length:d},()=>Array(d).fill(0)),Y=Array(d).fill(0);
-  rows.forEach((r,k)=>{const x=[1,...X[k].map((v,j)=>(v-mean[j])/scale[j])];for(let i=0;i<d;i++){Y[i]+=x[i]*r.y;for(let j=0;j<d;j++)A[i][j]+=x[i]*x[j]}});
-  for(let j=1;j<d;j++)A[j][j]+=lambda*rows.length;
-  const beta=solve(A,Y);return beta?{beta,mean,scale}:null;
-}
-function pred(m,s){const x=vec(s);let z=m.beta[0];for(let j=0;j<x.length;j++)z+=m.beta[j+1]*((x[j]-m.mean[j])/m.scale[j]);return z}
 function delayed(lib,s,bars){
-  if(!bars)return s;
   const ni=s.index+bars;if(ni+145>=s.series.length)return null;
   const z={...s,index:ni,t:s.series[ni].t};z.outcome=lib.futureOutcome(z);return z.outcome?z:null;
 }
-function net(lib,s){return Number(lib.r.simulateExit(s,lib.b.BASE_EXIT)?.net||0)}
-function utility(lib,s){
-  if(!s||!s.outcome)return -.1;
-  return net(lib,s)+.03*(s.outcome.winner5?1:0)+.055*(s.outcome.winner10?1:0)+.08*Math.min(.10,Math.max(0,Number(s.outcome.mfe12||0)))-.04*Math.max(0,-Number(s.outcome.maeToPeak||0));
+function confirmFeatures(s,bars){
+  const a=s.series,i=s.index,entry=Number(a[i+1]?.o||0),j=i+bars;
+  if(!(entry>0)||j>=a.length)return null;
+  let hi=entry,lo=entry,vol=0;
+  for(let k=i+1;k<=j;k++){hi=Math.max(hi,Number(a[k].h||0));lo=Math.min(lo,Number(a[k].l||0));vol+=Number(a[k].q||0)}
+  const r=a[j],close=Number(r.c||0),open=Number(r.o||0),high=Number(r.h||0),low=Number(r.l||0),rg=Math.max(1e-12,high-low);
+  const prev=a.slice(Math.max(0,i-5),i+1),prevVol=avg(prev.map(x=>Number(x.q||0)));
+  return {
+    ret:close/entry-1,
+    draw:lo/entry-1,
+    excursion:hi/entry-1,
+    close_loc:(close-low)/rg,
+    body:(close-open)/Math.max(1e-12,open),
+    volume:prevVol>0?(vol/bars)/prevVol:1
+  };
 }
-function fitRouter(lib,train,lambda,q){
-  const models={};
-  for(const d of DELAYS.slice(1)){
-    const rows=train.map(s=>{const z=delayed(lib,s,d);return {s,y:utility(lib,z)-utility(lib,s)}});
-    const m=fit(rows,lambda);if(!m)return null;
-    const scores=train.map(s=>pred(m,s));
-    models[d]={model:m,threshold:q===0?0:Math.max(0,qtl(scores,q))};
-  }
-  return models;
+const RULES=[];
+for(const wait of [1,2])
+for(const minRet of [-.015,-.010,-.005,0,.003])
+for(const maxDraw of [-.04,-.03,-.02,-.015])
+for(const minClose of [.35,.50,.65])
+for(const minVol of [.70,1,1.25])
+  RULES.push({wait,minRet,maxDraw,minClose,minVol});
+
+function passes(s,r){
+  const f=confirmFeatures(s,r.wait);return !!f&&f.ret>=r.minRet&&f.draw>=r.maxDraw&&f.close_loc>=r.minClose&&f.volume>=r.minVol;
 }
-function choose(models,s){
-  let best=0,gain=0;
-  for(const d of DELAYS.slice(1)){const x=models[d],g=pred(x.model,s);if(g>=x.threshold&&g>gain){gain=g;best=d}}
-  return {delay:best,predicted_gain:gain};
-}
-function route(lib,models,s){const c=choose(models,s);return delayed(lib,s,c.delay)||s}
+function routed(lib,s,r){return passes(s,r)?delayed(lib,s,r.wait):null}
 function metrics(lib,signals,all){return {prediction:lib.predictionMetrics(signals),economic:lib.economicMetrics(signals,all)}}
 function delta(a,b){return {
  winner5_precision:a.prediction.winner5Precision-b.prediction.winner5Precision,
@@ -81,51 +52,65 @@ function delta(a,b){return {
  avg_net_ret:a.economic.avgNetRet-b.economic.avgNetRet,
  max_drawdown:a.economic.maxDrawdown-b.economic.maxDrawdown
 }}
-function nonneg(d){return d.winner5_precision>=0&&d.winner10_precision>=0&&d.net_growth>=0&&d.avg_net_ret>=0&&d.max_drawdown>=0}
-function objective(d){return d.net_growth*16+d.avg_net_ret*10+d.max_drawdown*4+d.winner5_precision*2+d.winner10_precision*3}
+function obj(m){
+ return m.economic.netGrowth*18+m.economic.avgNetRet*12+m.economic.maxDrawdown*4+
+ m.prediction.winner5Precision*2+m.prediction.winner10Precision*3;
+}
+function acceptable(m,base){
+  return m.prediction.signals>=8&&m.economic.netGrowth>0&&m.economic.avgNetRet>0&&
+    m.economic.maxDrawdown>=base.economic.maxDrawdown&&
+    m.prediction.winner5Precision>=base.prediction.winner5Precision&&
+    m.prediction.winner10Precision>=base.prediction.winner10Precision;
+}
+function trainRule(lib,train,all){
+  const bm=metrics(lib,train,all);
+  let best=null;
+  for(const r of RULES){
+    const sig=train.map(s=>routed(lib,s,r)).filter(Boolean);
+    if(sig.length<Math.max(10,Math.floor(train.length*.18)))continue;
+    const m=metrics(lib,sig,all);
+    const score=obj(m);
+    if(!best||score>best.score)best={rule:r,score,metrics:m,retention:sig.length/train.length,acceptable:acceptable(m,bm)};
+  }
+  return best;
+}
 
 async function main(){
  process.env.DEV_START='2026-04-01T00:00:00Z';process.env.DEV_END='2026-07-01T00:00:00Z';process.env.CONFIRM_START='2026-07-01T00:00:00Z';process.env.CONFIRM_END='2026-08-01T00:00:00Z';
  const base=loadBase(),lib=base.loadR7(),built=await base.buildRaw(lib),raw=built.raw;
  const dev=raw.filter(s=>s.t>=lib.DEV_START&&s.t<lib.DEV_END),hold=raw.filter(s=>s.t>=lib.CONFIRM_START&&s.t<lib.CONFIRM_END);
  const ds=base.selectSignals(lib,dev,0,0).sort((a,b)=>a.t-b.t),hs=base.selectSignals(lib,hold,0,0).sort((a,b)=>a.t-b.t);
- const configs=[];for(const lambda of LAMBDAS)for(const q of ROUTE_Q)configs.push({lambda,q,folds:[],routed:[]});
- const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));let start=initial;
+ const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));let start=initial,folds=[],routedAll=[];
  for(let round=1;round<=4&&start<ds.length;round++){
-   const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end),all=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+30*60000),bm=metrics(lib,val,all);
-   for(const cfg of configs){
-     const models=fitRouter(lib,train,cfg.lambda,cfg.q);if(!models)continue;
-     const sig=val.map(s=>route(lib,models,s)),m=metrics(lib,sig,all),d=delta(m,bm),counts={0:0,5:0,10:0,15:0,20:0};
-     val.forEach(s=>counts[choose(models,s).delay*5]++);
-     cfg.routed.push(...sig);
-     cfg.folds.push({round,signals:sig.length,counts,metrics:m,delta:d,pass:sig.length>=8&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0});
+   const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end);
+   const trainAll=dev.filter(s=>s.t>=train[0].t&&s.t<=train[train.length-1].t+15*60000);
+   const valAll=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+15*60000);
+   const chosen=trainRule(lib,train,trainAll),bm=metrics(lib,val,valAll);
+   if(!chosen){folds.push({round,rule:null,pass:false});start=end;continue}
+   const sig=val.map(s=>routed(lib,s,chosen.rule)).filter(Boolean),m=metrics(lib,sig,valAll),d=delta(m,bm);
+   const pass=sig.length>=8&&acceptable(m,bm);
+   folds.push({round,rule:chosen.rule,train_retention:chosen.retention,signals:sig.length,retention:sig.length/val.length,metrics:m,delta:d,pass});
+   routedAll.push(...sig);start=end;
+ }
+ const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=metrics(lib,walk,walkAll),m=metrics(lib,routedAll,walkAll),d=delta(m,bm);
+ const passFolds=folds.filter(x=>x.pass).length;
+ const aggregatePass=passFolds>=3&&routedAll.length>=24&&acceptable(m,bm);
+ let finalRule=null,confirmation=null,confirmationPass=false;
+ if(aggregatePass){
+   const tr=trainRule(lib,ds,dev);finalRule=tr?.rule||null;
+   if(finalRule){
+     const sig=hs.map(s=>routed(lib,s,finalRule)).filter(Boolean),hb=metrics(lib,hs,hold),hm=metrics(lib,sig,hold),hd=delta(hm,hb);
+     confirmation={rule:finalRule,signals:sig.length,retention:sig.length/hs.length,baseline:hb,metrics:hm,delta:hd};
+     confirmationPass=sig.length>=8&&acceptable(hm,hb);
    }
-   start=end;
  }
- const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=metrics(lib,walk,walkAll);
- for(const cfg of configs){
-   const models=fitRouter(lib,ds.slice(0,initial),cfg.lambda,cfg.q); // only for metadata; aggregate uses concatenated unseen routed folds
-   const sig=cfg.routed,m=metrics(lib,sig,walkAll),d=delta(m,bm);
-   cfg.aggregate={signals:sig.length,metrics:m,delta:d,objective:objective(d),pass_folds:cfg.folds.filter(x=>x.pass).length};
-   cfg.viable=cfg.aggregate.pass_folds>=3&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0;
-   delete cfg.routed;
- }
- configs.sort((a,b)=>b.aggregate.objective-a.aggregate.objective);const chosen=configs.find(x=>x.viable)||null;
- let confirmation=null,confirmationPass=false,attribution=null;
- if(chosen){
-   const models=fitRouter(lib,ds,chosen.lambda,chosen.q),sig=hs.map(s=>route(lib,models,s)),bm=metrics(lib,hs,hold),m=metrics(lib,sig,hold),d=delta(m,bm),counts={0:0,5:0,10:0,15:0,20:0};
-   hs.forEach(s=>counts[choose(models,s).delay*5]++);
-   confirmation={signals:sig.length,counts,baseline:bm,metrics:m,delta:d};confirmationPass=sig.length>=8&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0;
-   attribution={};for(const [delay,x] of Object.entries(models))attribution[delay*5+'m']=FEATURES.map((n,i)=>({feature:n,coefficient:x.model.beta[i+1],abs:Math.abs(x.model.beta[i+1])})).sort((a,b)=>b.abs-a.abs).slice(0,10);
- }
- const report={version:'MONETIZATION_EDGE_V12_CONDITIONAL_TIMING_ROUTER',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-   objective:'Learn from Apr-Jun which original CORE states benefit from immediate entry versus 5/10/15/20-minute delay. The routing model sees only information available at the original signal; delayed outcomes are training labels. Every routed signal recomputes +5%, +10%, MFE, MAE and BASE_EXIT economics from its actual delayed price. July opens only after stable positive walk-forward.',
-   delays_minutes:DELAYS.map(x=>x*5),features:FEATURES,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
-   selected:chosen?{lambda:chosen.lambda,q:chosen.q,aggregate:chosen.aggregate,folds:chosen.folds}:null,
-   top_candidates:configs.slice(0,12).map(x=>({lambda:x.lambda,q:x.q,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
-   confirmation,attribution,confirmation_pass:confirmationPass,
-   decision:!chosen?{label:'CONDITIONAL_TIMING_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'CONDITIONAL_TIMING_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'CONDITIONAL_TIMING_FAILED_FRESH_HOLDOUT',ready:false}};
+ const report={version:'MONETIZATION_EDGE_V13_POST_SIGNAL_CONFIRMATION',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+   objective:'Use information that becomes observable after a CORE signal but before execution. Wait 5 or 10 minutes, require acceptable retest depth, close location and volume confirmation, then enter at the new price. Rule is calibrated only on prior development data per walk-forward fold. July opens only if >=3/4 folds plus aggregate are positive and non-inferior.',
+   rule_grid_count:RULES.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
+   folds,aggregate:{signals:routedAll.length,retention:routedAll.length/walk.length,baseline:bm,metrics:m,delta:d,pass_folds:passFolds,pass:aggregatePass},
+   final_rule:finalRule,confirmation,confirmation_pass:confirmationPass,
+   decision:!aggregatePass?{label:'POST_SIGNAL_CONFIRMATION_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'POST_SIGNAL_CONFIRMATION_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'POST_SIGNAL_CONFIRMATION_FAILED_FRESH_HOLDOUT',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
- console.log(JSON.stringify({version:report.version,selected:report.selected,top_candidates:report.top_candidates.slice(0,8),confirmation,attribution,confirmation_pass:confirmationPass,decision:report.decision},null,2));
+ console.log(JSON.stringify(report,null,2));
 }
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
