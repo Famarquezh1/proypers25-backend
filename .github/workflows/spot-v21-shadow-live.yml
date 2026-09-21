@@ -1,0 +1,126 @@
+name: Spot V21 Shadow Live
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-v21-shadow.js'
+      - '.github/workflows/spot-v21-shadow-live.yml'
+  schedule:
+    - cron: '4,9,14,19,24,29,34,39,44,49,54,59 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: spot-v21-shadow-live
+  cancel-in-progress: true
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Produce read-only V4.2 market scan
+        id: scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node backend/scripts/github-spot-production-radar-v42-active.js)
+          printf '%s\n' "$RESULT"
+          printf '%s\n' "$RESULT" > spot-radar-scan.json
+          echo "notify=$(printf '%s' "$RESULT" | jq -r '.notify // false')" >> "$GITHUB_OUTPUT"
+          echo "symbol=$(printf '%s' "$RESULT" | jq -r '.symbol // "none"')" >> "$GITHUB_OUTPUT"
+
+      - name: Load previous V21 shadow state
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          rm -rf .v21-shadow
+          mkdir -p .v21-shadow/previous
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --status success --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+            gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v21-shadow-state --dir .v21-shadow/previous >/dev/null 2>&1 && { echo "$RID"; break; }
+          done)
+          if [ -f .v21-shadow/previous/spot-v21-shadow-state.json ]; then
+            echo "state=.v21-shadow/previous/spot-v21-shadow-state.json" >> "$GITHUB_OUTPUT"
+            echo "status=LOADED" >> "$GITHUB_OUTPUT"
+            echo "run_id=$PREV_RUN" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=" >> "$GITHUB_OUTPUT"
+            echo "status=FRESH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run V21 shadow engine
+        id: v21
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.previous.outputs.state }}"
+          if [ -n "$PREV" ]; then
+            RESULT=$(node backend/scripts/github-spot-v21-shadow.js spot-radar-scan.json "$PREV" spot-v21-shadow-state.json spot-v21-shadow-evidence.json)
+          else
+            RESULT=$(node backend/scripts/github-spot-v21-shadow.js spot-radar-scan.json "" spot-v21-shadow-state.json spot-v21-shadow-evidence.json)
+          fi
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.shadow_only // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.no_order_created // false')" = "true"
+          echo "pending=$(printf '%s' "$RESULT" | jq -r '.pending // 0')" >> "$GITHUB_OUTPUT"
+          echo "open=$(printf '%s' "$RESULT" | jq -r '.open_positions // 0')" >> "$GITHUB_OUTPUT"
+          echo "results=$(printf '%s' "$RESULT" | jq -r '.total_results // 0')" >> "$GITHUB_OUTPUT"
+          echo "arm=$(printf '%s' "$RESULT" | jq -r '.decision.arm // "none"')" >> "$GITHUB_OUTPUT"
+          echo "status=$(printf '%s' "$RESULT" | jq -r '.decision.status // "none"')" >> "$GITHUB_OUTPUT"
+          echo "context=$(printf '%s' "$RESULT" | jq -r '.decision.context // "none"')" >> "$GITHUB_OUTPUT"
+          echo "win=$(printf '%s' "$RESULT" | jq -r '.recent_30d_win_rate // 0')" >> "$GITHUB_OUTPUT"
+          echo "avg=$(printf '%s' "$RESULT" | jq -r '.recent_30d_avg_net_return // 0')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V21 shadow state
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v21-shadow-state
+          path: spot-v21-shadow-state.json
+          retention-days: 30
+          overwrite: true
+
+      - name: Upload V21 shadow evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v21-shadow-evidence-${{ github.run_id }}
+          path: spot-v21-shadow-evidence.json
+          retention-days: 30
+
+      - name: Guard no execution capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
+          ! grep -Eq 'gh workflow run|issue create' .github/workflows/spot-v21-shadow-live.yml
+          grep -q 'production_action.:.NONE' backend/scripts/github-spot-v21-shadow.js
+          grep -q 'no_order_created:true' backend/scripts/github-spot-v21-shadow.js
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### V21 Shadow Live — GitHub-native / zero execution influence' >> "$GITHUB_STEP_SUMMARY"
+          echo '- GCP/Firestore usados: no' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Binance autenticado: no; sólo endpoints públicos de mercado' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Órdenes/retiros/futuros/margen: no' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Estado previo: ${{ steps.previous.outputs.status || 'FRESH' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Radar V4.2: notify=${{ steps.scan.outputs.notify || 'false' }} | symbol=${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V21: arm=${{ steps.v21.outputs.arm || 'none' }} | status=${{ steps.v21.outputs.status || 'none' }} | context=${{ steps.v21.outputs.context || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Estado: pending=${{ steps.v21.outputs.pending || '0' }} | open=${{ steps.v21.outputs.open || '0' }} | results=${{ steps.v21.outputs.results || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 30d: win=${{ steps.v21.outputs.win || '0' }} | avgNet=${{ steps.v21.outputs.avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
