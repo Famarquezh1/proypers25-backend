@@ -120,6 +120,14 @@ async function buildRaw(lib) {
       if(t<earliest||t>=lib.CONFIRM_END||!r.contiguous(series,i)) continue;
       if((Math.floor(t/lib.STEP)%3)!==0) continue;
       let f; try{f=b.v.feat(series,i,bm);}catch{continue;}
+      const baseQuote = series.slice(i-72,i-12).reduce((sum,row)=>sum+Number(row.q||0),0) / Math.max(1,series.slice(i-72,i-12).length) * 12;
+      const q30 = series.slice(i-5,i+1).reduce((sum,row)=>sum+Number(row.q||0),0);
+      const prior240 = Math.max(...series.slice(i-48,i).map(row=>Number(row.h||0)));
+      f = {
+        ...f,
+        vol30: baseQuote > 0 ? q30 / (baseQuote / 2) : 1,
+        breakout240: prior240 > 0 ? Number(series[i].c||0) / prior240 - 1 : 0
+      };
       if(f.qv<lib.MIN_QV) continue;
       if(f.r24<.01||f.r24>=.18||f.r60>=.10||f.r15>=.06) continue;
       const z=breadth.get(t)||{n:0,up15:0,up60:0,breakout:0,ignite:0,sum60:0};
@@ -192,11 +200,12 @@ async function main(){
   );
 
   const report={
-    version:'MOMENTUM_CONTINUATION_HISTORICAL_V2',
+    version:'MOMENTUM_CONTINUATION_HISTORICAL_V3',
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
     formula_source:'backend/services/spotMomentumContinuation.js',
+    reconstructed_features:['vol30','breakout240'],
     universe:{pool:poolSize,loaded,candidate_rows:raw.length},
     eligibility,
     periods:{development:[new Date(lib.DEV_START).toISOString(),new Date(lib.DEV_END).toISOString()],confirmation:[new Date(lib.CONFIRM_START).toISOString(),new Date(lib.CONFIRM_END).toISOString()]},
