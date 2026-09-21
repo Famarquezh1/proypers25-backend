@@ -28,21 +28,24 @@ function baseVec(s){
  const f=s.f||{},d=s.productionV42?.detail||{};
  return [logSafe(f.tradeAccel),Number(f.breakout60||0),Number(f.breakout240||0),Math.max(0,Number(f.breakout60||0))*logSafe(f.vol15),Number(f.r15||0),Number(f.r60||0),Number(f.r240||0),Number(f.rs60||0),Number(d.extension||0),logSafe(f.vol15)-logSafe(f.vol30),Number(s.continuationScore||0),Number(d.confirm||0)].map(x=>Number.isFinite(x)?x:0);
 }
-const CONTEXT=['rv24','rv72','ret24','ret72','trend_eff24','trend_eff72','autocorr24','up_ratio24','jump_freq24','jump_freq72','range_mean24','upper_wick_mean24','volume_cv24','volume_autocorr24','drawdown24','recovery24','qv_log'];
+const CONTEXT=['ret5','ret15','ret30','ret60','rv15','rv30','rv60','down_ratio30','worst_bar30','body_last','upper_wick_last','lower_wick_last','range_last','body_mean15','upper_wick_mean15','lower_wick_mean15','range_mean15','vol_jump5_30','vol_cv30','dist_high60','dist_high240','dist_low60','breakout_age_proxy'];
 function contextVec(s){
- const a=s.series,i=s.index,win24=a.slice(Math.max(1,i-288),i+1),win72=a.slice(Math.max(1,i-864),i+1);
- function returns(win){const z=[];for(let k=1;k<win.length;k++)z.push(ret(win[k-1].c,win[k].c));return z}
- const r24=returns(win24),r72=returns(win72);
- const rv24=sd(r24),rv72=sd(r72),ret24=ret(win24[0]?.c,win24[win24.length-1]?.c),ret72=ret(win72[0]?.c,win72[win72.length-1]?.c);
- const eff=(rs,total)=>Math.abs(total)/Math.max(1e-9,rs.reduce((z,x)=>z+Math.abs(x),0));
- const up=r24.length?r24.filter(x=>x>0).length/r24.length:.5;
- const jf=(rs,th)=>rs.length?rs.filter(x=>x>th).length/rs.length:0;
- const ranges=win24.map(x=>(Number(x.h)-Number(x.l))/Math.max(1e-12,Number(x.o)));
- const wick=win24.map(x=>{const rg=Math.max(1e-12,Number(x.h)-Number(x.l));return (Number(x.h)-Math.max(Number(x.o),Number(x.c)))/rg});
- const qs=win24.map(x=>Math.log1p(Number(x.q||0))),qcv=sd(qs)/Math.max(1e-9,Math.abs(avg(qs)));
- const vmax=Math.max(...win24.map(x=>Number(x.h||0))),vmin=Math.min(...win24.map(x=>Number(x.l||0))),last=Number(win24[win24.length-1]?.c||0);
- const dd=vmax>0?last/vmax-1:0,recovery=vmin>0?last/vmin-1:0;
- return [rv24,rv72,ret24,ret72,eff(r24,ret24),eff(r72,ret72),corrLag1(r24),up,jf(r24,.005),jf(r72,.005),avg(ranges),avg(wick),qcv,corrLag1(qs),dd,recovery,Math.log1p(Number(s.f?.qv||0))].map(x=>Number.isFinite(x)?x:0);
+ const a=s.series,i=s.index;
+ const row=k=>a[Math.max(0,i-k)];
+ const px=k=>Number(row(k)?.c||0);
+ const r=(k)=>{const p0=px(k),p1=px(0);return p0>0&&p1>0?p1/p0-1:0};
+ const rets=[];for(let k=Math.max(1,i-6);k<=i;k++){const p0=Number(a[k-1]?.c||0),p1=Number(a[k]?.c||0);rets.push(p0>0&&p1>0?p1/p0-1:0)}
+ const rets3=rets.slice(-3),rets6=rets.slice(-6);
+ const bars15=a.slice(Math.max(0,i-2),i+1),bars30=a.slice(Math.max(0,i-5),i+1),bars60=a.slice(Math.max(0,i-11),i+1),bars240=a.slice(Math.max(0,i-47),i+1);
+ const rv=x=>sd(x),down=x=>x.length?x.filter(v=>v<0).length/x.length:0;
+ const candle=x=>{const o=Number(x?.o||0),h=Number(x?.h||0),l=Number(x?.l||0),cl=Number(x?.c||0),rg=Math.max(1e-12,h-l);return {body:(cl-o)/Math.max(1e-12,o),uw:(h-Math.max(o,cl))/rg,lw:(Math.min(o,cl)-l)/rg,range:rg/Math.max(1e-12,o)}};
+ const last=candle(a[i]);
+ const cs=bars15.map(candle);
+ const qs30=bars30.map(x=>Math.log1p(Number(x.q||0))),qLast=Math.log1p(Number(a[i]?.q||0));
+ const hi=x=>Math.max(...x.map(z=>Number(z.h||0))),lo=x=>Math.min(...x.map(z=>Number(z.l||0))),cur=Number(a[i]?.c||0);
+ const h60=hi(bars60),h240=hi(bars240),l60=lo(bars60);
+ const f=s.f||{};
+ return [r(1),r(3),r(6),r(12),rv(rets3),rv(rets6),rv(rets),down(rets6),Math.min(...rets6,0),last.body,last.uw,last.lw,last.range,avg(cs.map(x=>x.body)),avg(cs.map(x=>x.uw)),avg(cs.map(x=>x.lw)),avg(cs.map(x=>x.range)),qLast-avg(qs30),sd(qs30),h60>0?cur/h60-1:0,h240>0?cur/h240-1:0,l60>0?cur/l60-1:0,Number(f.breakout60||0)-Number(f.r15||0)*.20].map(x=>Number.isFinite(x)?x:0);
 }
 function solve(A,y){
  const n=y.length,M=A.map((r,i)=>[...r,y[i]]);
@@ -73,6 +76,7 @@ function entryScore(p,st,s){return (pred(p.opp,s,baseVec)-st.am)/st.as+ENTRY.mix
 function selectEntry(p,st,train,evals){const th=qtl(train.map(s=>entryScore(p,st,s)),1-ENTRY.keep);return evals.filter(s=>entryScore(p,st,s)>=th)}
 function exitCfg(lib,e){return e.base?lib.b.BASE_EXIT:e}
 function netWithExit(lib,s,e){return Number(lib.r.simulateExit(s,exitCfg(lib,e))?.net||0)}
+function survivalTarget(lib,s){const o=lib.r.simulateExit(s,lib.b.BASE_EXIT);if(!o)return -.05;return Number(o.net||0)+(o.stopBefore10?-.035:.012)+.12*Math.min(.08,Math.max(0,Number(o.mfeDuringTrade||0)))}
 function economic(lib,s,all,e){const cfg=exitCfg(lib,e),m=lib.r.portfolio(s,all,lib.b.META_FALLBACK,x=>lib.r.simulateExit(x,cfg),()=>lib.b.FIXED_SIZE);lib.r.withRecall(m,m._trades||[],all);return lib.r.safeMetrics(m)}
 function metrics(lib,s,all,e={base:true}){return {prediction:lib.predictionMetrics(s),economic:economic(lib,s,all,e)}}
 function delta(a,b){return {winner5_precision:a.prediction.winner5Precision-b.prediction.winner5Precision,winner10_precision:a.prediction.winner10Precision-b.prediction.winner10Precision,avg_mfe12:a.prediction.avgMfe12-b.prediction.avgMfe12,net_growth:a.economic.netGrowth-b.economic.netGrowth,avg_net_ret:a.economic.avgNetRet-b.economic.avgNetRet,max_drawdown:a.economic.maxDrawdown-b.economic.maxDrawdown}}
@@ -90,9 +94,9 @@ async function main(){
    const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end),all=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t);
    const ep=fitEntry(lib,train),es=entryStats(ep,train),tr=selectEntry(ep,es,train,train),ve=selectEntry(ep,es,train,val),baseM=metrics(lib,val,all,{base:true});
    for(const e of EXITS){
-     const cm=fit(tr.map(s=>({s,y:netWithExit(lib,s,e)})),.3,contextVec);
+     const cm=fit(tr.map(s=>({s,y:survivalTarget(lib,s)})),.3,contextVec);
      for(const lambda of LAMBDAS){
-       const model=lambda===.3?cm:fit(tr.map(s=>({s,y:netWithExit(lib,s,e)})),lambda,contextVec);if(!model)continue;
+       const model=lambda===.3?cm:fit(tr.map(s=>({s,y:survivalTarget(lib,s)})),lambda,contextVec);if(!model)continue;
        const trainScores=tr.map(s=>pred(model,s,contextVec));
        for(const keep of KEEPS){
          const th=qtl(trainScores,1-keep),selected=ve.filter(s=>pred(model,s,contextVec)>=th),m=metrics(lib,selected,all,e),d=delta(m,baseM);
@@ -114,20 +118,20 @@ async function main(){
  let confirmation=null,pass=false,attr=null;
  if(chosen){
    const ep=fitEntry(lib,ds),es=entryStats(ep,ds),tr=selectEntry(ep,es,ds,ds),he=selectEntry(ep,es,ds,hs);
-   const model=fit(tr.map(s=>({s,y:netWithExit(lib,s,chosen.exit)})),chosen.lambda,contextVec),th=qtl(tr.map(s=>pred(model,s,contextVec)),1-chosen.keep);
+   const model=fit(tr.map(s=>({s,y:survivalTarget(lib,s)})),chosen.lambda,contextVec),th=qtl(tr.map(s=>pred(model,s,contextVec)),1-chosen.keep);
    const selected=he.filter(s=>pred(model,s,contextVec)>=th),bm=metrics(lib,hs,hold,{base:true}),m=metrics(lib,selected,hold,chosen.exit),d=delta(m,bm);
    confirmation={entry_selected:he.length,selected:selected.length,threshold:th,baseline:bm,metrics:m,delta:d,exit:chosen.exit};
    pass=selected.length>=8&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0;
    attr=CONTEXT.map((n,i)=>({feature:n,coefficient:model.beta[i+1],abs:Math.abs(model.beta[i+1])})).sort((a,b)=>b.abs-a.abs);
  }
  const adequate=configs.filter(x=>x.aggregate.selected>=16).sort((a,b)=>b.aggregate.objective-a.aggregate.objective);
- const report={version:'MONETIZATION_EDGE_V6_ASSET_PERSISTENCE_CONTEXT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
- objective:'Use only pre-entry 24h/72h asset-state context to learn whether a V1 signal is likely to monetize: trend persistence, realized volatility, return autocorrelation, jump frequency, trend efficiency, wick structure, volume persistence and drawdown/recovery. Context and exit are trained only on Apr-Jun walk-forward; July opens only after a positive stable policy exists.',
+ const report={version:'MONETIZATION_EDGE_V7_EARLY_SURVIVAL',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+ objective:'Learn the pre-entry microstructure that separates V1 signals which survive the first adverse move from signals stopped before monetization. Uses only information available at entry: 5m-60m returns and volatility, downside clustering, candle body/wicks, local range, volume jump, distance to recent highs/lows and breakout maturity. July remains unopened until a positive stable Apr-Jun walk-forward policy exists.',
  entry_policy:ENTRY,context_features:CONTEXT,exit_family:EXITS,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
  selected:chosen?{lambda:chosen.lambda,keep:chosen.keep,exit:chosen.exit,aggregate:chosen.aggregate,folds:chosen.folds}:null,
  top_adequate:adequate.slice(0,20).map(x=>({lambda:x.lambda,keep:x.keep,exit:x.exit,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
  confirmation,attribution:attr,confirmation_pass:pass,
- decision:!chosen?{label:'ASSET_PERSISTENCE_CONTEXT_NOT_FOUND_IN_WALK_FORWARD',ready:false}:pass?{label:'ASSET_PERSISTENCE_CONTEXT_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'ASSET_PERSISTENCE_CONTEXT_FAILED_FRESH_HOLDOUT',ready:false}};
+ decision:!chosen?{label:'EARLY_SURVIVAL_EDGE_NOT_FOUND_IN_WALK_FORWARD',ready:false}:pass?{label:'EARLY_SURVIVAL_EDGE_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'EARLY_SURVIVAL_EDGE_FAILED_FRESH_HOLDOUT',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
  console.log(JSON.stringify({version:report.version,candidate_count:report.candidate_count,selected:report.selected?{lambda:report.selected.lambda,keep:report.selected.keep,exit:report.selected.exit,aggregate:report.selected.aggregate}:null,top_adequate:report.top_adequate.slice(0,8).map(x=>({lambda:x.lambda,keep:x.keep,exit:x.exit.id,viable:x.viable,aggregate:x.aggregate})),confirmation,top_context:attr?.slice(0,10)||null,confirmation_pass:pass,decision:report.decision},null,2));
 }
