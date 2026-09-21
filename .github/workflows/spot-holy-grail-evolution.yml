@@ -1,0 +1,64 @@
+name: Spot Holy Grail Evolution Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-holy-grail-evolution.js'
+      - '.github/workflows/spot-holy-grail-evolution.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-holy-grail-evolution
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HIST_POOL_SIZE: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/train-spot-holy-grail-evolution.js
+          grep -q "production_mutation:false" backend/scripts/train-spot-holy-grail-evolution.js
+          ! grep -q "api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/train-spot-holy-grail-evolution.js
+      - name: Run iterative walk-forward trainer
+        run: node backend/scripts/train-spot-holy-grail-evolution.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-holy-grail-evolution-${{ github.run_id }}
+          path: backend/training-output/spot-holy-grail-evolution.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-holy-grail-evolution.json');
+          console.log('### Holy Grail Evolution — research only');
+          console.log(`- Walk-forward rounds: ${r.rounds.length}`);
+          console.log(`- Active learned interactions: ${r.active_interactions.map(x=>x.name).join(', ')||'none'}`);
+          console.log(`- Final keep: ${r.final_policy.keep}; threshold: ${r.final_policy.threshold.toFixed(6)}`);
+          console.log(`- Confirmation selected: ${r.confirmation.selected}`);
+          console.log(`- Confirmation pass: ${r.confirmation_pass}`);
+          console.log(`- Decision: ${r.decision.label}`);
+          const d=r.confirmation.delta;
+          console.log(`- Δ net growth: ${(100*d.net_growth).toFixed(3)} pp`);
+          console.log(`- Δ avg net return: ${(100*d.avg_net_ret).toFixed(3)} pp`);
+          console.log(`- Δ max drawdown: ${(100*d.max_drawdown).toFixed(3)} pp`);
+          console.log(`- Δ +5% precision: ${(100*d.winner5_precision).toFixed(2)} pp`);
+          console.log(`- Δ +10% precision: ${(100*d.winner10_precision).toFixed(2)} pp`);
+          NODE
