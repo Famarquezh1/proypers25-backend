@@ -31,11 +31,14 @@ on:
       - 'backend/services/spotManagedResidual.js'
       - 'backend/services/spotHighHistoryPolicy.js'
       - 'backend/services/spotNativeProtectionPolicy.js'
+      - 'backend/services/spotGrowthEngineV2.js'
+      - 'backend/config/spot-growth-engine-v2.json'
       - 'backend/tests/spotGrowthExitPolicy.test.js'
       - 'backend/tests/spotProgressiveTrailing.test.js'
       - 'backend/tests/spotManagedResidual.test.js'
       - 'backend/tests/spotHighHistoryPolicy.test.js'
       - 'backend/tests/spotNativeProtectionPolicy.test.js'
+      - 'backend/tests/spotGrowthEngineV2.test.js'
       - 'backend/tests/spotOrphanProtection.test.js'
       - 'backend/tests/localPretradeGuard.test.js'
       - 'backend/tests/marketManipulationRisk.test.js'
@@ -79,11 +82,14 @@ jobs:
           node --check backend/services/spotManagedResidual.js
           node --check backend/services/spotHighHistoryPolicy.js
           node --check backend/services/spotNativeProtectionPolicy.js
+          node --check backend/services/spotGrowthEngineV2.js
+          node -e "JSON.parse(require('fs').readFileSync('backend/config/spot-growth-engine-v2.json','utf8'))"
           node --check backend/tests/spotGrowthExitPolicy.test.js
           node --check backend/tests/spotProgressiveTrailing.test.js
           node --check backend/tests/spotManagedResidual.test.js
           node --check backend/tests/spotHighHistoryPolicy.test.js
           node --check backend/tests/spotNativeProtectionPolicy.test.js
+          node --check backend/tests/spotGrowthEngineV2.test.js
       - name: Historical exit-policy training tests
         run: |
           node backend/tests/spotExitPolicyHistoricalTraining.test.js
@@ -102,6 +108,7 @@ jobs:
           node backend/tests/spotManagedResidual.test.js
           node backend/tests/spotHighHistoryPolicy.test.js
           node backend/tests/spotNativeProtectionPolicy.test.js
+          node backend/tests/spotGrowthEngineV2.test.js
       - name: Confirm production wiring
         run: |
           set -euo pipefail
@@ -126,6 +133,13 @@ jobs:
           grep -q "NATIVE_STOP_TIGHTENED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "NATIVE_PROTECTION_FAIL_CLOSED" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "resolveNativeProtectionStop" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "GROWTH_V2_PYRAMID_APPROVED" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "GROWTH_V2_PYRAMID_EXECUTED" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "forceReconstruct: hasPyramidAddOn" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "growthRatchetState" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q '"max_adds": 1' backend/config/spot-growth-engine-v2.json
+          grep -q '"trigger_mfe_pct": 0.08' backend/config/spot-growth-engine-v2.json
+          grep -q '"activation_hwm_usdt": 600' backend/config/spot-growth-engine-v2.json
           grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
           grep -q '"mode": "PRODUCTION"' backend/config/spot-exit-policy-v2.json
