@@ -25,6 +25,10 @@ on:
       - 'backend/scripts/github-spot-orphan-protect.js'
       - 'backend/services/spotOrphanProtection.js'
       - 'backend/services/localPretradeGuard.js'
+      - 'backend/services/spotMomentumContinuation.js'
+      - 'backend/tests/spotMomentumContinuation.test.js'
+      - 'backend/scripts/train-spot-momentum-continuation-historical.js'
+      - '.github/workflows/spot-momentum-continuation-historical.yml'
       - 'backend/services/marketManipulationRisk.js'
       - 'backend/services/spotGrowthExitPolicy.js'
       - 'backend/services/spotProgressiveTrailing.js'
@@ -76,6 +80,9 @@ jobs:
           node --check backend/scripts/github-spot-orphan-audit.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
+          node --check backend/services/spotMomentumContinuation.js
+          node --check backend/tests/spotMomentumContinuation.test.js
+          node --check backend/scripts/train-spot-momentum-continuation-historical.js
           node --check backend/services/marketManipulationRisk.js
           node --check backend/services/spotGrowthExitPolicy.js
           node --check backend/services/spotProgressiveTrailing.js
@@ -98,7 +105,9 @@ jobs:
       - name: Orphan balance policy tests
         run: node backend/tests/spotOrphanProtection.test.js
       - name: Local pretrade guard tests
-        run: node backend/tests/localPretradeGuard.test.js
+        run: |
+          node backend/tests/localPretradeGuard.test.js
+          node backend/tests/spotMomentumContinuation.test.js
       - name: Defensive manipulation risk tests
         run: node backend/tests/marketManipulationRisk.test.js
       - name: Growth exit overlay tests
@@ -187,6 +196,13 @@ jobs:
           grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "manipulation_risk=" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "local-pretrade-memory.jsonl" backend/services/localPretradeGuard.js
+          grep -q "sampleIntervalMs: 15000" backend/services/localPretradeGuard.js
+          grep -q "samples: 7" backend/services/localPretradeGuard.js
+          grep -q "MOMENTUM_CONTINUATION_WEAK" backend/services/localPretradeGuard.js
+          grep -q "continuationRequired" backend/services/localPretradeGuard.js
+          grep -q "continuation_score=" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "momentumContinuationFactor" backend/services/spotMomentumContinuation.js
+          grep -q "production_mutation:false" backend/scripts/train-spot-momentum-continuation-historical.js
           grep -q "evaluateManipulationRisk" backend/services/localPretradeGuard.js
           grep -q "MANIPULATION_RISK_HIGH" backend/services/marketManipulationRisk.js
           node - <<'NODE'
