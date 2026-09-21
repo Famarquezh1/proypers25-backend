@@ -217,6 +217,10 @@ function mineCorrection(rows,model,active){
 }
 
 async function main(){
+  process.env.DEV_START='2026-04-01T00:00:00Z';
+  process.env.DEV_END='2026-06-01T00:00:00Z';
+  process.env.CONFIRM_START='2026-06-01T00:00:00Z';
+  process.env.CONFIRM_END='2026-07-01T00:00:00Z';
   const base=loadBase(),lib=base.loadR7();
   const {raw,poolSize,loaded}=await base.buildRaw(lib);
   const dev=raw.filter(s=>s.t>=lib.DEV_START&&s.t<lib.DEV_END);
@@ -302,11 +306,11 @@ async function main(){
   }).sort((a,b)=>Math.abs(b.effect_size)-Math.abs(a.effect_size)).slice(0,15);
 
   const report={
-    version:'HOLY_GRAIL_EVOLUTION_V3_DUAL_TARGET',
+    version:'HOLY_GRAIL_EVOLUTION_V4_FRESH_HOLDOUT',
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
-    objective:'Sparse iterative discovery trained on a dual target combining realized net return with future opportunity labels, while policy acceptance remains strictly economic and predictive versus CORE.',
+    objective:'Iterative dual-target discovery using all previously inspected history through 2026-06-01 as development, with a newly reserved untouched 2026-06-01..2026-07-01 holdout.',
     mechanism:{
       initial_training_fraction:.40,
       walk_forward_rounds:rounds.length,
