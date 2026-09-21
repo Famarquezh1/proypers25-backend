@@ -138,13 +138,18 @@ async function main(){
   await resolvePending(state,now,evidence);
 
   if(scan.notify===true&&scan.symbol&&n(scan.price)>0&&scan.v42_detail){
-    const bucket=Math.floor(now/(5*60000)),id=`v21_${scan.symbol}_${bucket}`,seen=[...state.pending,...state.positions,...state.decisions].some(x=>x.id===id||x.decision_id===id);
-    if(!seen){
+    const bucket=Math.floor(now/(5*60000)),id=`v21_${scan.symbol}_${bucket}`;
+    const symbol=String(scan.symbol).toUpperCase();
+    const activeSameSymbol=[...state.pending,...state.positions].some(x=>String(x.symbol||'').toUpperCase()===symbol);
+    const seen=[...state.pending,...state.positions,...state.decisions].some(x=>x.id===id||x.decision_id===id);
+    if(!seen&&!activeSameSymbol){
       const ctx=context(scan.v42_detail),choice=chooseArm(state.results,ctx,now),decision={id,symbol:String(scan.symbol).toUpperCase(),signal_at:iso(now),signal_price:n(scan.price),context:ctx,arm:choice.arm,reason:choice.reason,v42:{ignition:n(scan.v42_detail.ignition),confirm:n(scan.v42_detail.confirm),extension:n(scan.v42_detail.extension),r15:n(scan.v42_detail.r15),r60:n(scan.v42_detail.r60),r24:n(scan.v42_detail.r24)},memory:{base:choice.base,overlay:choice.overlay},shadow_only:true,no_order_created:true};
       if(choice.arm==='OVERLAY'){decision.status='PENDING_CONFIRMATION';state.pending.push(decision)}
       else if(choice.arm==='BASE'){decision.status='SHADOW_OPEN';const p={id:`position_${id}`,decision_id:id,symbol:decision.symbol,arm:'BASE',context:ctx,signal_at:decision.signal_at,opened_at:decision.signal_at,entry_price:round(decision.signal_price),highest_price:round(decision.signal_price),shadow_only:true,no_order_created:true};decision.position_id=p.id;state.positions.push(p);state.decisions.push(decision)}
       else{decision.status='SHADOW_SKIPPED';state.decisions.push(decision)}
       evidence.decision=decision;
+    } else if(activeSameSymbol) {
+      evidence.decision={symbol,arm:'NONE',status:'DEDUPED_ACTIVE_SYMBOL',context:null,shadow_only:true,no_order_created:true};
     }
   }
 
