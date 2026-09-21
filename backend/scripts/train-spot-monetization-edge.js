@@ -3,6 +3,8 @@
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const SOURCE=path.join(__dirname,'train-spot-momentum-continuation-historical.js');
 const OUTPUT=path.join(__dirname,'..','training-output','spot-monetization-edge.json');
+const COST=.004;
+const RULE={wait:1,minRet:.003,maxDraw:-.04,minClose:.35,minVol:.70,source:'V13/V14 development consensus; frozen before holdouts'};
 
 function loadBase(){
   let src=fs.readFileSync(SOURCE,'utf8').replace(/\nmain\(\)\.catch[\s\S]*$/,'');
@@ -15,59 +17,46 @@ function delayed(lib,s,bars){
   const ni=s.index+bars;if(ni+145>=s.series.length)return null;
   const z={...s,index:ni,t:s.series[ni].t};z.outcome=lib.futureOutcome(z);return z.outcome?z:null;
 }
-function confirmFeatures(s,bars){
-  const a=s.series,i=s.index,entry=Number(a[i+1]?.o||0),j=i+bars;
-  if(!(entry>0)||j>=a.length)return null;
+function cf(s){
+  const a=s.series,i=s.index,entry=Number(a[i+1]?.o||0),j=i+RULE.wait;if(!(entry>0)||j>=a.length)return null;
   let hi=entry,lo=entry,vol=0;
   for(let k=i+1;k<=j;k++){hi=Math.max(hi,Number(a[k].h||0));lo=Math.min(lo,Number(a[k].l||0));vol+=Number(a[k].q||0)}
-  const r=a[j],close=Number(r.c||0),open=Number(r.o||0),high=Number(r.h||0),low=Number(r.l||0),rg=Math.max(1e-12,high-low);
-  const prev=a.slice(Math.max(0,i-5),i+1),prevVol=avg(prev.map(x=>Number(x.q||0)));
-  return {
-    ret:close/entry-1,
-    draw:lo/entry-1,
-    excursion:hi/entry-1,
-    close_loc:(close-low)/rg,
-    body:(close-open)/Math.max(1e-12,open),
-    volume:prevVol>0?(vol/bars)/prevVol:1
-  };
+  const r=a[j],close=Number(r.c||0),low=Number(r.l||0),high=Number(r.h||0),rg=Math.max(1e-12,high-low);
+  const prev=a.slice(Math.max(0,i-5),i+1),pv=avg(prev.map(x=>Number(x.q||0)));
+  return {ret:close/entry-1,draw:lo/entry-1,close_loc:(close-low)/rg,volume:pv>0?(vol/RULE.wait)/pv:1};
 }
-const RULES=[];
-for(const wait of [1,2])
-for(const minRet of [-.015,-.010,-.005,0,.003])
-for(const maxDraw of [-.04,-.03,-.02,-.015])
-for(const minClose of [.35,.50,.65])
-for(const minVol of [.70,1,1.25])
-  RULES.push({wait,minRet,maxDraw,minClose,minVol});
+function confirmed(lib,s){const x=cf(s);return x&&x.ret>=RULE.minRet&&x.draw>=RULE.maxDraw&&x.close_loc>=RULE.minClose&&x.volume>=RULE.minVol?delayed(lib,s,RULE.wait):null}
 
+const EXITS=[];
+for(const tp of [.035,.04,.045,.05,.055,.06])
+for(const sl of [.025,.03,.035,.04,.05])
+for(const hours of [4,8,12])
+ EXITS.push({id:`TP${Math.round(tp*1000)}_SL${Math.round(sl*1000)}_${hours}H`,tp,sl,bars:hours*12});
+EXITS.push({id:'BASE'});
 
-function exitProfiles(lib){return [
-  {id:'BASE',cfg:lib.b.BASE_EXIT},
-  {id:'FAST_35',cfg:{hardStop:.035,beTrigger:.018,beLock:.001,trailTrigger:.035,trailGap:.015,staleBars:96}},
-  {id:'BAL_40',cfg:{hardStop:.040,beTrigger:.020,beLock:.001,trailTrigger:.040,trailGap:.018,staleBars:120}},
-  {id:'MID_45',cfg:{hardStop:.045,beTrigger:.030,beLock:.0015,trailTrigger:.055,trailGap:.022,staleBars:156}},
-  {id:'TREND',cfg:{hardStop:.050,beTrigger:.060,beLock:.002,trailTrigger:.100,trailGap:.035,staleBars:240}},
-  {id:'RUNNER',cfg:{hardStop:.055,beTrigger:.070,beLock:.002,trailTrigger:.120,trailGap:.045,staleBars:264}}
-]}
-function metricsExit(lib,signals,all,profile){
-  const m=lib.r.portfolio(signals,all,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,profile.cfg),()=>lib.b.FIXED_SIZE);
-  lib.r.withRecall(m,m._trades||[],all);
-  return {prediction:lib.predictionMetrics(signals),economic:lib.r.safeMetrics(m)};
+function tpExit(s,p,lib){
+ if(p.id==='BASE')return lib.r.simulateExit(s,lib.b.BASE_EXIT);
+ const a=s.series,e=s.index+1,entry=Number(a[e]?.o||0);if(!(entry>0))return null;
+ let high=entry,low=entry,exit=entry,exitI=e,reason='TIMEOUT',hit10=null,stopBefore10=false;
+ const stop=entry*(1-p.sl),take=entry*(1+p.tp),end=Math.min(a.length-1,e+p.bars);
+ for(let k=e;k<=end;k++){
+   const b=a[k],hitStop=Number(b.l)<=stop,hitTp=Number(b.h)>=take;
+   high=Math.max(high,Number(b.h));low=Math.min(low,Number(b.l));
+   if(hit10===null&&Number(b.h)/entry-1>=.10)hit10=(k-e)*5;
+   if(hitStop&&hitTp){exit=stop;exitI=k;reason='AMBIGUOUS_STOP_FIRST';if(hit10===null)stopBefore10=true;break}
+   if(hitStop){exit=stop;exitI=k;reason='HARD_STOP';if(hit10===null)stopBefore10=true;break}
+   if(hitTp){exit=take;exitI=k;reason='TAKE_PROFIT';break}
+   exit=Number(b.c);exitI=k;
+ }
+ const gross=exit/entry-1,net=gross-COST,mfe=high/entry-1;
+ return {net,gross,mfeDuringTrade:mfe,mfeFixed24h:0,captureRatioDuringTrade:mfe>0?Math.max(0,net)/mfe:0,captureRatioFixed24h:0,captureLoss24h:0,holdingMin:(exitI-e)*5,exitReason:reason,stopBefore10,hit10};
 }
-function chooseExit(lib,signals,all){
-  let best=null;
-  for(const p of exitProfiles(lib)){
-    const m=metricsExit(lib,signals,all,p);
-    if(signals.length<8||m.economic.netGrowth<=0||m.economic.avgNetRet<=0)continue;
-    const score=m.economic.netGrowth*18+m.economic.avgNetRet*12+m.economic.maxDrawdown*4;
-    if(!best||score>best.score)best={profile:p,metrics:m,score};
-  }
-  return best;
+function metrics(lib,signals,all,p){
+ const pred=lib.predictionMetrics(signals);
+ const m=lib.r.portfolio(signals,all,lib.b.META_FALLBACK,s=>tpExit(s,p,lib),()=>lib.b.FIXED_SIZE);
+ lib.r.withRecall(m,m._trades||[],all);
+ return {prediction:pred,economic:lib.r.safeMetrics(m)};
 }
-function passes(s,r){
-  const f=confirmFeatures(s,r.wait);return !!f&&f.ret>=r.minRet&&f.draw>=r.maxDraw&&f.close_loc>=r.minClose&&f.volume>=r.minVol;
-}
-function routed(lib,s,r){return passes(s,r)?delayed(lib,s,r.wait):null}
-function metrics(lib,signals,all){return {prediction:lib.predictionMetrics(signals),economic:lib.economicMetrics(signals,all)}}
 function delta(a,b){return {
  winner5_precision:a.prediction.winner5Precision-b.prediction.winner5Precision,
  winner10_precision:a.prediction.winner10Precision-b.prediction.winner10Precision,
@@ -76,80 +65,58 @@ function delta(a,b){return {
  avg_net_ret:a.economic.avgNetRet-b.economic.avgNetRet,
  max_drawdown:a.economic.maxDrawdown-b.economic.maxDrawdown
 }}
-function obj(m){
- return m.economic.netGrowth*18+m.economic.avgNetRet*12+m.economic.maxDrawdown*4+
- m.prediction.winner5Precision*2+m.prediction.winner10Precision*3;
+function acceptable(m,b){
+ return m.prediction.signals>=8&&m.economic.netGrowth>0&&m.economic.avgNetRet>0&&
+ m.economic.maxDrawdown>=b.economic.maxDrawdown&&
+ m.prediction.winner5Precision>=b.prediction.winner5Precision&&m.prediction.winner10Precision>=b.prediction.winner10Precision;
 }
-function acceptable(m,base){
-  return m.prediction.signals>=8&&m.economic.netGrowth>0&&m.economic.avgNetRet>0&&
-    m.economic.maxDrawdown>=base.economic.maxDrawdown&&
-    m.prediction.winner5Precision>=base.prediction.winner5Precision&&
-    m.prediction.winner10Precision>=base.prediction.winner10Precision;
-}
-function trainRule(lib,train,all){
-  if(train.length<40)return null;
-  const cut=Math.floor(train.length*.65),cal=train.slice(cut);
-  const calAll=all.filter(s=>s.t>=cal[0].t&&s.t<=cal[cal.length-1].t+15*60000);
-  const bm=metrics(lib,cal,calAll);
-  let best=null;
-  for(const r of RULES){
-    const sig=cal.map(s=>routed(lib,s,r)).filter(Boolean);
-    if(sig.length<Math.max(8,Math.floor(cal.length*.15)))continue;
-    const m=metrics(lib,sig,calAll);
-    if(!acceptable(m,bm))continue;
-    const score=obj(m)+.08*(sig.length/cal.length);
-    if(!best||score>best.score)best={rule:r,score,metrics:m,retention:sig.length/cal.length,cal_start:cal[0].t,cal_signals:cal.length};
-  }
-  return best;
+function objective(d){return d.net_growth*18+d.avg_net_ret*12+d.max_drawdown*4+d.winner5_precision*2+d.winner10_precision*3}
+function evaluateSegment(lib,orig,rows,p){
+ const sig=orig.map(s=>confirmed(lib,s)).filter(Boolean),bm=metrics(lib,orig,rows,{id:'BASE'}),m=metrics(lib,sig,rows,p),d=delta(m,bm);
+ return {signals:sig.length,retention:orig.length?sig.length/orig.length:0,baseline:bm,metrics:m,delta:d,pass:acceptable(m,bm)};
 }
 
 async function main(){
- process.env.DEV_START='2026-04-01T00:00:00Z';process.env.DEV_END='2026-07-01T00:00:00Z';process.env.CONFIRM_START='2026-07-01T00:00:00Z';process.env.CONFIRM_END='2026-08-01T00:00:00Z';
+ process.env.DEV_START='2026-04-01T00:00:00Z';process.env.DEV_END='2026-07-01T00:00:00Z';
+ process.env.CONFIRM_START='2026-07-01T00:00:00Z';process.env.CONFIRM_END='2026-09-16T00:00:00Z';
  const base=loadBase(),lib=base.loadR7(),built=await base.buildRaw(lib),raw=built.raw;
- const dev=raw.filter(s=>s.t>=lib.DEV_START&&s.t<lib.DEV_END),hold=raw.filter(s=>s.t>=lib.CONFIRM_START&&s.t<lib.CONFIRM_END);
- const ds=base.selectSignals(lib,dev,0,0).sort((a,b)=>a.t-b.t),hs=base.selectSignals(lib,hold,0,0).sort((a,b)=>a.t-b.t);
- const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));let start=initial,folds=[],routedAll=[];
- for(let round=1;round<=4&&start<ds.length;round++){
-   const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end);
-   const trainAll=dev.filter(s=>s.t>=train[0].t&&s.t<=train[train.length-1].t+15*60000);
-   const valAll=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+15*60000);
-   const chosen=trainRule(lib,train,trainAll),bm=metrics(lib,val,valAll);
-   if(!chosen){folds.push({round,rule:null,exit:null,pass:false});start=end;continue}
-   const trainSig=train.filter(s=>s.t>=chosen.cal_start).map(s=>routed(lib,s,chosen.rule)).filter(Boolean);
-   const ex=chooseExit(lib,trainSig,trainAll.filter(s=>s.t>=chosen.cal_start));
-   if(!ex){folds.push({round,rule:chosen.rule,exit:null,pass:false});start=end;continue}
-   const sig=val.map(s=>routed(lib,s,chosen.rule)).filter(Boolean),m=metricsExit(lib,sig,valAll,ex.profile),d=delta(m,bm);
-   const pass=sig.length>=8&&acceptable(m,bm);
-   folds.push({round,rule:chosen.rule,exit:ex.profile.id,train_retention:chosen.retention,signals:sig.length,retention:sig.length/val.length,metrics:m,delta:d,pass});
-   routedAll.push(...sig.map(s=>({...s,__exit:ex.profile.id})));start=end;
+ const dev=raw.filter(s=>s.t>=Date.parse('2026-04-01T00:00:00Z')&&s.t<Date.parse('2026-07-01T00:00:00Z'));
+ const july=raw.filter(s=>s.t>=Date.parse('2026-07-01T00:00:00Z')&&s.t<Date.parse('2026-08-01T00:00:00Z'));
+ const finalRaw=raw.filter(s=>s.t>=Date.parse('2026-08-01T00:00:00Z')&&s.t<Date.parse('2026-09-16T00:00:00Z'));
+ const ds=base.selectSignals(lib,dev,0,0).sort((a,b)=>a.t-b.t);
+ const js=base.selectSignals(lib,july,0,0).sort((a,b)=>a.t-b.t);
+ const fsig=base.selectSignals(lib,finalRaw,0,0).sort((a,b)=>a.t-b.t);
+
+ const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));
+ const candidates=[];
+ for(const p of EXITS){
+   let start=initial,folds=[],allSig=[];
+   for(let round=1;round<=4&&start<ds.length;round++){
+     const end=round===4?ds.length:Math.min(ds.length,start+fold),val=ds.slice(start,end);
+     const rows=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+15*60000);
+     const ev=evaluateSegment(lib,val,rows,p);folds.push({round,...ev});allSig.push(...val.map(s=>confirmed(lib,s)).filter(Boolean));start=end;
+   }
+   const walk=ds.slice(initial),walkRows=dev.filter(s=>s.t>=walk[0].t),agg=evaluateSegment(lib,walk,walkRows,p),pf=folds.filter(x=>x.pass).length;
+   const viable=pf>=3&&agg.pass&&agg.signals>=24;
+   candidates.push({profile:p,folds,aggregate:{...agg,pass_folds:pf,objective:objective(agg.delta)},viable});
  }
- const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=metrics(lib,walk,walkAll);
- const pmap=Object.fromEntries(exitProfiles(lib).map(p=>[p.id,p]));
- const mm=new Map(routedAll.map(s=>[`${s.symbol||''}:${s.t}`,s.__exit]));
- const pm=lib.r.portfolio(routedAll,walkAll,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,(pmap[mm.get(`${s.symbol||''}:${s.t}`)]||pmap.BASE).cfg),()=>lib.b.FIXED_SIZE);
- lib.r.withRecall(pm,pm._trades||[],walkAll);
- const m={prediction:lib.predictionMetrics(routedAll),economic:lib.r.safeMetrics(pm)},d=delta(m,bm);
- const passFolds=folds.filter(x=>x.pass).length;
- const aggregatePass=passFolds>=3&&routedAll.length>=24&&acceptable(m,bm);
- let finalRule=null,finalExit=null,confirmation=null,confirmationPass=false;
- if(aggregatePass){
-   const tr=trainRule(lib,ds,dev);finalRule=tr?.rule||null;
-   if(finalRule){
-     const trainSig=ds.filter(s=>s.t>=tr.cal_start).map(s=>routed(lib,s,finalRule)).filter(Boolean),ex=chooseExit(lib,trainSig,dev.filter(s=>s.t>=tr.cal_start));finalExit=ex?.profile||null;
-     if(finalExit){
-       const sig=hs.map(s=>routed(lib,s,finalRule)).filter(Boolean),hb=metrics(lib,hs,hold),hm=metricsExit(lib,sig,hold,finalExit),hd=delta(hm,hb);
-       confirmation={rule:finalRule,exit:finalExit.id,signals:sig.length,retention:sig.length/hs.length,baseline:hb,metrics:hm,delta:hd};
-       confirmationPass=sig.length>=8&&acceptable(hm,hb);
-     }
+ candidates.sort((a,b)=>b.aggregate.objective-a.aggregate.objective);
+ const chosen=candidates.find(x=>x.viable)||null;
+ let julyTest=null,finalTest=null,ready=false;
+ if(chosen){
+   julyTest=evaluateSegment(lib,js,july,chosen.profile);
+   if(julyTest.pass){
+     finalTest=evaluateSegment(lib,fsig,finalRaw,chosen.profile);
+     ready=finalTest.pass;
    }
  }
- const report={version:'MONETIZATION_EDGE_V15_NESTED_RECENT_CALIBRATION',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-   objective:'Strict nested chronological calibration. Inside every outer walk-forward training window, reserve the most recent 35% as an inner calibration segment. A confirmation rule must already be absolutely profitable and non-inferior there before it can be selected; the exit profile must also be profitable on that same recent confirmed history. Only then are both frozen and applied to the next unseen outer fold. Require >=3/4 folds and positive aggregate before opening July.',
-   rule_grid_count:RULES.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
-   folds,aggregate:{signals:routedAll.length,retention:routedAll.length/walk.length,baseline:bm,metrics:m,delta:d,pass_folds:passFolds,pass:aggregatePass},
-   final_rule:finalRule,final_exit:finalExit?.id||null,confirmation,confirmation_pass:confirmationPass,
-   decision:!aggregatePass?{label:'NESTED_CONFIRMATION_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'NESTED_CONFIRMATION_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'NESTED_CONFIRMATION_FAILED_FRESH_HOLDOUT',ready:false}};
- fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
- console.log(JSON.stringify(report,null,2));
+ const report={version:'MONETIZATION_EDGE_V16_FROZEN_CONFIRM_TP_DOUBLE_HOLDOUT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+   objective:'Consolidate the development-discovered 5-minute confirmation rule, evaluate a fixed take-profit/stop family over four Apr-Jun development folds, freeze the best policy only if >=3/4 folds plus aggregate pass, then open July once. Only if July passes, evaluate the exact same frozen policy on a second untouched Aug 1-Sep 15 holdout. No refitting after development.',
+   frozen_rule:RULE,exit_candidates:EXITS.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,july_signals:js.length,final_holdout_signals:fsig.length},
+   selected:chosen?{profile:chosen.profile,aggregate:chosen.aggregate,folds:chosen.folds}:null,
+   top_candidates:candidates.slice(0,12).map(x=>({profile:x.profile,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
+   july_test:julyTest,final_holdout_test:finalTest,production_candidate_ready:ready,
+   decision:!chosen?{label:'FROZEN_CONFIRM_TP_NOT_STABLE_IN_DEVELOPMENT',ready:false}:!julyTest?.pass?{label:'FROZEN_CONFIRM_TP_FAILED_JULY',ready:false}:!finalTest?.pass?{label:'FROZEN_CONFIRM_TP_FAILED_SECOND_HOLDOUT',ready:false}:{label:'FROZEN_CONFIRM_TP_DOUBLE_HOLDOUT_CONFIRMED',ready:true}};
+ fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
