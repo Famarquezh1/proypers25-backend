@@ -57,7 +57,7 @@ function chooseExit(lib,signals,all){
   let best=null;
   for(const p of exitProfiles(lib)){
     const m=metricsExit(lib,signals,all,p);
-    if(signals.length<8)continue;
+    if(signals.length<8||m.economic.netGrowth<=0||m.economic.avgNetRet<=0)continue;
     const score=m.economic.netGrowth*18+m.economic.avgNetRet*12+m.economic.maxDrawdown*4;
     if(!best||score>best.score)best={profile:p,metrics:m,score};
   }
@@ -87,14 +87,18 @@ function acceptable(m,base){
     m.prediction.winner10Precision>=base.prediction.winner10Precision;
 }
 function trainRule(lib,train,all){
-  const bm=metrics(lib,train,all);
+  if(train.length<40)return null;
+  const cut=Math.floor(train.length*.65),cal=train.slice(cut);
+  const calAll=all.filter(s=>s.t>=cal[0].t&&s.t<=cal[cal.length-1].t+15*60000);
+  const bm=metrics(lib,cal,calAll);
   let best=null;
   for(const r of RULES){
-    const sig=train.map(s=>routed(lib,s,r)).filter(Boolean);
-    if(sig.length<Math.max(10,Math.floor(train.length*.18)))continue;
-    const m=metrics(lib,sig,all);
-    const score=obj(m);
-    if(!best||score>best.score)best={rule:r,score,metrics:m,retention:sig.length/train.length,acceptable:acceptable(m,bm)};
+    const sig=cal.map(s=>routed(lib,s,r)).filter(Boolean);
+    if(sig.length<Math.max(8,Math.floor(cal.length*.15)))continue;
+    const m=metrics(lib,sig,calAll);
+    if(!acceptable(m,bm))continue;
+    const score=obj(m)+.08*(sig.length/cal.length);
+    if(!best||score>best.score)best={rule:r,score,metrics:m,retention:sig.length/cal.length,cal_start:cal[0].t,cal_signals:cal.length};
   }
   return best;
 }
@@ -111,8 +115,8 @@ async function main(){
    const valAll=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+15*60000);
    const chosen=trainRule(lib,train,trainAll),bm=metrics(lib,val,valAll);
    if(!chosen){folds.push({round,rule:null,exit:null,pass:false});start=end;continue}
-   const trainSig=train.map(s=>routed(lib,s,chosen.rule)).filter(Boolean);
-   const ex=chooseExit(lib,trainSig,trainAll);
+   const trainSig=train.filter(s=>s.t>=chosen.cal_start).map(s=>routed(lib,s,chosen.rule)).filter(Boolean);
+   const ex=chooseExit(lib,trainSig,trainAll.filter(s=>s.t>=chosen.cal_start));
    if(!ex){folds.push({round,rule:chosen.rule,exit:null,pass:false});start=end;continue}
    const sig=val.map(s=>routed(lib,s,chosen.rule)).filter(Boolean),m=metricsExit(lib,sig,valAll,ex.profile),d=delta(m,bm);
    const pass=sig.length>=8&&acceptable(m,bm);
@@ -131,7 +135,7 @@ async function main(){
  if(aggregatePass){
    const tr=trainRule(lib,ds,dev);finalRule=tr?.rule||null;
    if(finalRule){
-     const trainSig=ds.map(s=>routed(lib,s,finalRule)).filter(Boolean),ex=chooseExit(lib,trainSig,dev);finalExit=ex?.profile||null;
+     const trainSig=ds.filter(s=>s.t>=tr.cal_start).map(s=>routed(lib,s,finalRule)).filter(Boolean),ex=chooseExit(lib,trainSig,dev.filter(s=>s.t>=tr.cal_start));finalExit=ex?.profile||null;
      if(finalExit){
        const sig=hs.map(s=>routed(lib,s,finalRule)).filter(Boolean),hb=metrics(lib,hs,hold),hm=metricsExit(lib,sig,hold,finalExit),hd=delta(hm,hb);
        confirmation={rule:finalRule,exit:finalExit.id,signals:sig.length,retention:sig.length/hs.length,baseline:hb,metrics:hm,delta:hd};
@@ -139,12 +143,12 @@ async function main(){
      }
    }
  }
- const report={version:'MONETIZATION_EDGE_V14_CONFIRMATION_PLUS_EXIT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-   objective:'Nested walk-forward: first learn a 5/10-minute post-CORE confirmation rule using only prior data; then, only on previously confirmed training signals, choose the exit profile that best monetizes them. Validation receives both choices without refitting. Require >=3/4 positive non-inferior folds and positive aggregate before opening July.',
+ const report={version:'MONETIZATION_EDGE_V15_NESTED_RECENT_CALIBRATION',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+   objective:'Strict nested chronological calibration. Inside every outer walk-forward training window, reserve the most recent 35% as an inner calibration segment. A confirmation rule must already be absolutely profitable and non-inferior there before it can be selected; the exit profile must also be profitable on that same recent confirmed history. Only then are both frozen and applied to the next unseen outer fold. Require >=3/4 folds and positive aggregate before opening July.',
    rule_grid_count:RULES.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
    folds,aggregate:{signals:routedAll.length,retention:routedAll.length/walk.length,baseline:bm,metrics:m,delta:d,pass_folds:passFolds,pass:aggregatePass},
    final_rule:finalRule,final_exit:finalExit?.id||null,confirmation,confirmation_pass:confirmationPass,
-   decision:!aggregatePass?{label:'CONFIRMATION_PLUS_EXIT_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'CONFIRMATION_PLUS_EXIT_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'CONFIRMATION_PLUS_EXIT_FAILED_FRESH_HOLDOUT',ready:false}};
+   decision:!aggregatePass?{label:'NESTED_CONFIRMATION_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'NESTED_CONFIRMATION_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'NESTED_CONFIRMATION_FAILED_FRESH_HOLDOUT',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
  console.log(JSON.stringify(report,null,2));
 }
