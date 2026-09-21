@@ -50,33 +50,23 @@ function fit(rows,lambda){
 }
 function pred(m,s){const x=vec(s);let z=m.beta[0];for(let j=0;j<x.length;j++)z+=m.beta[j+1]*((x[j]-m.mean[j])/m.scale[j]);return z}
 
-function profiles(lib){return [
-  {id:'BASE',cfg:lib.b.BASE_EXIT},
-  {id:'FAST',cfg:{hardStop:.040,beTrigger:.012,beLock:.001,trailTrigger:.025,trailGap:.012,staleBars:72}},
-  {id:'BALANCED',cfg:{hardStop:.040,beTrigger:.020,beLock:.001,trailTrigger:.040,trailGap:.018,staleBars:120}},
-  {id:'RUNNER',cfg:{hardStop:.040,beTrigger:.030,beLock:.002,trailTrigger:.060,trailGap:.025,staleBars:180}}
-]}
-function net(lib,s,p){return Number(lib.r.simulateExit(s,p.cfg)?.net||0)}
-function fitRouter(lib,train,lambda,q){
-  const ps=profiles(lib),models={};
-  for(const p of ps.slice(1)){
-    const rows=train.map(s=>({s,y:net(lib,s,p)-net(lib,s,ps[0])}));
-    const m=fit(rows,lambda);if(!m)return null;
-    const scores=train.map(s=>pred(m,s));
-    models[p.id]={model:m,threshold:q===0?0:Math.max(0,qtl(scores,q))};
-  }
-  return {models,profiles:ps};
+const SIZE_POLICIES=[
+  {id:'balanced',mult:[.50,1.00,1.50]},
+  {id:'conviction',mult:[.25,1.00,1.75]},
+  {id:'barbell',mult:[.40,.60,2.00]}
+];
+const BANDS=[[.33,.67],[.25,.75]];
+
+function outcome(lib,s){return lib.r.simulateExit(s,lib.b.BASE_EXIT)}
+function qualityTarget(lib,s){const o=outcome(lib,s);if(!o)return -.05;return Number(o.net||0)+.12*Math.min(.08,Math.max(0,Number(o.mfeDuringTrade||0)))-(o.stopBefore10?.025:0)}
+function fitSizer(lib,train,lambda,bands,policy){
+  const model=fit(train.map(s=>({s,y:qualityTarget(lib,s)})),lambda);if(!model)return null;
+  const scores=train.map(s=>pred(model,s)),lo=qtl(scores,bands[0]),hi=qtl(scores,bands[1]);
+  return {model,lo,hi,policy};
 }
-function route(router,s){
-  let best=router.profiles[0],gain=0;
-  for(const p of router.profiles.slice(1)){
-    const x=router.models[p.id],g=pred(x.model,s);
-    if(g>=x.threshold&&g>gain){gain=g;best=p}
-  }
-  return {profile:best,predicted_gain:gain};
-}
-function mixedEconomic(lib,signals,all,router){
-  const m=lib.r.portfolio(signals,all,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,route(router,s).profile.cfg),()=>lib.b.FIXED_SIZE);
+function mult(sz,s){const z=pred(sz.model,s);return z<sz.lo?sz.policy.mult[0]:z<sz.hi?sz.policy.mult[1]:sz.policy.mult[2]}
+function sizedEconomic(lib,signals,all,sz){
+  const m=lib.r.portfolio(signals,all,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,lib.b.BASE_EXIT),s=>lib.b.FIXED_SIZE*mult(sz,s));
   lib.r.withRecall(m,m._trades||[],all);return lib.r.safeMetrics(m);
 }
 function baseEconomic(lib,signals,all){
@@ -84,59 +74,53 @@ function baseEconomic(lib,signals,all){
   lib.r.withRecall(m,m._trades||[],all);return lib.r.safeMetrics(m);
 }
 function deltaE(a,b){return {net_growth:a.netGrowth-b.netGrowth,avg_net_ret:a.avgNetRet-b.avgNetRet,max_drawdown:a.maxDrawdown-b.maxDrawdown}}
-function passE(d,m,n){return n>=8&&d.net_growth>=0&&d.avg_net_ret>=0&&d.max_drawdown>=0&&m.netGrowth>0&&m.avgNetRet>0}
-function objective(d){return d.net_growth*16+d.avg_net_ret*12+d.max_drawdown*4}
+function passE(d,m,n){return n>=8&&d.net_growth>=0&&d.avg_net_ret>=-1e-12&&d.max_drawdown>=0&&m.netGrowth>0}
+function objective(d){return d.net_growth*18+d.max_drawdown*5+d.avg_net_ret*4}
 
 async function main(){
   process.env.DEV_START='2026-04-01T00:00:00Z';process.env.DEV_END='2026-07-01T00:00:00Z';process.env.CONFIRM_START='2026-07-01T00:00:00Z';process.env.CONFIRM_END='2026-08-01T00:00:00Z';
   const base=loadBase(),lib=base.loadR7(),built=await base.buildRaw(lib),raw=built.raw;
   const dev=raw.filter(s=>s.t>=lib.DEV_START&&s.t<lib.DEV_END),hold=raw.filter(s=>s.t>=lib.CONFIRM_START&&s.t<lib.CONFIRM_END);
   const ds=base.selectSignals(lib,dev,0,0).sort((a,b)=>a.t-b.t),hs=base.selectSignals(lib,hold,0,0).sort((a,b)=>a.t-b.t);
-  const configs=[];for(const lambda of LAMBDAS)for(const q of ROUTE_Q)configs.push({lambda,q,folds:[],routed:[]});
+  const configs=[];for(const lambda of LAMBDAS)for(const policy of SIZE_POLICIES)for(const bands of BANDS)configs.push({lambda,policy,bands,folds:[],weighted:[]});
   const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));let start=initial;
   for(let round=1;round<=4&&start<ds.length;round++){
-    const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end),all=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t);
-    const bm=baseEconomic(lib,val,all);
+    const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end),all=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t),bm=baseEconomic(lib,val,all);
     for(const cfg of configs){
-      const router=fitRouter(lib,train,cfg.lambda,cfg.q);if(!router)continue;
-      const m=mixedEconomic(lib,val,all,router),d=deltaE(m,bm);
-      const routes={BASE:0,FAST:0,BALANCED:0,RUNNER:0};
-      val.forEach(s=>routes[route(router,s).profile.id]++);
-      cfg.routed.push(...val.map(s=>({...s,__route:route(router,s).profile.id})));
-      cfg.folds.push({round,signals:val.length,routes,delta:d,metrics:m,pass:passE(d,m,val.length)});
+      const sz=fitSizer(lib,train,cfg.lambda,cfg.bands,cfg.policy);if(!sz)continue;
+      const m=sizedEconomic(lib,val,all,sz),d=deltaE(m,bm),counts={low:0,mid:0,high:0};
+      val.forEach(s=>{const x=mult(sz,s);if(x===cfg.policy.mult[0])counts.low++;else if(x===cfg.policy.mult[2])counts.high++;else counts.mid++;cfg.weighted.push({...s,__mult:x})});
+      cfg.folds.push({round,signals:val.length,counts,avg_multiplier:(counts.low*cfg.policy.mult[0]+counts.mid*cfg.policy.mult[1]+counts.high*cfg.policy.mult[2])/val.length,delta:d,metrics:m,pass:passE(d,m,val.length)});
     }
     start=end;
   }
   const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=baseEconomic(lib,walk,walkAll);
   for(const cfg of configs){
-    const byKey=new Map(cfg.routed.map(s=>[`${s.symbol||''}:${s.t}`,s.__route]));
-    const ps=profiles(lib),pmap=Object.fromEntries(ps.map(p=>[p.id,p]));
-    const m=lib.r.portfolio(walk,walkAll,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,(pmap[byKey.get(`${s.symbol||''}:${s.t}`)]||pmap.BASE).cfg),()=>lib.b.FIXED_SIZE);
+    const mm=new Map(cfg.weighted.map(s=>[`${s.symbol||''}:${s.t}`,s.__mult]));
+    const m=lib.r.portfolio(walk,walkAll,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,lib.b.BASE_EXIT),s=>lib.b.FIXED_SIZE*(mm.get(`${s.symbol||''}:${s.t}`)||1));
     lib.r.withRecall(m,m._trades||[],walkAll);const em=lib.r.safeMetrics(m),d=deltaE(em,bm);
-    cfg.aggregate={signals:walk.length,metrics:em,delta:d,objective:objective(d),pass_folds:cfg.folds.filter(x=>x.pass).length};
+    cfg.aggregate={signals:walk.length,metrics:em,delta:d,objective:objective(d),pass_folds:cfg.folds.filter(x=>x.pass).length,avg_multiplier:avg([...mm.values()])};
     cfg.viable=cfg.aggregate.pass_folds>=3&&passE(d,em,walk.length);
-    delete cfg.routed;
+    delete cfg.weighted;
   }
-  configs.sort((a,b)=>b.aggregate.objective-a.aggregate.objective);
-  const chosen=configs.find(x=>x.viable)||null;
+  configs.sort((a,b)=>b.aggregate.objective-a.aggregate.objective);const chosen=configs.find(x=>x.viable)||null;
   let confirmation=null,confirmationPass=false,attribution=null;
   if(chosen){
-    const router=fitRouter(lib,ds,chosen.lambda,chosen.q),bm=baseEconomic(lib,hs,hold),m=mixedEconomic(lib,hs,hold,router),d=deltaE(m,bm);
-    const routes={BASE:0,FAST:0,BALANCED:0,RUNNER:0};hs.forEach(s=>routes[route(router,s).profile.id]++);
-    confirmation={signals:hs.length,routes,baseline:bm,metrics:m,delta:d,prediction_delta:{winner5_precision:0,winner10_precision:0}};
+    const sz=fitSizer(lib,ds,chosen.lambda,chosen.bands,chosen.policy),bm=baseEconomic(lib,hs,hold),m=sizedEconomic(lib,hs,hold,sz),d=deltaE(m,bm),counts={low:0,mid:0,high:0};
+    hs.forEach(s=>{const x=mult(sz,s);if(x===chosen.policy.mult[0])counts.low++;else if(x===chosen.policy.mult[2])counts.high++;else counts.mid++});
+    confirmation={signals:hs.length,counts,avg_multiplier:(counts.low*chosen.policy.mult[0]+counts.mid*chosen.policy.mult[1]+counts.high*chosen.policy.mult[2])/hs.length,baseline:bm,metrics:m,delta:d,prediction_delta:{winner5_precision:0,winner10_precision:0}};
     confirmationPass=passE(d,m,hs.length);
-    attribution={};
-    for(const [id,x] of Object.entries(router.models))attribution[id]=FEATURES.map((n,i)=>({feature:n,coefficient:x.model.beta[i+1],abs:Math.abs(x.model.beta[i+1])})).sort((a,b)=>b.abs-a.abs).slice(0,12);
+    attribution=FEATURES.map((n,i)=>({feature:n,coefficient:sz.model.beta[i+1],abs:Math.abs(sz.model.beta[i+1])})).sort((a,b)=>b.abs-a.abs).slice(0,15);
   }
-  const report={version:'MONETIZATION_EDGE_V8_DYNAMIC_EXIT_ROUTER',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-    objective:'Keep every CORE entry unchanged so +5%/+10% precision cannot deteriorate. Learn only whether a pre-entry microstructure state predicts incremental net-return advantage from FAST, BALANCED or RUNNER exit behavior versus the unchanged BASE exit. Require stable positive economics on Apr-Jun walk-forward before opening July.',
-    invariant:{entry_selection:'UNCHANGED_CORE',prediction_precision_delta_by_construction:0,holdout_opened:Boolean(chosen)},
-    exit_profiles:profiles(lib).map(x=>({id:x.id,cfg:x.cfg})),features:FEATURES,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
-    selected:chosen?{lambda:chosen.lambda,q:chosen.q,aggregate:chosen.aggregate,folds:chosen.folds}:null,
-    top_candidates:configs.slice(0,12).map(x=>({lambda:x.lambda,q:x.q,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
+  const report={version:'MONETIZATION_EDGE_V9_SURVIVAL_SIZING',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+    objective:'Keep CORE entry selection and BASE_EXIT unchanged. Learn only a pre-entry quality ranking from realized net return, early survival and MFE, then redistribute equal-average historical exposure from low-score to high-score signals. Precision is unchanged by construction. July remains unopened unless Apr-Jun walk-forward is stable and positive.',
+    invariant:{entry_selection:'UNCHANGED_CORE',exit:'UNCHANGED_BASE_EXIT',prediction_precision_delta_by_construction:0,holdout_opened:Boolean(chosen)},
+    size_policies:SIZE_POLICIES,bands:BANDS,features:FEATURES,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
+    selected:chosen?{lambda:chosen.lambda,policy:chosen.policy,bands:chosen.bands,aggregate:chosen.aggregate,folds:chosen.folds}:null,
+    top_candidates:configs.slice(0,12).map(x=>({lambda:x.lambda,policy:x.policy.id,bands:x.bands,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
     confirmation,attribution,confirmation_pass:confirmationPass,
-    decision:!chosen?{label:'DYNAMIC_EXIT_ROUTER_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'DYNAMIC_EXIT_ROUTER_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'DYNAMIC_EXIT_ROUTER_FAILED_FRESH_HOLDOUT',ready:false}};
+    decision:!chosen?{label:'SURVIVAL_SIZING_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'SURVIVAL_SIZING_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'SURVIVAL_SIZING_FAILED_FRESH_HOLDOUT',ready:false}};
   fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
-  console.log(JSON.stringify({version:report.version,selected:report.selected,top_candidates:report.top_candidates.slice(0,8),confirmation,confirmation_pass:confirmationPass,decision:report.decision},null,2));
+  console.log(JSON.stringify({version:report.version,selected:report.selected,top_candidates:report.top_candidates.slice(0,8),confirmation,top_attribution:attribution,confirmation_pass:confirmationPass,decision:report.decision},null,2));
 }
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
