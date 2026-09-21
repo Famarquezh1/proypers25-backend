@@ -19,6 +19,7 @@ const { buildEntrySafetyFailures, buildPromotionConfidence, firstFailureReason }
 const { runLegacySpotRecoveryCycle } = require('../services/legacySpotRecoveryLiquidator');
 const { runXecHistoricalHoldingCycle } = require('../services/xecHistoricalHoldingManager');
 const { runSpotDustSweeper } = require('../services/spotDustSweeper');
+const { runV21ShadowCycle, getV21ShadowStatus } = require('../services/spotV21ShadowRouter');
 
 const router = express.Router();
 
@@ -207,6 +208,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
   let paperGate = {};
   let safetyFailures = [];
   let entries = {};
+  let v21Shadow = {};
 
   try {
     await persistActivity(db, { event_type: 'SCHEDULER_START', source: 'CLOUD_SCHEDULER', created_at: startedAt, route: req.path });
@@ -228,6 +230,13 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
     promotionConfidence = buildPromotionConfidence(promotionGate);
 
     paperGate = await evaluatePaperToRealEntryGate(db, config);
+
+    try {
+      v21Shadow = await runV21ShadowCycle(db, { candidate: paperGate.candidate || null });
+    } catch (shadowError) {
+      v21Shadow = { ok: false, shadow_only: true, no_order_created: true, error: shadowError.message };
+      console.error('[V21_SHADOW] non-blocking error:', shadowError.message);
+    }
 
     const openAfterExit = await db.collection('real_spot_positions').where('status', '==', 'REAL_OPEN').get();
     safetyFailures = buildEntrySafetyFailures({
@@ -277,6 +286,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       config,
       discovery,
       paperValidation,
+      v21Shadow,
       safetyFailures
     });
     logSpotCycleDecision(decisionLog);
@@ -313,6 +323,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       discovery,
       ranking: { latest_scan_id: discovery.scan_id || null, candidates_saved: discovery.candidates_saved || 0, top_symbol: discovery.top_symbol || null, top_score: discovery.top_score || null },
       paper_validation: paperValidation,
+      v21_shadow: v21Shadow,
       reconciliation,
       autonomy,
       exits,
@@ -361,6 +372,7 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
         config,
         discovery,
         paperValidation,
+        v21Shadow,
         safetyFailures,
         error: error.message
       });
@@ -368,6 +380,14 @@ router.post('/internal/cron/binance/spot-real-execution', requireCronSecret, asy
       console.error('[SPOT_EVIDENCE] failed to persist failed cycle:', persistError.message);
     }
     return res.status(500).json({ ok: false, error: 'CONTROLLED_REAL_SPOT_CYCLE_FAILED', details: error.message, duration_ms: durationMs });
+  }
+});
+
+router.get('/internal/spot-v21-shadow/status', requireCronSecret, async (_req, res) => {
+  try {
+    return res.json(await getV21ShadowStatus(db));
+  } catch (error) {
+    return res.status(500).json({ ok: false, shadow_only: true, no_order_created: true, error: 'V21_SHADOW_STATUS_FAILED', details: error.message });
   }
 });
 
