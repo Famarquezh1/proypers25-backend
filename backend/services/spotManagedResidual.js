@@ -17,6 +17,25 @@ function isManagedExit(order = {}) {
   return id.startsWith('proypers-gh-exit-') || id.startsWith('proypers-gh-protect-');
 }
 
+function isOwnedManagedOrder(order = {}) {
+  const id = String(order.clientOrderId || '');
+  return id.startsWith('proypers-gh-') ||
+    id.startsWith('px25b_') ||
+    id.startsWith('px25x_') ||
+    id.startsWith('px25lr_') ||
+    id.startsWith('px25xec_') ||
+    id.startsWith('px25ghxec_');
+}
+
+function managedTradesOnly(trades = [], orders = []) {
+  const ids = new Set((Array.isArray(orders) ? orders : [])
+    .filter(isOwnedManagedOrder)
+    .map((order) => String(order.orderId || ''))
+    .filter(Boolean));
+  return (Array.isArray(trades) ? trades : [])
+    .filter((trade) => ids.has(String(trade.orderId || '')));
+}
+
 function remainingOrderQty(order = {}) {
   return Math.max(0, n(order.origQty) - n(order.executedQty));
 }
@@ -38,7 +57,7 @@ function latestFilledExit(orders = [], buyTime = 0) {
     .sort((a, b) => n(b.updateTime || b.time) - n(a.updateTime || a.time))[0] || null;
 }
 
-function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal = 0, baseAsset = '' } = {}) {
+function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal = 0, baseAsset = '', forceReconstruct = false } = {}) {
   const buyTime = n(buy.updateTime || buy.time);
   const buyQty = n(buy.executedQty);
   const quoteQty = n(buy.cummulativeQuoteQty);
@@ -65,8 +84,9 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
     if (protectedQty > 0) managedQty = Math.min(protectedQty, owned);
   }
 
-  if (filledExit && openProtect && Array.isArray(trades) && trades.length && baseAsset) {
-    reconstructed = reconstructInventory(trades, baseAsset);
+  if ((forceReconstruct || (filledExit && openProtect)) && Array.isArray(trades) && trades.length && baseAsset) {
+    const reconstructionTrades = forceReconstruct ? managedTradesOnly(trades, orders) : trades;
+    reconstructed = reconstructInventory(reconstructionTrades, baseAsset);
     if (
       reconstructed.entryPrice > 0 &&
       reconstructed.quantity > 0 &&
@@ -74,8 +94,10 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
     ) {
       entryPrice = reconstructed.entryPrice;
       startTime = reconstructed.startTime || buyTime;
-      managedQty = Math.min(managedQty || reconstructed.quantity, reconstructed.quantity, owned);
-      residualMode = true;
+      managedQty = openProtect
+        ? Math.min(Math.max(managedQty, reconstructed.quantity), reconstructed.quantity, owned)
+        : Math.min(reconstructed.quantity, owned);
+      residualMode = Boolean(filledExit);
     }
   }
 
@@ -93,6 +115,8 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
 }
 
 module.exports = {
+  isOwnedManagedOrder,
+  managedTradesOnly,
   remainingOrderQty,
   latestOpenProtection,
   latestFilledExit,
