@@ -5,7 +5,8 @@ const {
   remainingOrderQty,
   latestOpenProtection,
   latestFilledExit,
-  resolveManagedResidual
+  resolveManagedResidual,
+  managedTradesOnly
 } = require('../services/spotManagedResidual');
 
 const buy = {
@@ -70,5 +71,44 @@ const fullyClosed = resolveManagedResidual({
   baseAsset: 'SAGA'
 });
 assert.strictEqual(fullyClosed.active, false);
+
+const pyramidBase = {
+  side: 'BUY', status: 'FILLED', orderId: 10, time: 5000, updateTime: 5000,
+  executedQty: '10', cummulativeQuoteQty: '100',
+  clientOrderId: 'proypers-gh-base'
+};
+const pyramidAdd = {
+  side: 'BUY', status: 'FILLED', orderId: 11, time: 6000, updateTime: 6000,
+  executedQty: '1', cummulativeQuoteQty: '11',
+  clientOrderId: 'proypers-gh-add-live'
+};
+const pyramidProtect = {
+  side: 'SELL', status: 'NEW', orderId: 12, time: 7000, updateTime: 7000,
+  origQty: '11', executedQty: '0', stopPrice: '10.4',
+  clientOrderId: 'proypers-gh-protect-live'
+};
+const manualBuy = {
+  side: 'BUY', status: 'FILLED', orderId: 99, time: 5500, updateTime: 5500,
+  executedQty: '5', cummulativeQuoteQty: '50',
+  clientOrderId: 'manual-buy'
+};
+const pyramidTrades = [
+  { orderId: 10, id: 10, time: 5000, isBuyer: true, qty: '10', quoteQty: '100', price: '10', commission: '0', commissionAsset: 'BNB' },
+  { orderId: 99, id: 99, time: 5500, isBuyer: true, qty: '5', quoteQty: '50', price: '10', commission: '0', commissionAsset: 'BNB' },
+  { orderId: 11, id: 11, time: 6000, isBuyer: true, qty: '1', quoteQty: '11', price: '11', commission: '0', commissionAsset: 'BNB' }
+];
+
+assert.strictEqual(managedTradesOnly(pyramidTrades, [pyramidBase, pyramidAdd, pyramidProtect, manualBuy]).length, 2);
+const pyramidManaged = resolveManagedResidual({
+  buy: pyramidAdd,
+  orders: [pyramidBase, pyramidAdd, pyramidProtect, manualBuy],
+  trades: pyramidTrades,
+  ownedTotal: 11,
+  baseAsset: 'ABC',
+  forceReconstruct: true
+});
+assert.strictEqual(pyramidManaged.active, true);
+assert.strictEqual(pyramidManaged.managedQty, 11);
+assert(Math.abs(pyramidManaged.entryPrice - (111 / 11)) < 1e-9);
 
 console.log('spotManagedResidual tests passed');

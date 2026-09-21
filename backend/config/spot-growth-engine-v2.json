@@ -1,0 +1,29 @@
+{
+  "version": "SPOT_GROWTH_ENGINE_V2_2026_09_21",
+  "mode": "PRODUCTION",
+  "pyramiding": {
+    "enabled": true,
+    "max_adds": 1,
+    "trigger_mfe_pct": 0.08,
+    "min_current_gain_pct": 0.05,
+    "max_pullback_from_high_pct": 0.025,
+    "max_age_hours": 12,
+    "add_fraction_of_initial_cost": 0.30,
+    "add_equity_pct": 0.025,
+    "add_min_usdt": 5,
+    "add_cap_usdt": 20,
+    "max_symbol_equity_pct": 0.125,
+    "min_gap_above_native_stop_pct": 0.01
+  },
+  "equity_ratchet": {
+    "activation_hwm_usdt": 600,
+    "state_issue_title": "[SPOT GROWTH STATE]",
+    "hwm_update_step_usdt": 0.50,
+    "tiers": [
+      { "drawdown_pct": 0.08, "size_multiplier": 0.00 },
+      { "drawdown_pct": 0.05, "size_multiplier": 0.50 },
+      { "drawdown_pct": 0.03, "size_multiplier": 0.75 },
+      { "drawdown_pct": 0.00, "size_multiplier": 1.00 }
+    ]
+  }
+}

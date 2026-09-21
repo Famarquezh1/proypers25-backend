@@ -5,6 +5,9 @@ const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
 const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing');
 const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');
+const { classifySpotAsset } = require('../services/spotAssetClassification');
+const { POLICY: GROWTH_V1_POLICY, estimateAccountEquityUsdt } = require('../services/spotGrowthEngine');
+const { POLICY: GROWTH_V2_POLICY, growthRatchet, pyramidDecision, parseGrowthState, growthStateBody } = require('../services/spotGrowthEngineV2');
 const { highHistoryCadence } = require('../services/spotHighHistoryPolicy');
 const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
 const { resolveNativeProtectionStop } = require('../services/spotNativeProtectionPolicy');
@@ -110,6 +113,72 @@ async function githubRequest(path, options = {}) {
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
   return response.status === 204 ? null : response.json();
+}
+
+function growthStateMarker() {
+  return 'PROYPERS_GROWTH_V2_STATE';
+}
+
+async function resolveGrowthRatchet(equityUsdt) {
+  const fallback = growthRatchet({ equityUsdt, previousHwmUsdt: equityUsdt, activated: equityUsdt >= Number(GROWTH_V2_POLICY.equity_ratchet.activation_hwm_usdt || 600) });
+  if (!GH_TOKEN || !REPOSITORY) {
+    console.warn('GROWTH_V2_STATE_UNAVAILABLE reason=github_context_missing');
+    return fallback;
+  }
+
+  const title = String(GROWTH_V2_POLICY.equity_ratchet.state_issue_title || '[SPOT GROWTH STATE]');
+  const issues = await githubRequest('/issues?state=open&per_page=100&sort=updated&direction=desc').catch(() => []);
+  const issue = (Array.isArray(issues) ? issues : []).find((item) => String(item.title || '') === title);
+  const previous = issue ? parseGrowthState(issue.body || '') : null;
+  const ratchet = growthRatchet({
+    equityUsdt,
+    previousHwmUsdt: previous?.hwm_usdt || equityUsdt,
+    activated: previous?.activated === true
+  });
+
+  const step = Math.max(0.01, Number(GROWTH_V2_POLICY.equity_ratchet.hwm_update_step_usdt || 0.5));
+  const shouldPersist = !issue ||
+    previous?.activated !== ratchet.activated ||
+    ratchet.hwm_usdt >= Number(previous?.hwm_usdt || 0) + step;
+
+  if (shouldPersist) {
+    const body = growthStateBody({
+      hwm_usdt: ratchet.hwm_usdt,
+      activated: ratchet.activated,
+      updated_at: new Date().toISOString()
+    }, ratchet);
+    try {
+      if (issue?.number) {
+        await githubRequest(`/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+      } else {
+        await githubRequest('/issues', { method: 'POST', body: JSON.stringify({ title, body }) });
+      }
+    } catch (error) {
+      console.warn(`GROWTH_V2_STATE_PERSIST_FAILED error=${error.message || error}`);
+    }
+  }
+
+  console.log(`GROWTH_V2_RATCHET equity_usdt=${ratchet.equity_usdt} hwm_usdt=${ratchet.hwm_usdt} active=${ratchet.activated} drawdown_pct=${(ratchet.drawdown_pct * 100).toFixed(3)} size_multiplier=${ratchet.size_multiplier}`);
+  return ratchet;
+}
+
+function isPyramidAdd(order = {}) {
+  return String(order.clientOrderId || '').startsWith('proypers-gh-add-');
+}
+
+async function placePyramidBuy(base, symbol, quoteOrderQty) {
+  const order = await signed(base, 'POST', '/api/v3/order', {
+    symbol,
+    side: 'BUY',
+    type: 'MARKET',
+    quoteOrderQty: Number(quoteOrderQty).toFixed(2),
+    newOrderRespType: 'FULL',
+    newClientOrderId: `proypers-gh-add-${Date.now().toString(36)}`
+  });
+  if (!order?.orderId || String(order.status || '').toUpperCase() !== 'FILLED') {
+    throw new Error(`Growth V2 add-on did not fill for ${symbol}`);
+  }
+  return order;
 }
 
 async function managedSymbols(base) {
@@ -332,14 +401,22 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
 async function main() {
   if (!API_KEY || !API_SECRET) fail('Binance API secrets missing');
   const base = await chooseBase();
-  const [initialAccount, restrictions, symbols] = await Promise.all([
+  const [initialAccount, restrictions, symbols, allPrices] = await Promise.all([
     signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),
     signed(base, 'GET', '/sapi/v1/account/apiRestrictions'),
-    managedSymbols(base)
+    managedSymbols(base),
+    request(base, '/api/v3/ticker/price')
   ]);
 
   if (initialAccount.canTrade !== true) fail('Binance account cannot trade');
   if (restrictions.enableWithdrawals !== false) fail('API withdrawals must remain disabled');
+
+  const growthEquityUsdt = estimateAccountEquityUsdt(initialAccount, allPrices);
+  const growthRatchetState = await resolveGrowthRatchet(growthEquityUsdt);
+  const growthCashReserveUsdt = Math.max(
+    Number(GROWTH_V1_POLICY.core.min_cash_reserve_usdt || 50),
+    growthEquityUsdt * Number(GROWTH_V1_POLICY.core.cash_reserve_pct || 0.20)
+  );
 
   if (!symbols.length) {
     console.log('EXIT_ENGINE_OK no managed symbols');
@@ -358,6 +435,11 @@ async function main() {
     if (!managedBuys.length) continue;
 
     const buy = managedBuys[managedBuys.length - 1];
+    const baseBuys = managedBuys.filter((row) => !isPyramidAdd(row));
+    const currentBaseBuy = baseBuys[baseBuys.length - 1] || buy;
+    const currentBaseTime = Number(currentBaseBuy.updateTime || currentBaseBuy.time || 0);
+    const currentAddOns = managedBuys.filter((row) => isPyramidAdd(row) && Number(row.updateTime || row.time || 0) > currentBaseTime);
+    const hasPyramidAddOn = currentAddOns.length > 0;
     const buyTime = Number(buy.updateTime || buy.time || 0);
     const executedQty = Number(buy.executedQty || 0);
     const quoteQty = Number(buy.cummulativeQuoteQty || 0);
@@ -389,7 +471,7 @@ async function main() {
     }
 
     let residualTrades = [];
-    if (filledExit && openProtect) {
+    if ((filledExit && openProtect) || hasPyramidAddOn) {
       residualTrades = await signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }).catch((error) => {
         console.warn(`RESIDUAL_TRADES_UNAVAILABLE symbol=${symbol} error=${error.message || error}`);
         return [];
@@ -401,7 +483,8 @@ async function main() {
       orders,
       trades: residualTrades,
       ownedTotal,
-      baseAsset: info.baseAsset
+      baseAsset: info.baseAsset,
+      forceReconstruct: hasPyramidAddOn
     });
 
     if (!managed.active) {
@@ -432,6 +515,107 @@ async function main() {
     const gainPct = currentPrice / effectiveEntryPrice - 1;
     const recentHigh = await getHighSince(base, symbol, effectiveStartTime, effectiveEntryPrice, currentPrice);
     const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);
+
+    const currentBaseId = String(currentBaseBuy.clientOrderId || '');
+    const coreLane = !currentBaseId.startsWith('proypers-gh-v10-') && !currentBaseId.startsWith('px25');
+    const assetClassification = classifySpotAsset(symbol);
+    const actualNativeStop = Number(openProtect?.stopPrice || 0);
+    const ownershipTolerance = Math.max(1e-10, ownedTotal * 0.05);
+    const historyCoversOwned = Math.abs(ownedTotal - managedQty) <= ownershipTolerance;
+    const pullbackFromHighPct = recentHigh > 0 ? Math.max(0, (recentHigh - currentPrice) / recentHigh) : 0;
+    const pyramid = pyramidDecision({
+      lane: coreLane ? 'CORE' : 'OTHER',
+      symbol,
+      isLeveraged: assetClassification.is_leveraged,
+      hasAddOn: hasPyramidAddOn,
+      hasFilledExit: Boolean(filledExit),
+      hasNativeProtection: Boolean(openProtect),
+      historyCoversOwned,
+      ageHours,
+      currentGainPct: gainPct,
+      mfePct: recentHigh / effectiveEntryPrice - 1,
+      pullbackFromHighPct,
+      currentPrice,
+      nativeStopPrice: actualNativeStop,
+      initialCostUsdt: Number(currentBaseBuy.cummulativeQuoteQty || 0),
+      currentPositionValueUsdt: managedQty * currentPrice,
+      equityUsdt: growthEquityUsdt,
+      usdtFree: freeBalance(account, 'USDT'),
+      cashReserveUsdt: growthCashReserveUsdt,
+      ratchetMultiplier: growthRatchetState.size_multiplier
+    });
+
+    if (pyramid.allow) {
+      console.log(`GROWTH_V2_PYRAMID_APPROVED symbol=${symbol} add_usdt=${pyramid.quote_order_qty} gain_pct=${(gainPct * 100).toFixed(3)} mfe_pct=${((recentHigh / effectiveEntryPrice - 1) * 100).toFixed(3)} pullback_pct=${(pullbackFromHighPct * 100).toFixed(3)} ratchet=${growthRatchetState.size_multiplier}`);
+      let addOrder = null;
+      try {
+        addOrder = await placePyramidBuy(base, symbol, pyramid.quote_order_qty);
+        const freshOrders = await signed(base, 'GET', '/api/v3/allOrders', { symbol, limit: '100' });
+        const oldProtectionFresh = freshOrders.find((row) => String(row.orderId || '') === String(openProtect.orderId || ''));
+        const addQty = Number(addOrder.executedQty || 0);
+        const addQuote = Number(addOrder.cummulativeQuoteQty || 0);
+        const addEntry = addQty > 0 ? addQuote / addQty : currentPrice;
+
+        if (String(oldProtectionFresh?.status || '').toUpperCase() === 'FILLED') {
+          console.warn(`GROWTH_V2_PYRAMID_ABORT symbol=${symbol} reason=base_stop_filled_during_add`);
+          await marketSell(base, info, symbol, addQty, 'PYRAMID_ABORT_BASE_STOP_FILLED', addEntry, currentPrice);
+          soldCount += 1;
+          continue;
+        }
+
+        const [postTrades, postAccount, postTicker] = await Promise.all([
+          signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }),
+          signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),
+          request(base, `/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`)
+        ]);
+        const postOwned = totalBalance(postAccount, info.baseAsset);
+        const postManaged = resolveManagedResidual({
+          buy: addOrder,
+          orders: freshOrders,
+          trades: postTrades,
+          ownedTotal: postOwned,
+          baseAsset: info.baseAsset,
+          forceReconstruct: true
+        });
+        const postPrice = Number(postTicker.price || currentPrice);
+
+        if (!postManaged.active || !(postManaged.entryPrice > 0) || !(postManaged.managedQty > 0)) {
+          if (oldProtectionFresh && ['NEW','PARTIALLY_FILLED'].includes(String(oldProtectionFresh.status || '').toUpperCase())) {
+            await cancelProtection(base, symbol, oldProtectionFresh);
+          }
+          await marketSell(base, info, symbol, Math.min(postOwned, managedQty + addQty), 'PYRAMID_ACCOUNTING_FAIL_CLOSED', effectiveEntryPrice, postPrice);
+          soldCount += 1;
+          console.warn(`GROWTH_V2_PYRAMID_FAIL_CLOSED symbol=${symbol} reason=lot_reconstruction_failed`);
+          continue;
+        }
+
+        const postProtection = protectionParams(info, postManaged.entryPrice, Math.max(recentHigh, postPrice));
+        const protectedStop = Math.max(actualNativeStop, postProtection.stopPrice);
+        if (oldProtectionFresh && ['NEW','PARTIALLY_FILLED'].includes(String(oldProtectionFresh.status || '').toUpperCase())) {
+          await cancelProtection(base, symbol, oldProtectionFresh);
+        }
+
+        if (postPrice <= protectedStop) {
+          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_CROSSED', postManaged.entryPrice, postPrice);
+          soldCount += 1;
+          console.warn(`GROWTH_V2_PYRAMID_FAIL_CLOSED symbol=${symbol} reason=price_below_rearmed_stop`);
+          continue;
+        }
+
+        try {
+          await placeProtection(base, info, symbol, postManaged.managedQty, protectedStop, postPrice);
+          protectedCount += 1;
+          console.log(`GROWTH_V2_PYRAMID_EXECUTED symbol=${symbol} orderId=${addOrder.orderId} add_usdt=${addQuote} add_qty=${addQty} avg_entry=${postManaged.entryPrice} total_qty=${postManaged.managedQty} protected_stop=${protectedStop}`);
+        } catch (protectionError) {
+          console.warn(`GROWTH_V2_PYRAMID_PROTECTION_FAIL symbol=${symbol} detail=${protectionError.message || protectionError}`);
+          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_FAIL_CLOSED', postManaged.entryPrice, postPrice);
+          soldCount += 1;
+        }
+        continue;
+      } catch (pyramidError) {
+        console.warn(`GROWTH_V2_PYRAMID_SKIPPED symbol=${symbol} reason=${pyramidError.message || pyramidError}`);
+      }
+    }
     if (managed.residualMode) {
       console.log(`RESIDUAL_MONITOR_ACTIVE symbol=${symbol} qty=${managedQty} entry=${effectiveEntryPrice} current=${currentPrice} open_protect=${openProtect?.orderId || 'none'}`);
     }
@@ -495,7 +679,7 @@ async function main() {
     }
   }
 
-  console.log(`EXIT_ENGINE_OK managed_symbols=${symbols.length} open_positions=${openCount} sells=${soldCount} protection_updates=${protectedCount} model=${EXIT_POLICY.model_version}`);
+  console.log(`EXIT_ENGINE_OK managed_symbols=${symbols.length} open_positions=${openCount} sells=${soldCount} protection_updates=${protectedCount} model=${EXIT_POLICY.model_version} growth_v2=${GROWTH_V2_POLICY.version} equity_usdt=${growthEquityUsdt} ratchet=${growthRatchetState.size_multiplier}`);
 }
 
 main().catch((error) => fail(error.message || String(error)));
