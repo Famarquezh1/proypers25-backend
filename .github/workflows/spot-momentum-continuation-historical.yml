@@ -50,9 +50,10 @@ jobs:
           node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const r=require('./backend/training-output/spot-momentum-continuation-historical.json');
           console.log('### Momentum Continuation — historical');
-          console.log(`- Selected dev threshold: ${r.selected_development?.threshold ?? 'none'}`);
+          console.log(`- Selected dev policy: ${r.selected_development ? `rank=${r.selected_development.rank_weight}, size=${r.selected_development.size_policy}` : 'none'}`);
           console.log(`- Confirmation pass: ${r.confirmation_pass}`);
           console.log(`- Recommendation: ${r.recommendation}`);
+          console.log(`- Experiment mode: ${r.experiment?.mode || 'unknown'}; production changed: ${r.experiment?.production_changed === true}`);
           if(r.confirmation_delta) {
             console.log(`- Δ +5% precision: ${(100*r.confirmation_delta.winner5_precision).toFixed(2)} pp`);
             console.log(`- Δ net growth: ${(100*r.confirmation_delta.net_growth).toFixed(3)} pp`);
