@@ -8,6 +8,13 @@ const { momentumContinuationFactor } = require('../services/spotMomentumContinua
 const R7_PATH = path.join(__dirname, 'github-spot-winner-precursor-trainer-r7.js');
 const OUTPUT = path.join(__dirname, '..', 'training-output', 'spot-momentum-continuation-historical.json');
 const THRESHOLDS = [-0.15,-0.10,-0.05,0,0.05,0.10,0.15,0.20,0.25];
+const RANK_WEIGHTS = [0.15,0.30,0.45];
+const SIZE_POLICIES = [
+  { id:'balanced', low:0.60, mid:1.00, high:1.20 },
+  { id:'defensive', low:0.50, mid:0.90, high:1.15 },
+  { id:'convex', low:0.50, mid:1.00, high:1.35 },
+  { id:'gentle', low:0.75, mid:1.00, high:1.15 }
+];
 const V42_THRESHOLDS = [
   { i: 0.904010256302157, c: 0.30262335308700017, e: 0.0333071863419859 },
   { i: 0.7912647052581232, c: 0.36672756172128707, e: 0.029510140018270917 },
@@ -72,27 +79,59 @@ function productionEligible(s) {
   return high || early;
 }
 
-function selectSignals(lib, rows, threshold) {
+function selectSignals(lib, rows, threshold, rankWeight = 0) {
   const eligible = rows
     .filter(productionEligible)
     .filter(s=>s.continuationScore > threshold)
-    .map(s=>({...s, v42Score:s.productionV42.norm}));
-  return lib.signalPolicy(eligible, -Infinity, 'v42Score');
+    .map(s=>({
+      ...s,
+      v42Score:s.productionV42.norm,
+      continuationRankScore:s.productionV42.norm + rankWeight * Math.max(-1,Math.min(1,s.continuationScore))
+    }));
+  return lib.signalPolicy(eligible, -Infinity, rankWeight > 0 ? 'continuationRankScore' : 'v42Score');
 }
 
-function evaluate(lib, rows, threshold) {
-  const signals = selectSignals(lib, rows, threshold);
+function sizeMultiplier(score, policy) {
+  if (score > 0.25) return policy.high;
+  if (score >= 0.10) return policy.mid;
+  return policy.low;
+}
+
+function sizedEconomic(lib, signals, all, policy) {
+  const { r, b } = lib;
+  const m = r.portfolio(
+    signals,
+    all,
+    b.META_FALLBACK,
+    s => r.simulateExit(s, b.BASE_EXIT),
+    s => b.FIXED_SIZE * sizeMultiplier(s.continuationScore, policy)
+  );
+  r.withRecall(m, m._trades || [], all);
+  return r.safeMetrics(m);
+}
+
+function evaluate(lib, rows, threshold, rankWeight = 0, sizePolicy = null) {
+  const signals = selectSignals(lib, rows, threshold, rankWeight);
   return {
     threshold,
+    rank_weight:rankWeight,
+    size_policy:sizePolicy?.id || 'fixed',
     prediction:lib.predictionMetrics(signals),
-    economic:lib.economicMetrics(signals, rows)
+    economic:sizePolicy ? sizedEconomic(lib, signals, rows, sizePolicy) : lib.economicMetrics(signals, rows)
   };
 }
 
-function objective(row) {
+function objective(row, baseline = null) {
   const p=row.prediction,e=row.economic;
   if (p.signals < 8) return -Infinity;
-  return e.netGrowth * 10 + e.avgNetRet * 5 + p.winner5Precision * 1.5 + p.winner10Precision * 2 - Math.max(0,-e.maxDrawdown);
+  let score=e.netGrowth * 12 + e.avgNetRet * 6 + p.winner5Precision * 1.5 + p.winner10Precision * 2 + e.maxDrawdown * 1.5;
+  if (baseline) {
+    if (e.netGrowth < baseline.economic.netGrowth) score -= 5 * Math.abs(e.netGrowth-baseline.economic.netGrowth);
+    if (e.avgNetRet < baseline.economic.avgNetRet) score -= 3 * Math.abs(e.avgNetRet-baseline.economic.avgNetRet);
+    if (e.maxDrawdown < baseline.economic.maxDrawdown) score -= 2 * Math.abs(e.maxDrawdown-baseline.economic.maxDrawdown);
+    if (p.winner5Precision < baseline.prediction.winner5Precision) score -= 2 * Math.abs(p.winner5Precision-baseline.prediction.winner5Precision);
+  }
+  return score;
 }
 
 async function buildRaw(lib) {
@@ -172,15 +211,28 @@ async function main(){
       pass_distribution: [0,1,2,3].map(pass=>({pass,count:confirm.filter(s=>s.productionV42.pass===pass).length}))
     }
   };
-  const baselineDev=evaluate(lib,dev,-Infinity);
+  const baselineDev=evaluate(lib,dev,0,0,null);
   if (baselineDev.prediction.signals === 0) throw new Error(`production-like historical baseline produced zero signals: ${JSON.stringify(eligibility.development)}`);
-  const candidates=THRESHOLDS.map(th=>evaluate(lib,dev,th)).map(row=>({...row,objective:objective(row)}));
-  const viable=candidates.filter(x=>Number.isFinite(x.objective)&&x.prediction.signals>=Math.max(8,Math.floor(baselineDev.prediction.signals*.25)));
+  const candidates=[];
+  for (const rankWeight of RANK_WEIGHTS) {
+    for (const sizePolicy of SIZE_POLICIES) {
+      const row=evaluate(lib,dev,0,rankWeight,sizePolicy);
+      candidates.push({...row,objective:objective(row,baselineDev),size_config:sizePolicy});
+    }
+  }
+  const viable=candidates.filter(row=>
+    Number.isFinite(row.objective) &&
+    row.prediction.signals>=Math.max(8,Math.floor(baselineDev.prediction.signals*.65)) &&
+    row.economic.netGrowth>=baselineDev.economic.netGrowth &&
+    row.economic.avgNetRet>=baselineDev.economic.avgNetRet &&
+    row.economic.maxDrawdown>=baselineDev.economic.maxDrawdown &&
+    row.prediction.winner5Precision>=baselineDev.prediction.winner5Precision
+  );
   viable.sort((a,z)=>z.objective-a.objective);
   const selected=viable[0]||null;
 
-  const baselineConfirm=evaluate(lib,confirm,-Infinity);
-  const selectedConfirm=selected?evaluate(lib,confirm,selected.threshold):null;
+  const baselineConfirm=evaluate(lib,confirm,0,0,null);
+  const selectedConfirm=selected?evaluate(lib,confirm,0,selected.rank_weight,selected.size_config):null;
   const delta=selectedConfirm?{
     signals:selectedConfirm.prediction.signals-baselineConfirm.prediction.signals,
     winner5_precision:selectedConfirm.prediction.winner5Precision-baselineConfirm.prediction.winner5Precision,
@@ -193,19 +245,21 @@ async function main(){
 
   const confirmationPass=Boolean(selectedConfirm&&
     selectedConfirm.prediction.signals>=8&&
-    delta.net_growth>0&&
+    delta.net_growth>=0&&
     delta.avg_net_ret>=0&&
     delta.winner5_precision>=0&&
-    selectedConfirm.economic.maxDrawdown>=baselineConfirm.economic.maxDrawdown-0.01
+    delta.winner10_precision>=0&&
+    delta.max_drawdown>=0
   );
 
   const report={
-    version:'MOMENTUM_CONTINUATION_HISTORICAL_V3',
+    version:'MOMENTUM_CONTINUATION_HISTORICAL_V4_RANK_SIZE',
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
     formula_source:'backend/services/spotMomentumContinuation.js',
     reconstructed_features:['vol30','breakout240'],
+    experiment:{mode:'ranking_plus_sizing',production_changed:false,minimum_continuation:0,rank_weights:RANK_WEIGHTS,size_policies:SIZE_POLICIES},
     universe:{pool:poolSize,loaded,candidate_rows:raw.length},
     eligibility,
     periods:{development:[new Date(lib.DEV_START).toISOString(),new Date(lib.DEV_END).toISOString()],confirmation:[new Date(lib.CONFIRM_START).toISOString(),new Date(lib.CONFIRM_END).toISOString()]},
@@ -214,12 +268,12 @@ async function main(){
     selected_development:selected,
     confirmation:selectedConfirm,
     confirmation_delta:delta,
-    recommendation:!selected?'NO_THRESHOLD_SELECTED':confirmationPass?'ADJUST_PRODUCTION_TO_HISTORICAL_THRESHOLD':'KEEP_CURRENT_PRODUCTION_THRESHOLD',
+    recommendation:!selected?'NO_ALL_NONNEGATIVE_DEVELOPMENT_POLICY':confirmationPass?'RANK_SIZE_POLICY_CONFIRMED_RESEARCH_ONLY':'KEEP_CURRENT_PRODUCTION_UNCHANGED',
     confirmation_pass:confirmationPass
   };
   fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});
   fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
-  console.log(JSON.stringify({version:report.version,selected:selected?.threshold??null,confirmation_pass:confirmationPass,recommendation:report.recommendation,delta},null,2));
+  console.log(JSON.stringify({version:report.version,selected:selected?{rank_weight:selected.rank_weight,size_policy:selected.size_policy,size_config:selected.size_config}:null,confirmation_pass:confirmationPass,recommendation:report.recommendation,delta},null,2));
 }
 
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1);});
