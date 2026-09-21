@@ -39,6 +39,30 @@ for(const minClose of [.35,.50,.65])
 for(const minVol of [.70,1,1.25])
   RULES.push({wait,minRet,maxDraw,minClose,minVol});
 
+
+function exitProfiles(lib){return [
+  {id:'BASE',cfg:lib.b.BASE_EXIT},
+  {id:'FAST_35',cfg:{hardStop:.035,beTrigger:.018,beLock:.001,trailTrigger:.035,trailGap:.015,staleBars:96}},
+  {id:'BAL_40',cfg:{hardStop:.040,beTrigger:.020,beLock:.001,trailTrigger:.040,trailGap:.018,staleBars:120}},
+  {id:'MID_45',cfg:{hardStop:.045,beTrigger:.030,beLock:.0015,trailTrigger:.055,trailGap:.022,staleBars:156}},
+  {id:'TREND',cfg:{hardStop:.050,beTrigger:.060,beLock:.002,trailTrigger:.100,trailGap:.035,staleBars:240}},
+  {id:'RUNNER',cfg:{hardStop:.055,beTrigger:.070,beLock:.002,trailTrigger:.120,trailGap:.045,staleBars:264}}
+]}
+function metricsExit(lib,signals,all,profile){
+  const m=lib.r.portfolio(signals,all,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,profile.cfg),()=>lib.b.FIXED_SIZE);
+  lib.r.withRecall(m,m._trades||[],all);
+  return {prediction:lib.predictionMetrics(signals),economic:lib.r.safeMetrics(m)};
+}
+function chooseExit(lib,signals,all){
+  let best=null;
+  for(const p of exitProfiles(lib)){
+    const m=metricsExit(lib,signals,all,p);
+    if(signals.length<8)continue;
+    const score=m.economic.netGrowth*18+m.economic.avgNetRet*12+m.economic.maxDrawdown*4;
+    if(!best||score>best.score)best={profile:p,metrics:m,score};
+  }
+  return best;
+}
 function passes(s,r){
   const f=confirmFeatures(s,r.wait);return !!f&&f.ret>=r.minRet&&f.draw>=r.maxDraw&&f.close_loc>=r.minClose&&f.volume>=r.minVol;
 }
@@ -86,30 +110,41 @@ async function main(){
    const trainAll=dev.filter(s=>s.t>=train[0].t&&s.t<=train[train.length-1].t+15*60000);
    const valAll=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t+15*60000);
    const chosen=trainRule(lib,train,trainAll),bm=metrics(lib,val,valAll);
-   if(!chosen){folds.push({round,rule:null,pass:false});start=end;continue}
-   const sig=val.map(s=>routed(lib,s,chosen.rule)).filter(Boolean),m=metrics(lib,sig,valAll),d=delta(m,bm);
+   if(!chosen){folds.push({round,rule:null,exit:null,pass:false});start=end;continue}
+   const trainSig=train.map(s=>routed(lib,s,chosen.rule)).filter(Boolean);
+   const ex=chooseExit(lib,trainSig,trainAll);
+   if(!ex){folds.push({round,rule:chosen.rule,exit:null,pass:false});start=end;continue}
+   const sig=val.map(s=>routed(lib,s,chosen.rule)).filter(Boolean),m=metricsExit(lib,sig,valAll,ex.profile),d=delta(m,bm);
    const pass=sig.length>=8&&acceptable(m,bm);
-   folds.push({round,rule:chosen.rule,train_retention:chosen.retention,signals:sig.length,retention:sig.length/val.length,metrics:m,delta:d,pass});
-   routedAll.push(...sig);start=end;
+   folds.push({round,rule:chosen.rule,exit:ex.profile.id,train_retention:chosen.retention,signals:sig.length,retention:sig.length/val.length,metrics:m,delta:d,pass});
+   routedAll.push(...sig.map(s=>({...s,__exit:ex.profile.id})));start=end;
  }
- const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=metrics(lib,walk,walkAll),m=metrics(lib,routedAll,walkAll),d=delta(m,bm);
+ const walk=ds.slice(initial),walkAll=dev.filter(s=>s.t>=walk[0].t),bm=metrics(lib,walk,walkAll);
+ const pmap=Object.fromEntries(exitProfiles(lib).map(p=>[p.id,p]));
+ const mm=new Map(routedAll.map(s=>[`${s.symbol||''}:${s.t}`,s.__exit]));
+ const pm=lib.r.portfolio(routedAll,walkAll,lib.b.META_FALLBACK,s=>lib.r.simulateExit(s,(pmap[mm.get(`${s.symbol||''}:${s.t}`)]||pmap.BASE).cfg),()=>lib.b.FIXED_SIZE);
+ lib.r.withRecall(pm,pm._trades||[],walkAll);
+ const m={prediction:lib.predictionMetrics(routedAll),economic:lib.r.safeMetrics(pm)},d=delta(m,bm);
  const passFolds=folds.filter(x=>x.pass).length;
  const aggregatePass=passFolds>=3&&routedAll.length>=24&&acceptable(m,bm);
- let finalRule=null,confirmation=null,confirmationPass=false;
+ let finalRule=null,finalExit=null,confirmation=null,confirmationPass=false;
  if(aggregatePass){
    const tr=trainRule(lib,ds,dev);finalRule=tr?.rule||null;
    if(finalRule){
-     const sig=hs.map(s=>routed(lib,s,finalRule)).filter(Boolean),hb=metrics(lib,hs,hold),hm=metrics(lib,sig,hold),hd=delta(hm,hb);
-     confirmation={rule:finalRule,signals:sig.length,retention:sig.length/hs.length,baseline:hb,metrics:hm,delta:hd};
-     confirmationPass=sig.length>=8&&acceptable(hm,hb);
+     const trainSig=ds.map(s=>routed(lib,s,finalRule)).filter(Boolean),ex=chooseExit(lib,trainSig,dev);finalExit=ex?.profile||null;
+     if(finalExit){
+       const sig=hs.map(s=>routed(lib,s,finalRule)).filter(Boolean),hb=metrics(lib,hs,hold),hm=metricsExit(lib,sig,hold,finalExit),hd=delta(hm,hb);
+       confirmation={rule:finalRule,exit:finalExit.id,signals:sig.length,retention:sig.length/hs.length,baseline:hb,metrics:hm,delta:hd};
+       confirmationPass=sig.length>=8&&acceptable(hm,hb);
+     }
    }
  }
- const report={version:'MONETIZATION_EDGE_V13_POST_SIGNAL_CONFIRMATION',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-   objective:'Use information that becomes observable after a CORE signal but before execution. Wait 5 or 10 minutes, require acceptable retest depth, close location and volume confirmation, then enter at the new price. Rule is calibrated only on prior development data per walk-forward fold. July opens only if >=3/4 folds plus aggregate are positive and non-inferior.',
+ const report={version:'MONETIZATION_EDGE_V14_CONFIRMATION_PLUS_EXIT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+   objective:'Nested walk-forward: first learn a 5/10-minute post-CORE confirmation rule using only prior data; then, only on previously confirmed training signals, choose the exit profile that best monetizes them. Validation receives both choices without refitting. Require >=3/4 positive non-inferior folds and positive aggregate before opening July.',
    rule_grid_count:RULES.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
    folds,aggregate:{signals:routedAll.length,retention:routedAll.length/walk.length,baseline:bm,metrics:m,delta:d,pass_folds:passFolds,pass:aggregatePass},
-   final_rule:finalRule,confirmation,confirmation_pass:confirmationPass,
-   decision:!aggregatePass?{label:'POST_SIGNAL_CONFIRMATION_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'POST_SIGNAL_CONFIRMATION_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'POST_SIGNAL_CONFIRMATION_FAILED_FRESH_HOLDOUT',ready:false}};
+   final_rule:finalRule,final_exit:finalExit?.id||null,confirmation,confirmation_pass:confirmationPass,
+   decision:!aggregatePass?{label:'CONFIRMATION_PLUS_EXIT_NOT_STABLE_IN_WALK_FORWARD',ready:false}:confirmationPass?{label:'CONFIRMATION_PLUS_EXIT_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'CONFIRMATION_PLUS_EXIT_FAILED_FRESH_HOLDOUT',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
  console.log(JSON.stringify(report,null,2));
 }
