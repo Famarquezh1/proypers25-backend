@@ -176,25 +176,27 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
     }
 
     const continuationPass = Number.isFinite(continuation.score) && continuation.score > cfg.minContinuationScore;
-    const allow = micro.allow && !integrity.block && continuationPass;
+    const continuationRequired = String(lane || 'CORE').toUpperCase() === 'CORE';
+    const allow = micro.allow && !integrity.block && (!continuationRequired || continuationPass);
     const code = !micro.allow
       ? micro.code
       : integrity.block
         ? integrity.code
-        : !continuationPass
+        : continuationRequired && !continuationPass
           ? 'MOMENTUM_CONTINUATION_WEAK'
           : micro.code;
     const reason = !micro.allow
       ? micro.reason
       : integrity.block
         ? `${integrity.code}:${integrity.reason}`
-        : !continuationPass
+        : continuationRequired && !continuationPass
           ? `MOMENTUM_CONTINUATION_WEAK score=${Number.isFinite(continuation.score) ? continuation.score.toFixed(4) : 'unavailable'}`
           : `${micro.reason}; continuation=${continuation.score.toFixed(4)}; manipulation_risk=${integrity.score.toFixed(3)}(${integrity.band})`;
     const metrics = {
       ...micro.metrics,
       continuationScore: continuation.score,
       continuationPass,
+      continuationRequired,
       continuationComponents: continuation.components,
       manipulationRisk: integrity.score,
       manipulationBand: integrity.band,
