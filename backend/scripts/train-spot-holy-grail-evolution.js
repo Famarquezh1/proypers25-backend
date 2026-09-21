@@ -128,6 +128,16 @@ function tradeNet(lib,s){
   const o=lib.r.simulateExit(s,lib.b.BASE_EXIT);
   return Number(o?.net||0);
 }
+function learningTarget(lib,s){
+  const o=s.outcome||{};
+  const net=tradeNet(lib,s);
+  const opportunity=
+    .10*Number(o.mfe12||0) +
+    .004*(o.winner5?1:0) +
+    .008*(o.winner10?1:0) -
+    .04*Math.max(0,-Number(o.maeToPeak||0));
+  return net+opportunity;
+}
 function metrics(lib,signals,all){
   return {prediction:lib.predictionMetrics(signals),economic:lib.economicMetrics(signals,all)};
 }
@@ -157,7 +167,7 @@ function fitPolicy(lib,trainSignals,all,interactions=[]){
   const cut=Math.max(20,Math.floor(trainSignals.length*.72));
   const fitS=trainSignals.slice(0,cut),calS=trainSignals.slice(cut);
   if(calS.length<8)return null;
-  const fitRows=fitS.map(s=>({s,net:tradeNet(lib,s)}));
+  const fitRows=fitS.map(s=>({s,net:learningTarget(lib,s)}));
   const calStart=calS[0].t;
   const calAll=all.filter(s=>s.t>=calStart&&s.t<=calS[calS.length-1].t);
   const base=metrics(lib,calS,calAll);
@@ -176,7 +186,7 @@ function fitPolicy(lib,trainSignals,all,interactions=[]){
   if(!trials.length)return null;
   const chosen=(trials.filter(x=>x.strict).sort((a,b)=>b.objective-a.objective)[0]||
     trials.sort((a,b)=>b.objective-a.objective)[0]);
-  const finalModel=fitRidge(trainSignals.map(s=>({s,net:tradeNet(lib,s)})),chosen.lambda,interactions);
+  const finalModel=fitRidge(trainSignals.map(s=>({s,net:learningTarget(lib,s)})),chosen.lambda,interactions);
   const trainScores=trainSignals.map(s=>predict(finalModel,s));
   return {...chosen,model:finalModel,threshold:quantile(trainScores,1-chosen.keep)};
 }
@@ -251,7 +261,7 @@ async function main(){
       }
     }
 
-    const rows=valS.map(s=>({s,net:tradeNet(lib,s)}));
+    const rows=valS.map(s=>({s,net:learningTarget(lib,s)}));
     const next=mineCorrection(rows,basePolicy.model,active);
     rounds.push({
       round,train_signals:trainS.length,validation_signals:valS.length,
@@ -292,15 +302,15 @@ async function main(){
   }).sort((a,b)=>Math.abs(b.effect_size)-Math.abs(a.effect_size)).slice(0,15);
 
   const report={
-    version:'HOLY_GRAIL_EVOLUTION_V2_SPARSE_STRICT',
+    version:'HOLY_GRAIL_EVOLUTION_V3_DUAL_TARGET',
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
-    objective:'Sparse iterative discovery with strict CORE-relative walk-forward acceptance, followed by one untouched chronological confirmation.',
+    objective:'Sparse iterative discovery trained on a dual target combining realized net return with future opportunity labels, while policy acceptance remains strictly economic and predictive versus CORE.'
     mechanism:{
       initial_training_fraction:.40,
       walk_forward_rounds:rounds.length,
-      error_feedback:'Each validation fold mines the strongest interaction correlated with model residuals; that interaction is only retained if it improves the next unseen fold without worsening the five required metrics.',
+      error_feedback:'Each validation fold mines residual interactions against a dual learning target (realized net plus future opportunity labels); retention still requires the next unseen fold to improve without worsening the five required CORE-relative metrics.',
       untouched_confirmation:true
     },
     universe:{pool:poolSize,loaded,candidate_rows:raw.length,dev_signals:devSignals.length,confirm_signals:confirmSignals.length},
