@@ -1,0 +1,62 @@
+name: Spot Fresh Ignition Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-fresh-ignition-factor.js'
+      - '.github/workflows/spot-fresh-ignition-factor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-fresh-ignition-factor
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HIST_POOL_SIZE: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/train-spot-fresh-ignition-factor.js
+          grep -q "production_mutation:false" backend/scripts/train-spot-fresh-ignition-factor.js
+          ! grep -q "api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/train-spot-fresh-ignition-factor.js
+      - name: Train fresh ignition factor
+        run: node backend/scripts/train-spot-fresh-ignition-factor.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-fresh-ignition-${{ github.run_id }}
+          path: backend/training-output/spot-fresh-ignition-factor.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-fresh-ignition-factor.json');
+          console.log('### Fresh Ignition Factor — research only');
+          console.log(`- Selected: ${r.selected_calibration ? `keep=${r.selected_calibration.keep}, threshold=${r.selected_calibration.threshold.toFixed(4)}` : 'none'}`);
+          console.log(`- Confirmation pass: ${r.confirmation_pass}`);
+          console.log(`- Decision: ${r.decision.label}`);
+          if(r.confirmation_delta){
+            console.log(`- Δ net growth: ${(100*r.confirmation_delta.net_growth).toFixed(3)} pp`);
+            console.log(`- Δ avg net return: ${(100*r.confirmation_delta.avg_net_ret).toFixed(3)} pp`);
+            console.log(`- Δ max drawdown: ${(100*r.confirmation_delta.max_drawdown).toFixed(3)} pp`);
+            console.log(`- Δ +5% precision: ${(100*r.confirmation_delta.winner5_precision).toFixed(2)} pp`);
+            console.log(`- Δ +10% precision: ${(100*r.confirmation_delta.winner10_precision).toFixed(2)} pp`);
+          }
+          NODE
