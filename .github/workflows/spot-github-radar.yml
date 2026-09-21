@@ -62,6 +62,7 @@ jobs:
           set -euo pipefail
           RESULT=$(node backend/scripts/github-spot-production-radar-v42-active.js)
           printf '%s\n' "$RESULT"
+          printf '%s\n' "$RESULT" > spot-radar-scan.json
           NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
           echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
           if [ "$NOTIFY" != "true" ]; then
@@ -94,6 +95,30 @@ jobs:
           echo "v42_ignition=$(printf '%s' "$RESULT" | jq -r '.v42_detail.ignition')" >> "$GITHUB_OUTPUT"
           echo "v42_confirm=$(printf '%s' "$RESULT" | jq -r '.v42_detail.confirm')" >> "$GITHUB_OUTPUT"
           echo "v42_extension=$(printf '%s' "$RESULT" | jq -r '.v42_detail.extension')" >> "$GITHUB_OUTPUT"
+
+      - name: Build bounded pre-approval rejection ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .radar-learning/previous
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          PREV_FILE=""
+          if [ -n "$PREV_RUN" ]; then
+            gh run download "$PREV_RUN" --repo "$GITHUB_REPOSITORY" --name spot-radar-rejection-ledger --dir .radar-learning/previous >/dev/null 2>&1 || true
+            if [ -f .radar-learning/previous/spot-radar-rejection-ledger.json ]; then
+              PREV_FILE=.radar-learning/previous/spot-radar-rejection-ledger.json
+            fi
+          fi
+          node backend/scripts/update-spot-radar-rejection-ledger.js spot-radar-scan.json "$PREV_FILE" spot-radar-rejection-ledger.json
+
+      - name: Upload bounded pre-approval rejection ledger
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-radar-rejection-ledger
+          path: spot-radar-rejection-ledger.json
+          retention-days: 14
 
       - name: Load latest independent V8 hunter shadow model
         id: v8model
@@ -263,6 +288,7 @@ jobs:
           echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
           echo '- Gate V4.2: mínimo 2/3 ventanas entrenadas' >> "$GITHUB_STEP_SUMMARY"
           echo '- Validador local: dispatch automático únicamente por señal productiva V4.2/QUBO' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Aprendizaje contrafactual: rechazos pre-aprobación se conservan en ledger acotado; nunca disparan órdenes' >> "$GITHUB_STEP_SUMMARY"
           echo "- Fuente V4.2: ${{ steps.scan.outputs.source || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Notificación V4.2: ${{ steps.scan.outputs.notify || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Símbolo V4.2: ${{ steps.scan.outputs.symbol || 'none' }}" >> "$GITHUB_STEP_SUMMARY"

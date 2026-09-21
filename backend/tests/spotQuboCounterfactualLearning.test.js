@@ -4,6 +4,7 @@ const assert = require('assert');
 const { classifyMarketRegime } = require('../services/spotMarketRegime');
 const {
   parseSignal,
+  parsePreapprovalRejection,
   classifyDecision,
   classifyDecisionDetail,
   parseExitIssue,
@@ -74,6 +75,27 @@ const {
   assert.strictEqual(parsed.stable, 0.61);
 })();
 
+
+(function parsesPreapprovalRejection() {
+  const parsed = parsePreapprovalRejection({
+    observed_at: '2026-09-20T20:00:00Z',
+    symbol: 'MISSUSDT',
+    price: 1.25,
+    pct: 4.2,
+    qv: 1200000,
+    utility: 0.66,
+    base: 0.51,
+    stable: 0.72,
+    v42: 0.91,
+    stage: 'PRODUCTION_QUALITY_GATE',
+    reasons: ['THIN_LIQUIDITY']
+  });
+  assert(parsed);
+  assert.strictEqual(parsed.sample_source, 'RADAR_PRE_APPROVAL');
+  assert.strictEqual(parsed.symbol, 'MISSUSDT');
+  assert.strictEqual(parsed.preapproval_reasons[0], 'THIN_LIQUIDITY');
+})();
+
 (function decisionsAreSeparated() {
   assert.strictEqual(classifyDecision([{ body: '✅ Validación autónoma local aprobó la oportunidad y ejecutó la compra Spot. orderId: 1.' }]), 'EXECUTED');
   const declined = classifyDecisionDetail([{ body: '🛑 Oportunidad descartada automáticamente por el PC local. No se compró. Motivo: Price advanced 3.4%; anti-chase blocked' }]);
@@ -131,6 +153,8 @@ const {
   const summary = summarizeDecisions(rows);
   assert.strictEqual(summary.executed, 15);
   assert.strictEqual(summary.declined, 15);
+  rows[1].sample_source = 'RADAR_PRE_APPROVAL';
+  assert.strictEqual(summarizeDecisions(rows).preapproval_declined, 1);
   const reasons = summarizeRejectionReasons(rows);
   assert(reasons.length >= 1);
   const regimes = summarizeRegimes(rows);

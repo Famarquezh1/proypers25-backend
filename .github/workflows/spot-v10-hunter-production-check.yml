@@ -11,11 +11,13 @@ on:
       - 'backend/services/spotEntryBurstGate.js'
       - 'backend/services/spotConvictionSizing.js'
       - 'backend/services/spotGrowthEngine.js'
+      - 'backend/services/spotNativeProtectionPolicy.js'
       - 'backend/config/spot-growth-engine-v1.json'
       - 'backend/tests/spotAssetClassification.test.js'
       - 'backend/tests/spotEntryBurstGate.test.js'
       - 'backend/tests/spotConvictionSizing.test.js'
       - 'backend/tests/spotGrowthEngine.test.js'
+      - 'backend/tests/spotNativeProtectionPolicy.test.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - '.github/workflows/spot-manual-approval.yml'
@@ -49,10 +51,12 @@ jobs:
           node --check backend/services/spotEntryBurstGate.js
           node --check backend/services/spotConvictionSizing.js
           node --check backend/services/spotGrowthEngine.js
+          node --check backend/services/spotNativeProtectionPolicy.js
           node --check backend/tests/spotAssetClassification.test.js
           node --check backend/tests/spotEntryBurstGate.test.js
           node --check backend/tests/spotConvictionSizing.test.js
           node --check backend/tests/spotGrowthEngine.test.js
+          node --check backend/tests/spotNativeProtectionPolicy.test.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-auto-exit.js
 
@@ -62,6 +66,7 @@ jobs:
           node backend/tests/spotAssetClassification.test.js
           node backend/tests/spotConvictionSizing.test.js
           node backend/tests/spotGrowthEngine.test.js
+          node backend/tests/spotNativeProtectionPolicy.test.js
       - name: V10 exit wrapper patch compatibility
         shell: bash
         run: |
@@ -98,6 +103,9 @@ jobs:
           grep -q "MIN_CASH_RESERVE_USDT = 40" backend/services/spotConvictionSizing.js
           grep -q "LEVERAGED_GITHUB_MIN_V61_SCORE" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "LEVERAGED_HARD_STOP_PCT = 0.03" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "LEVERAGED_NATIVE_PROTECTION_MAX_USDT = 6" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "minimumProtectedQuoteUsdt" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "NATIVE_PROTECTION_SIZING" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "classifySpotAsset" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "assetClassification.is_leveraged" backend/scripts/github-spot-manual-execution-v10-aware.js
           ! grep -q "MAX_TOTAL_CAPITAL_USDT" backend/scripts/github-spot-manual-execution-v10-aware.js

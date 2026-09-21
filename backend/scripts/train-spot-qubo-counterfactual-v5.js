@@ -14,6 +14,8 @@ const EXIT_MATCH_HOURS = Math.max(HORIZON_HOURS, Math.min(72, Number(process.env
 const REGIME_MIN_SAMPLES = Math.max(12, Math.min(40, Number(process.env.QUBO_CF_REGIME_MIN_SAMPLES || 18)));
 const OUTPUT = process.env.QUBO_CF_OUTPUT || path.join(process.cwd(), 'spot-qubo-adaptive-v5.json');
 const EVIDENCE_OUTPUT = process.env.QUBO_CF_EVIDENCE_OUTPUT || path.join(process.cwd(), 'spot-qubo-counterfactual-evidence.json');
+const PREAPPROVAL_LEDGER = process.env.QUBO_PREAPPROVAL_LEDGER || '';
+const MAX_PREAPPROVAL_SAMPLES = Math.max(0, Math.min(100, Number(process.env.QUBO_CF_MAX_PREAPPROVAL_SAMPLES || 60)));
 
 function n(value, fallback = NaN) {
   const parsed = Number(value);
@@ -78,9 +80,51 @@ function parseSignal(issue = {}) {
     base,
     stable,
     v42: clamp(v42Norm),
-    qubo_method: qmethod
+    qubo_method: qmethod,
+    sample_source: 'SPOT_SIGNAL_ISSUE'
   };
 }
+
+function parsePreapprovalRejection(row = {}) {
+  const symbol = String(row.symbol || '').toUpperCase();
+  const price = n(row.price);
+  const pct = n(row.pct, 0);
+  const qv = n(row.qv, 0);
+  const createdAt = String(row.observed_at || row.created_at || '');
+  if (!symbol.endsWith('USDT') || !(price > 0) || !createdAt || !Number.isFinite(Date.parse(createdAt))) return null;
+  return {
+    issue_number: null,
+    created_at: createdAt,
+    symbol,
+    price,
+    pct,
+    qv,
+    utility: n(row.utility, 0),
+    base: clamp(row.base),
+    stable: clamp(row.stable),
+    v42: clamp(row.v42),
+    qubo_method: 'RADAR_PRE_APPROVAL_COUNTERFACTUAL',
+    sample_source: 'RADAR_PRE_APPROVAL',
+    preapproval_stage: String(row.stage || 'PRE_APPROVAL'),
+    preapproval_reasons: Array.isArray(row.reasons) ? row.reasons.map((value) => String(value || '')).filter(Boolean) : []
+  };
+}
+
+function loadPreapprovalLedger() {
+  if (!PREAPPROVAL_LEDGER || MAX_PREAPPROVAL_SAMPLES <= 0 || !fs.existsSync(PREAPPROVAL_LEDGER)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PREAPPROVAL_LEDGER, 'utf8'));
+    return (Array.isArray(parsed?.rows) ? parsed.rows : [])
+      .map(parsePreapprovalRejection)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(0, MAX_PREAPPROVAL_SAMPLES);
+  } catch (error) {
+    console.warn(`PREAPPROVAL_LEDGER_UNAVAILABLE reason=${error.message || error}`);
+    return [];
+  }
+}
+
 function classifyDecisionDetail(comments = []) {
   const text = comments.map((comment) => String(comment.body || '')).join('\n');
   const orderId = (text.match(/orderId:\s*([0-9]+)/i) || [])[1] || null;
@@ -319,6 +363,7 @@ function summarizeDecisions(rows) {
   return {
     executed: count((x) => x.decision === 'EXECUTED'),
     declined: count((x) => x.decision === 'DECLINED'),
+    preapproval_declined: count((x) => x.decision === 'DECLINED' && x.sample_source === 'RADAR_PRE_APPROVAL'),
     executed_counterfactual_wins: count((x) => x.decision === 'EXECUTED' && x.first_touch_3pct_vs_5pct === 'WIN'),
     declined_missed_wins: count((x) => x.decision === 'DECLINED' && x.first_touch_3pct_vs_5pct === 'WIN'),
     declined_avoided_losses: count((x) => x.decision === 'DECLINED' && x.first_touch_3pct_vs_5pct === 'LOSS')
@@ -410,10 +455,13 @@ async function mapLimit(items, limit, mapper) {
 async function buildEvidence(repo, now = Date.now()) {
   const issues = await loadSignalIssues(repo);
   const horizonMs = HORIZON_HOURS * 3600000;
-  const mature = issues
+  const matureIssues = issues
     .map(parseSignal)
     .filter(Boolean)
     .filter((signal) => now - Date.parse(signal.created_at) >= horizonMs);
+  const maturePreapproval = loadPreapprovalLedger()
+    .filter((signal) => now - Date.parse(signal.created_at) >= horizonMs);
+  const mature = [...matureIssues, ...maturePreapproval];
 
   if (!mature.length) return [];
   const [exits, btcBars] = await Promise.all([
@@ -426,8 +474,15 @@ async function buildEvidence(repo, now = Date.now()) {
 
   const rows = await mapLimit(mature, CONCURRENCY, async (signal) => {
     try {
+      const decisionPromise = signal.sample_source === 'RADAR_PRE_APPROVAL'
+        ? Promise.resolve({
+          decision: 'DECLINED',
+          reason: `PRE_APPROVAL:${signal.preapproval_stage}:${(signal.preapproval_reasons || []).join('+') || 'UNSPECIFIED'}`,
+          order_id: null
+        })
+        : loadDecision(repo, signal.issue_number);
       const [decisionDetail, bars] = await Promise.all([
-        loadDecision(repo, signal.issue_number),
+        decisionPromise,
         loadForwardBars(signal)
       ]);
       if (!['EXECUTED', 'DECLINED'].includes(decisionDetail.decision)) return null;
@@ -440,6 +495,9 @@ async function buildEvidence(repo, now = Date.now()) {
         decision: decisionDetail.decision,
         decision_reason: decisionDetail.reason,
         entry_order_id: decisionDetail.order_id,
+        sample_source: signal.sample_source || 'SPOT_SIGNAL_ISSUE',
+        preapproval_stage: signal.preapproval_stage || null,
+        preapproval_reasons: signal.preapproval_reasons || [],
         market_regime: regime.regime,
         market_regime_detail: {
           r1h: round(regime.r1h, 6),
@@ -481,6 +539,9 @@ function writeResults(rows, trained) {
       holdout_samples: trained.holdout_samples,
       includes_executed: true,
       includes_declined: true,
+      includes_preapproval_declined: true,
+      max_preapproval_samples: MAX_PREAPPROVAL_SAMPLES,
+      preapproval_samples: rows.filter((row) => row.sample_source === 'RADAR_PRE_APPROVAL').length,
       excludes_technical_failures: true,
       promotion_reason: trained.reason,
       current_train_spearman: trained.current_train_spearman,
@@ -505,6 +566,9 @@ function writeResults(rows, trained) {
     rows: rows.map((row) => ({
       issue_number: row.issue_number,
       created_at: row.created_at,
+      sample_source: row.sample_source || 'SPOT_SIGNAL_ISSUE',
+      preapproval_stage: row.preapproval_stage || null,
+      preapproval_reasons: row.preapproval_reasons || [],
       symbol: row.symbol,
       decision: row.decision,
       decision_reason: row.decision_reason,
@@ -550,6 +614,8 @@ async function main() {
     top_rejection_reasons: model.training.rejection_reason_stats.slice(0, 5),
     exit_quality_samples: model.training.exit_quality_samples,
     bounded_history: MAX_SIGNALS,
+    max_preapproval_samples: MAX_PREAPPROVAL_SAMPLES,
+    preapproval_samples: model.training.preapproval_samples,
     horizon_hours: HORIZON_HOURS,
     memory_rss_mb: round(rssMb, 2),
     model_kb: round(outputKb, 2),
@@ -567,6 +633,7 @@ if (require.main === module) {
 module.exports = {
   baseUtility,
   parseSignal,
+  parsePreapprovalRejection,
   classifyDecision,
   classifyDecisionDetail,
   parseExitIssue,

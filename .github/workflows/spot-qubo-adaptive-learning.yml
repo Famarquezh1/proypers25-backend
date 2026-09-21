@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'backend/scripts/train-spot-qubo-counterfactual-v5.js'
+      - 'backend/scripts/update-spot-radar-rejection-ledger.js'
+      - 'backend/tests/spotRadarRejectionLedger.test.js'
       - 'backend/services/spotQuboProductionV5.js'
       - 'backend/services/spotMarketRegime.js'
       - 'backend/config/spot-qubo-production-v5.json'
@@ -26,6 +28,7 @@ on:
 permissions:
   contents: read
   issues: read
+  actions: read
 
 concurrency:
   group: spot-qubo-counterfactual-learning
@@ -42,6 +45,7 @@ jobs:
       QUBO_CF_MIN_SAMPLES: '24'
       QUBO_CF_EXIT_MATCH_HOURS: '24'
       QUBO_CF_REGIME_MIN_SAMPLES: '18'
+      QUBO_CF_MAX_PREAPPROVAL_SAMPLES: '60'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,12 +56,34 @@ jobs:
         run: |
           node --check backend/scripts/train-spot-qubo-counterfactual-v5.js
           node --check backend/tests/spotQuboCounterfactualLearning.test.js
+          node --check backend/scripts/update-spot-radar-rejection-ledger.js
+          node --check backend/tests/spotRadarRejectionLedger.test.js
           node --check backend/services/spotMarketRegime.js
           node backend/tests/spotQuboCounterfactualLearning.test.js
+          node backend/tests/spotRadarRejectionLedger.test.js
+
+      - name: Load latest bounded pre-approval rejection ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .radar-learning
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          if [ -n "$RUN_ID" ]; then
+            gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name spot-radar-rejection-ledger --dir .radar-learning >/dev/null 2>&1 || true
+          fi
+          if [ -f .radar-learning/spot-radar-rejection-ledger.json ]; then
+            echo "Loaded pre-approval rejection ledger from Radar run $RUN_ID"
+          else
+            echo '{"version":"SPOT_RADAR_REJECTION_LEDGER_V1","rows":[]}' > .radar-learning/spot-radar-rejection-ledger.json
+            echo 'No prior ledger available yet; continuing with issue-based counterfactual samples.'
+          fi
 
       - name: Learn from executed and declined real opportunities
         env:
           GH_TOKEN: ${{ github.token }}
+          QUBO_PREAPPROVAL_LEDGER: ${{ github.workspace }}/.radar-learning/spot-radar-rejection-ledger.json
         run: |
           set -euo pipefail
           node backend/scripts/train-spot-qubo-counterfactual-v5.js | tee qubo-counterfactual-learning.log
@@ -85,6 +111,7 @@ jobs:
             echo "- Muestras maduras: $(jq -r '.training.samples' spot-qubo-adaptive-v5.json) / máximo persistido en memoria de trabajo: 160" >> "$GITHUB_STEP_SUMMARY"
             echo "- Ejecutadas: $(jq -r '.training.decision_summary.executed' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Rechazadas: $(jq -r '.training.decision_summary.declined' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Rechazos pre-aprobación maduros: $(jq -r '.training.decision_summary.preapproval_declined // 0' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Rechazadas que habrían alcanzado +3% antes de -5%: $(jq -r '.training.decision_summary.declined_missed_wins' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Rechazadas que evitaron -5% antes de +3%: $(jq -r '.training.decision_summary.declined_avoided_losses' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"
             echo "- Pesos productivos: $(jq -c '.weights' spot-qubo-adaptive-v5.json)" >> "$GITHUB_STEP_SUMMARY"

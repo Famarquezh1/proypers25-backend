@@ -7,6 +7,7 @@ const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing
 const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');
 const { highHistoryCadence } = require('../services/spotHighHistoryPolicy');
 const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
+const { resolveNativeProtectionStop } = require('../services/spotNativeProtectionPolicy');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -240,18 +241,29 @@ async function cancelProtection(base, symbol, protectionOrder) {
   console.log(`NATIVE_STOP_CANCELLED symbol=${symbol} orderId=${protectionOrder.orderId}`);
 }
 
-async function placeProtection(base, info, symbol, quantity, stopPrice) {
+async function placeProtection(base, info, symbol, quantity, stopPrice, currentPrice) {
   const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
   const priceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');
   if (!lot || !priceFilter) throw new Error(`Protection filters missing for ${symbol}`);
   const normalizedQty = floorToStep(quantity, lot.stepSize);
   if (!(normalizedQty >= Number(lot.minQty || 0))) throw new Error(`Protection quantity below minimum for ${symbol}`);
-  const minNotional = minimumNotional(info, 'STOP_LOSS');
-  const protectionNotional = normalizedQty * stopPrice;
-  if (minNotional > 0 && protectionNotional + Number.EPSILON < minNotional) {
-    const error = new Error(`Protection notional below minimum for ${symbol}: ${protectionNotional} < ${minNotional}`);
-    error.code = 'PROTECTION_NOTIONAL_TOO_SMALL';
+
+  const resolved = resolveNativeProtectionStop({
+    info,
+    quantity: normalizedQty,
+    desiredStopPrice: stopPrice,
+    currentPrice,
+    stopLimitGapPct: STOP_LIMIT_GAP_PCT
+  });
+  if (!resolved.ok) {
+    const error = new Error(`Native protection unavailable for ${symbol}: ${resolved.reason}`);
+    error.code = 'PROTECTION_NATIVE_UNAVAILABLE';
+    error.nativeProtection = resolved;
     throw error;
+  }
+  const effectiveStopPrice = resolved.stop_price;
+  if (resolved.tightened_for_notional) {
+    console.warn(`NATIVE_STOP_TIGHTENED_NOTIONAL symbol=${symbol} desired_stop=${stopPrice} effective_stop=${effectiveStopPrice} min_notional=${resolved.min_notional_usdt} effective_notional=${resolved.effective_notional_usdt}`);
   }
 
   const clientId = `proypers-gh-protect-${Date.now()}`;
@@ -262,28 +274,30 @@ async function placeProtection(base, info, symbol, quantity, stopPrice) {
       side: 'SELL',
       type: 'STOP_LOSS',
       quantity: String(normalizedQty),
-      stopPrice: String(stopPrice),
+      stopPrice: String(effectiveStopPrice),
       newOrderRespType: 'RESULT',
       newClientOrderId: clientId
     });
   } else if ((info.orderTypes || []).includes('STOP_LOSS_LIMIT')) {
-    const limitPrice = floorToStep(stopPrice * (1 - STOP_LIMIT_GAP_PCT), priceFilter.tickSize);
+    const limitPrice = floorToStep(effectiveStopPrice * (1 - STOP_LIMIT_GAP_PCT), priceFilter.tickSize);
     order = await signed(base, 'POST', '/api/v3/order', {
       symbol,
       side: 'SELL',
       type: 'STOP_LOSS_LIMIT',
       timeInForce: 'GTC',
       quantity: String(normalizedQty),
-      stopPrice: String(stopPrice),
+      stopPrice: String(effectiveStopPrice),
       price: String(limitPrice),
       newOrderRespType: 'RESULT',
       newClientOrderId: clientId
     });
   } else {
-    throw new Error(`${symbol} does not support native stop orders`);
+    const error = new Error(`${symbol} does not support native stop orders`);
+    error.code = 'PROTECTION_NATIVE_UNAVAILABLE';
+    throw error;
   }
   if (!order?.orderId) throw new Error(`Native stop returned no orderId for ${symbol}`);
-  console.log(`NATIVE_STOP_ARMED symbol=${symbol} orderId=${order.orderId} stop=${stopPrice} quantity=${normalizedQty}`);
+  console.log(`NATIVE_STOP_ARMED symbol=${symbol} orderId=${order.orderId} stop=${effectiveStopPrice} quantity=${normalizedQty} notional_recovery=${resolved.tightened_for_notional === true}`);
   return order;
 }
 
@@ -461,11 +475,22 @@ async function main() {
       const free = freeBalance(refreshed, info.baseAsset);
       const quantity = Math.min(managedQty, free);
       try {
-        await placeProtection(base, info, symbol, quantity, stopPrice);
+        await placeProtection(base, info, symbol, quantity, stopPrice, currentPrice);
         protectedCount += 1;
       } catch (error) {
-        if (!isNotionalFilterError(error) && error?.code !== 'PROTECTION_NOTIONAL_TOO_SMALL') throw error;
-        console.warn(`PROTECTION_SKIPPED_NOTIONAL symbol=${symbol} stop=${stopPrice} quantity=${quantity} detail=${error.message || error}`);
+        const nativeProtectionFailure = isNotionalFilterError(error) ||
+          error?.code === 'PROTECTION_NOTIONAL_TOO_SMALL' ||
+          error?.code === 'PROTECTION_NATIVE_UNAVAILABLE';
+        if (!nativeProtectionFailure) throw error;
+        console.warn(`NATIVE_PROTECTION_FAIL_CLOSED symbol=${symbol} stop=${stopPrice} quantity=${quantity} detail=${error.message || error}`);
+        try {
+          await marketSell(base, info, symbol, managedQty, 'NATIVE_PROTECTION_REQUIRED', effectiveEntryPrice, currentPrice);
+          soldCount += 1;
+          console.warn(`NATIVE_PROTECTION_EXITED symbol=${symbol} reason=unprotectable_native_stop`);
+        } catch (sellError) {
+          if (!isNotionalFilterError(sellError)) throw sellError;
+          console.warn(`NATIVE_PROTECTION_DUST_UNRESOLVED symbol=${symbol} detail=${sellError.message || sellError}`);
+        }
       }
     }
   }
