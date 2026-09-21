@@ -19,6 +19,7 @@ on:
       - 'backend/tests/spotRadarRejectionLedger.test.js'
       - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-v21-shadow.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
@@ -53,6 +54,7 @@ on:
       - 'backend/tests/spotQuboCounterfactualLearning.test.js'
       - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
+      - 'backend/scripts/github-spot-v21-shadow.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
@@ -98,6 +100,7 @@ jobs:
           node --check backend/tests/spotRadarRejectionLedger.test.js
           node --check backend/tests/spotQuboFullHistoryBackfill.test.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
+          node --check backend/scripts/github-spot-v21-shadow.js
           node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
           node --check backend/scripts/github-spot-v8-hunter-shadow.js
           node --check backend/scripts/github-spot-manual-execution-v10-aware.js
@@ -166,6 +169,15 @@ jobs:
           grep -q "isSpotTradingAllowed === false" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "refusing unfiltered radar" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "mode:'V8_SHADOW_ONLY'" backend/scripts/github-spot-v8-production-shadow.js
+          grep -q "V21_GITHUB_SHADOW_1" backend/scripts/github-spot-v21-shadow.js
+          grep -q "LOW_EVIDENCE_OVERLAY_PRIOR" backend/scripts/github-spot-v21-shadow.js
+          grep -q "SKIP_THRESHOLD=-.012" backend/scripts/github-spot-v21-shadow.js
+          grep -q "MEMORY_DAYS=45" backend/scripts/github-spot-v21-shadow.js
+          grep -q "TAU_DAYS=15" backend/scripts/github-spot-v21-shadow.js
+          grep -q "no_order_created:true" backend/scripts/github-spot-v21-shadow.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
+          grep -q "Run V21 GitHub-native shadow" .github/workflows/spot-github-radar.yml
+          grep -q "spot-v21-shadow-state" .github/workflows/spot-github-radar.yml
           grep -q "decisionInfluence:false" backend/scripts/github-spot-v8-production-shadow.js
           grep -q "productionAction:'NONE_V8_SHADOW'" backend/scripts/github-spot-v8-production-shadow.js
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v8-production-shadow.js
