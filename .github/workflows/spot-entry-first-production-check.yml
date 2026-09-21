@@ -33,6 +33,7 @@ on:
       - 'backend/tests/githubXecNativeProtection.test.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-v21-shadow-live.yml'
       - '.github/workflows/spot-qubo-adaptive-learning.yml'
       - '.github/workflows/spot-qubo-full-history-backfill.yml'
       - '.github/workflows/spot-v8-hunter-shadow-model.yml'
@@ -68,6 +69,7 @@ on:
       - 'backend/tests/githubXecNativeProtection.test.js'
       - 'backend/services/paperToRealEntryGate.js'
       - '.github/workflows/spot-github-radar.yml'
+      - '.github/workflows/spot-v21-shadow-live.yml'
       - '.github/workflows/spot-qubo-adaptive-learning.yml'
       - '.github/workflows/spot-qubo-full-history-backfill.yml'
       - '.github/workflows/spot-v8-hunter-shadow-model.yml'
@@ -178,6 +180,9 @@ jobs:
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
           grep -q "Run V21 GitHub-native shadow" .github/workflows/spot-github-radar.yml
           grep -q "spot-v21-shadow-state" .github/workflows/spot-github-radar.yml
+          grep -q "name: Spot V21 Shadow Live" .github/workflows/spot-v21-shadow-live.yml
+          grep -q "no_order_created" .github/workflows/spot-v21-shadow-live.yml
+          ! grep -Eq 'gh workflow run|issue create|BINANCE_(API|SECRET)_KEY|firebase-admin|firestore' .github/workflows/spot-v21-shadow-live.yml
           grep -q "decisionInfluence:false" backend/scripts/github-spot-v8-production-shadow.js
           grep -q "productionAction:'NONE_V8_SHADOW'" backend/scripts/github-spot-v8-production-shadow.js
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw' backend/scripts/github-spot-v8-production-shadow.js
