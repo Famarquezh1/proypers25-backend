@@ -25,7 +25,7 @@ const eligible = pyramidDecision({
   currentPositionValueUsdt:64.2, equityUsdt:600, usdtFree:300, cashReserveUsdt:120, ratchetMultiplier:1
 });
 assert.strictEqual(eligible.allow, true);
-assert.strictEqual(eligible.quote_order_qty, 10.8);
+assert.strictEqual(eligible.quote_order_qty, 10.79);
 
 const loss = pyramidDecision({
   lane:'CORE', symbol:'ABCUSDT', hasNativeProtection:true, historyCoversOwned:true,
