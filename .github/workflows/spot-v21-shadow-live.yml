@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
           ! grep -Eq 'gh workflow run|issue create' .github/workflows/spot-v21-shadow-live.yml
-          grep -q 'production_action.:.NONE' backend/scripts/github-spot-v21-shadow.js
+          grep -q "production_action:'NONE'" backend/scripts/github-spot-v21-shadow.js
           grep -q 'no_order_created:true' backend/scripts/github-spot-v21-shadow.js
 
       - name: Summary
