@@ -117,6 +117,11 @@ jobs:
           grep -q "ENTRY_COOLDOWN" backend/services/spotEntryBurstGate.js
           grep -q "CORRELATED_ENTRY" backend/services/spotEntryBurstGate.js
           grep -q "CORE_QUALITY_REQUIRED" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRMATION_ADMITTED" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRM_MAX_24H_PCT = 8" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRM_MIN_NORM = 0.82" backend/services/spotEntryBurstGate.js
+          grep -q "EARLY_CONFIRMATION_MAX_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "EARLY_CONFIRMATION_MIN_V61_SCORE = 0.65" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "resolveConvictionPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "resolveGrowthPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "GROWTH_ENGINE_V1" backend/scripts/github-spot-manual-execution-v10-aware.js
@@ -130,7 +135,7 @@ jobs:
           grep -q "github-spot-manual-execution-v10-aware.js" .github/workflows/spot-manual-approval.yml
           grep -q "cron: '7,22,37,52 \* \* \* \*'" .github/workflows/spot-microflow-hunter-v10.yml
           grep -q "CORE V4.2 5m: intacto" .github/workflows/spot-microflow-hunter-v10.yml
-          echo 'V10 lane invariants preserved: CORE requires high quality, Growth Engine compounds HIGH/EXCEPTIONAL from equity with 70 USDT hard executor cap, V10 exceptional remains capped at 40 USDT, leveraged assets remain 5 USDT.'
+          echo 'V10 invariants preserved. CORE 3/3 remains primary; strict 2/3 early-confirmation is capped at 15 USDT, while V10 exceptional remains capped at 40 USDT and leveraged assets remain 5 USDT.'
 
       - name: Read-only V10 Hunter live smoke
         shell: bash
