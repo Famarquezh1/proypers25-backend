@@ -309,6 +309,32 @@ async function loadMarket() {
   return { source: 'COINGECKO_FALLBACK', rows: normalizeCoinGecko(await fetchJson(url)) };
 }
 
+
+function learningRejectionRow(candidate = {}, stage = 'PRE_APPROVAL', reasons = []) {
+  const reasonList = [...new Set((Array.isArray(reasons) ? reasons : [reasons]).map((value) => String(value || '').trim()).filter(Boolean))];
+  return {
+    symbol: String(candidate.symbol || '').toUpperCase(),
+    price: Number(candidate.price || 0),
+    pct: Number(candidate.pct || 0),
+    qv: Number(candidate.qv || 0),
+    utility: Number(utility(candidate).toFixed(6)),
+    base: Number(baseUtility(candidate).toFixed(6)),
+    stable: Number(candidate.stable_norm || 0),
+    v42: Number(candidate.v42_norm || 0),
+    v42_pass_windows: Number(candidate.v42_pass_windows || 0),
+    market_regime: candidate.market_regime || 'UNKNOWN',
+    stage,
+    reasons: reasonList
+  };
+}
+
+function boundedLearningRejections(rows = [], limit = 6) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && row.symbol && Number(row.price) > 0)
+    .sort((a, b) => Number(b.utility || 0) - Number(a.utility || 0))
+    .slice(0, limit);
+}
+
 async function main() {
   const market = await loadMarket();
   const probe = eligibleProbe(market.rows);
@@ -321,7 +347,7 @@ async function main() {
   candidates = await enrichV42(candidates);
   const robust = candidates.filter((x) => x.v42_pass_windows >= V42_MIN_PASS_WINDOWS);
   if (!robust.length) {
-    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42_QUBO_V5', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100' }));
+    console.log(JSON.stringify({ ok: true, notify: false, source: market.source, mode: 'PRODUCTION_V42_QUBO_V5', reason: 'no candidate passed V4.2 in at least 2/3 trained windows', v42_hierarchy: V42_HIERARCHY, probed: candidates.length, probe_strategy: 'DIVERSIFIED_EARLY_MOMENTUM_100', learning_rejections: boundedLearningRejections(candidates.map((candidate) => learningRejectionRow(candidate, 'V42_PRE_APPROVAL', ['V42_MIN_PASS_WINDOWS']))) }));
     return;
   }
 
@@ -345,6 +371,7 @@ async function main() {
       robust_candidates: robust.length,
       production_candidates: 0,
       selection_rejections: selectionRejections,
+      learning_rejections: boundedLearningRejections(rejected.map((candidate) => learningRejectionRow(candidate, 'PRODUCTION_QUALITY_GATE', candidate.selection_gate?.reasons || ['PRODUCTION_QUALITY_GATE']))),
       selection_guard: DEFAULT_SELECTION_GUARD,
       v42_hierarchy: V42_HIERARCHY,
       v42_min_pass_windows: V42_MIN_PASS_WINDOWS
@@ -368,6 +395,10 @@ async function main() {
       robust_candidates: robust.length,
       production_candidates: productionCandidates.length,
       selection_rejections: selectionRejections,
+      learning_rejections: boundedLearningRejections([
+        ...rejected.map((item) => learningRejectionRow(item, 'PRODUCTION_QUALITY_GATE', item.selection_gate?.reasons || ['PRODUCTION_QUALITY_GATE'])),
+        ...productionCandidates.map((item) => learningRejectionRow(item, 'QUBO_SELECTION', ['QUBO_NOT_SELECTED']))
+      ]),
       selection_guard: DEFAULT_SELECTION_GUARD
     }));
     return;
@@ -383,6 +414,12 @@ async function main() {
     robust_candidates: robust.length,
     production_candidates: productionCandidates.length,
     selection_rejections: selectionRejections,
+    learning_rejections: boundedLearningRejections([
+      ...rejected.map((item) => learningRejectionRow(item, 'PRODUCTION_QUALITY_GATE', item.selection_gate?.reasons || ['PRODUCTION_QUALITY_GATE'])),
+      ...productionCandidates
+        .filter((item) => item.symbol !== candidate.symbol)
+        .map((item) => learningRejectionRow(item, 'QUBO_SELECTION', selected.some((selectedItem) => selectedItem.symbol === item.symbol) ? ['QUBO_SECONDARY_NOT_EXECUTED'] : ['QUBO_NOT_SELECTED']))
+    ]),
     selection_guard: DEFAULT_SELECTION_GUARD,
     selection_gate: candidate.selection_gate,
     qubo_method: decision.method,
