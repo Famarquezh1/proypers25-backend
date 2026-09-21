@@ -96,6 +96,63 @@ jobs:
           echo "v42_confirm=$(printf '%s' "$RESULT" | jq -r '.v42_detail.confirm')" >> "$GITHUB_OUTPUT"
           echo "v42_extension=$(printf '%s' "$RESULT" | jq -r '.v42_detail.extension')" >> "$GITHUB_OUTPUT"
 
+      - name: Load previous V21 shadow state
+        id: v21prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          rm -rf .v21-shadow
+          mkdir -p .v21-shadow/previous
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 5 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+            gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v21-shadow-state --dir .v21-shadow/previous >/dev/null 2>&1 && { echo "$RID"; break; }
+          done)
+          if [ -f .v21-shadow/previous/spot-v21-shadow-state.json ]; then
+            echo "state=.v21-shadow/previous/spot-v21-shadow-state.json" >> "$GITHUB_OUTPUT"
+            echo "status=LOADED" >> "$GITHUB_OUTPUT"
+            echo "run_id=$PREV_RUN" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=" >> "$GITHUB_OUTPUT"
+            echo "status=FRESH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run V21 GitHub-native shadow
+        id: v21shadow
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.v21prev.outputs.state }}"
+          if [ -n "$PREV" ]; then
+            RESULT=$(node backend/scripts/github-spot-v21-shadow.js spot-radar-scan.json "$PREV" spot-v21-shadow-state.json spot-v21-shadow-evidence.json)
+          else
+            RESULT=$(node backend/scripts/github-spot-v21-shadow.js spot-radar-scan.json "" spot-v21-shadow-state.json spot-v21-shadow-evidence.json)
+          fi
+          printf '%s\n' "$RESULT"
+          echo "pending=$(printf '%s' "$RESULT" | jq -r '.pending // 0')" >> "$GITHUB_OUTPUT"
+          echo "open_positions=$(printf '%s' "$RESULT" | jq -r '.open_positions // 0')" >> "$GITHUB_OUTPUT"
+          echo "results=$(printf '%s' "$RESULT" | jq -r '.total_results // 0')" >> "$GITHUB_OUTPUT"
+          echo "win_rate=$(printf '%s' "$RESULT" | jq -r '.recent_30d_win_rate // 0')" >> "$GITHUB_OUTPUT"
+          echo "avg_net=$(printf '%s' "$RESULT" | jq -r '.recent_30d_avg_net_return // 0')" >> "$GITHUB_OUTPUT"
+          echo "arm=$(printf '%s' "$RESULT" | jq -r '.decision.arm // "none"')" >> "$GITHUB_OUTPUT"
+          echo "status=$(printf '%s' "$RESULT" | jq -r '.decision.status // "none"')" >> "$GITHUB_OUTPUT"
+          echo "context=$(printf '%s' "$RESULT" | jq -r '.decision.context // "none"')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V21 shadow state
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v21-shadow-state
+          path: spot-v21-shadow-state.json
+          retention-days: 30
+          overwrite: true
+
+      - name: Upload V21 shadow evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v21-shadow-evidence-${{ github.run_id }}
+          path: spot-v21-shadow-evidence.json
+          retention-days: 30
+
       - name: Build bounded pre-approval rejection ledger
         env:
           GH_TOKEN: ${{ github.token }}
@@ -283,6 +340,9 @@ jobs:
           echo "- QUBO solver actual: ${{ steps.scan.outputs.qubo_solver || 'n/a' }} | hardware-ready=${{ steps.scan.outputs.qubo_hardware_ready || 'false' }} | variables=${{ steps.scan.outputs.qubo_binary_variables || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- QUBO learner artifact: ${{ steps.qubomodel.outputs.status || 'STATIC_BASE' }} | run=${{ steps.qubomodel.outputs.run_id || 'n/a' }} | model=${{ steps.qubomodel.outputs.model_version || 'base' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER: scanner independiente cada 5m; peso de ejecución = 0; no bloquea ni habilita órdenes' >> "$GITHUB_STEP_SUMMARY"
+          echo '- V21 SHADOW: router causal GitHub-native; peso de ejecución = 0; estado persistente por artifact; sin GCP/Firestore/Binance keys' >> "$GITHUB_STEP_SUMMARY"
+          echo "- V21 state: prev=${{ steps.v21prev.outputs.status || 'FRESH' }} | pendientes=${{ steps.v21shadow.outputs.pending || '0' }} | abiertas=${{ steps.v21shadow.outputs.open_positions || '0' }} | resultados=${{ steps.v21shadow.outputs.results || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V21 último: arm=${{ steps.v21shadow.outputs.arm || 'none' }} | status=${{ steps.v21shadow.outputs.status || 'none' }} | context=${{ steps.v21shadow.outputs.context || 'none' }} | win30d=${{ steps.v21shadow.outputs.win_rate || '0' }} | avgNet30d=${{ steps.v21shadow.outputs.avg_net || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- V8 HUNTER model: entrenamiento diario separado para evitar reentrenar 7 días en cada scan' >> "$GITHUB_STEP_SUMMARY"
           echo '- Evidencia V8: artifacts solo cuando existen candidatos; cohortes V8_ONLY o BOTH' >> "$GITHUB_STEP_SUMMARY"
           echo '- V4.2: VOLUME_IGNITION → FRESH_RS_CONFIRM → RELATIVE_STRENGTH_EXTENSION' >> "$GITHUB_STEP_SUMMARY"
