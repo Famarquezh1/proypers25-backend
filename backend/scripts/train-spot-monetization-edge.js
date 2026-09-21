@@ -91,20 +91,42 @@ function delta(a,b){return {net:a.economic.netGrowth-b.economic.netGrowth,avg:a.
 async function main(){
  process.env.DEV_START='2026-04-01T00:00:00Z';process.env.DEV_END='2026-07-01T00:00:00Z';process.env.CONFIRM_START='2026-07-01T00:00:00Z';process.env.CONFIRM_END='2026-09-22T00:00:00Z';
  const base=loadBase(),lib=base.loadR7(),built=await base.buildRaw(lib),raw=built.raw.filter(s=>s.t>=Date.parse('2026-04-01T00:00:00Z')&&s.t<Date.parse('2026-09-22T00:00:00Z'));
- const sig=base.selectSignals(lib,raw,0,0).sort((a,b)=>a.t-b.t),start=Date.parse('2026-06-01T00:00:00Z'),liveRows=raw.filter(s=>s.t>=start),liveSig=sig.filter(s=>s.t>=start);
- const bmap=new Map(liveSig.map(s=>[`${s.symbol||''}:${s.t}`,baseExit(lib,s)])),baseline=metrics(lib,liveSig,liveRows,bmap);
- const configs=[];
- for(const days of [14,21,30,45])for(const tau of [5,10,15])for(const winWeight of [.00,.01,.02])for(const skipThreshold of [-.012,-.008,-.004,0]){
-  const cfg={days,tau,winWeight,skipThreshold,minWeight:2},r=run(lib,sig,cfg,start),m=metrics(lib,r.exec,liveRows,r.emap),d=delta(m,baseline),months=monthly(r.decisions),mv=Object.values(months),pm=mv.filter(x=>x.reward>0).length;
-  const score=d.net*25+d.avg*15+d.dd*6+d.w5*2+d.w10*3+.10*pm-.08*(r.decisions.filter(x=>x.arm==='SKIP').length/r.decisions.length);
-  const viable=m.economic.netGrowth>0&&m.economic.avgNetRet>0&&d.dd>=0&&pm>=3&&r.exec.length>=100;
-  configs.push({cfg,metrics:m,delta:d,months,positiveMonths:pm,score,viable,arm_mix:{base:r.decisions.filter(x=>x.arm==='BASE').length,overlay:r.decisions.filter(x=>x.arm==='OVERLAY').length,skip:r.decisions.filter(x=>x.arm==='SKIP').length,executed:r.exec.length,signals:r.decisions.length}});
+ const sig=base.selectSignals(lib,raw,0,0).sort((a,b)=>a.t-b.t),start=Date.parse('2026-06-01T00:00:00Z');
+ const configs=[];for(const days of [21,45])for(const tau of [5,10,15])for(const winWeight of [0,.01])for(const skipThreshold of [-.012,-.008,-.004])configs.push({days,tau,winWeight,skipThreshold,minWeight:2});
+ const months=[
+  {id:'2026-07',testStart:Date.parse('2026-07-01T00:00:00Z'),testEnd:Date.parse('2026-08-01T00:00:00Z'),trainStart:Date.parse('2026-06-01T00:00:00Z')},
+  {id:'2026-08',testStart:Date.parse('2026-08-01T00:00:00Z'),testEnd:Date.parse('2026-09-01T00:00:00Z'),trainStart:Date.parse('2026-06-01T00:00:00Z')},
+  {id:'2026-09',testStart:Date.parse('2026-09-01T00:00:00Z'),testEnd:Date.parse('2026-09-22T00:00:00Z'),trainStart:Date.parse('2026-06-01T00:00:00Z')}
+ ];
+ const folds=[],allExec=[],allMap=new Map();
+ for(const fold of months){
+   const trainRows=raw.filter(s=>s.t>=fold.trainStart&&s.t<fold.testStart),trainSig=sig.filter(s=>s.t>=fold.trainStart&&s.t<fold.testStart);
+   const trainBaseMap=new Map(trainSig.map(s=>[`${s.symbol||''}:${s.t}`,baseExit(lib,s)])),trainBase=metrics(lib,trainSig,trainRows,trainBaseMap);
+   const ranked=[];
+   for(const cfg of configs){
+     const r=run(lib,sig.filter(s=>s.t<fold.testStart),cfg,start),exec=r.exec.filter(s=>s.t>=fold.trainStart&&s.t<fold.testStart);
+     const map=new Map(exec.map(s=>[`${s.symbol||''}:${s.t}`,r.emap.get(`${s.symbol||''}:${s.t}`)]));
+     const m=metrics(lib,exec,trainRows,map),d=delta(m,trainBase),mm=monthly(r.decisions.filter(x=>x.t>=fold.trainStart&&x.t<fold.testStart)),pm=Object.values(mm).filter(x=>x.reward>0).length;
+     const score=m.economic.netGrowth*30+m.economic.avgNetRet*15+m.economic.maxDrawdown*6+d.w5*2+d.w10*3+.12*pm;
+     const viable=m.economic.netGrowth>0&&m.economic.avgNetRet>0&&d.dd>=0&&exec.length>=Math.max(10,trainSig.length*.15);
+     ranked.push({cfg,score,viable,metrics:m,delta:d,months:mm});
+   }
+   ranked.sort((a,b)=>b.score-a.score);const selected=ranked.find(x=>x.viable)||ranked[0];
+   const r=run(lib,sig.filter(s=>s.t<fold.testEnd),selected.cfg,start),exec=r.exec.filter(s=>s.t>=fold.testStart&&s.t<fold.testEnd);
+   const testRows=raw.filter(s=>s.t>=fold.testStart&&s.t<fold.testEnd),testSig=sig.filter(s=>s.t>=fold.testStart&&s.t<fold.testEnd);
+   const map=new Map(exec.map(s=>[`${s.symbol||''}:${s.t}`,r.emap.get(`${s.symbol||''}:${s.t}`)]));
+   const bmap=new Map(testSig.map(s=>[`${s.symbol||''}:${s.t}`,baseExit(lib,s)])),bm=metrics(lib,testSig,testRows,bmap),m=metrics(lib,exec,testRows,map),d=delta(m,bm);
+   const pass=m.economic.netGrowth>0&&m.economic.avgNetRet>0&&d.dd>=0&&exec.length>=8;
+   folds.push({month:fold.id,selected_config:selected.cfg,training_viable:selected.viable,training_metrics:selected.metrics,training_delta:selected.delta,test:{metrics:m,baseline:bm,delta:d,pass,signals:exec.length,arm_mix:{base:r.decisions.filter(x=>x.t>=fold.testStart&&x.t<fold.testEnd&&x.arm==='BASE').length,overlay:r.decisions.filter(x=>x.t>=fold.testStart&&x.t<fold.testEnd&&x.arm==='OVERLAY').length,skip:r.decisions.filter(x=>x.t>=fold.testStart&&x.t<fold.testEnd&&x.arm==='SKIP').length}}});
+   for(const s of exec){allExec.push(s);allMap.set(`${s.symbol||''}:${s.t}`,map.get(`${s.symbol||''}:${s.t}`))}
  }
- configs.sort((a,b)=>b.score-a.score);const chosen=configs.find(x=>x.viable)||null;
- const report={version:'MONETIZATION_EDGE_V20_HIERARCHICAL_ROUTER_WITH_ABSTENTION',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
-  objective:'Warm-start a causal hierarchical router from Apr-May historical outcomes, then from Jun onward update only the actually chosen arm after trade resolution plus 24h embargo. Use six broad extension/confirmation contexts with global shrinkage and exponential recency weighting. Add SKIP as a third action when both BASE and OVERLAY have negative recent expected edge.',
-  frozen_overlay:{rule:RULE,exit:OEXIT},universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,signals:sig.length,evaluation_signals:liveSig.length},baseline,selected:chosen,top_configs:configs.slice(0,15),production_candidate_ready:false,
-  decision:chosen?{label:'HIERARCHICAL_ROUTER_RESEARCH_SIGNAL_FOUND_NEEDS_SHADOW',ready:false}:{label:'HIERARCHICAL_ROUTER_NOT_STABLE',ready:false}};
+ const aggRows=raw.filter(s=>s.t>=Date.parse('2026-07-01T00:00:00Z')),aggSig=sig.filter(s=>s.t>=Date.parse('2026-07-01T00:00:00Z'));
+ const aggBaseMap=new Map(aggSig.map(s=>[`${s.symbol||''}:${s.t}`,baseExit(lib,s)])),baseline=metrics(lib,aggSig,aggRows,aggBaseMap),aggregate=metrics(lib,allExec,aggRows,allMap),d=delta(aggregate,baseline);
+ const passFolds=folds.filter(x=>x.test.pass).length,ready=passFolds===folds.length&&aggregate.economic.netGrowth>0&&aggregate.economic.avgNetRet>0&&d.dd>=0;
+ const report={version:'MONETIZATION_EDGE_V21_OUTER_MONTH_WALK_FORWARD',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+  objective:'Outer chronological validation of the V20 hierarchical router. Hyperparameters for each month are selected only from prior months: July from June, August from June-July, September from June-August. The chosen config is then frozen for the next unseen month. No target-month outcomes participate in config selection.',
+  frozen_overlay:{rule:RULE,exit:OEXIT},universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,signals:sig.length},folds,aggregate:{metrics:aggregate,baseline,delta:d,pass_folds:passFolds,pass:ready},production_candidate_ready:false,
+  decision:ready?{label:'OUTER_WALK_FORWARD_CONFIRMED_NEEDS_SHADOW',ready:false}:{label:'OUTER_WALK_FORWARD_NOT_CONFIRMED',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
