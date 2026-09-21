@@ -4,14 +4,11 @@ const fs=require('fs'),path=require('path'),vm=require('vm');
 const SOURCE=path.join(__dirname,'train-spot-momentum-continuation-historical.js');
 const OUTPUT=path.join(__dirname,'..','training-output','spot-monetization-edge.json');
 const ENTRY={lambdaOpportunity:3,lambdaMonetization:3,mix:1,keep:.30,source:'MONETIZATION_EDGE_V1 development-only near-edge'};
-const TIMING_LAMBDAS=[.1,.3,1,3];
-const TIMING_KEEPS=[.50,.65,.80,1];
+const LAMBDAS=[.1,.3,1,3];
+const KEEPS=[.35,.50,.65,.80,1];
 const EXITS=[
  {id:'BASE',base:true},
- {id:'cap_35_18_35_15_8h',hardStop:.035,beTrigger:.018,beLock:.001,trailTrigger:.035,trailGap:.015,staleBars:96},
- {id:'cap_40_20_40_18_10h',hardStop:.040,beTrigger:.020,beLock:.001,trailTrigger:.040,trailGap:.018,staleBars:120},
- {id:'cap_45_22_45_20_12h',hardStop:.045,beTrigger:.022,beLock:.001,trailTrigger:.045,trailGap:.020,staleBars:144},
- {id:'cap_50_25_50_22_14h',hardStop:.050,beTrigger:.025,beLock:.001,trailTrigger:.050,trailGap:.022,staleBars:168}
+ {id:'cap40',hardStop:.040,beTrigger:.020,beLock:.001,trailTrigger:.040,trailGap:.018,staleBars:120}
 ];
 
 function loadBase(){
@@ -25,27 +22,27 @@ function sd(x){const m=avg(x);return Math.sqrt(avg(x.map(v=>(v-m)**2)))||1}
 function qtl(x,q){if(!x.length)return 0;const a=[...x].sort((a,b)=>a-b),p=(a.length-1)*q,i=Math.floor(p),f=p-i;return a[i]+(a[Math.min(a.length-1,i+1)]-a[i])*f}
 function logSafe(x){return Math.log(Math.max(.2,Number(x)||.2))}
 function ret(a,b){return a>0&&b>0?b/a-1:0}
+function corrLag1(xs){if(xs.length<3)return 0;const a=xs.slice(0,-1),b=xs.slice(1),am=avg(a),bm=avg(b),as=sd(a),bs=sd(b);return avg(a.map((x,i)=>((x-am)/as)*((b[i]-bm)/bs)))}
 
 function baseVec(s){
  const f=s.f||{},d=s.productionV42?.detail||{};
  return [logSafe(f.tradeAccel),Number(f.breakout60||0),Number(f.breakout240||0),Math.max(0,Number(f.breakout60||0))*logSafe(f.vol15),Number(f.r15||0),Number(f.r60||0),Number(f.r240||0),Number(f.rs60||0),Number(d.extension||0),logSafe(f.vol15)-logSafe(f.vol30),Number(s.continuationScore||0),Number(d.confirm||0)].map(x=>Number.isFinite(x)?x:0);
 }
-const TIMING=['ret5','ret10_prev','ret15_prev','ret_accel','body','close_location','upper_wick','range_expansion','volume_jump','volume_accel','compression_30_120','prior_high_distance','breakout_age','green_streak'];
-function timingVec(s){
- const a=s.series,i=s.index,b=a[i],p1=a[i-1],p2=a[i-2],p3=a[i-3];
- const r5=ret(p1.c,b.c),r10=ret(p2.c,p1.c),r15=ret(p3.c,p2.c);
- const body=ret(b.o,b.c),range=Math.max(1e-12,Number(b.h)-Number(b.l));
- const cl=(Number(b.c)-Number(b.l))/range,uw=(Number(b.h)-Math.max(Number(b.o),Number(b.c)))/range;
- const ranges=a.slice(i-6,i).map(x=>(Number(x.h)-Number(x.l))/Math.max(1e-12,Number(x.o)));
- const rangeNow=(Number(b.h)-Number(b.l))/Math.max(1e-12,Number(b.o)),rangeExpansion=rangeNow/Math.max(1e-9,avg(ranges));
- const q6=avg(a.slice(i-6,i).map(x=>Number(x.q||0))),qPrev=avg(a.slice(i-7,i-1).map(x=>Number(x.q||0)));
- const vj=Number(b.q||0)/Math.max(1,q6),va=avg([Number(b.q||0),Number(p1.q||0)])/Math.max(1,qPrev);
- const r30=avg(a.slice(i-6,i).map(x=>(Number(x.h)-Number(x.l))/Math.max(1e-12,Number(x.o))));
- const r120=avg(a.slice(i-24,i-6).map(x=>(Number(x.h)-Number(x.l))/Math.max(1e-12,Number(x.o))));
- const compression=r30/Math.max(1e-9,r120),ph=Math.max(...a.slice(i-12,i).map(x=>Number(x.h||0))),dist=ph>0?Number(b.c)/ph-1:0;
- let age=0;for(let k=i;k>=Math.max(12,i-6);k--){const h=Math.max(...a.slice(k-12,k).map(x=>Number(x.h||0)));if(h>0&&Number(a[k].c)>h)age++;else break}
- let green=0;for(let k=i;k>=Math.max(0,i-5);k--){if(Number(a[k].c)>Number(a[k].o))green++;else break}
- return [r5,r10,r15,r5-r10,body,cl,uw,rangeExpansion,vj,va,compression,dist,age,green].map(x=>Number.isFinite(x)?x:0);
+const CONTEXT=['rv24','rv72','ret24','ret72','trend_eff24','trend_eff72','autocorr24','up_ratio24','jump_freq24','jump_freq72','range_mean24','upper_wick_mean24','volume_cv24','volume_autocorr24','drawdown24','recovery24','qv_log'];
+function contextVec(s){
+ const a=s.series,i=s.index,win24=a.slice(Math.max(1,i-288),i+1),win72=a.slice(Math.max(1,i-864),i+1);
+ function returns(win){const z=[];for(let k=1;k<win.length;k++)z.push(ret(win[k-1].c,win[k].c));return z}
+ const r24=returns(win24),r72=returns(win72);
+ const rv24=sd(r24),rv72=sd(r72),ret24=ret(win24[0]?.c,win24[win24.length-1]?.c),ret72=ret(win72[0]?.c,win72[win72.length-1]?.c);
+ const eff=(rs,total)=>Math.abs(total)/Math.max(1e-9,rs.reduce((z,x)=>z+Math.abs(x),0));
+ const up=r24.length?r24.filter(x=>x>0).length/r24.length:.5;
+ const jf=(rs,th)=>rs.length?rs.filter(x=>x>th).length/rs.length:0;
+ const ranges=win24.map(x=>(Number(x.h)-Number(x.l))/Math.max(1e-12,Number(x.o)));
+ const wick=win24.map(x=>{const rg=Math.max(1e-12,Number(x.h)-Number(x.l));return (Number(x.h)-Math.max(Number(x.o),Number(x.c)))/rg});
+ const qs=win24.map(x=>Math.log1p(Number(x.q||0))),qcv=sd(qs)/Math.max(1e-9,Math.abs(avg(qs)));
+ const vmax=Math.max(...win24.map(x=>Number(x.h||0))),vmin=Math.min(...win24.map(x=>Number(x.l||0))),last=Number(win24[win24.length-1]?.c||0);
+ const dd=vmax>0?last/vmax-1:0,recovery=vmin>0?last/vmin-1:0;
+ return [rv24,rv72,ret24,ret72,eff(r24,ret24),eff(r72,ret72),corrLag1(r24),up,jf(r24,.005),jf(r72,.005),avg(ranges),avg(wick),qcv,corrLag1(qs),dd,recovery,Math.log1p(Number(s.f?.qv||0))].map(x=>Number.isFinite(x)?x:0);
 }
 function solve(A,y){
  const n=y.length,M=A.map((r,i)=>[...r,y[i]]);
@@ -53,7 +50,7 @@ function solve(A,y){
  return M.map(r=>r[n]);
 }
 function fit(rows,lambda,fn){
- if(rows.length<20)return null;
+ if(rows.length<24)return null;
  const X=rows.map(x=>fn(x.s)),p=X[0].length,mean=Array(p).fill(0),scale=Array(p).fill(1);
  for(let j=0;j<p;j++){const col=X.map(x=>x[j]);mean[j]=avg(col);scale[j]=sd(col)}
  const d=p+1,A=Array.from({length:d},()=>Array(d).fill(0)),Y=Array(d).fill(0);
@@ -74,12 +71,9 @@ function fitEntry(lib,sigs){
 function entryStats(p,s){const a=s.map(x=>pred(p.opp,x,baseVec)),b=s.map(x=>pred(p.mon,x,baseVec));return {am:avg(a),as:sd(a),bm:avg(b),bs:sd(b)}}
 function entryScore(p,st,s){return (pred(p.opp,s,baseVec)-st.am)/st.as+ENTRY.mix*(pred(p.mon,s,baseVec)-st.bm)/st.bs}
 function selectEntry(p,st,train,evals){const th=qtl(train.map(s=>entryScore(p,st,s)),1-ENTRY.keep);return evals.filter(s=>entryScore(p,st,s)>=th)}
-function timingTarget(lib,s){const o=s.outcome||{};return tradeNet(lib,s)+.10*Number(o.mfe12||0)+.004*(o.winner5?1:0)+.008*(o.winner10?1:0)}
 function exitCfg(lib,e){return e.base?lib.b.BASE_EXIT:e}
-function economic(lib,s,all,e){
- const cfg=exitCfg(lib,e),m=lib.r.portfolio(s,all,lib.b.META_FALLBACK,x=>lib.r.simulateExit(x,cfg),()=>lib.b.FIXED_SIZE);
- lib.r.withRecall(m,m._trades||[],all);return lib.r.safeMetrics(m);
-}
+function netWithExit(lib,s,e){return Number(lib.r.simulateExit(s,exitCfg(lib,e))?.net||0)}
+function economic(lib,s,all,e){const cfg=exitCfg(lib,e),m=lib.r.portfolio(s,all,lib.b.META_FALLBACK,x=>lib.r.simulateExit(x,cfg),()=>lib.b.FIXED_SIZE);lib.r.withRecall(m,m._trades||[],all);return lib.r.safeMetrics(m)}
 function metrics(lib,s,all,e={base:true}){return {prediction:lib.predictionMetrics(s),economic:economic(lib,s,all,e)}}
 function delta(a,b){return {winner5_precision:a.prediction.winner5Precision-b.prediction.winner5Precision,winner10_precision:a.prediction.winner10Precision-b.prediction.winner10Precision,avg_mfe12:a.prediction.avgMfe12-b.prediction.avgMfe12,net_growth:a.economic.netGrowth-b.economic.netGrowth,avg_net_ret:a.economic.avgNetRet-b.economic.avgNetRet,max_drawdown:a.economic.maxDrawdown-b.economic.maxDrawdown}}
 function nonneg(d){return d.winner5_precision>=0&&d.winner10_precision>=0&&d.net_growth>=0&&d.avg_net_ret>=0&&d.max_drawdown>=0}
@@ -90,18 +84,19 @@ async function main(){
  const base=loadBase(),lib=base.loadR7(),built=await base.buildRaw(lib),raw=built.raw;
  const dev=raw.filter(s=>s.t>=lib.DEV_START&&s.t<lib.DEV_END),hold=raw.filter(s=>s.t>=lib.CONFIRM_START&&s.t<lib.CONFIRM_END);
  const ds=base.selectSignals(lib,dev,0,0).sort((a,b)=>a.t-b.t),hs=base.selectSignals(lib,hold,0,0).sort((a,b)=>a.t-b.t);
- const configs=[];for(const lambda of TIMING_LAMBDAS)for(const keep of TIMING_KEEPS)for(const e of EXITS)configs.push({lambda,keep,exit:e,folds:[],selected:[]});
+ const configs=[];for(const lambda of LAMBDAS)for(const keep of KEEPS)for(const e of EXITS)configs.push({lambda,keep,exit:e,folds:[],selected:[]});
  const initial=Math.floor(ds.length*.45),rest=ds.length-initial,fold=Math.max(10,Math.floor(rest/4));let start=initial;
  for(let round=1;round<=4&&start<ds.length;round++){
    const end=round===4?ds.length:Math.min(ds.length,start+fold),train=ds.slice(0,start),val=ds.slice(start,end),all=dev.filter(s=>s.t>=val[0].t&&s.t<=val[val.length-1].t);
    const ep=fitEntry(lib,train),es=entryStats(ep,train),tr=selectEntry(ep,es,train,train),ve=selectEntry(ep,es,train,val),baseM=metrics(lib,val,all,{base:true});
-   for(const lambda of TIMING_LAMBDAS){
-     const tm=fit(tr.map(s=>({s,y:timingTarget(lib,s)})),lambda,timingVec);if(!tm)continue;
-     const trainScores=tr.map(s=>pred(tm,s,timingVec));
-     for(const keep of TIMING_KEEPS){
-       const th=qtl(trainScores,1-keep),selected=ve.filter(s=>pred(tm,s,timingVec)>=th);
-       for(const e of EXITS){
-         const cfg=configs.find(x=>x.lambda===lambda&&x.keep===keep&&x.exit.id===e.id),m=metrics(lib,selected,all,e),d=delta(m,baseM);
+   for(const e of EXITS){
+     const cm=fit(tr.map(s=>({s,y:netWithExit(lib,s,e)})),.3,contextVec);
+     for(const lambda of LAMBDAS){
+       const model=lambda===.3?cm:fit(tr.map(s=>({s,y:netWithExit(lib,s,e)})),lambda,contextVec);if(!model)continue;
+       const trainScores=tr.map(s=>pred(model,s,contextVec));
+       for(const keep of KEEPS){
+         const th=qtl(trainScores,1-keep),selected=ve.filter(s=>pred(model,s,contextVec)>=th),m=metrics(lib,selected,all,e),d=delta(m,baseM);
+         const cfg=configs.find(x=>x.lambda===lambda&&x.keep===keep&&x.exit.id===e.id);
          cfg.selected.push(...selected);cfg.folds.push({round,entry_selected:ve.length,selected:selected.length,threshold:th,delta:d,metrics:m,pass:selected.length>=4&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0});
        }
      }
@@ -119,21 +114,21 @@ async function main(){
  let confirmation=null,pass=false,attr=null;
  if(chosen){
    const ep=fitEntry(lib,ds),es=entryStats(ep,ds),tr=selectEntry(ep,es,ds,ds),he=selectEntry(ep,es,ds,hs);
-   const tm=fit(tr.map(s=>({s,y:timingTarget(lib,s)})),chosen.lambda,timingVec),th=qtl(tr.map(s=>pred(tm,s,timingVec)),1-chosen.keep);
-   const selected=he.filter(s=>pred(tm,s,timingVec)>=th),bm=metrics(lib,hs,hold,{base:true}),m=metrics(lib,selected,hold,chosen.exit),d=delta(m,bm);
+   const model=fit(tr.map(s=>({s,y:netWithExit(lib,s,chosen.exit)})),chosen.lambda,contextVec),th=qtl(tr.map(s=>pred(model,s,contextVec)),1-chosen.keep);
+   const selected=he.filter(s=>pred(model,s,contextVec)>=th),bm=metrics(lib,hs,hold,{base:true}),m=metrics(lib,selected,hold,chosen.exit),d=delta(m,bm);
    confirmation={entry_selected:he.length,selected:selected.length,threshold:th,baseline:bm,metrics:m,delta:d,exit:chosen.exit};
    pass=selected.length>=8&&nonneg(d)&&m.economic.netGrowth>0&&m.economic.avgNetRet>0;
-   attr=TIMING.map((n,i)=>({feature:n,coefficient:tm.beta[i+1],abs:Math.abs(tm.beta[i+1])})).sort((a,b)=>b.abs-a.abs);
+   attr=CONTEXT.map((n,i)=>({feature:n,coefficient:model.beta[i+1],abs:Math.abs(model.beta[i+1])})).sort((a,b)=>b.abs-a.abs);
  }
  const adequate=configs.filter(x=>x.aggregate.selected>=16).sort((a,b)=>b.aggregate.objective-a.aggregate.objective);
- const report={version:'MONETIZATION_EDGE_V5_TIMING_CAPTURE_JOINT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
- objective:'Jointly evaluate a small causal timing-freshness model and a small capture-exit family on expanding Apr-Jun walk-forward. Entry V1 remains frozen. A joint policy must be absolutely profitable, improve all five CORE-relative metrics, and pass >=3 folds before July is opened.',
- entry_policy:ENTRY,timing_features:TIMING,exit_family:EXITS,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
+ const report={version:'MONETIZATION_EDGE_V6_ASSET_PERSISTENCE_CONTEXT',generated_at:new Date().toISOString(),research_only:true,production_mutation:false,
+ objective:'Use only pre-entry 24h/72h asset-state context to learn whether a V1 signal is likely to monetize: trend persistence, realized volatility, return autocorrelation, jump frequency, trend efficiency, wick structure, volume persistence and drawdown/recovery. Context and exit are trained only on Apr-Jun walk-forward; July opens only after a positive stable policy exists.',
+ entry_policy:ENTRY,context_features:CONTEXT,exit_family:EXITS,candidate_count:configs.length,universe:{pool:built.poolSize,loaded:built.loaded,candidate_rows:raw.length,dev_signals:ds.length,holdout_signals:hs.length},
  selected:chosen?{lambda:chosen.lambda,keep:chosen.keep,exit:chosen.exit,aggregate:chosen.aggregate,folds:chosen.folds}:null,
  top_adequate:adequate.slice(0,20).map(x=>({lambda:x.lambda,keep:x.keep,exit:x.exit,viable:x.viable,aggregate:x.aggregate,folds:x.folds})),
  confirmation,attribution:attr,confirmation_pass:pass,
- decision:!chosen?{label:'JOINT_TIMING_CAPTURE_NOT_FOUND_IN_WALK_FORWARD',ready:false}:pass?{label:'JOINT_TIMING_CAPTURE_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'JOINT_TIMING_CAPTURE_FAILED_FRESH_HOLDOUT',ready:false}};
+ decision:!chosen?{label:'ASSET_PERSISTENCE_CONTEXT_NOT_FOUND_IN_WALK_FORWARD',ready:false}:pass?{label:'ASSET_PERSISTENCE_CONTEXT_CONFIRMED_RESEARCH_ONLY',ready:false}:{label:'ASSET_PERSISTENCE_CONTEXT_FAILED_FRESH_HOLDOUT',ready:false}};
  fs.mkdirSync(path.dirname(OUTPUT),{recursive:true});fs.writeFileSync(OUTPUT,JSON.stringify(report,null,2));
- console.log(JSON.stringify({version:report.version,candidate_count:report.candidate_count,selected:report.selected?{lambda:report.selected.lambda,keep:report.selected.keep,exit:report.selected.exit,aggregate:report.selected.aggregate}:null,top_adequate:report.top_adequate.slice(0,8).map(x=>({lambda:x.lambda,keep:x.keep,exit:x.exit.id,viable:x.viable,aggregate:x.aggregate})),confirmation,top_timing:attr?.slice(0,8)||null,confirmation_pass:pass,decision:report.decision},null,2));
+ console.log(JSON.stringify({version:report.version,candidate_count:report.candidate_count,selected:report.selected?{lambda:report.selected.lambda,keep:report.selected.keep,exit:report.selected.exit,aggregate:report.selected.aggregate}:null,top_adequate:report.top_adequate.slice(0,8).map(x=>({lambda:x.lambda,keep:x.keep,exit:x.exit.id,viable:x.viable,aggregate:x.aggregate})),confirmation,top_context:attr?.slice(0,10)||null,confirmation_pass:pass,decision:report.decision},null,2));
 }
 main().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
