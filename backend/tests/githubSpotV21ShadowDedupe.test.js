@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('assert');
+const fs=require('fs');
+const path=require('path');
+const src=fs.readFileSync(path.join(__dirname,'..','scripts','github-spot-v21-shadow.js'),'utf8');
+assert(src.includes('activeSameSymbol'),'V21 shadow must guard duplicate active symbols');
+assert(src.includes("status:'DEDUPED_ACTIVE_SYMBOL'"),'V21 shadow must emit explicit dedupe evidence');
+assert(src.includes('[...state.pending,...state.positions].some'),'dedupe must cover pending confirmations and open positions');
+assert(!/api\/v3\/order|placeOrder|createOrder|withdraw/.test(src),'shadow must remain execution-free');
+console.log('githubSpotV21ShadowDedupe tests: PASS');
