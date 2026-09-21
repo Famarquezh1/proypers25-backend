@@ -36,12 +36,8 @@ function corr(a,b){
 }
 
 const BASE_NAMES = [
-  'r15','r30','r60','r240','r24',
-  'log_vol15','log_vol30','log_trade_accel',
-  'breakout60','breakout240','rs60','rs240',
-  'breadth_up15','breadth_up60','breadth_breakout','breadth_ignite','breadth_mean60',
-  'v42_norm','ignition','confirm','extension','continuation',
-  'accel','vol_slope','chase','breakout_x_volume','rs_x_breadth','continuation_x_confirm'
+  'log_trade_accel','breakout60','breakout240','breakout_x_volume',
+  'r15','r60','r240','rs60','extension','vol_slope','continuation','confirm'
 ];
 
 const INTERACTION_SEEDS = [
@@ -242,7 +238,10 @@ async function main(){
         const versus=delta(trialEval.metrics,baseEval.metrics);
         accepted=
           trialEval.selected.length>=Math.max(4,Math.floor(valS.length*.20)) &&
+          nonNegative(trialEval.delta) &&
           nonNegative(versus) &&
+          trialEval.metrics.economic.netGrowth>0 &&
+          trialEval.metrics.economic.avgNetRet>0 &&
           trialEval.objective>=baseEval.objective;
         if(accepted){
           active=[...active,pending];
@@ -272,6 +271,7 @@ async function main(){
   const finalDev=evaluatePolicy(lib,finalPolicy,devSignals,dev);
   const confirmation=evaluatePolicy(lib,finalPolicy,confirmSignals,confirm);
   const confirmationPass=
+    finalPolicy.strict &&
     confirmation.selected.length>=8 &&
     nonNegative(confirmation.delta) &&
     confirmation.metrics.economic.netGrowth>0 &&
@@ -292,11 +292,11 @@ async function main(){
   }).sort((a,b)=>Math.abs(b.effect_size)-Math.abs(a.effect_size)).slice(0,15);
 
   const report={
-    version:'HOLY_GRAIL_EVOLUTION_V1',
+    version:'HOLY_GRAIL_EVOLUTION_V2_SPARSE_STRICT',
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
-    objective:'Iteratively discover, test, reject or retain predictive corrections on chronological unseen development folds, then perform one untouched chronological confirmation.',
+    objective:'Sparse iterative discovery with strict CORE-relative walk-forward acceptance, followed by one untouched chronological confirmation.',
     mechanism:{
       initial_training_fraction:.40,
       walk_forward_rounds:rounds.length,
