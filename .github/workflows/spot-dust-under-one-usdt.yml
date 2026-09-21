@@ -1,0 +1,36 @@
+name: Spot Dust Under One USDT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-dust-under-one-usdt.js'
+      - '.github/workflows/spot-dust-under-one-usdt.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-dust-under-one-usdt
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Convert proven Proypers dust below 1 USDT
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    env:
+      BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+      BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        shell: powershell
+        run: node --check backend/scripts/github-spot-dust-under-one-usdt.js
+      - name: Convert only proven system-owned dust below 1 USDT
+        shell: powershell
+        run: node backend/scripts/github-spot-dust-under-one-usdt.js
