@@ -147,10 +147,14 @@ async function resolveGrowthRatchet(equityUsdt) {
       activated: ratchet.activated,
       updated_at: new Date().toISOString()
     }, ratchet);
-    if (issue?.number) {
-      await githubRequest(`/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body }) });
-    } else {
-      await githubRequest('/issues', { method: 'POST', body: JSON.stringify({ title, body }) });
+    try {
+      if (issue?.number) {
+        await githubRequest(`/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+      } else {
+        await githubRequest('/issues', { method: 'POST', body: JSON.stringify({ title, body }) });
+      }
+    } catch (error) {
+      console.warn(`GROWTH_V2_STATE_PERSIST_FAILED error=${error.message || error}`);
     }
   }
 
