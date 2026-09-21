@@ -1,0 +1,63 @@
+name: Spot Phase Transition Edge Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/train-spot-phase-transition-edge.js'
+      - '.github/workflows/spot-phase-transition-edge.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-phase-transition-edge
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HIST_POOL_SIZE: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Guard research only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/train-spot-phase-transition-edge.js
+          grep -q "production_mutation:false" backend/scripts/train-spot-phase-transition-edge.js
+          ! grep -q "api/v3/order\|BINANCE_SECRET\|withdraw" backend/scripts/train-spot-phase-transition-edge.js
+      - name: Train phase transition edge
+        run: node backend/scripts/train-spot-phase-transition-edge.js
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-phase-transition-edge-${{ github.run_id }}
+          path: backend/training-output/spot-phase-transition-edge.json
+          retention-days: 30
+      - name: Summary
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r=require('./backend/training-output/spot-phase-transition-edge.json');
+          console.log('### Phase Transition Edge — research only');
+          console.log(`- Selected: ${r.calibration.selected ? `keep=${r.calibration.selected.keep}, threshold=${r.calibration.selected.threshold.toFixed(4)}` : 'none'}`);
+          console.log(`- Confirmation signals: ${r.confirmation.selected_signals}`);
+          console.log(`- Confirmation pass: ${r.confirmation_pass}`);
+          console.log(`- Decision: ${r.decision.label}`);
+          if(r.confirmation.delta){
+            console.log(`- Δ net growth: ${(100*r.confirmation.delta.net_growth).toFixed(3)} pp`);
+            console.log(`- Δ avg net return: ${(100*r.confirmation.delta.avg_net_ret).toFixed(3)} pp`);
+            console.log(`- Δ max drawdown: ${(100*r.confirmation.delta.max_drawdown).toFixed(3)} pp`);
+            console.log(`- Δ +5% precision: ${(100*r.confirmation.delta.winner5_precision).toFixed(2)} pp`);
+            console.log(`- Δ +10% precision: ${(100*r.confirmation.delta.winner10_precision).toFixed(2)} pp`);
+          }
+          NODE
