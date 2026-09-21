@@ -12,6 +12,14 @@ const EXTENDED_24H_PCT = 12;
 const HIGH_CORRELATION = 0.88;
 const HIGH_QUALITY_NORM = 0.94;
 const ELITE_QUALITY_NORM = 0.97;
+const EARLY_CONFIRM_MIN_24H_PCT = 1.5;
+const EARLY_CONFIRM_MAX_24H_PCT = 8;
+const EARLY_CONFIRM_MIN_NORM = 0.82;
+const EARLY_CONFIRM_MIN_IGNITION = 1.0;
+const EARLY_CONFIRM_MIN_CONFIRM = 0.28;
+const EARLY_CONFIRM_MIN_EXTENSION = 0.015;
+const EARLY_CONFIRM_MAX_R15 = 0.04;
+const EARLY_CONFIRM_MAX_R60 = 0.08;
 
 function clamp(value, min = 0, max = 1) {
   return Math.max(min, Math.min(max, Number(value) || 0));
@@ -170,9 +178,45 @@ function evaluateSpotEntryBurstGate({
   }
 
   if (!highQuality) {
+    const detail = v42Quality?.detail || {};
+    const earlyConfirmation =
+      passCount === 2 &&
+      v42Quality?.freshEnough === true &&
+      norm >= EARLY_CONFIRM_MIN_NORM &&
+      Number(currentPct) >= EARLY_CONFIRM_MIN_24H_PCT &&
+      Number(currentPct) < EARLY_CONFIRM_MAX_24H_PCT &&
+      Number(detail.ignition) >= EARLY_CONFIRM_MIN_IGNITION &&
+      Number(detail.confirm) >= EARLY_CONFIRM_MIN_CONFIRM &&
+      Number(detail.extension) >= EARLY_CONFIRM_MIN_EXTENSION &&
+      Number(detail.r15) > 0 &&
+      Number(detail.r15) <= EARLY_CONFIRM_MAX_R15 &&
+      Number(detail.r60) > 0 &&
+      Number(detail.r60) <= EARLY_CONFIRM_MAX_R60;
+
+    if (earlyConfirmation) {
+      return {
+        allow: true,
+        reason: 'early CORE confirmation admitted at reduced initial size',
+        code: 'EARLY_CONFIRMATION_ADMITTED',
+        diagnostics: {
+          passCount,
+          norm,
+          recentEntries7m: recent.length,
+          recentEntries30m: burst.length,
+          maxCorrelation,
+          ignition: Number(detail.ignition),
+          confirm: Number(detail.confirm),
+          extension: Number(detail.extension),
+          r15: Number(detail.r15),
+          r60: Number(detail.r60),
+          currentPct: Number(currentPct)
+        }
+      };
+    }
+
     return {
       allow: false,
-      reason: `CORE real entry requires 3/3 V4.2 quality and norm >= ${HIGH_QUALITY_NORM}`,
+      reason: `CORE real entry requires 3/3 V4.2 quality and norm >= ${HIGH_QUALITY_NORM}, or strict early-confirmation criteria`,
       code: 'CORE_QUALITY_REQUIRED',
       diagnostics: { passCount, norm, recentEntries7m: recent.length, recentEntries30m: burst.length, maxCorrelation }
     };
@@ -193,6 +237,14 @@ module.exports = {
   HIGH_CORRELATION,
   HIGH_QUALITY_NORM,
   ELITE_QUALITY_NORM,
+  EARLY_CONFIRM_MIN_24H_PCT,
+  EARLY_CONFIRM_MAX_24H_PCT,
+  EARLY_CONFIRM_MIN_NORM,
+  EARLY_CONFIRM_MIN_IGNITION,
+  EARLY_CONFIRM_MIN_CONFIRM,
+  EARLY_CONFIRM_MIN_EXTENSION,
+  EARLY_CONFIRM_MAX_R15,
+  EARLY_CONFIRM_MAX_R60,
   v42QualityFromBars,
   returnCorrelationFromBars,
   evaluateSpotEntryBurstGate

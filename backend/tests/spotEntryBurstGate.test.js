@@ -6,8 +6,21 @@ const {
   returnCorrelationFromBars
 } = require('../services/spotEntryBurstGate');
 
-function quality(passCount, norm) {
-  return { passCount, norm };
+function quality(passCount, norm, detail = {}, freshEnough = true) {
+  return {
+    passCount,
+    norm,
+    freshEnough,
+    detail: {
+      ignition: 0.8,
+      confirm: 0.20,
+      extension: 0.01,
+      r15: 0.01,
+      r60: 0.03,
+      r24: 0.05,
+      ...detail
+    }
+  };
 }
 
 (function normalCoreCadenceIsBlocked() {
@@ -17,6 +30,60 @@ function quality(passCount, norm) {
     currentPct: 5,
     managedPositions: [],
     v42Quality: quality(2, 0.72)
+  });
+  assert.strictEqual(result.allow, false);
+  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
+})();
+
+(function strictEarlyConfirmationIsAdmitted() {
+  const result = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'EARLYUSDT',
+    currentPct: 4.5,
+    managedPositions: [],
+    v42Quality: quality(2, 0.86, {
+      ignition: 1.25,
+      confirm: 0.36,
+      extension: 0.022,
+      r15: 0.018,
+      r60: 0.055
+    })
+  });
+  assert.strictEqual(result.allow, true);
+  assert.strictEqual(result.code, 'EARLY_CONFIRMATION_ADMITTED');
+})();
+
+(function earlyConfirmationRejectsLateMove() {
+  const result = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'EARLYUSDT',
+    currentPct: 9,
+    managedPositions: [],
+    v42Quality: quality(2, 0.90, {
+      ignition: 1.4,
+      confirm: 0.40,
+      extension: 0.03,
+      r15: 0.02,
+      r60: 0.05
+    })
+  });
+  assert.strictEqual(result.allow, false);
+  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
+})();
+
+(function earlyConfirmationRejectsWeakMomentum() {
+  const result = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'EARLYUSDT',
+    currentPct: 4,
+    managedPositions: [],
+    v42Quality: quality(2, 0.88, {
+      ignition: 1.2,
+      confirm: 0.35,
+      extension: 0.02,
+      r15: -0.002,
+      r60: 0.04
+    })
   });
   assert.strictEqual(result.allow, false);
   assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
