@@ -306,7 +306,7 @@ async function main(){
     generated_at:new Date().toISOString(),
     research_only:true,
     production_mutation:false,
-    objective:'Sparse iterative discovery trained on a dual target combining realized net return with future opportunity labels, while policy acceptance remains strictly economic and predictive versus CORE.'
+    objective:'Sparse iterative discovery trained on a dual target combining realized net return with future opportunity labels, while policy acceptance remains strictly economic and predictive versus CORE.',
     mechanism:{
       initial_training_fraction:.40,
       walk_forward_rounds:rounds.length,
