@@ -20,6 +20,8 @@ on:
       - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/scripts/github-spot-v21-shadow.js'
+      - 'backend/scripts/github-spot-v22-iceberg-shadow.js'
+      - 'backend/tests/githubSpotV22IcebergShadow.test.js'
       - 'backend/tests/githubSpotV21ShadowDedupe.test.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
@@ -57,6 +59,8 @@ on:
       - 'backend/tests/spotQuboFullHistoryBackfill.test.js'
       - 'backend/scripts/github-spot-v8-production-shadow.js'
       - 'backend/scripts/github-spot-v21-shadow.js'
+      - 'backend/scripts/github-spot-v22-iceberg-shadow.js'
+      - 'backend/tests/githubSpotV22IcebergShadow.test.js'
       - 'backend/tests/githubSpotV21ShadowDedupe.test.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow-model.js'
       - 'backend/scripts/github-spot-v8-hunter-shadow.js'
@@ -105,6 +109,8 @@ jobs:
           node --check backend/tests/spotQuboFullHistoryBackfill.test.js
           node --check backend/scripts/github-spot-v8-production-shadow.js
           node --check backend/scripts/github-spot-v21-shadow.js
+          node --check backend/scripts/github-spot-v22-iceberg-shadow.js
+          node --check backend/tests/githubSpotV22IcebergShadow.test.js
           node --check backend/tests/githubSpotV21ShadowDedupe.test.js
           node --check backend/scripts/github-spot-v8-hunter-shadow-model.js
           node --check backend/scripts/github-spot-v8-hunter-shadow.js
@@ -175,6 +181,7 @@ jobs:
           grep -q "refusing unfiltered radar" backend/scripts/github-spot-production-radar-v42-active.js
           grep -q "mode:'V8_SHADOW_ONLY'" backend/scripts/github-spot-v8-production-shadow.js
           node backend/tests/githubSpotV21ShadowDedupe.test.js
+          node backend/tests/githubSpotV22IcebergShadow.test.js
           grep -q "V21_GITHUB_SHADOW_1" backend/scripts/github-spot-v21-shadow.js
           grep -q "LOW_EVIDENCE_OVERLAY_PRIOR" backend/scripts/github-spot-v21-shadow.js
           grep -q "SKIP_THRESHOLD=-.012" backend/scripts/github-spot-v21-shadow.js
