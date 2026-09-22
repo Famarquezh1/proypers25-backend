@@ -90,7 +90,7 @@ async function updatePositions(laneName,laneState,now,evidence){
       p.highest_price=round(ev.highest);p.latest_price=round(last);p.updated_at=iso(now);
       if(!ev.reason){keep.push(p);continue}
       const gross=ev.price/n(p.entry_price)-1,net=gross-COST;
-      const r={id:`result_${p.id}`,lane:laneName,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
+      const r={id:`result_${p.id}`,lane:laneName,source:p.source||null,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
       laneState.results.push(r);evidence.closed.push(r);
     }catch(error){keep.push(p);evidence.errors.push({stage:'UPDATE_POSITION',lane:laneName,symbol:p.symbol,error:error.message})}
   }
@@ -107,7 +107,7 @@ async function resolvePending(laneName,laneState,laneCfg,now,evidence){
       d.confirmation=cf;d.resolved_at=iso(now);
       if(!cf.passed){d.status='SHADOW_REJECTED';laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,confirmation:cf});continue}
       const entry=n(cf.entry_price)||await tickerPrice(d.symbol);
-      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),shadow_only:true,no_order_created:true};
+      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),shadow_only:true,no_order_created:true};
       laneState.positions.push(p);d.status='SHADOW_OPEN';d.position_id=p.id;laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,position_id:p.id,confirmation:cf});
     }catch(error){keep.push(d);evidence.errors.push({stage:'RESOLVE_PENDING',lane:laneName,symbol:d.symbol,error:error.message})}
   }
