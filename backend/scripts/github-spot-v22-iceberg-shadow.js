@@ -169,7 +169,7 @@ async function main(){
   evidence.decision_matrices=matrices;
   evidence.decision_matrix=matrices[0]||null;
 
-  const summary={};  const summary={};
+  const summary={};
   for(const [name,s] of Object.entries(state.lanes)){pruneLane(s,now);summary[name]=laneSummary(s,now)}
   evidence.summary=summary;
   fs.writeFileSync(STATE_OUT,JSON.stringify(state,null,2));
