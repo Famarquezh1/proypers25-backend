@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'backend/scripts/github-spot-v21-shadow.js'
+      - 'backend/scripts/github-spot-v22-iceberg-shadow.js'
       - '.github/workflows/spot-v21-shadow-live.yml'
   schedule:
     - cron: '4,9,14,19,24,29,34,39,44,49,54,59 * * * *'
@@ -102,14 +103,74 @@ jobs:
           path: spot-v21-shadow-evidence.json
           retention-days: 30
 
+      - name: Load previous V22 iceberg state
+        id: previous_v22
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          rm -rf .v22-iceberg
+          mkdir -p .v22-iceberg/previous
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --status success --limit 20 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+            gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v22-iceberg-state --dir .v22-iceberg/previous >/dev/null 2>&1 && { echo "$RID"; break; }
+          done)
+          if [ -f .v22-iceberg/previous/spot-v22-iceberg-state.json ]; then
+            echo "state=.v22-iceberg/previous/spot-v22-iceberg-state.json" >> "$GITHUB_OUTPUT"
+            echo "status=LOADED" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=" >> "$GITHUB_OUTPUT"
+            echo "status=FRESH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run V22 iceberg depth shadow
+        id: v22
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.previous_v22.outputs.state }}"
+          if [ -n "$PREV" ]; then
+            RESULT=$(node backend/scripts/github-spot-v22-iceberg-shadow.js spot-radar-scan.json "$PREV" spot-v22-iceberg-state.json spot-v22-iceberg-evidence.json)
+          else
+            RESULT=$(node backend/scripts/github-spot-v22-iceberg-shadow.js spot-radar-scan.json "" spot-v22-iceberg-state.json spot-v22-iceberg-evidence.json)
+          fi
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.shadow_only // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.no_order_created // false')" = "true"
+          echo "core_open=$(printf '%s' "$RESULT" | jq -r '.summary.CORE_ALL.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "strict_open=$(printf '%s' "$RESULT" | jq -r '.summary.STRICT_V21.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "balanced_open=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "exploratory_open=$(printf '%s' "$RESULT" | jq -r '.summary.EXPLORATORY.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "balanced_closed=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.closed // 0')" >> "$GITHUB_OUTPUT"
+          echo "balanced_avg=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.avg_net_return // 0')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V22 iceberg state
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v22-iceberg-state
+          path: spot-v22-iceberg-state.json
+          retention-days: 30
+          overwrite: true
+
+      - name: Upload V22 iceberg evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v22-iceberg-evidence-${{ github.run_id }}
+          path: spot-v22-iceberg-evidence.json
+          retention-days: 30
+
       - name: Guard no execution capabilities
         shell: bash
         run: |
           set -euo pipefail
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v22-iceberg-shadow.js
           ! grep -Eq 'gh workflow run|issue create' .github/workflows/spot-v21-shadow-live.yml
           grep -q "production_action:'NONE'" backend/scripts/github-spot-v21-shadow.js
           grep -q 'no_order_created:true' backend/scripts/github-spot-v21-shadow.js
+          grep -q "production_action:'NONE'" backend/scripts/github-spot-v22-iceberg-shadow.js
+          grep -q 'no_order_created:true' backend/scripts/github-spot-v22-iceberg-shadow.js
 
       - name: Summary
         if: always()
@@ -124,3 +185,6 @@ jobs:
           echo "- V21: arm=${{ steps.v21.outputs.arm || 'none' }} | status=${{ steps.v21.outputs.status || 'none' }} | context=${{ steps.v21.outputs.context || 'none' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Estado: pending=${{ steps.v21.outputs.pending || '0' }} | open=${{ steps.v21.outputs.open || '0' }} | results=${{ steps.v21.outputs.results || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- 30d: win=${{ steps.v21.outputs.win || '0' }} | avgNet=${{ steps.v21.outputs.avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '- V22 Iceberg: CORE_ALL / STRICT_V21 / BALANCED / EXPLORATORY, shadow-only' >> "$GITHUB_STEP_SUMMARY"
+          echo "- V22 open: core=${{ steps.v22.outputs.core_open || '0' }} | strict=${{ steps.v22.outputs.strict_open || '0' }} | balanced=${{ steps.v22.outputs.balanced_open || '0' }} | exploratory=${{ steps.v22.outputs.exploratory_open || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V22 balanced: closed=${{ steps.v22.outputs.balanced_closed || '0' }} | avgNet=${{ steps.v22.outputs.balanced_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
