@@ -13,7 +13,8 @@ const LANES={
   CORE_ALL:{mode:'IMMEDIATE'},
   STRICT_V21:{mode:'CONFIRM',retScale:1,closeDelta:0,minVol:.70},
   BALANCED:{mode:'CONFIRM',retScale:.75,closeDelta:-.05,minVol:.55},
-  EXPLORATORY:{mode:'CONFIRM',retScale:.25,closeDelta:-.15,minVol:.35}
+  EXPLORATORY:{mode:'CONFIRM',retScale:.25,closeDelta:-.15,minVol:.35},
+  RESCUE_V23:{mode:'RESCUE',retScale:.75,closeDelta:-.05,minVol:.55,ignitionMax:1.38}
 };
 const BASE_CONFIRM={extCut:.07,lowRet:.003,highRet:.008,maxDraw:-.04,lowClose:.35,highClose:.50};
 
@@ -104,6 +105,11 @@ async function resolvePending(laneName,laneState,laneCfg,now,evidence){
       const bars=await klines(d.symbol,12,ms(d.signal_at)-30*60000,now);
       const cf=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,laneCfg);
       if(!cf.ready){keep.push(d);continue}
+      if(laneCfg.mode==='RESCUE'){
+        const strict=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,LANES.STRICT_V21);
+        d.strict_counterfactual=strict;
+        if(strict.ready&&strict.passed){d.status='RESCUE_SKIPPED_STRICT_ACCEPTED';d.confirmation=cf;d.resolved_at=iso(now);laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,strict_counterfactual:strict});continue}
+      }
       d.confirmation=cf;d.resolved_at=iso(now);
       if(!cf.passed){d.status='SHADOW_REJECTED';laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,confirmation:cf});continue}
       const entry=n(cf.entry_price)||await tickerPrice(d.symbol);
@@ -133,6 +139,11 @@ async function addCandidateToLanes(candidate,source,state,now,evidence){
     if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
     if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
     const d={id,lane:name,source,source_stage:candidate.stage||null,source_reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_at:iso(now),signal_price:n(candidate.price),context:ctx,v42:{ignition:n(candidate.v42_detail.ignition),confirm:n(candidate.v42_detail.confirm),extension:n(candidate.v42_detail.extension),r15:n(candidate.v42_detail.r15),r60:n(candidate.v42_detail.r60),r24:n(candidate.v42_detail.r24)},shadow_only:true,no_order_created:true};
+    if(cfg.mode==='RESCUE'){
+      const ignition=d.v42.ignition;
+      if(!(ignition<=cfg.ignitionMax)){d.status='RESCUE_FILTERED_IGNITION';s.decisions.push(d);matrix.lanes[name]={status:d.status,ignition,ignition_max:cfg.ignitionMax};continue}
+      d.rescue_rule={frozen:true,ignition_max:cfg.ignitionMax,requires_strict_reject:true};
+    }
     if(cfg.mode==='IMMEDIATE'){
       const p={id:`position_${name}_${id}`,signal_id:id,lane:name,source,symbol,context:ctx,signal_at:d.signal_at,opened_at:d.signal_at,entry_price:round(d.signal_price),highest_price:round(d.signal_price),shadow_only:true,no_order_created:true};
       d.status='SHADOW_OPEN';d.position_id=p.id;s.positions.push(p);s.decisions.push(d);evidence.opened.push({lane:name,source,symbol,position_id:p.id,entry_price:p.entry_price});matrix.lanes[name]={status:d.status};
@@ -150,7 +161,7 @@ async function main(){
 
   for(const [name,cfg] of Object.entries(LANES)){
     await updatePositions(name,state.lanes[name],now,evidence);
-    if(cfg.mode==='CONFIRM')await resolvePending(name,state.lanes[name],cfg,now,evidence);
+    if(cfg.mode==='CONFIRM'||cfg.mode==='RESCUE')await resolvePending(name,state.lanes[name],cfg,now,evidence);
   }
 
   const matrices=[];

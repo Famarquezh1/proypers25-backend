@@ -1,0 +1,28 @@
+name: Spot V23 Frozen Rescue OOS
+on:
+  pull_request:
+    paths:
+      - 'backend/scripts/github-spot-v23-frozen-rescue-oos.js'
+      - '.github/workflows/spot-v23-frozen-rescue-oos.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPLAY_DAYS: '14'
+      REPLAY_END_OFFSET_DAYS: '14'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --check backend/scripts/github-spot-v23-frozen-rescue-oos.js
+      - run: node backend/scripts/github-spot-v23-frozen-rescue-oos.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-v23-frozen-rescue-oos
+          path: spot-v22-cohort-replay.json
+          retention-days: 30

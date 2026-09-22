@@ -142,6 +142,9 @@ jobs:
           echo "strict_open=$(printf '%s' "$RESULT" | jq -r '.summary.STRICT_V21.open // 0')" >> "$GITHUB_OUTPUT"
           echo "balanced_open=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.open // 0')" >> "$GITHUB_OUTPUT"
           echo "exploratory_open=$(printf '%s' "$RESULT" | jq -r '.summary.EXPLORATORY.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "rescue_open=$(printf '%s' "$RESULT" | jq -r '.summary.RESCUE_V23.open // 0')" >> "$GITHUB_OUTPUT"
+          echo "rescue_closed=$(printf '%s' "$RESULT" | jq -r '.summary.RESCUE_V23.closed // 0')" >> "$GITHUB_OUTPUT"
+          echo "rescue_avg=$(printf '%s' "$RESULT" | jq -r '.summary.RESCUE_V23.avg_net_return // 0')" >> "$GITHUB_OUTPUT"
           echo "balanced_closed=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.closed // 0')" >> "$GITHUB_OUTPUT"
           echo "balanced_avg=$(printf '%s' "$RESULT" | jq -r '.summary.BALANCED.avg_net_return // 0')" >> "$GITHUB_OUTPUT"
 
@@ -187,4 +190,5 @@ jobs:
           echo "- 30d: win=${{ steps.v21.outputs.win || '0' }} | avgNet=${{ steps.v21.outputs.avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo '- V22 Iceberg: CORE_ALL / STRICT_V21 / BALANCED / EXPLORATORY, shadow-only' >> "$GITHUB_STEP_SUMMARY"
           echo "- V22 open: core=${{ steps.v22.outputs.core_open || '0' }} | strict=${{ steps.v22.outputs.strict_open || '0' }} | balanced=${{ steps.v22.outputs.balanced_open || '0' }} | exploratory=${{ steps.v22.outputs.exploratory_open || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V23 Rescue frozen ignition<=1.38 + STRICT reject: open=${{ steps.v22.outputs.rescue_open || '0' }} | closed=${{ steps.v22.outputs.rescue_closed || '0' }} | avgNet=${{ steps.v22.outputs.rescue_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- V22 balanced: closed=${{ steps.v22.outputs.balanced_closed || '0' }} | avgNet=${{ steps.v22.outputs.balanced_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,35 @@
+name: Spot V22 Causal Cohort Replay
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/scripts/github-spot-v22-cohort-replay.js'
+      - '.github/workflows/spot-v22-cohort-replay.yml'
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPLAY_DAYS: '14'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax guard
+        run: node --check backend/scripts/github-spot-v22-cohort-replay.js
+      - name: Run causal cohort replay
+        run: node backend/scripts/github-spot-v22-cohort-replay.js
+      - name: Summarize
+        run: |
+          echo '### V22 causal cohort replay — shadow/research only' >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.summary | to_entries[] | "- \(.key): n=\(.value.n) win=\(.value.win_rate) avgNet=\(.value.avg_net) totalNet=\(.value.total_net)"' spot-v22-cohort-replay.json >> "$GITHUB_STEP_SUMMARY"
+          jq -r '"- BALANCED exclusive vs STRICT: n=\(.balanced_exclusive.n) win=\(.balanced_exclusive.win_rate) avgNet=\(.balanced_exclusive.avg_net) totalNet=\(.balanced_exclusive.total_net)"' spot-v22-cohort-replay.json >> "$GITHUB_STEP_SUMMARY"
+          echo '- Production execution influence: NONE' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-v22-cohort-replay
+          path: spot-v22-cohort-replay.json
+          retention-days: 30
