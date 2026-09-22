@@ -52,7 +52,7 @@ jobs:
           set +e
           rm -rf .v21-shadow
           mkdir -p .v21-shadow/previous
-          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --status success --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
             gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v21-shadow-state --dir .v21-shadow/previous >/dev/null 2>&1 && { echo "$RID"; break; }
           done)
           if [ -f .v21-shadow/previous/spot-v21-shadow-state.json ]; then
@@ -112,7 +112,7 @@ jobs:
           set +e
           rm -rf .v22-iceberg
           mkdir -p .v22-iceberg/previous
-          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --status success --limit 20 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+          PREV_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --limit 20 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
             gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v22-iceberg-state --dir .v22-iceberg/previous >/dev/null 2>&1 && { echo "$RID"; break; }
           done)
           if [ -f .v22-iceberg/previous/spot-v22-iceberg-state.json ]; then
