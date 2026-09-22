@@ -159,7 +159,7 @@ async function main(){
     if(m)matrices.push(m);
   }
   const deep=(Array.isArray(scan.learning_rejections)?scan.learning_rejections:[])
-    .filter(x=>x&&x.symbol&&n(x.price)>0&&x.v42_detail&&['PRODUCTION_QUALITY_GATE','QUBO_SELECTION'].includes(String(x.stage||'')))
+    .filter(x=>x&&x.symbol&&n(x.price)>0&&x.v42_detail&&['V42_PRE_APPROVAL','PRODUCTION_QUALITY_GATE','QUBO_SELECTION'].includes(String(x.stage||'')))
     .sort((a,b)=>n(b.utility)-n(a.utility))
     .slice(0,2);
   for(const candidate of deep){
