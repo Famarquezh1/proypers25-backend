@@ -50,7 +50,7 @@ function loadJson(file,fallback){
 
 function stats(results,ctx,arm,now){
   const from=now-MEMORY_DAYS*86400000;let sw=0,sr=0,ww=0,count=0;
-  for(const r of results||[]){const t=ms(r.signal_at),closed=ms(r.closed_at);if(r.arm!==arm||!closed||closed>now-EMBARGO||t<from)continue;
+  for(const r of results||[]){const t=ms(r.signal_at),closed=ms(r.closed_at);if(r.arm!==arm||!closed||closed>now-EMBARGO_MS||t<from)continue;
     const w=Math.exp(-((now-t)/86400000)/TAU_DAYS)*(r.context===ctx?1:.20);
     sw+=w;sr+=w*n(r.net_return);if(n(r.net_return)>0)ww+=w;count++;
   }
