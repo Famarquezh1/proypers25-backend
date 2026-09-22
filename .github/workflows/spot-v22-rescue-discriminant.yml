@@ -1,0 +1,30 @@
+name: Spot V22 Rescue Discriminant
+on:
+  pull_request:
+    paths:
+      - 'backend/scripts/github-spot-v22-rescue-discriminant.js'
+      - '.github/workflows/spot-v22-rescue-discriminant.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPLAY_DAYS: '14'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax guard
+        run: node --check backend/scripts/github-spot-v22-rescue-discriminant.js
+      - name: Analyze rescue discriminants
+        run: node backend/scripts/github-spot-v22-rescue-discriminant.js
+      - name: Preserve report
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v22-rescue-discriminant
+          path: spot-v22-cohort-replay.json
+          retention-days: 30
