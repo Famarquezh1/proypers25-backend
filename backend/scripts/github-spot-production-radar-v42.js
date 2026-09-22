@@ -322,6 +322,15 @@ function learningRejectionRow(candidate = {}, stage = 'PRE_APPROVAL', reasons = 
     stable: Number(candidate.stable_norm || 0),
     v42: Number(candidate.v42_norm || 0),
     v42_pass_windows: Number(candidate.v42_pass_windows || 0),
+    v42_detail: candidate.v42_detail ? {
+      ignition: Number(candidate.v42_detail.ignition || 0),
+      confirm: Number(candidate.v42_detail.confirm || 0),
+      extension: Number(candidate.v42_detail.extension || 0),
+      r15: Number(candidate.v42_detail.r15 || 0),
+      r60: Number(candidate.v42_detail.r60 || 0),
+      r24: Number(candidate.v42_detail.r24 || 0),
+      freshEnough: candidate.v42_detail.freshEnough === true
+    } : null,
     market_regime: candidate.market_regime || 'UNKNOWN',
     stage,
     reasons: reasonList
