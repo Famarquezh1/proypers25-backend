@@ -1,3 +1,4 @@
+// Research-only trigger: rescue discriminant execution; no production influence.
 'use strict';
 const fs=require('fs');
 const BASE='https://data-api.binance.vision';
