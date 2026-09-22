@@ -90,7 +90,7 @@ async function updatePositions(laneName,laneState,now,evidence){
       p.highest_price=round(ev.highest);p.latest_price=round(last);p.updated_at=iso(now);
       if(!ev.reason){keep.push(p);continue}
       const gross=ev.price/n(p.entry_price)-1,net=gross-COST;
-      const r={id:`result_${p.id}`,lane:laneName,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
+      const r={id:`result_${p.id}`,lane:laneName,source:p.source||null,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
       laneState.results.push(r);evidence.closed.push(r);
     }catch(error){keep.push(p);evidence.errors.push({stage:'UPDATE_POSITION',lane:laneName,symbol:p.symbol,error:error.message})}
   }
@@ -107,7 +107,7 @@ async function resolvePending(laneName,laneState,laneCfg,now,evidence){
       d.confirmation=cf;d.resolved_at=iso(now);
       if(!cf.passed){d.status='SHADOW_REJECTED';laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,confirmation:cf});continue}
       const entry=n(cf.entry_price)||await tickerPrice(d.symbol);
-      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),shadow_only:true,no_order_created:true};
+      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),shadow_only:true,no_order_created:true};
       laneState.positions.push(p);d.status='SHADOW_OPEN';d.position_id=p.id;laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,position_id:p.id,confirmation:cf});
     }catch(error){keep.push(d);evidence.errors.push({stage:'RESOLVE_PENDING',lane:laneName,symbol:d.symbol,error:error.message})}
   }
@@ -122,6 +122,27 @@ function pruneLane(s,now){
   s.results=s.results.filter(x=>now-ms(x.closed_at)<70*86400000).slice(-1000);
   s.decisions=s.decisions.filter(x=>now-ms(x.signal_at)<30*86400000).slice(-2000);
 }
+async function addCandidateToLanes(candidate,source,state,now,evidence){
+  if(!candidate||!candidate.symbol||!(n(candidate.price)>0)||!candidate.v42_detail)return null;
+  const symbol=String(candidate.symbol).toUpperCase(),bucket=Math.floor(now/(5*60000)),ctx=context(candidate.v42_detail);
+  const matrix={source,stage:candidate.stage||null,reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_price:n(candidate.price),context:ctx,lanes:{}};
+  for(const [name,cfg] of Object.entries(LANES)){
+    const s=state.lanes[name],id=`v22_${name}_${source}_${symbol}_${bucket}`;
+    const active=s.pending.concat(s.positions).some(x=>String(x.symbol||'').toUpperCase()===symbol);
+    const seen=s.pending.concat(s.positions,s.decisions).some(x=>x.id===id||x.signal_id===id);
+    if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
+    if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
+    const d={id,lane:name,source,source_stage:candidate.stage||null,source_reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_at:iso(now),signal_price:n(candidate.price),context:ctx,v42:{ignition:n(candidate.v42_detail.ignition),confirm:n(candidate.v42_detail.confirm),extension:n(candidate.v42_detail.extension),r15:n(candidate.v42_detail.r15),r60:n(candidate.v42_detail.r60),r24:n(candidate.v42_detail.r24)},shadow_only:true,no_order_created:true};
+    if(cfg.mode==='IMMEDIATE'){
+      const p={id:`position_${name}_${id}`,signal_id:id,lane:name,source,symbol,context:ctx,signal_at:d.signal_at,opened_at:d.signal_at,entry_price:round(d.signal_price),highest_price:round(d.signal_price),shadow_only:true,no_order_created:true};
+      d.status='SHADOW_OPEN';d.position_id=p.id;s.positions.push(p);s.decisions.push(d);evidence.opened.push({lane:name,source,symbol,position_id:p.id,entry_price:p.entry_price});matrix.lanes[name]={status:d.status};
+    }else{
+      d.status='PENDING_CONFIRMATION';d.thresholds=confirmationThresholds(n(candidate.v42_detail.extension),cfg);s.pending.push(d);matrix.lanes[name]={status:d.status,thresholds:d.thresholds};
+    }
+  }
+  return matrix;
+}
+
 async function main(){
   const now=Date.now(),scan=loadJson(SCAN_PATH,{}),prev=loadJson(PREV_PATH,{});
   const state=normalizeState(prev);state.updated_at=iso(now);
@@ -132,25 +153,21 @@ async function main(){
     if(cfg.mode==='CONFIRM')await resolvePending(name,state.lanes[name],cfg,now,evidence);
   }
 
+  const matrices=[];
   if(scan.notify===true&&scan.symbol&&n(scan.price)>0&&scan.v42_detail){
-    const symbol=String(scan.symbol).toUpperCase(),bucket=Math.floor(now/(5*60000)),ctx=context(scan.v42_detail);
-    const matrix={symbol,signal_price:n(scan.price),context:ctx,lanes:{}};
-    for(const [name,cfg] of Object.entries(LANES)){
-      const s=state.lanes[name],id=`v22_${name}_${symbol}_${bucket}`;
-      const active=s.pending.concat(s.positions).some(x=>String(x.symbol||'').toUpperCase()===symbol);
-      const seen=s.pending.concat(s.positions,s.decisions).some(x=>x.id===id||x.signal_id===id);
-      if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
-      if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
-      const d={id,lane:name,symbol,signal_at:iso(now),signal_price:n(scan.price),context:ctx,v42:{ignition:n(scan.v42_detail.ignition),confirm:n(scan.v42_detail.confirm),extension:n(scan.v42_detail.extension),r15:n(scan.v42_detail.r15),r60:n(scan.v42_detail.r60),r24:n(scan.v42_detail.r24)},shadow_only:true,no_order_created:true};
-      if(cfg.mode==='IMMEDIATE'){
-        const p={id:`position_${name}_${id}`,signal_id:id,lane:name,symbol,context:ctx,signal_at:d.signal_at,opened_at:d.signal_at,entry_price:round(d.signal_price),highest_price:round(d.signal_price),shadow_only:true,no_order_created:true};
-        d.status='SHADOW_OPEN';d.position_id=p.id;s.positions.push(p);s.decisions.push(d);evidence.opened.push({lane:name,symbol,position_id:p.id,entry_price:p.entry_price});matrix.lanes[name]={status:d.status};
-      }else{
-        d.status='PENDING_CONFIRMATION';d.thresholds=confirmationThresholds(n(scan.v42_detail.extension),cfg);s.pending.push(d);matrix.lanes[name]={status:d.status,thresholds:d.thresholds};
-      }
-    }
-    evidence.decision_matrix=matrix;
+    const m=await addCandidateToLanes({symbol:scan.symbol,price:scan.price,v42_detail:scan.v42_detail,stage:'PRODUCTION_SELECTED',reasons:[]},'VISIBLE_SELECTED',state,now,evidence);
+    if(m)matrices.push(m);
   }
+  const deep=(Array.isArray(scan.learning_rejections)?scan.learning_rejections:[])
+    .filter(x=>x&&x.symbol&&n(x.price)>0&&x.v42_detail&&['PRODUCTION_QUALITY_GATE','QUBO_SELECTION'].includes(String(x.stage||'')))
+    .sort((a,b)=>n(b.utility)-n(a.utility))
+    .slice(0,2);
+  for(const candidate of deep){
+    const m=await addCandidateToLanes(candidate,'DEEP_REJECTION',state,now,evidence);
+    if(m)matrices.push(m);
+  }
+  evidence.decision_matrices=matrices;
+  evidence.decision_matrix=matrices[0]||null;
 
   const summary={};
   for(const [name,s] of Object.entries(state.lanes)){pruneLane(s,now);summary[name]=laneSummary(s,now)}

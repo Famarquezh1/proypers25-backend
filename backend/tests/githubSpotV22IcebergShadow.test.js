@@ -4,6 +4,7 @@ const fs=require('fs');
 const path=require('path');
 
 const src=fs.readFileSync(path.join(__dirname,'..','scripts','github-spot-v22-iceberg-shadow.js'),'utf8');
+const radar=fs.readFileSync(path.join(__dirname,'..','scripts','github-spot-production-radar-v42.js'),'utf8');
 
 for(const lane of ['CORE_ALL','STRICT_V21','BALANCED','EXPLORATORY']){
   assert(src.includes(lane),`missing iceberg lane ${lane}`);
@@ -17,5 +18,9 @@ assert(src.includes("const EXIT={hardStop:.04,takeProfit:.06,timeoutMinutes:8*60
 assert(!/BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|api\/v3\/order|placeOrder|createOrder|withdraw/.test(src),'V22 must remain execution-free');
 assert(src.includes("production_action:'NONE'"),'V22 must declare no production action');
 assert(src.includes('no_order_created:true'),'V22 must preserve no-order invariant');
+assert(src.includes("'DEEP_REJECTION'"),'V22 must follow below-gate learning rejections');
+assert(src.includes(".slice(0,2)"),'V22 deep tracking must stay bounded to top 2 rejections per cycle');
+assert(src.includes('source:p.source||null'),'V22 outcomes must preserve visible/deep source attribution');
+assert(radar.includes('v42_detail: candidate.v42_detail ? {'),'radar learning telemetry must expose V42 detail for below-gate analysis');
 
 console.log('githubSpotV22IcebergShadow tests: PASS');
