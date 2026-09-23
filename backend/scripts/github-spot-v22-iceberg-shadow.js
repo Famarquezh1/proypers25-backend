@@ -10,13 +10,15 @@ const EVIDENCE_OUT=process.argv[5]||'spot-v22-iceberg-evidence.json';
 const COST=.004;
 const EXIT={hardStop:.04,takeProfit:.06,timeoutMinutes:8*60};
 const EXIT_ACCEL_1H={hardStop:.015,takeProfit:.02,timeoutMinutes:45};
+const EXIT_ACCEL_5M={hardStop:.015,takeProfit:.02,timeoutMinutes:5};
 const LANES={
   CORE_ALL:{mode:'IMMEDIATE'},
   STRICT_V21:{mode:'CONFIRM',retScale:1,closeDelta:0,minVol:.70},
   BALANCED:{mode:'CONFIRM',retScale:.75,closeDelta:-.05,minVol:.55},
   EXPLORATORY:{mode:'CONFIRM',retScale:.25,closeDelta:-.15,minVol:.35},
   RESCUE_V23:{mode:'RESCUE',retScale:.75,closeDelta:-.05,minVol:.55,ignitionMax:1.38},
-  V23_ACCEL_1H:{mode:'RESCUE_FAST',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38}
+  V23_ACCEL_1H:{mode:'RESCUE_FAST',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38},
+  V23_ACCEL_5M:{mode:'RESCUE_5M',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38}
 };
 const BASE_CONFIRM={extCut:.07,lowRet:.003,highRet:.008,maxDraw:-.04,lowClose:.35,highClose:.50};
 
@@ -72,7 +74,7 @@ function evaluateConfirmation(bars,signalPrice,extension,now,lane){
   return {ready:true,passed,ret,draw,close_location:close,volume_ratio:vol,thresholds:th,bar_close_time:iso(bar.closeTime),entry_price:bar.c};
 }
 function evaluateExit(position,bars,lastPrice,now){
-  const exitCfg=position.exit_profile==='ACCEL_1H'?EXIT_ACCEL_1H:EXIT;
+  const exitCfg=position.exit_profile==='ACCEL_5M'?EXIT_ACCEL_5M:position.exit_profile==='ACCEL_1H'?EXIT_ACCEL_1H:EXIT;
   const entry=n(position.entry_price),opened=ms(position.opened_at),stop=entry*(1-exitCfg.hardStop);
   let highest=n(position.highest_price,entry);
   for(const b of bars){
@@ -89,13 +91,13 @@ async function updatePositions(laneName,laneState,now,evidence){
   const keep=[];
   for(const p of laneState.positions){
     try{
-      const interval=p.exit_profile==='ACCEL_1H'?'1m':'5m';
+      const interval=(p.exit_profile==='ACCEL_1H'||p.exit_profile==='ACCEL_5M')?'1m':'5m';
       const [bars,last]=await Promise.all([klines(p.symbol,240,ms(p.opened_at),now,interval),tickerPrice(p.symbol)]);
       const ev=evaluateExit(p,bars,last,now);
       p.highest_price=round(ev.highest);p.latest_price=round(last);p.updated_at=iso(now);
       if(!ev.reason){keep.push(p);continue}
       const gross=ev.price/n(p.entry_price)-1,net=gross-COST;
-      const r={id:`result_${p.id}`,lane:laneName,source:p.source||null,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
+      const r={id:`result_${p.id}`,lane:laneName,source:p.source||null,position_id:p.id,signal_id:p.signal_id,symbol:p.symbol,context:p.context,signal_at:p.signal_at,opened_at:p.opened_at,closed_at:iso(now),exit_reason:ev.reason,entry_price:p.entry_price,exit_price:round(ev.price),highest_price:round(ev.highest),max_gross_return:n(p.entry_price)>0?ev.highest/n(p.entry_price)-1:null,gross_return:gross,net_return:net,shadow_only:true,no_order_created:true};
       laneState.results.push(r);evidence.closed.push(r);
     }catch(error){keep.push(p);evidence.errors.push({stage:'UPDATE_POSITION',lane:laneName,symbol:p.symbol,error:error.message})}
   }
@@ -104,14 +106,15 @@ async function updatePositions(laneName,laneState,now,evidence){
 async function resolvePending(laneName,laneState,laneCfg,now,evidence){
   const keep=[];
   for(const d of laneState.pending){
-    const fast=laneCfg.mode==='RESCUE_FAST';
+    const fast=laneCfg.mode==='RESCUE_FAST'||laneCfg.mode==='RESCUE_5M';
+    const fiveMinute=laneCfg.mode==='RESCUE_5M';
     const waitMs=fast?60000:5*60000;
     if(now-ms(d.signal_at)<waitMs){keep.push(d);continue}
     try{
       const bars=await klines(d.symbol,fast?40:12,ms(d.signal_at)-30*60000,now,fast?'1m':'5m');
       const cf=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,laneCfg);
       if(!cf.ready){keep.push(d);continue}
-      if(laneCfg.mode==='RESCUE'||laneCfg.mode==='RESCUE_FAST'){
+      if(laneCfg.mode==='RESCUE'||laneCfg.mode==='RESCUE_FAST'||laneCfg.mode==='RESCUE_5M'){
         const strict=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,LANES.STRICT_V21);
         d.strict_counterfactual=strict;
         if(strict.ready&&strict.passed){d.status='RESCUE_SKIPPED_STRICT_ACCEPTED';d.confirmation=cf;d.resolved_at=iso(now);laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,strict_counterfactual:strict});continue}
@@ -119,7 +122,7 @@ async function resolvePending(laneName,laneState,laneCfg,now,evidence){
       d.confirmation=cf;d.resolved_at=iso(now);
       if(!cf.passed){d.status='SHADOW_REJECTED';laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,confirmation:cf});continue}
       const entry=n(cf.entry_price)||await tickerPrice(d.symbol);
-      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),exit_profile:fast?'ACCEL_1H':null,shadow_only:true,no_order_created:true};
+      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),exit_profile:fiveMinute?'ACCEL_5M':fast?'ACCEL_1H':null,shadow_only:true,no_order_created:true};
       laneState.positions.push(p);d.status='SHADOW_OPEN';d.position_id=p.id;laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,position_id:p.id,confirmation:cf});
     }catch(error){keep.push(d);evidence.errors.push({stage:'RESOLVE_PENDING',lane:laneName,symbol:d.symbol,error:error.message})}
   }
@@ -147,7 +150,7 @@ async function addCandidateToLanes(candidate,source,state,now,evidence,laneNames
     if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
     if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
     const d={id,lane:name,source,source_stage:candidate.stage||null,source_reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_at:iso(now),signal_price:n(candidate.price),context:ctx,v42:{ignition:n(candidate.v42_detail.ignition),confirm:n(candidate.v42_detail.confirm),extension:n(candidate.v42_detail.extension),r15:n(candidate.v42_detail.r15),r60:n(candidate.v42_detail.r60),r24:n(candidate.v42_detail.r24)},shadow_only:true,no_order_created:true};
-    if(cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'){
+    if(cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'||cfg.mode==='RESCUE_5M'){
       const ignition=d.v42.ignition;
       if(!(ignition<=cfg.ignitionMax)){d.status='RESCUE_FILTERED_IGNITION';s.decisions.push(d);matrix.lanes[name]={status:d.status,ignition,ignition_max:cfg.ignitionMax};continue}
       d.rescue_rule={frozen:true,ignition_max:cfg.ignitionMax,requires_strict_reject:true};
@@ -169,7 +172,7 @@ async function main(){
 
   for(const [name,cfg] of Object.entries(LANES)){
     await updatePositions(name,state.lanes[name],now,evidence);
-    if(cfg.mode==='CONFIRM'||cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST')await resolvePending(name,state.lanes[name],cfg,now,evidence);
+    if(cfg.mode==='CONFIRM'||cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'||cfg.mode==='RESCUE_5M')await resolvePending(name,state.lanes[name],cfg,now,evidence);
   }
 
   const matrices=[];
@@ -186,6 +189,10 @@ async function main(){
   }
   for(const candidate of deep.slice(2,12)){
     const m=await addCandidateToLanes(candidate,'DEEP_REJECTION_ACCEL_1H',state,now,evidence,['V23_ACCEL_1H']);
+    if(m)matrices.push(m);
+  }
+  for(const candidate of deep.slice(0,12)){
+    const m=await addCandidateToLanes(candidate,'DEEP_REJECTION_ACCEL_5M',state,now,evidence,['V23_ACCEL_5M']);
     if(m)matrices.push(m);
   }
   evidence.decision_matrices=matrices;
