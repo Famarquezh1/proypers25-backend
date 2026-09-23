@@ -9,12 +9,14 @@ const EVIDENCE_OUT=process.argv[5]||'spot-v22-iceberg-evidence.json';
 
 const COST=.004;
 const EXIT={hardStop:.04,takeProfit:.06,timeoutMinutes:8*60};
+const EXIT_ACCEL_1H={hardStop:.015,takeProfit:.02,timeoutMinutes:45};
 const LANES={
   CORE_ALL:{mode:'IMMEDIATE'},
   STRICT_V21:{mode:'CONFIRM',retScale:1,closeDelta:0,minVol:.70},
   BALANCED:{mode:'CONFIRM',retScale:.75,closeDelta:-.05,minVol:.55},
   EXPLORATORY:{mode:'CONFIRM',retScale:.25,closeDelta:-.15,minVol:.35},
-  RESCUE_V23:{mode:'RESCUE',retScale:.75,closeDelta:-.05,minVol:.55,ignitionMax:1.38}
+  RESCUE_V23:{mode:'RESCUE',retScale:.75,closeDelta:-.05,minVol:.55,ignitionMax:1.38},
+  V23_ACCEL_1H:{mode:'RESCUE_FAST',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38}
 };
 const BASE_CONFIRM={extCut:.07,lowRet:.003,highRet:.008,maxDraw:-.04,lowClose:.35,highClose:.50};
 
@@ -31,8 +33,8 @@ async function fetchJson(url){
   try{const r=await fetch(url,{signal:ctrl.signal,headers:{'user-agent':'proypers25-v22-iceberg-shadow/1.0'}});if(!r.ok)throw new Error(`HTTP_${r.status}`);return await r.json()}
   finally{clearTimeout(timer)}
 }
-async function klines(symbol,limit=240,startTime=null,endTime=null){
-  const q=new URLSearchParams({symbol:String(symbol||'').toUpperCase(),interval:'5m',limit:String(limit)});
+async function klines(symbol,limit=240,startTime=null,endTime=null,interval='5m'){
+  const q=new URLSearchParams({symbol:String(symbol||'').toUpperCase(),interval:String(interval),limit:String(limit)});
   if(startTime)q.set('startTime',String(startTime));if(endTime)q.set('endTime',String(endTime));
   const rows=await fetchJson(`https://data-api.binance.vision/api/v3/klines?${q}`);
   if(!Array.isArray(rows))throw new Error('INVALID_KLINES');
@@ -70,23 +72,25 @@ function evaluateConfirmation(bars,signalPrice,extension,now,lane){
   return {ready:true,passed,ret,draw,close_location:close,volume_ratio:vol,thresholds:th,bar_close_time:iso(bar.closeTime),entry_price:bar.c};
 }
 function evaluateExit(position,bars,lastPrice,now){
-  const entry=n(position.entry_price),opened=ms(position.opened_at),stop=entry*(1-EXIT.hardStop);
+  const exitCfg=position.exit_profile==='ACCEL_1H'?EXIT_ACCEL_1H:EXIT;
+  const entry=n(position.entry_price),opened=ms(position.opened_at),stop=entry*(1-exitCfg.hardStop);
   let highest=n(position.highest_price,entry);
   for(const b of bars){
     highest=Math.max(highest,b.h);
-    const sl=b.l<=stop,tp=b.h>=entry*(1+EXIT.takeProfit);
+    const sl=b.l<=stop,tp=b.h>=entry*(1+exitCfg.takeProfit);
     if(sl&&tp)return {reason:'AMBIGUOUS_STOP_FIRST',price:stop,highest,stop};
     if(sl)return {reason:'HARD_STOP',price:stop,highest,stop};
-    if(tp)return {reason:'TAKE_PROFIT',price:entry*(1+EXIT.takeProfit),highest,stop};
+    if(tp)return {reason:'TAKE_PROFIT',price:entry*(1+exitCfg.takeProfit),highest,stop};
   }
-  if(opened&&now-opened>=EXIT.timeoutMinutes*60000&&lastPrice>0)return {reason:'TIMEOUT',price:lastPrice,highest,stop};
+  if(opened&&now-opened>=exitCfg.timeoutMinutes*60000&&lastPrice>0)return {reason:'TIMEOUT',price:lastPrice,highest,stop};
   return {reason:null,price:null,highest,stop};
 }
 async function updatePositions(laneName,laneState,now,evidence){
   const keep=[];
   for(const p of laneState.positions){
     try{
-      const [bars,last]=await Promise.all([klines(p.symbol,240,ms(p.opened_at),now),tickerPrice(p.symbol)]);
+      const interval=p.exit_profile==='ACCEL_1H'?'1m':'5m';
+      const [bars,last]=await Promise.all([klines(p.symbol,240,ms(p.opened_at),now,interval),tickerPrice(p.symbol)]);
       const ev=evaluateExit(p,bars,last,now);
       p.highest_price=round(ev.highest);p.latest_price=round(last);p.updated_at=iso(now);
       if(!ev.reason){keep.push(p);continue}
@@ -100,12 +104,14 @@ async function updatePositions(laneName,laneState,now,evidence){
 async function resolvePending(laneName,laneState,laneCfg,now,evidence){
   const keep=[];
   for(const d of laneState.pending){
-    if(now-ms(d.signal_at)<5*60000){keep.push(d);continue}
+    const fast=laneCfg.mode==='RESCUE_FAST';
+    const waitMs=fast?60000:5*60000;
+    if(now-ms(d.signal_at)<waitMs){keep.push(d);continue}
     try{
-      const bars=await klines(d.symbol,12,ms(d.signal_at)-30*60000,now);
+      const bars=await klines(d.symbol,fast?40:12,ms(d.signal_at)-30*60000,now,fast?'1m':'5m');
       const cf=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,laneCfg);
       if(!cf.ready){keep.push(d);continue}
-      if(laneCfg.mode==='RESCUE'){
+      if(laneCfg.mode==='RESCUE'||laneCfg.mode==='RESCUE_FAST'){
         const strict=evaluateConfirmation(bars,n(d.signal_price),n(d.v42?.extension),now,LANES.STRICT_V21);
         d.strict_counterfactual=strict;
         if(strict.ready&&strict.passed){d.status='RESCUE_SKIPPED_STRICT_ACCEPTED';d.confirmation=cf;d.resolved_at=iso(now);laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,strict_counterfactual:strict});continue}
@@ -113,7 +119,7 @@ async function resolvePending(laneName,laneState,laneCfg,now,evidence){
       d.confirmation=cf;d.resolved_at=iso(now);
       if(!cf.passed){d.status='SHADOW_REJECTED';laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,confirmation:cf});continue}
       const entry=n(cf.entry_price)||await tickerPrice(d.symbol);
-      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),shadow_only:true,no_order_created:true};
+      const p={id:`position_${laneName}_${d.id}`,signal_id:d.id,lane:laneName,source:d.source||null,symbol:d.symbol,context:d.context,signal_at:d.signal_at,opened_at:iso(now),entry_price:round(entry),highest_price:round(entry),exit_profile:fast?'ACCEL_1H':null,shadow_only:true,no_order_created:true};
       laneState.positions.push(p);d.status='SHADOW_OPEN';d.position_id=p.id;laneState.decisions.push(d);evidence.resolved.push({lane:laneName,signal_id:d.id,symbol:d.symbol,status:d.status,position_id:p.id,confirmation:cf});
     }catch(error){keep.push(d);evidence.errors.push({stage:'RESOLVE_PENDING',lane:laneName,symbol:d.symbol,error:error.message})}
   }
@@ -128,18 +134,20 @@ function pruneLane(s,now){
   s.results=s.results.filter(x=>now-ms(x.closed_at)<70*86400000).slice(-1000);
   s.decisions=s.decisions.filter(x=>now-ms(x.signal_at)<30*86400000).slice(-2000);
 }
-async function addCandidateToLanes(candidate,source,state,now,evidence){
+async function addCandidateToLanes(candidate,source,state,now,evidence,laneNames=null){
   if(!candidate||!candidate.symbol||!(n(candidate.price)>0)||!candidate.v42_detail)return null;
   const symbol=String(candidate.symbol).toUpperCase(),bucket=Math.floor(now/(5*60000)),ctx=context(candidate.v42_detail);
   const matrix={source,stage:candidate.stage||null,reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_price:n(candidate.price),context:ctx,lanes:{}};
+  const allowed=Array.isArray(laneNames)?new Set(laneNames):null;
   for(const [name,cfg] of Object.entries(LANES)){
+    if(allowed&&!allowed.has(name))continue;
     const s=state.lanes[name],id=`v22_${name}_${source}_${symbol}_${bucket}`;
     const active=s.pending.concat(s.positions).some(x=>String(x.symbol||'').toUpperCase()===symbol);
     const seen=s.pending.concat(s.positions,s.decisions).some(x=>x.id===id||x.signal_id===id);
     if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
     if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
     const d={id,lane:name,source,source_stage:candidate.stage||null,source_reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_at:iso(now),signal_price:n(candidate.price),context:ctx,v42:{ignition:n(candidate.v42_detail.ignition),confirm:n(candidate.v42_detail.confirm),extension:n(candidate.v42_detail.extension),r15:n(candidate.v42_detail.r15),r60:n(candidate.v42_detail.r60),r24:n(candidate.v42_detail.r24)},shadow_only:true,no_order_created:true};
-    if(cfg.mode==='RESCUE'){
+    if(cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'){
       const ignition=d.v42.ignition;
       if(!(ignition<=cfg.ignitionMax)){d.status='RESCUE_FILTERED_IGNITION';s.decisions.push(d);matrix.lanes[name]={status:d.status,ignition,ignition_max:cfg.ignitionMax};continue}
       d.rescue_rule={frozen:true,ignition_max:cfg.ignitionMax,requires_strict_reject:true};
@@ -161,7 +169,7 @@ async function main(){
 
   for(const [name,cfg] of Object.entries(LANES)){
     await updatePositions(name,state.lanes[name],now,evidence);
-    if(cfg.mode==='CONFIRM'||cfg.mode==='RESCUE')await resolvePending(name,state.lanes[name],cfg,now,evidence);
+    if(cfg.mode==='CONFIRM'||cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST')await resolvePending(name,state.lanes[name],cfg,now,evidence);
   }
 
   const matrices=[];
@@ -171,10 +179,13 @@ async function main(){
   }
   const deep=(Array.isArray(scan.learning_rejections)?scan.learning_rejections:[])
     .filter(x=>x&&x.symbol&&n(x.price)>0&&x.v42_detail&&['V42_PRE_APPROVAL','PRODUCTION_QUALITY_GATE','QUBO_SELECTION'].includes(String(x.stage||'')))
-    .sort((a,b)=>n(b.utility)-n(a.utility))
-    .slice(0,2);
-  for(const candidate of deep){
+    .sort((a,b)=>n(b.utility)-n(a.utility));
+  for(const candidate of deep.slice(0,2)){
     const m=await addCandidateToLanes(candidate,'DEEP_REJECTION',state,now,evidence);
+    if(m)matrices.push(m);
+  }
+  for(const candidate of deep.slice(2,12)){
+    const m=await addCandidateToLanes(candidate,'DEEP_REJECTION_ACCEL_1H',state,now,evidence,['V23_ACCEL_1H']);
     if(m)matrices.push(m);
   }
   evidence.decision_matrices=matrices;
