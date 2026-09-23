@@ -18,7 +18,8 @@ const LANES={
   EXPLORATORY:{mode:'CONFIRM',retScale:.25,closeDelta:-.15,minVol:.35},
   RESCUE_V23:{mode:'RESCUE',retScale:.75,closeDelta:-.05,minVol:.55,ignitionMax:1.38},
   V23_ACCEL_1H:{mode:'RESCUE_FAST',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38},
-  V23_ACCEL_5M:{mode:'RESCUE_5M',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38}
+  V23_ACCEL_5M:{mode:'RESCUE_5M',retScale:.25,closeDelta:-.15,minVol:.35,ignitionMax:1.38},
+  V23_ACCEL_5M_NOW:{mode:'RESCUE_5M_NOW',ignitionMax:1.38}
 };
 const BASE_CONFIRM={extCut:.07,lowRet:.003,highRet:.008,maxDraw:-.04,lowClose:.35,highClose:.50};
 
@@ -150,13 +151,13 @@ async function addCandidateToLanes(candidate,source,state,now,evidence,laneNames
     if(active){matrix.lanes[name]={status:'DEDUPED_ACTIVE_SYMBOL'};continue}
     if(seen){matrix.lanes[name]={status:'SEEN_BUCKET'};continue}
     const d={id,lane:name,source,source_stage:candidate.stage||null,source_reasons:Array.isArray(candidate.reasons)?candidate.reasons:[],symbol,signal_at:iso(now),signal_price:n(candidate.price),context:ctx,v42:{ignition:n(candidate.v42_detail.ignition),confirm:n(candidate.v42_detail.confirm),extension:n(candidate.v42_detail.extension),r15:n(candidate.v42_detail.r15),r60:n(candidate.v42_detail.r60),r24:n(candidate.v42_detail.r24)},shadow_only:true,no_order_created:true};
-    if(cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'||cfg.mode==='RESCUE_5M'){
+    if(cfg.mode==='RESCUE'||cfg.mode==='RESCUE_FAST'||cfg.mode==='RESCUE_5M'||cfg.mode==='RESCUE_5M_NOW'){
       const ignition=d.v42.ignition;
       if(!(ignition<=cfg.ignitionMax)){d.status='RESCUE_FILTERED_IGNITION';s.decisions.push(d);matrix.lanes[name]={status:d.status,ignition,ignition_max:cfg.ignitionMax};continue}
       d.rescue_rule={frozen:true,ignition_max:cfg.ignitionMax,requires_strict_reject:true};
     }
-    if(cfg.mode==='IMMEDIATE'){
-      const p={id:`position_${name}_${id}`,signal_id:id,lane:name,source,symbol,context:ctx,signal_at:d.signal_at,opened_at:d.signal_at,entry_price:round(d.signal_price),highest_price:round(d.signal_price),shadow_only:true,no_order_created:true};
+    if(cfg.mode==='IMMEDIATE'||cfg.mode==='RESCUE_5M_NOW'){
+      const p={id:`position_${name}_${id}`,signal_id:id,lane:name,source,symbol,context:ctx,signal_at:d.signal_at,opened_at:d.signal_at,entry_price:round(d.signal_price),highest_price:round(d.signal_price),exit_profile:cfg.mode==='RESCUE_5M_NOW'?'ACCEL_5M':null,shadow_only:true,no_order_created:true};
       d.status='SHADOW_OPEN';d.position_id=p.id;s.positions.push(p);s.decisions.push(d);evidence.opened.push({lane:name,source,symbol,position_id:p.id,entry_price:p.entry_price});matrix.lanes[name]={status:d.status};
     }else{
       d.status='PENDING_CONFIRMATION';d.thresholds=confirmationThresholds(n(candidate.v42_detail.extension),cfg);s.pending.push(d);matrix.lanes[name]={status:d.status,thresholds:d.thresholds};
@@ -193,6 +194,10 @@ async function main(){
   }
   for(const candidate of deep.slice(0,12)){
     const m=await addCandidateToLanes(candidate,'DEEP_REJECTION_ACCEL_5M',state,now,evidence,['V23_ACCEL_5M']);
+    if(m)matrices.push(m);
+  }
+  for(const candidate of deep.slice(0,40)){
+    const m=await addCandidateToLanes(candidate,'DEEP_REJECTION_ACCEL_5M_NOW',state,now,evidence,['V23_ACCEL_5M_NOW']);
     if(m)matrices.push(m);
   }
   evidence.decision_matrices=matrices;
