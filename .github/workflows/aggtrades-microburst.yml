@@ -1,0 +1,18 @@
+name: AggTrades Microburst
+on:
+  pull_request:
+    paths: ['backend/scripts/github-aggtrades-microburst.js','.github/workflows/aggtrades-microburst.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-aggtrades-microburst.js
+      - run: node backend/scripts/github-aggtrades-microburst.js
+      - uses: actions/upload-artifact@v4
+        with: {name: aggtrades-microburst, path: aggtrades-microburst.json, retention-days: 30}
