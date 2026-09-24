@@ -1,0 +1,29 @@
+name: Spot V24 Deep Precursor Research
+on:
+  pull_request:
+    paths:
+      - 'backend/scripts/github-spot-v24-deep-precursor.js'
+      - '.github/workflows/spot-v24-deep-precursor.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  train-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPLAY_DAYS: '28'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax guard
+        run: node --check backend/scripts/github-spot-v24-deep-precursor.js
+      - name: Train and out-of-sample test
+        run: node backend/scripts/github-spot-v24-deep-precursor.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-v24-deep-precursor
+          path: spot-v24-deep-precursor.json
+          retention-days: 30

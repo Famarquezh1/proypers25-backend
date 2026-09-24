@@ -178,12 +178,60 @@ jobs:
           path: spot-v22-iceberg-evidence.json
           retention-days: 30
 
+      - name: Load previous V24 prospective state
+        id: previous_v24
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          rm -rf .v24-shadow
+          mkdir -p .v24-shadow/previous
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-v21-shadow-live.yml --branch main --limit 20 --json databaseId --jq '.[].databaseId' 2>/dev/null | while read RID; do
+            gh run download "$RID" --repo "$GITHUB_REPOSITORY" --name spot-v24-shadow-state --dir .v24-shadow/previous >/dev/null 2>&1 && break
+          done
+          if [ -f .v24-shadow/previous/spot-v24-shadow-state.json ]; then echo "state=.v24-shadow/previous/spot-v24-shadow-state.json" >> "$GITHUB_OUTPUT"; else echo "state=" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Run V24 prospective shadow
+        id: v24
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node backend/scripts/github-spot-v24-prospective-shadow.js "${{ steps.previous_v24.outputs.state }}" spot-v24-shadow-state.json spot-v24-shadow-evidence.json)
+          printf '%s\n' "$RESULT"
+          test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.shadow_only // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.no_order_created // false')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.production_action // "BAD"')" = "NONE"
+          echo "signals=$(printf '%s' "$RESULT" | jq -r '.signals // 0')" >> "$GITHUB_OUTPUT"
+          echo "unresolved=$(printf '%s' "$RESULT" | jq -r '.unresolved // 0')" >> "$GITHUB_OUTPUT"
+          echo "resolved=$(printf '%s' "$RESULT" | jq -r '.resolved // 0')" >> "$GITHUB_OUTPUT"
+          echo "precision=$(printf '%s' "$RESULT" | jq -r '.precision // 0')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V24 prospective state
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v24-shadow-state
+          path: spot-v24-shadow-state.json
+          retention-days: 30
+          overwrite: true
+
+      - name: Upload V24 prospective evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-v24-shadow-evidence-${{ github.run_id }}
+          path: spot-v24-shadow-evidence.json
+          retention-days: 30
+
       - name: Guard no execution capabilities
         shell: bash
         run: |
           set -euo pipefail
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v21-shadow.js
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v22-iceberg-shadow.js
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|firebase-admin|firestore|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-spot-v24-prospective-shadow.js
+          grep -q "production_action:'NONE'" backend/scripts/github-spot-v24-prospective-shadow.js
+          grep -q 'no_order_created:true' backend/scripts/github-spot-v24-prospective-shadow.js
           ! grep -Eq 'gh workflow run|issue create' .github/workflows/spot-v21-shadow-live.yml
           grep -q "production_action:'NONE'" backend/scripts/github-spot-v21-shadow.js
           grep -q 'no_order_created:true' backend/scripts/github-spot-v21-shadow.js
@@ -209,4 +257,5 @@ jobs:
           echo "- V23 ACCEL 1H research-only: pending=${{ steps.v22.outputs.rescue_accel_pending || '0' }} | open=${{ steps.v22.outputs.rescue_accel_open || '0' }} | closed=${{ steps.v22.outputs.rescue_accel_closed || '0' }} | win=${{ steps.v22.outputs.rescue_accel_win || '0' }} | avgNet=${{ steps.v22.outputs.rescue_accel_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- V23 ACCEL 5M research-only: pending=${{ steps.v22.outputs.rescue_5m_pending || '0' }} | open=${{ steps.v22.outputs.rescue_5m_open || '0' }} | closed=${{ steps.v22.outputs.rescue_5m_closed || '0' }} | win=${{ steps.v22.outputs.rescue_5m_win || '0' }} | avgNet=${{ steps.v22.outputs.rescue_5m_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- V23 ACCEL 5M NOW research-only: pending=${{ steps.v22.outputs.rescue_5m_now_pending || '0' }} | open=${{ steps.v22.outputs.rescue_5m_now_open || '0' }} | closed=${{ steps.v22.outputs.rescue_5m_now_closed || '0' }} | win=${{ steps.v22.outputs.rescue_5m_now_win || '0' }} | avgNet=${{ steps.v22.outputs.rescue_5m_now_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V24 prospective: signals=${{ steps.v24.outputs.signals || '0' }} | unresolved=${{ steps.v24.outputs.unresolved || '0' }} | resolved=${{ steps.v24.outputs.resolved || '0' }} | precision=${{ steps.v24.outputs.precision || '0' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- V22 balanced: closed=${{ steps.v22.outputs.balanced_closed || '0' }} | avgNet=${{ steps.v22.outputs.balanced_avg || '0' }}" >> "$GITHUB_STEP_SUMMARY"
