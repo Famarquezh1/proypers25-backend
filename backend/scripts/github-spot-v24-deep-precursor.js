@@ -1,0 +1,27 @@
+'use strict';
+// V24 Deep Precursor: research-only, causal historical discovery. No production influence.
+const fs=require('fs');
+const BASE='https://data-api.binance.vision';
+const DAYS=Number(process.env.REPLAY_DAYS||28);
+const SYMBOLS=String(process.env.REPLAY_SYMBOLS||'QNTUSDT,CRVUSDT,SAHARAUSDT,FILUSDT,IOTXUSDT,TUTUSDT,BTTCUSDT,BABYUSDT,NEARUSDT,SUSDT,ONGUSDT,LISTAUSDT,FETUSDT,METUSDT,TSTUSDT,PENGUUSDT,HBARUSDT,MINAUSDT,LTCUSDT,RAYUSDT,UNIUSDT').split(',').map(x=>x.trim()).filter(Boolean);
+const HORIZON=96, EXPLOSION=.10, COST=.004;
+const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+const pct=(a,b)=>a>0?b/a-1:0;
+async function fetchJson(url){const c=new AbortController(),t=setTimeout(()=>c.abort(),20000);try{const r=await fetch(url,{signal:c.signal,headers:{'user-agent':'proypers25-v24-research/1.0'}});if(!r.ok)throw Error('HTTP_'+r.status);return await r.json()}finally{clearTimeout(t)}}
+async function klines(symbol){const end=Date.now(),start=end-DAYS*86400000,out=[];let cursor=start;while(cursor<end){const q=new URLSearchParams({symbol,interval:'5m',startTime:String(cursor),endTime:String(end),limit:'1000'});const rows=await fetchJson(BASE+'/api/v3/klines?'+q);if(!Array.isArray(rows)||!rows.length)break;for(const r of rows)out.push({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],q:+r[7],n:+r[8]});const next=+rows.at(-1)[0]+300000;if(next<=cursor)break;cursor=next;if(rows.length<1000)break}return out}
+function features(b,i,btcMap){if(i<288||i+HORIZON>=b.length)return null;const bb=btcMap.get(b[i].t);if(!bb||bb.i<288)return null;const c=b[i].c,btc=bb.rows,j=bb.i;
+ const r15=pct(b[i-3].c,c),r30=pct(b[i-6].c,c),r60=pct(b[i-12].c,c),r180=pct(b[i-36].c,c),r24=pct(b[i-288].c,c);
+ const q15=b.slice(i-2,i+1).reduce((s,x)=>s+x.q,0),q60=b.slice(i-11,i+1).reduce((s,x)=>s+x.q,0),qbase=avg(b.slice(i-72,i-12).map(x=>x.q))*12;
+ const vol15=qbase>0?q15/(qbase/4):1,vol60=qbase>0?q60/qbase:1;
+ const ta=b[i].n/Math.max(1,avg(b.slice(i-12,i).map(x=>x.n)));
+ const hi60=Math.max(...b.slice(i-12,i).map(x=>x.h)),lo60=Math.min(...b.slice(i-12,i).map(x=>x.l));
+ const compression=(hi60-lo60)/Math.max(c,1e-12);
+ const breakout=hi60>0?c/hi60-1:0;
+ const btc60=pct(btc[j-12].c,btc[j].c),relative60=r60-btc60;
+ const future=b.slice(i+1,i+HORIZON+1),maxFuture=Math.max(...future.map(x=>x.h))/c-1,minFuture=Math.min(...future.map(x=>x.l))/c-1;
+ return {r15,r30,r60,r180,r24,vol15,vol60,trade_activity:ta,compression,breakout,relative60,maxFuture,minFuture,label:maxFuture>=EXPLOSION};
+}
+function quantile(a,q){const x=[...a].sort((a,b)=>a-b);return x[Math.min(x.length-1,Math.max(0,Math.floor((x.length-1)*q)))]}
+function train(rows){const pos=rows.filter(x=>x.label),neg=rows.filter(x=>!x.label);const fields=['r15','r30','r60','r180','vol15','vol60','trade_activity','compression','breakout','relative60'];const rules=[];for(const f of fields){for(const q of [.6,.7,.8,.9]){const t=quantile(rows.map(x=>x[f]),q);for(const op of ['gte','lte']){const pick=rows.filter(x=>op==='gte'?x[f]>=t:x[f]<=t),p=pick.filter(x=>x.label).length;const precision=pick.length?p/pick.length:0,recall=pos.length?p/pos.length:0,lift=(pos.length/rows.length)>0?precision/(pos.length/rows.length):0;if(pick.length>=10)rules.push({f,op,t,precision,recall,lift,n:pick.length})}}}rules.sort((a,b)=>(b.lift-a.lift)||(b.precision-a.precision));return rules.slice(0,5)}
+function evaluate(rows,rules){const hit=x=>rules.filter(r=>r.op==='gte'?x[r.f]>=r.t:x[r.f]<=r.t).length>=2;const picked=rows.filter(hit),pos=rows.filter(x=>x.label),tp=picked.filter(x=>x.label).length;return {n:rows.length,explosions:pos.length,selected:picked.length,true_positive:tp,precision:picked.length?tp/picked.length:0,recall:pos.length?tp/pos.length:0,base_rate:rows.length?pos.length/rows.length:0,lift:(picked.length&&pos.length)?(tp/picked.length)/(pos.length/rows.length):0,avg_future_max:picked.length?avg(picked.map(x=>x.maxFuture)):0,avg_future_min:picked.length?avg(picked.map(x=>x.minFuture)):0,cost_reference:COST}}
+(async()=>{const btc=await klines('BTCUSDT'),btcMap=new Map(btc.map((x,i)=>[x.t,{rows:btc,i}])),rows=[];for(const s of SYMBOLS){try{const b=await klines(s);console.error('loaded '+s+' '+b.length);for(let i=288;i<b.length-HORIZON;i+=6){const f=features(b,i,btcMap);if(f&&f.r24<.18)rows.push({symbol:s,t:b[i].t,...f})}}catch(e){console.error('skip '+s+' '+e.message)}}rows.sort((a,b)=>a.t-b.t);const cut=Math.floor(rows.length*.6),trainRows=rows.slice(0,cut),testRows=rows.slice(cut);const rules=train(trainRows);const report={generated_at:new Date().toISOString(),mode:'V24_DEEP_PRECURSOR_RESEARCH_ONLY_NO_EXECUTION',production_influence:false,v23_unchanged:true,v23_ignition_max:1.38,label:{future_horizon_hours:8,explosion_return:EXPLOSION},split:{train:'first_60pct_chronological',test:'last_40pct_chronological'},rules,train:evaluate(trainRows,rules),test:evaluate(testRows,rules),limitations:['Research cohort only; not the full Binance universe.','Five-minute public klines; no order-book reconstruction.','Candidate rules are trained only on the chronological training partition and evaluated unchanged out-of-sample.']};fs.writeFileSync('spot-v24-deep-precursor.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2))})().catch(e=>{console.error(e.stack||e);process.exit(1)});
