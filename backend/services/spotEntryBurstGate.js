@@ -9,6 +9,7 @@ const V42_THRESHOLDS = [
 const ENTRY_COOLDOWN_MS = 7 * 60 * 1000;
 const BURST_WINDOW_MS = 30 * 60 * 1000;
 const EXTENDED_24H_PCT = 12;
+const EXTENDED_CONTINUATION_MAX_24H_PCT = 18;
 const HIGH_CORRELATION = 0.88;
 const HIGH_QUALITY_NORM = 0.94;
 const ELITE_QUALITY_NORM = 0.97;
@@ -171,7 +172,25 @@ function evaluateSpotEntryBurstGate({
     return { allow: false, reason: `entry burst requires 3/3 V4.2 quality (${burst.length} recent managed positions)`, code: 'BURST_QUALITY', diagnostics: { passCount, norm, maxCorrelation } };
   }
   if (Number(currentPct) >= EXTENDED_24H_PCT) {
-    return { allow: false, reason: `CORE entry blocked at ${Number(currentPct).toFixed(2)}% 24h extension (hard limit ${EXTENDED_24H_PCT}%)`, code: 'EXTENDED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
+    const detail = v42Quality?.detail || {};
+    const extendedContinuation =
+      Number(currentPct) < EXTENDED_CONTINUATION_MAX_24H_PCT &&
+      highQuality &&
+      Number(detail.r15) > 0 &&
+      Number(detail.r15) <= 0.04 &&
+      Number(detail.r60) > 0 &&
+      Number(detail.r60) <= 0.08 &&
+      Number(detail.confirm) >= 0.45 &&
+      Number(detail.extension) >= 0.03;
+    if (extendedContinuation) {
+      return {
+        allow: true,
+        reason: 'extended high-conviction continuation admitted at reduced size',
+        code: 'EXTENDED_CONTINUATION_ADMITTED',
+        diagnostics: { passCount, norm, maxCorrelation, currentPct: Number(currentPct), r15: Number(detail.r15), r60: Number(detail.r60), confirm: Number(detail.confirm), extension: Number(detail.extension) }
+      };
+    }
+    return { allow: false, reason: `CORE entry blocked at ${Number(currentPct).toFixed(2)}% 24h extension (standard limit ${EXTENDED_24H_PCT}%, continuation ceiling ${EXTENDED_CONTINUATION_MAX_24H_PCT}%)`, code: 'EXTENDED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
   }
   if (maxCorrelation !== null && maxCorrelation >= HIGH_CORRELATION && !eliteQuality) {
     return { allow: false, reason: `correlated entry blocked (max 2h correlation ${maxCorrelation.toFixed(3)})`, code: 'CORRELATED_ENTRY', diagnostics: { passCount, norm, maxCorrelation } };
@@ -234,6 +253,7 @@ module.exports = {
   ENTRY_COOLDOWN_MS,
   BURST_WINDOW_MS,
   EXTENDED_24H_PCT,
+  EXTENDED_CONTINUATION_MAX_24H_PCT,
   HIGH_CORRELATION,
   HIGH_QUALITY_NORM,
   ELITE_QUALITY_NORM,
