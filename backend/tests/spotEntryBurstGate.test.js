@@ -172,16 +172,43 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
   assert.strictEqual(result.code, 'EXTENDED_ENTRY');
 })();
 
-(function extendedEntryBlocksEvenEliteQuality() {
+(function extendedEntryAdmitsStrongContinuationOnly() {
   const result = evaluateSpotEntryBurstGate({
     lane: 'CORE',
     symbol: 'AAAUSDT',
-    currentPct: 12,
+    currentPct: 17.72,
     managedPositions: [],
-    v42Quality: quality(3, 0.99)
+    v42Quality: quality(3, 0.96, {
+      ignition: 2.5,
+      confirm: 0.75,
+      extension: 0.12,
+      r15: 0.02,
+      r60: 0.06
+    })
   });
-  assert.strictEqual(result.allow, false);
-  assert.strictEqual(result.code, 'EXTENDED_ENTRY');
+  assert.strictEqual(result.allow, true);
+  assert.strictEqual(result.code, 'EXTENDED_CONTINUATION_ADMITTED');
+})();
+
+(function extendedEntryStillBlocksWeakOrOverextendedMove() {
+  const weak = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'AAAUSDT',
+    currentPct: 15,
+    managedPositions: [],
+    v42Quality: quality(3, 0.96, { confirm: 0.2, extension: 0.01, r15: 0.02, r60: 0.06 })
+  });
+  assert.strictEqual(weak.allow, false);
+  assert.strictEqual(weak.code, 'EXTENDED_ENTRY');
+  const late = evaluateSpotEntryBurstGate({
+    lane: 'CORE',
+    symbol: 'AAAUSDT',
+    currentPct: 18,
+    managedPositions: [],
+    v42Quality: quality(3, 0.99, { confirm: 0.8, extension: 0.12, r15: 0.02, r60: 0.06 })
+  });
+  assert.strictEqual(late.allow, false);
+  assert.strictEqual(late.code, 'EXTENDED_ENTRY');
 })();
 
 (function correlatedEntryNeedsEliteQuality() {
