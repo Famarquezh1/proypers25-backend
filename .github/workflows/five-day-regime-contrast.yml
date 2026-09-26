@@ -1,0 +1,18 @@
+name: Five Day Regime Contrast
+on:
+  pull_request:
+    paths: ['backend/scripts/github-five-day-regime-contrast.js','.github/workflows/five-day-regime-contrast.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-five-day-regime-contrast.js
+      - run: node backend/scripts/github-five-day-regime-contrast.js
+      - uses: actions/upload-artifact@v4
+        with: {name: five-day-regime-contrast, path: five-day-regime-contrast.json, retention-days: 30}
