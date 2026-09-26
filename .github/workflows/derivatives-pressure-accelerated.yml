@@ -1,0 +1,20 @@
+name: Derivatives Pressure Accelerated Research
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: node --check backend/scripts/github-derivatives-pressure-accelerated.js
+      - name: Causal accelerated historical test
+        run: node backend/scripts/github-derivatives-pressure-accelerated.js | tee derivatives-pressure-result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: derivatives-pressure-result-${{ github.run_id }}
+          path: derivatives-pressure-result.json
