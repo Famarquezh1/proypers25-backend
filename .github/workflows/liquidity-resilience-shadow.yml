@@ -17,8 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install websocket dependency
-        run: npm --prefix backend install --no-save ws
+      - name: Install websocket dependency only
+        run: npm install --no-save --ignore-scripts --prefix backend ws
       - name: Syntax and safety check
         run: |
           node --check backend/scripts/github-liquidity-resilience-shadow.js
