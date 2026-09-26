@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const REST_BASES = ['https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'];
 
 const SYMBOLS = String(process.env.LR_SYMBOLS || 'BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,SUIUSDT,LINKUSDT,NEARUSDT,LTCUSDT,FETUSDT,HBARUSDT,SEIUSDT,WIFUSDT,PEPEUSDT,RAYUSDT,CRVUSDT,LDOUSDT,RENDERUSDT,ARUSDT')
   .split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).slice(0,20);
@@ -75,8 +76,16 @@ function onTrade(sym,t){
   }
 }
 async function initBook(sym){
-  const r=await fetch('https://api.binance.com/api/v3/depth?symbol='+sym+'&limit=1000'); if(!r.ok)throw new Error(sym+' snapshot '+r.status);
-  const j=await r.json(), b={last:+j.lastUpdateId,bids:new Map(j.bids),asks:new Map(j.asks),ready:true}; books.set(sym,b);
+  let lastError=null;
+  for(const base of REST_BASES){
+    try{
+      const r=await fetch(base+'/api/v3/depth?symbol='+sym+'&limit=1000',{headers:{'User-Agent':'Proypers25-Research/1.0'}});
+      if(!r.ok){lastError=new Error(sym+' snapshot '+r.status+' via '+base);continue;}
+      const j=await r.json(), b={last:+j.lastUpdateId,bids:new Map(j.bids),asks:new Map(j.asks),ready:true}; books.set(sym,b); return true;
+    }catch(e){lastError=e;}
+  }
+  emit({type:'snapshot_unavailable',shadow_only:true,no_order_created:true,symbol:sym,at:now(),error:String(lastError?.message||lastError||'unavailable')});
+  return false;
 }
 function depth(sym,d){
   const b=books.get(sym); if(!b||!b.ready)return;
@@ -87,7 +96,8 @@ function depth(sym,d){
   b.last=d.u;
 }
 (async()=>{
-  await Promise.all(SYMBOLS.map(initBook));
+  const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
+  if(!initialized) throw new Error('No Binance depth snapshots available from REST endpoints');
   emit({type:'collector_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
