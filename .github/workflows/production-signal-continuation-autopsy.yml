@@ -1,0 +1,35 @@
+name: Production Signal Continuation Autopsy
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-production-signal-continuation-autopsy.js'
+      - '.github/workflows/production-signal-continuation-autopsy.yml'
+permissions:
+  contents: read
+  issues: read
+jobs:
+  research:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-production-signal-continuation-autopsy.js
+          $src=Get-Content backend/scripts/github-production-signal-continuation-autopsy.js -Raw
+          if($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order'){throw 'Forbidden execution capability'}
+      - name: Analyze real production signal cohort
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-production-signal-continuation-autopsy.js | Tee-Object -FilePath production-signal-autopsy.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-signal-autopsy-${{ github.run_id }}
+          path: production-signal-autopsy.json
+          retention-days: 7
