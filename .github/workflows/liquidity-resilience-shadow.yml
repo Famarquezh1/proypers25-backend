@@ -1,0 +1,36 @@
+name: Liquidity Resilience Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install websocket dependency
+        run: npm --prefix backend install --no-save ws
+      - name: Syntax and safety check
+        run: |
+          node --check backend/scripts/github-liquidity-resilience-shadow.js
+          grep -q "shadow_only:true" backend/scripts/github-liquidity-resilience-shadow.js
+          grep -q "no_order_created:true" backend/scripts/github-liquidity-resilience-shadow.js
+          ! grep -Eq "API_KEY|API_SECRET|/api/v3/order" backend/scripts/github-liquidity-resilience-shadow.js
+      - name: Collect public depth/trades
+        env:
+          LR_RUN_MS: '240000'
+        run: node backend/scripts/github-liquidity-resilience-shadow.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liquidity-resilience-shadow-${{ github.run_id }}
+          path: liquidity-resilience-shadow.ndjson
+          retention-days: 30
