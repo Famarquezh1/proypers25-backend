@@ -2,7 +2,7 @@ name: Staged Entry Fast Research
 on:
   push:
     branches: [research/staged-entry-fast]
-    paths: ['.github/workflows/staged-entry-fast.yml']
+    paths: ['.github/workflows/staged-entry-fast.yml', 'backend/scripts/github-staged-entry-fast.js']
   workflow_dispatch:
 jobs:
   research:
