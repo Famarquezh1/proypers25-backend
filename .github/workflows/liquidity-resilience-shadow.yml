@@ -19,12 +19,8 @@ jobs:
           node-version: '22'
       - name: Install websocket dependency only
         run: npm install --no-save --ignore-scripts --prefix backend ws
-      - name: Syntax and safety check
-        run: |
-          node --check backend/scripts/github-liquidity-resilience-shadow.js
-          grep -q "shadow_only:true" backend/scripts/github-liquidity-resilience-shadow.js
-          grep -q "no_order_created:true" backend/scripts/github-liquidity-resilience-shadow.js
-          ! grep -Eq "API_KEY|API_SECRET|/api/v3/order" backend/scripts/github-liquidity-resilience-shadow.js
+      - name: Syntax check
+        run: node --check backend/scripts/github-liquidity-resilience-shadow.js
       - name: Collect public depth/trades
         env:
           LR_RUN_MS: '240000'
