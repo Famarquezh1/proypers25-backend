@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('assert');
+const fs=require('fs');
+const s=fs.readFileSync(require('path').join(__dirname,'../scripts/github-liquidity-resilience-shadow.js'),'utf8');
+assert(s.includes("shadow_only:true"));
+assert(s.includes("no_order_created:true"));
+assert(!s.includes('/api/v3/order'));
+assert(s.includes("const BAND = 0.0025"));
+assert(s.includes("const MIN_FRAC = 0.05, MAX_FRAC = 0.20"));
+console.log('liquidity resilience shadow safety tests passed');
