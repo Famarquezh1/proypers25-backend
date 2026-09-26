@@ -5,16 +5,26 @@ permissions:
   contents: read
 jobs:
   research:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 12
+    env:
+      DP_DAYS: '21'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: node --check backend/scripts/github-derivatives-pressure-accelerated.js
+        with:
+          node-version: '20'
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-derivatives-pressure-accelerated.js
+          $src = Get-Content backend/scripts/github-derivatives-pressure-accelerated.js -Raw
+          if ($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order') { throw 'Execution capability forbidden in research script' }
       - name: Causal accelerated historical test
-        run: node backend/scripts/github-derivatives-pressure-accelerated.js | tee derivatives-pressure-result.json
+        shell: powershell
+        run: node backend/scripts/github-derivatives-pressure-accelerated.js | Tee-Object -FilePath derivatives-pressure-result.json
       - uses: actions/upload-artifact@v4
         with:
           name: derivatives-pressure-result-${{ github.run_id }}
           path: derivatives-pressure-result.json
+          retention-days: 7
