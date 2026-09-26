@@ -1,0 +1,19 @@
+name: Staged Entry Fast Research
+on:
+  push:
+    branches: [research/staged-entry-fast]
+    paths: ['.github/workflows/staged-entry-fast.yml']
+  workflow_dispatch:
+jobs:
+  research:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run causal staged-entry comparison
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-staged-entry-fast.js
