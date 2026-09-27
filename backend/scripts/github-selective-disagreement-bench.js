@@ -6,7 +6,7 @@
  * incremental information about false BUYs. No credentials, no orders, no writes
  * outside local research artifacts.
  */
-const GH='https://api.github.com', BIN='https://api.binance.com', TOKEN=process.env.GITHUB_TOKEN;
+const GH='https://api.github.com', BIN='https://data-api.binance.vision', TOKEN=process.env.GITHUB_TOKEN;
 const H=240, COST=.004;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function json(url,h={}){for(let i=0;i<5;i++){const r=await fetch(url,{headers:{'User-Agent':'Proypers25-Selective-Research/1.0',...h}});if(r.ok)return r.json();if(r.status===429||r.status>=500){await sleep(300*(i+1));continue}throw Error(r.status+' '+url)}throw Error('fetch failed')}
@@ -42,7 +42,9 @@ function bootstrapDiff(rows,score,disagreement,baseRule,newRule,B=1000){
 }
 (async()=>{
  let issues=[];for(let p=1;p<=5;p++){const a=await json(GH+'/repos/Famarquezh1/proypers25-backend/issues?state=all&per_page=100&page='+p+'&sort=created&direction=desc',{Authorization:'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28'});issues.push(...a.filter(x=>!x.pull_request));if(a.length<100)break}
- const rows=[];for(const x of issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300)){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,f:{2:feat(k,p0,2),5:feat(k,p0,5)},y:outcome(k,p0)})}catch{}await sleep(15)}
+ const candidates=issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300); const acquisitionErrors={};
+ const rows=[];for(const x of candidates){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,f:{2:feat(k,p0,2),5:feat(k,p0,5)},y:outcome(k,p0)})}catch(e){const k=String(e?.message||e).split(' ')[0];acquisitionErrors[k]=(acquisitionErrors[k]||0)+1}await sleep(15)}
+ if(rows.length<100) throw Error('INSUFFICIENT_CAUSAL_UNIVERSE rows='+rows.length+' candidates='+candidates.length+' errors='+JSON.stringify(acquisitionErrors));
  rows.sort((a,b)=>a.t-b.t);const n=rows.length,i1=Math.floor(n*.50),i2=Math.floor(n*.70),i3=Math.floor(n*.85);
  const train=rows.slice(0,i1),val=rows.slice(i1,i2),test=rows.slice(i2,i3),finalHoldout=rows.slice(i3);
  const A=build(train),M=fitMeta(train,val,A);
@@ -56,6 +58,7 @@ function bootstrapDiff(rows,score,disagreement,baseRule,newRule,B=1000){
  const concentration=(()=>{const m={};for(const r of selectedTest)m[r.s]=(m[r.s]||0)+1;const counts=Object.values(m).sort((a,b)=>b-a);return{symbols:Object.keys(m).length,top_symbol_share:selectedTest.length?(counts[0]||0)/selectedTest.length:0,top3_share:selectedTest.length?counts.slice(0,3).reduce((a,b)=>a+b,0)/selectedTest.length:0}})();
  const report={
   ok:true,research_only:true,hypothesis_id:'H-SELECTIVE-DISAGREE-001',
+  acquisition:{source:'BINANCE_VISION_DATA_API',candidates:candidates.length,usable:rows.length,errors:acquisitionErrors},
   hypothesis:'Low specialist disagreement among high-meta-score signals reduces false BUYs out of sample.',
   universe:n,split:{train:train.length,val:val.length,test:test.length,final_holdout:finalHoldout.length},
   final_holdout_status:'UNTOUCHED_NOT_EVALUATED',
