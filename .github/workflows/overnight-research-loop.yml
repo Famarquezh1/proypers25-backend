@@ -67,24 +67,6 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path research/results | Out-Null
 
-      - name: Frozen causal portfolio study
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-post-signal-continuation-autopsy.js | Tee-Object -FilePath research/results/portfolio_autopsy.json
-
-      - name: Causal multi-agent continuation bench
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-multiagent-continuation-bench.js | Tee-Object -FilePath research/results/multiagent.json
-
-      - name: Causal exit-policy bench
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-multiagent-exit-bench.js | Tee-Object -FilePath research/results/exit_policy.json
-
       - name: Selective prediction disagreement bench
         shell: powershell
         env:
@@ -93,7 +75,7 @@ jobs:
 
       - name: Persist scientific checkpoint
         shell: powershell
-        run: node backend/scripts/persist-autonomous-research.js research/results/multiagent.json research/results/exit_policy.json research/results/selective_disagreement.json | Tee-Object -FilePath research/results/checkpoint.json
+        run: node backend/scripts/persist-autonomous-research.js research/results/selective_disagreement.json | Tee-Object -FilePath research/results/checkpoint.json
 
       - name: Mark runner completion
         shell: powershell
