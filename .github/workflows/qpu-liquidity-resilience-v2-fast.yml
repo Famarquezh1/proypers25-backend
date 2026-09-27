@@ -1,0 +1,65 @@
+name: QPU Liquidity Resilience v2 Fast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/qpu-liquidity-resilience-v2-fast.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install websocket dependency
+        run: npm install --no-save ws
+
+      - name: Use latest radar candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,subprocess,os
+          fallback=['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','SUIUSDT','LINKUSDT','NEARUSDT','LTCUSDT','FETUSDT','HBARUSDT','SEIUSDT','WIFUSDT','PEPEUSDT','RAYUSDT','CRVUSDT','LDOUSDT','RENDERUSDT','ARUSDT']
+          runs=json.loads(subprocess.check_output(['gh','run','list','--repo',os.environ['GITHUB_REPOSITORY'],'--workflow','spot-github-radar.yml','--branch','main','--status','success','--limit','12','--json','databaseId,createdAt']))
+          dynamic=[]
+          for r in runs:
+              rid=str(r['databaseId']); name='spot-radar-scan-'+rid
+              arts=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{rid}/artifacts"]))
+              if name not in [a['name'] for a in arts.get('artifacts',[])]: continue
+              d='/tmp/qpu-radar-'+rid
+              subprocess.check_call(['mkdir','-p',d])
+              subprocess.check_call(['gh','run','download',rid,'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',d])
+              scan=json.load(open(d+'/spot-radar-scan.json'))
+              if scan.get('symbol'): dynamic.append(scan['symbol'])
+              dynamic += [x.get('symbol') for x in scan.get('learning_rejections',[]) if x.get('symbol')]
+              break
+          syms=[]
+          for s in dynamic+fallback:
+              s=s.upper()
+              if s not in syms: syms.append(s)
+          joined=','.join(syms[:20])
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('LR_SYMBOLS='+joined+'\n')
+          print('QPU resilience symbols:',joined)
+          PY
+
+      - name: Collect QPU resilience curves
+        env:
+          LR_RUN_MS: '300000'
+        run: node backend/scripts/github-qpu-liquidity-resilience-v2.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-liquidity-resilience-v2-fast-${{ github.run_id }}
+          path: qpu-liquidity-resilience-v2.ndjson
+          retention-days: 30
