@@ -50,6 +50,10 @@ function bootstrapDiff(rows,score,disagreement,baseRule,newRule,B=1000){
  const dCut=quant(val.filter(r=>M.score(r)>=hi).map(M.disagreement),.60);
  const baseRule=r=>M.score(r)>=hi;
  const selectiveRule=r=>M.score(r)>=hi&&M.disagreement(r)<=dCut;
+ const selectedTest=test.filter(selectiveRule), symbols=[...new Set(test.map(r=>r.s))];
+ const loo=symbols.map(s=>{const z=test.filter(r=>r.s!==s);const b=z.filter(baseRule),q=z.filter(selectiveRule);return{excluded_symbol:s,n:z.length,baseline_n:b.length,selective_n:q.length,baseline_cont:mean(b.map(r=>r.y.cont?1:0)),selective_cont:mean(q.map(r=>r.y.cont?1:0)),delta:mean(q.map(r=>r.y.cont?1:0))-mean(b.map(r=>r.y.cont?1:0))}}).filter(x=>x.selective_n>=5);
+ const halves=[test.slice(0,Math.floor(test.length/2)),test.slice(Math.floor(test.length/2))].map((z,i)=>{const b=z.filter(baseRule),q=z.filter(selectiveRule);return{half:i+1,n:z.length,baseline_n:b.length,selective_n:q.length,baseline_cont:mean(b.map(r=>r.y.cont?1:0)),selective_cont:mean(q.map(r=>r.y.cont?1:0)),delta:mean(q.map(r=>r.y.cont?1:0))-mean(b.map(r=>r.y.cont?1:0))}});
+ const concentration=(()=>{const m={};for(const r of selectedTest)m[r.s]=(m[r.s]||0)+1;const counts=Object.values(m).sort((a,b)=>b-a);return{symbols:Object.keys(m).length,top_symbol_share:selectedTest.length?(counts[0]||0)/selectedTest.length:0,top3_share:selectedTest.length?counts.slice(0,3).reduce((a,b)=>a+b,0)/selectedTest.length:0}})();
  const report={
   ok:true,research_only:true,hypothesis_id:'H-SELECTIVE-DISAGREE-001',
   hypothesis:'Low specialist disagreement among high-meta-score signals reduces false BUYs out of sample.',
@@ -59,10 +63,13 @@ function bootstrapDiff(rows,score,disagreement,baseRule,newRule,B=1000){
   validation:{baseline:summarize(val,M.score,M.disagreement,baseRule),selective:summarize(val,M.score,M.disagreement,selectiveRule)},
   test:{baseline:summarize(test,M.score,M.disagreement,baseRule),selective:summarize(test,M.score,M.disagreement,selectiveRule),bootstrap_delta:bootstrapDiff(test,M.score,M.disagreement,baseRule,selectiveRule)},
   agents_test:Object.fromEntries(Object.entries(A).map(([k,f])=>[k,{auc:auc(test,f)}])),
+  adversarial_test:{leave_one_symbol_out:loo,temporal_halves:halves,concentration},
   guard:'FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES'
  };
  const t=report.test, s=t.selective, b=t.baseline, ci=t.bootstrap_delta.ci95;
- report.decision=(s.selected_n>=8 && s.selected_cont>b.selected_cont && ci[0]>-.05)?'SURVIVES_FOR_FURTHER_TESTING':'REJECTED_OR_INCONCLUSIVE';
+ const looStable=loo.length===0||loo.filter(x=>x.delta>=0).length/loo.length>=.70;
+ const timeStable=halves.filter(x=>x.selective_n>=3&&x.delta>=0).length>=1;
+ report.decision=(s.selected_n>=8 && s.selected_cont>b.selected_cont && ci[0]>-.05 && looStable && timeStable && concentration.top_symbol_share<=.40)?'SURVIVES_FOR_FURTHER_TESTING':'REJECTED_OR_INCONCLUSIVE';
  report.next_hypothesis=report.decision==='SURVIVES_FOR_FURTHER_TESTING'
    ?'Test whether disagreement remains incremental under purged walk-forward and symbol/month leave-one-out before opening final holdout.'
    :'Model post-signal time-to-failure/continuation as competing risks; disagreement did not add robust selective value.';
