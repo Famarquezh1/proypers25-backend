@@ -32,9 +32,12 @@ jobs:
           $kept = @()
           foreach ($r in $runs) {
             $id = [string]$r.databaseId
+            $artifactName = "spot-radar-scan-$id"
+            $names = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[].name' 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not ($names -contains $artifactName)) { continue }
             $dir = ".qpu-v04\$id"
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            gh run download $id --repo "$env:GITHUB_REPOSITORY" --name "spot-radar-scan-$id" --dir $dir 2>$null
+            gh run download $id --repo "$env:GITHUB_REPOSITORY" --name $artifactName --dir $dir
             if ($LASTEXITCODE -eq 0 -and (Test-Path "$dir\spot-radar-scan.json")) {
               $kept += [pscustomobject]@{ run_id = [long]$r.databaseId; observed_at = [string]$r.createdAt }
             } else {
