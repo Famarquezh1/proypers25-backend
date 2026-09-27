@@ -1,12 +1,12 @@
 {
-  "id": "AUTO-20260927231034",
-  "date": "2026-09-27T23:10:34.440Z",
+  "id": "AUTO-20260927231248",
+  "date": "2026-09-27T23:12:48.280Z",
   "branch": "research/post-signal-continuation-autopsy",
-  "execution_environment": "github-hosted-provisional",
+  "execution_environment": "github-hosted-provisional-data-api",
   "universe": {
     "multiagent": null,
     "exit_policy": null,
-    "selective": 0
+    "selective": 286
   },
   "experiments": [
     {
@@ -28,35 +28,35 @@
       "status": "REJECTED_OR_INCONCLUSIVE",
       "test": {
         "baseline": {
-          "n": 0,
-          "selected_n": 0,
-          "coverage": 0,
-          "base_cont": 0,
-          "selected_cont": 0,
-          "lift": 0,
-          "avg_net4h": 0,
-          "auc": null,
-          "selected_symbols": 0
+          "n": 43,
+          "selected_n": 16,
+          "coverage": 0.37209302325581395,
+          "base_cont": 0.2558139534883721,
+          "selected_cont": 0.375,
+          "lift": 0.1191860465116279,
+          "avg_net4h": -0.025258355956174643,
+          "auc": 0.7017045454545454,
+          "selected_symbols": 12
         },
         "selective": {
-          "n": 0,
-          "selected_n": 0,
-          "coverage": 0,
-          "base_cont": 0,
-          "selected_cont": 0,
-          "lift": 0,
-          "avg_net4h": 0,
-          "auc": null,
-          "selected_symbols": 0
+          "n": 43,
+          "selected_n": 10,
+          "coverage": 0.23255813953488372,
+          "base_cont": 0.2558139534883721,
+          "selected_cont": 0.2,
+          "lift": -0.05581395348837209,
+          "avg_net4h": -0.02692075673367319,
+          "auc": 0.7017045454545454,
+          "selected_symbols": 8
         },
         "bootstrap_delta": {
-          "n": 0,
-          "mean": 0,
+          "n": 1000,
+          "mean": -0.1771996555285473,
           "ci95": [
-            0,
-            0
+            -0.4360902255639098,
+            0.025641025641025605
           ],
-          "p_le_0": 0
+          "p_le_0": 0.954
         }
       },
       "final_holdout_status": "UNTOUCHED_NOT_EVALUATED"

@@ -2,122 +2,345 @@
   "ok": true,
   "research_only": true,
   "hypothesis_id": "H-SELECTIVE-DISAGREE-001",
+  "acquisition": {
+    "source": "BINANCE_VISION_DATA_API",
+    "candidates": 300,
+    "usable": 286,
+    "errors": {}
+  },
   "hypothesis": "Low specialist disagreement among high-meta-score signals reduces false BUYs out of sample.",
-  "universe": 0,
+  "universe": 286,
   "split": {
-    "train": 0,
-    "val": 0,
-    "test": 0,
-    "final_holdout": 0
+    "train": 143,
+    "val": 57,
+    "test": 43,
+    "final_holdout": 43
   },
   "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
   "calibration": {
     "weights": {
-      "trajectory": 1,
-      "survival": 1,
-      "efficiency": 1,
-      "participation": 1
+      "trajectory": 0.01573426573426573,
+      "survival": 0.08916083916083917,
+      "efficiency": 0.09615384615384615,
+      "participation": 0.034965034965035
     },
-    "buy_threshold": 0,
-    "max_disagreement": 0
+    "buy_threshold": 0.25490598919230056,
+    "max_disagreement": 0.30863021768531057
   },
   "validation": {
     "baseline": {
-      "n": 0,
-      "selected_n": 0,
-      "coverage": 0,
-      "base_cont": 0,
-      "selected_cont": 0,
-      "lift": 0,
-      "avg_net4h": 0,
-      "auc": null,
-      "selected_symbols": 0
+      "n": 57,
+      "selected_n": 18,
+      "coverage": 0.3157894736842105,
+      "base_cont": 0.22807017543859648,
+      "selected_cont": 0.3333333333333333,
+      "lift": 0.10526315789473684,
+      "avg_net4h": 0.01690117146816912,
+      "auc": 0.5751748251748252,
+      "selected_symbols": 15
     },
     "selective": {
-      "n": 0,
-      "selected_n": 0,
-      "coverage": 0,
-      "base_cont": 0,
-      "selected_cont": 0,
-      "lift": 0,
-      "avg_net4h": 0,
-      "auc": null,
-      "selected_symbols": 0
+      "n": 57,
+      "selected_n": 11,
+      "coverage": 0.19298245614035087,
+      "base_cont": 0.22807017543859648,
+      "selected_cont": 0.2727272727272727,
+      "lift": 0.04465709728867623,
+      "avg_net4h": 0.012824101723635585,
+      "auc": 0.5751748251748252,
+      "selected_symbols": 10
     }
   },
   "test": {
     "baseline": {
-      "n": 0,
-      "selected_n": 0,
-      "coverage": 0,
-      "base_cont": 0,
-      "selected_cont": 0,
-      "lift": 0,
-      "avg_net4h": 0,
-      "auc": null,
-      "selected_symbols": 0
+      "n": 43,
+      "selected_n": 16,
+      "coverage": 0.37209302325581395,
+      "base_cont": 0.2558139534883721,
+      "selected_cont": 0.375,
+      "lift": 0.1191860465116279,
+      "avg_net4h": -0.025258355956174643,
+      "auc": 0.7017045454545454,
+      "selected_symbols": 12
     },
     "selective": {
-      "n": 0,
-      "selected_n": 0,
-      "coverage": 0,
-      "base_cont": 0,
-      "selected_cont": 0,
-      "lift": 0,
-      "avg_net4h": 0,
-      "auc": null,
-      "selected_symbols": 0
+      "n": 43,
+      "selected_n": 10,
+      "coverage": 0.23255813953488372,
+      "base_cont": 0.2558139534883721,
+      "selected_cont": 0.2,
+      "lift": -0.05581395348837209,
+      "avg_net4h": -0.02692075673367319,
+      "auc": 0.7017045454545454,
+      "selected_symbols": 8
     },
     "bootstrap_delta": {
-      "n": 0,
-      "mean": 0,
+      "n": 1000,
+      "mean": -0.1771996555285473,
       "ci95": [
-        0,
-        0
+        -0.4360902255639098,
+        0.025641025641025605
       ],
-      "p_le_0": 0
+      "p_le_0": 0.954
     }
   },
   "agents_test": {
     "trajectory": {
-      "auc": null
+      "auc": 0.7045454545454546
     },
     "survival": {
-      "auc": null
+      "auc": 0.7443181818181818
     },
     "efficiency": {
-      "auc": null
+      "auc": 0.6164772727272727
     },
     "participation": {
-      "auc": null
+      "auc": 0.6931818181818182
     }
   },
   "adversarial_test": {
-    "leave_one_symbol_out": [],
+    "leave_one_symbol_out": [
+      {
+        "excluded_symbol": "GRAMUSDT",
+        "n": 40,
+        "baseline_n": 14,
+        "selective_n": 9,
+        "baseline_cont": 0.42857142857142855,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.20634920634920634
+      },
+      {
+        "excluded_symbol": "XPLUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "AUDIOUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "RADUSDT",
+        "n": 40,
+        "baseline_n": 14,
+        "selective_n": 10,
+        "baseline_cont": 0.2857142857142857,
+        "selective_cont": 0.2,
+        "delta": -0.08571428571428569
+      },
+      {
+        "excluded_symbol": "GLMRUSDT",
+        "n": 42,
+        "baseline_n": 15,
+        "selective_n": 10,
+        "baseline_cont": 0.3333333333333333,
+        "selective_cont": 0.2,
+        "delta": -0.1333333333333333
+      },
+      {
+        "excluded_symbol": "ZECUSDT",
+        "n": 39,
+        "baseline_n": 13,
+        "selective_n": 7,
+        "baseline_cont": 0.38461538461538464,
+        "selective_cont": 0.14285714285714285,
+        "delta": -0.2417582417582418
+      },
+      {
+        "excluded_symbol": "ZENUSDT",
+        "n": 42,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.1777777777777778
+      },
+      {
+        "excluded_symbol": "ESPUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "DYDXUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "ARKUSDT",
+        "n": 41,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.1777777777777778
+      },
+      {
+        "excluded_symbol": "BABYUSDT",
+        "n": 42,
+        "baseline_n": 15,
+        "selective_n": 10,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2,
+        "delta": -0.2
+      },
+      {
+        "excluded_symbol": "AWEUSDT",
+        "n": 41,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "TOWNSUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "MUBARAKUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "CFGUSDT",
+        "n": 41,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "HEIUSDT",
+        "n": 39,
+        "baseline_n": 15,
+        "selective_n": 10,
+        "baseline_cont": 0.3333333333333333,
+        "selective_cont": 0.2,
+        "delta": -0.1333333333333333
+      },
+      {
+        "excluded_symbol": "TLMUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "NEARUSDT",
+        "n": 41,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.1777777777777778
+      },
+      {
+        "excluded_symbol": "RAREUSDT",
+        "n": 42,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.1777777777777778
+      },
+      {
+        "excluded_symbol": "DOTUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "XVGUSDT",
+        "n": 41,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.3333333333333333,
+        "selective_cont": 0.1111111111111111,
+        "delta": -0.2222222222222222
+      },
+      {
+        "excluded_symbol": "OPNUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      },
+      {
+        "excluded_symbol": "SUIUSDT",
+        "n": 38,
+        "baseline_n": 15,
+        "selective_n": 9,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.2222222222222222,
+        "delta": -0.1777777777777778
+      },
+      {
+        "excluded_symbol": "HUMAUSDT",
+        "n": 42,
+        "baseline_n": 16,
+        "selective_n": 10,
+        "baseline_cont": 0.375,
+        "selective_cont": 0.2,
+        "delta": -0.175
+      }
+    ],
     "temporal_halves": [
       {
         "half": 1,
-        "n": 0,
-        "baseline_n": 0,
-        "selective_n": 0,
-        "baseline_cont": 0,
-        "selective_cont": 0,
-        "delta": 0
+        "n": 21,
+        "baseline_n": 11,
+        "selective_n": 6,
+        "baseline_cont": 0.36363636363636365,
+        "selective_cont": 0.16666666666666666,
+        "delta": -0.196969696969697
       },
       {
         "half": 2,
-        "n": 0,
-        "baseline_n": 0,
-        "selective_n": 0,
-        "baseline_cont": 0,
-        "selective_cont": 0,
-        "delta": 0
+        "n": 22,
+        "baseline_n": 5,
+        "selective_n": 4,
+        "baseline_cont": 0.4,
+        "selective_cont": 0.25,
+        "delta": -0.15000000000000002
       }
     ],
     "concentration": {
-      "symbols": 0,
-      "top_symbol_share": 0,
-      "top3_share": 0
+      "symbols": 8,
+      "top_symbol_share": 0.3,
+      "top3_share": 0.5
     }
   },
   "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES",
