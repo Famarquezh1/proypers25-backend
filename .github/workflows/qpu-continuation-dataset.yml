@@ -38,7 +38,7 @@ jobs:
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          QPU_MAX_SIGNALS: '300'
+          QPU_MAX_SIGNALS: '400'
         run: node backend/scripts/github-qpu-continuation-dataset.js
 
       - name: Show metadata
