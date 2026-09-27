@@ -81,6 +81,21 @@ function portfolioFull(data,failMode){
   }
   return {end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,win_rate:wins/Math.max(1,data.length),scaled,early_fail_exits:early};
 }
+function portfolioSeed(data,seedFrac){
+  let cash=START,peakEq=START,maxDD=0,wins=0,scaled=0,early=0;
+  for(const r of data){
+    const equity=cash, seed=equity*seedFrac; const fe=failureExit(r,'weak5'); let pnl=0;
+    if(fe){pnl=seed*(fe.exit/r.p0-1-COST);early++;}
+    else{
+      const ep=exitPolicy(r,'trail15'); pnl=seed*(ep.exit/r.p0-1-COST);
+      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-seedFrac);pnl+=add*(ep.exit/r.k5open-1-COST);scaled++;}
+    }
+    cash+=pnl;if(pnl>0)wins++;peakEq=Math.max(peakEq,cash);maxDD=Math.min(maxDD,cash/peakEq-1);
+  }
+  return {seed_fraction:seedFrac,end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,win_rate:wins/Math.max(1,data.length),scaled,early_fail_exits:early};
+}
+const seedArchitecture={};
+for(const sf of [.05,.10,.15,.20,.25])seedArchitecture[String(sf)]={train:portfolioSeed(train,sf),val:portfolioSeed(val,sf),test:portfolioSeed(test,sf),all:portfolioSeed(rows,sf)};
 const fullPolicies={};for(const m of ['hard1','weak5','hybrid'])fullPolicies[m]={train:portfolioFull(train,m),val:portfolioFull(val,m),test:portfolioFull(test,m),all:portfolioFull(rows,m)};
 const exitPolicies={};
 for(const kind of ['ratchet','trail2','trail15']) exitPolicies[kind]={train:portfolioExit(train,kind),val:portfolioExit(val,kind),test:portfolioExit(test,kind),all:portfolioExit(rows,kind)};
@@ -90,4 +105,4 @@ const portfolioResults={
   test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
   all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
 };
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture},null,2));})().catch(e=>{console.error(e);process.exit(1)});
