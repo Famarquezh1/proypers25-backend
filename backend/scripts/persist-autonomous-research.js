@@ -12,6 +12,7 @@ const entry={
  id:'AUTO-'+now.replace(/[-:.TZ]/g,'').slice(0,14),
  date:now,
  branch:'research/post-signal-continuation-autopsy',
+ execution_environment:process.env.RESEARCH_EXECUTION_ENV||'unknown',
  universe:{multiagent:multi.n??null,exit_policy:exit.n??null,selective:sel.universe??null},
  experiments:[
   {id:'BASE-MULTIAGENT',family:'meta_agent',status:'REFERENCE_REFRESH',test:multi.decision?.test??null},
@@ -28,6 +29,7 @@ const state=[
  '# Proypers25 Autonomous Research State','',
  'Updated: '+now,'',
  'Branch: research/post-signal-continuation-autopsy','',
+ 'Execution environment: '+(process.env.RESEARCH_EXECUTION_ENV||'unknown'),'',
  '## Latest batch',
  '- Multi-agent universe: '+(multi.n??'n/a'),
  '- Selective-disagreement universe: '+(sel.universe??'n/a'),
