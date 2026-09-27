@@ -17,8 +17,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const db = require('../firebase-admin-config');
-
 const COLLECTION = 'velas_predicciones';
 const LIMIT = Math.max(1, Math.min(Number(process.env.QPU_EXPORT_LIMIT || 5000), 10000));
 const OUTPUT_DIR = path.resolve(__dirname, '..', 'qpu_exports');
@@ -108,6 +106,7 @@ function canonicalize(id, row) {
 }
 
 async function loadLatest() {
+  const db = require('../firebase-admin-config');
   let snap;
   try {
     snap = await db
