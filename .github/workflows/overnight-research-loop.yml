@@ -1,0 +1,33 @@
+name: Overnight Research Loop
+
+on:
+  push:
+    branches: [research/post-signal-continuation-autopsy]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: proypers-overnight-research
+  cancel-in-progress: false
+
+jobs:
+  regime-research:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run frozen causal portfolio study
+        shell: powershell
+        run: node backend/scripts/github-post-signal-continuation-autopsy.js
+      - name: Research guard
+        shell: powershell
+        run: |
+          Write-Host "RESEARCH ONLY: no production deploy, no order execution, no secrets."
