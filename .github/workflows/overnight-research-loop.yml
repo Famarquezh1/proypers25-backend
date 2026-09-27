@@ -56,26 +56,26 @@ jobs:
       - name: Research safety and syntax preflight
         shell: powershell
         run: |
-          node --check backend/scripts/github-post-signal-continuation-autopsy.js
-          node --check backend/scripts/github-multiagent-continuation-bench.js
-          node --check backend/scripts/github-multiagent-exit-bench.js
-          node --check backend/scripts/github-selective-disagreement-bench.js
-          node --check backend/scripts/persist-autonomous-research.js
-          $all = Get-Content backend/scripts/github-post-signal-continuation-autopsy.js,backend/scripts/github-multiagent-continuation-bench.js,backend/scripts/github-multiagent-exit-bench.js,backend/scripts/github-selective-disagreement-bench.js -Raw
+          node --check backend/scripts/github-competing-hazard-bench.js
+          node --check backend/scripts/persist-hazard-research.js
+          $all = Get-Content backend/scripts/github-competing-hazard-bench.js,backend/scripts/persist-hazard-research.js -Raw
           if ($all -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
             throw 'Forbidden execution capability detected in research scripts'
           }
           New-Item -ItemType Directory -Force -Path research/results | Out-Null
 
-      - name: Selective prediction disagreement bench
+      - name: Competing-risk hazard bench
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-selective-disagreement-bench.js | Tee-Object -FilePath research/results/selective_disagreement.json
+          RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
+        run: node backend/scripts/github-competing-hazard-bench.js | Tee-Object -FilePath research/results/competing_hazard.json
 
       - name: Persist scientific checkpoint
         shell: powershell
-        run: node backend/scripts/persist-autonomous-research.js research/results/selective_disagreement.json | Tee-Object -FilePath research/results/checkpoint.json
+        env:
+          RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
+        run: node backend/scripts/persist-hazard-research.js research/results/competing_hazard.json | Tee-Object -FilePath research/results/checkpoint.json
 
       - name: Mark runner completion
         shell: powershell
@@ -92,7 +92,6 @@ jobs:
       - name: Commit research results only
         shell: powershell
         run: |
-          git pull --rebase origin research/post-signal-continuation-autopsy
           git config user.name "proypers-research-bot"
           git config user.email "research-bot@users.noreply.github.com"
           git add research/TRIGGER_PROBE.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/*.json
@@ -100,6 +99,7 @@ jobs:
             Write-Host "No research changes to persist."
           } else {
             git commit -m "research: persist autonomous batch [research-result]"
+            git pull --rebase origin research/post-signal-continuation-autopsy
             git push origin HEAD:research/post-signal-continuation-autopsy
           }
 
