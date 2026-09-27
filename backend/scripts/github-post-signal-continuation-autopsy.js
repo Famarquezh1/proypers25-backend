@@ -124,6 +124,23 @@ function concurrentPriority(data){
   });ordered.push(...g);}
   return concurrentPortfolio(ordered,.05);
 }
+function stressPortfolio(data,cost){
+  const oldCost=COST; // frozen architecture replayed with explicit stressed round-trip cost
+  const events=[...data].sort((a,b)=>a.t-b.t); let cash=START,peak=START,maxDD=0,scaled=0,skipped=0; const active=[];
+  function settle(ts){active.sort((a,b)=>a.end-b.end);while(active.length&&active[0].end<=ts){const x=active.shift();cash+=x.proceeds;peak=Math.max(peak,cash+active.reduce((q,y)=>q+y.cost,0));maxDD=Math.min(maxDD,(cash+active.reduce((q,y)=>q+y.cost,0))/peak-1);}}
+  for(const r of events){settle(r.t);const eq=cash+active.reduce((q,y)=>q+y.cost,0),reserve=Math.max(50,eq*.20),dep=active.reduce((q,y)=>q+y.cost,0),cap=Math.max(0,eq*.65-dep),seed=Math.min(eq*.05,cap,Math.max(0,cash-reserve));if(seed<1){skipped++;continue}
+    const fe=failureExit(r,'weak5');let proceeds,costBasis=seed,end,pnl;
+    if(fe){pnl=seed*(fe.exit/r.p0-1-cost);proceeds=seed+pnl;end=r.t+fe.minute*60000;}
+    else{const ep=exitPolicy(r,'trail15');pnl=seed*(ep.exit/r.p0-1-cost);proceeds=seed+pnl;end=r.t+ep.minute*60000;if(r.f[5].ret>=SCALE_RET&&ep.minute>5){const a=Math.min(eq*.95,Math.max(0,cap-seed),Math.max(0,cash-seed-reserve));if(a>=1){const ar=ep.exit/r.k6open-1-cost;pnl+=a*ar;proceeds+=a*(1+ar);costBasis+=a;scaled++;}}}
+    cash-=costBasis;active.push({end,cost:costBasis,proceeds});}
+  settle(Infinity);return {cost,return_pct:(cash/START-1)*100,end:cash,max_drawdown_pct:maxDD*100,scaled,skipped};
+}
+function walkForwardStress(data){
+ const sorted=[...data].sort((a,b)=>a.t-b.t), n=sorted.length, out={};
+ for(const parts of [4,6]){out[String(parts)]=[];for(let i=0;i<parts;i++){const a=Math.floor(n*i/parts),b=Math.floor(n*(i+1)/parts);const block=sorted.slice(a,b);out[String(parts)].push({block:i+1,n:block.length,base:stressPortfolio(block,.004),stress06:stressPortfolio(block,.006),stress08:stressPortfolio(block,.008)});}}
+ return out;
+}
+const finalRobustness={walk_forward:walkForwardStress(rows),cost_stress:{cost04:stressPortfolio(rows,.004),cost06:stressPortfolio(rows,.006),cost08:stressPortfolio(rows,.008)}};
 const priorityPortfolio={train:concurrentPriority(train),val:concurrentPriority(val),test:concurrentPriority(test),all:concurrentPriority(rows)};
 const concurrent={};for(const sf of [.05,.10])concurrent[String(sf)]={train:concurrentPortfolio(train,sf),val:concurrentPortfolio(val,sf),test:concurrentPortfolio(test,sf),all:concurrentPortfolio(rows,sf)};
 const seedArchitecture={};
@@ -137,4 +154,4 @@ const portfolioResults={
   test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
   all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
 };
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture,concurrent_portfolio:concurrent,priority_portfolio:priorityPortfolio},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture,concurrent_portfolio:concurrent,priority_portfolio:priorityPortfolio,final_robustness:finalRobustness},null,2));})().catch(e=>{console.error(e);process.exit(1)});
