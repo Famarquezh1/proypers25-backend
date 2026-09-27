@@ -1,3 +1,4 @@
+# retry: Binance Vision data API
 name: Research Emergency Hosted Once
 
 on:
@@ -15,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RESEARCH_EXECUTION_ENV: github-hosted-provisional
+      RESEARCH_EXECUTION_ENV: github-hosted-provisional-data-api
     steps:
       - uses: actions/checkout@v4
         with:
