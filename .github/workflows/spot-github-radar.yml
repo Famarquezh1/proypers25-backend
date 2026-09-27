@@ -96,6 +96,13 @@ jobs:
           echo "v42_confirm=$(printf '%s' "$RESULT" | jq -r '.v42_detail.confirm')" >> "$GITHUB_OUTPUT"
           echo "v42_extension=$(printf '%s' "$RESULT" | jq -r '.v42_detail.extension')" >> "$GITHUB_OUTPUT"
 
+      - name: Upload full radar scan for QPU research
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-radar-scan-${{ github.run_id }}
+          path: spot-radar-scan.json
+          retention-days: 30
+
       - name: Load previous V21 shadow state
         id: v21prev
         env:
