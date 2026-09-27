@@ -114,6 +114,17 @@ function concurrentPortfolio(data,seedFrac){
   }
   settleUntil(Infinity);return {start:START,end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,wins,scaled,skipped,max_deploy_pct:MAX_DEPLOY*100,reserve_pct:RESERVE*100};
 }
+function concurrentPriority(data){
+  const buckets=new Map(); for(const r of data){const key=Math.floor(r.t/60000);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(r);}
+  const ordered=[]; for(const [,g] of [...buckets.entries()].sort((a,b)=>a[0]-b[0])){g.sort((a,b)=>{
+    const fa=a.f[1]||{},fb=b.f[1]||{};
+    const sa=(fa.closePos||0)+(fa.upFrac||0)+Math.max(0,fa.ret||0)*20-Math.max(0,-(fa.adverse||0))*10;
+    const sb=(fb.closePos||0)+(fb.upFrac||0)+Math.max(0,fb.ret||0)*20-Math.max(0,-(fb.adverse||0))*10;
+    return sb-sa;
+  });ordered.push(...g);}
+  return concurrentPortfolio(ordered,.05);
+}
+const priorityPortfolio={train:concurrentPriority(train),val:concurrentPriority(val),test:concurrentPriority(test),all:concurrentPriority(rows)};
 const concurrent={};for(const sf of [.05,.10])concurrent[String(sf)]={train:concurrentPortfolio(train,sf),val:concurrentPortfolio(val,sf),test:concurrentPortfolio(test,sf),all:concurrentPortfolio(rows,sf)};
 const seedArchitecture={};
 for(const sf of [.05,.10,.15,.20,.25])seedArchitecture[String(sf)]={train:portfolioSeed(train,sf),val:portfolioSeed(val,sf),test:portfolioSeed(test,sf),all:portfolioSeed(rows,sf)};
@@ -126,4 +137,4 @@ const portfolioResults={
   test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
   all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
 };
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture,concurrent_portfolio:concurrent},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture,concurrent_portfolio:concurrent,priority_portfolio:priorityPortfolio},null,2));})().catch(e=>{console.error(e);process.exit(1)});
