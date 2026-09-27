@@ -1,0 +1,126 @@
+{
+  "ok": true,
+  "research_only": true,
+  "hypothesis_id": "H-SELECTIVE-DISAGREE-001",
+  "hypothesis": "Low specialist disagreement among high-meta-score signals reduces false BUYs out of sample.",
+  "universe": 0,
+  "split": {
+    "train": 0,
+    "val": 0,
+    "test": 0,
+    "final_holdout": 0
+  },
+  "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
+  "calibration": {
+    "weights": {
+      "trajectory": 1,
+      "survival": 1,
+      "efficiency": 1,
+      "participation": 1
+    },
+    "buy_threshold": 0,
+    "max_disagreement": 0
+  },
+  "validation": {
+    "baseline": {
+      "n": 0,
+      "selected_n": 0,
+      "coverage": 0,
+      "base_cont": 0,
+      "selected_cont": 0,
+      "lift": 0,
+      "avg_net4h": 0,
+      "auc": null,
+      "selected_symbols": 0
+    },
+    "selective": {
+      "n": 0,
+      "selected_n": 0,
+      "coverage": 0,
+      "base_cont": 0,
+      "selected_cont": 0,
+      "lift": 0,
+      "avg_net4h": 0,
+      "auc": null,
+      "selected_symbols": 0
+    }
+  },
+  "test": {
+    "baseline": {
+      "n": 0,
+      "selected_n": 0,
+      "coverage": 0,
+      "base_cont": 0,
+      "selected_cont": 0,
+      "lift": 0,
+      "avg_net4h": 0,
+      "auc": null,
+      "selected_symbols": 0
+    },
+    "selective": {
+      "n": 0,
+      "selected_n": 0,
+      "coverage": 0,
+      "base_cont": 0,
+      "selected_cont": 0,
+      "lift": 0,
+      "avg_net4h": 0,
+      "auc": null,
+      "selected_symbols": 0
+    },
+    "bootstrap_delta": {
+      "n": 0,
+      "mean": 0,
+      "ci95": [
+        0,
+        0
+      ],
+      "p_le_0": 0
+    }
+  },
+  "agents_test": {
+    "trajectory": {
+      "auc": null
+    },
+    "survival": {
+      "auc": null
+    },
+    "efficiency": {
+      "auc": null
+    },
+    "participation": {
+      "auc": null
+    }
+  },
+  "adversarial_test": {
+    "leave_one_symbol_out": [],
+    "temporal_halves": [
+      {
+        "half": 1,
+        "n": 0,
+        "baseline_n": 0,
+        "selective_n": 0,
+        "baseline_cont": 0,
+        "selective_cont": 0,
+        "delta": 0
+      },
+      {
+        "half": 2,
+        "n": 0,
+        "baseline_n": 0,
+        "selective_n": 0,
+        "baseline_cont": 0,
+        "selective_cont": 0,
+        "delta": 0
+      }
+    ],
+    "concentration": {
+      "symbols": 0,
+      "top_symbol_share": 0,
+      "top3_share": 0
+    }
+  },
+  "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES",
+  "decision": "REJECTED_OR_INCONCLUSIVE",
+  "next_hypothesis": "Model post-signal time-to-failure/continuation as competing risks; disagreement did not add robust selective value."
+}

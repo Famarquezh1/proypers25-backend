@@ -1,0 +1,67 @@
+{
+  "id": "AUTO-20260927231034",
+  "date": "2026-09-27T23:10:34.440Z",
+  "branch": "research/post-signal-continuation-autopsy",
+  "execution_environment": "github-hosted-provisional",
+  "universe": {
+    "multiagent": null,
+    "exit_policy": null,
+    "selective": 0
+  },
+  "experiments": [
+    {
+      "id": "BASE-MULTIAGENT",
+      "family": "meta_agent",
+      "status": "REFERENCE_REFRESH",
+      "test": null
+    },
+    {
+      "id": "EXIT-POLICY-BENCH",
+      "family": "money_layer",
+      "status": "INCONCLUSIVE",
+      "chosen": null,
+      "result": null
+    },
+    {
+      "id": "H-SELECTIVE-DISAGREE-001",
+      "family": "selective_prediction",
+      "status": "REJECTED_OR_INCONCLUSIVE",
+      "test": {
+        "baseline": {
+          "n": 0,
+          "selected_n": 0,
+          "coverage": 0,
+          "base_cont": 0,
+          "selected_cont": 0,
+          "lift": 0,
+          "avg_net4h": 0,
+          "auc": null,
+          "selected_symbols": 0
+        },
+        "selective": {
+          "n": 0,
+          "selected_n": 0,
+          "coverage": 0,
+          "base_cont": 0,
+          "selected_cont": 0,
+          "lift": 0,
+          "avg_net4h": 0,
+          "auc": null,
+          "selected_symbols": 0
+        },
+        "bootstrap_delta": {
+          "n": 0,
+          "mean": 0,
+          "ci95": [
+            0,
+            0
+          ],
+          "p_le_0": 0
+        }
+      },
+      "final_holdout_status": "UNTOUCHED_NOT_EVALUATED"
+    }
+  ],
+  "next_hypothesis": "Model post-signal time-to-failure/continuation as competing risks; disagreement did not add robust selective value.",
+  "guard": "RESEARCH ONLY; no production, no orders, no V23 changes"
+}
