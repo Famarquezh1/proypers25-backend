@@ -1,0 +1,54 @@
+name: QPU Continuation Dataset
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-continuation-dataset.js'
+      - '.github/workflows/qpu-continuation-dataset.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  build:
+    name: Build QPU continuation dataset on Chile PC
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-qpu-continuation-dataset.js
+          $src = Get-Content backend/scripts/github-qpu-continuation-dataset.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin|\.set\(|\.update\(|\.delete\(') {
+            throw 'Forbidden execution/write capability detected'
+          }
+
+      - name: Build read-only continuation dataset
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          QPU_MAX_SIGNALS: '300'
+        run: node backend/scripts/github-qpu-continuation-dataset.js
+
+      - name: Show metadata
+        shell: powershell
+        run: Get-Content qpu-continuation-dataset.meta.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-continuation-dataset-${{ github.run_id }}
+          path: |
+            qpu-continuation-dataset.jsonl
+            qpu-continuation-dataset.meta.json
+          retention-days: 30
