@@ -56,8 +56,11 @@ jobs:
           }
           $symbols = @($dynamic + $fallback | ForEach-Object { $_.ToUpper() } | Select-Object -Unique | Select-Object -First 20)
           $joined = ($symbols -join ',')
+          $radarJoined = (($dynamic | ForEach-Object { $_.ToUpper() } | Select-Object -Unique) -join ',')
           "LR_SYMBOLS=$joined" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LR_RADAR_SYMBOLS=$radarJoined" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "QPU resilience symbols: $joined"
+          Write-Host "Radar candidates: $radarJoined"
 
       - name: Safety check
         shell: powershell
