@@ -1,0 +1,48 @@
+name: Research Distributional Path Hosted Once
+
+on:
+  push:
+    branches: [research/post-signal-continuation-autopsy]
+    paths:
+      - '.github/workflows/research-distributional-path-hosted-once.yml'
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  distribution-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESEARCH_EXECUTION_ENV: github-hosted-provisional-distributional
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Safety preflight
+        shell: bash
+        run: |
+          node --check backend/scripts/github-distributional-path-bench.js
+          if grep -E 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin' backend/scripts/github-distributional-path-bench.js; then
+            echo "Forbidden execution capability detected"
+            exit 1
+          fi
+          mkdir -p research/results
+      - name: Run distributional path hypothesis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-distributional-path-bench.js | tee research/results/distributional_path.json
+      - name: Commit result
+        shell: bash
+        run: |
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git add research/results/distributional_path.json
+          git commit -m "research: provisional distributional path result [research-result]"
+          git pull --rebase origin research/post-signal-continuation-autopsy
+          git push origin HEAD:research/post-signal-continuation-autopsy
