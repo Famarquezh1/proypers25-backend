@@ -1,0 +1,49 @@
+name: QPU v0.4 Historical Backfill
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-v04-historical-backfill.js'
+      - '.github/workflows/qpu-v04-historical-backfill.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 35
+    env:
+      QPU_BACKFILL_MAX: '700'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-qpu-v04-historical-backfill.js
+          $src = Get-Content backend/scripts/github-qpu-v04-historical-backfill.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+
+      - name: Build historical QPU backfill
+        shell: powershell
+        run: node backend/scripts/github-qpu-v04-historical-backfill.js qpu-v04-historical-backfill.jsonl qpu-v04-historical-backfill.meta.json
+
+      - name: Show metadata
+        shell: powershell
+        run: Get-Content qpu-v04-historical-backfill.meta.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v04-historical-backfill-${{ github.run_id }}
+          path: |
+            qpu-v04-historical-backfill.jsonl
+            qpu-v04-historical-backfill.meta.json
+          retention-days: 30
