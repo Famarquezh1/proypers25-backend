@@ -1,13 +1,38 @@
 {
-  "id": "AUTO-20260927231735",
-  "date": "2026-09-27T23:17:35.728Z",
-  "branch": "research/post-signal-continuation-autopsy",
-  "execution_environment": "github-hosted-provisional-hazard",
-  "universe": 286,
+  "ok": true,
+  "research_only": true,
   "hypothesis_id": "H-COMPETING-HAZARD-001",
-  "family": "competing_risks_hazard",
-  "status": "REJECTED_OR_INCONCLUSIVE",
-  "split": {
+  "hypothesis": "A discrete-time competing-risks model from minute 5 separates continuation hazard from failure hazard better than the static meta-agent.",
+  "acquisition": {
+    "source": "BINANCE_VISION_DATA_API",
+    "candidates": 300,
+    "usable": 286,
+    "errors": {}
+  },
+  "decision_point_minute": 5,
+  "intervals": [
+    [
+      6,
+      15
+    ],
+    [
+      16,
+      30
+    ],
+    [
+      31,
+      60
+    ],
+    [
+      61,
+      120
+    ],
+    [
+      121,
+      240
+    ]
+  ],
+  "split_raw": {
     "train": 143,
     "val": 57,
     "test": 43,
@@ -18,7 +43,21 @@
     "val": 46,
     "test": 32
   },
+  "ambiguous_same_bar": 0,
   "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
+  "model": {
+    "person_periods_train": 214,
+    "eligible_train": 92,
+    "l2": 0.05,
+    "meta_weights": {
+      "trajectory": 0.031862745098039214,
+      "survival": 0.0490196078431373,
+      "efficiency": 0.08823529411764708,
+      "participation": 0
+    },
+    "hazard_buy_threshold": -0.3594004333456025,
+    "meta_buy_threshold": 0.24978969889149427
+  },
   "test": {
     "hazard": {
       "n": 32,
@@ -294,6 +333,7 @@
       "top3_share": 0.36363636363636365
     }
   },
-  "next_hypothesis": "Model the joint distribution of MFE/MAE or latent continuation species; competing hazards did not add robust OOS separation over the static meta-agent.",
-  "guard": "RESEARCH ONLY; no production, no orders, no V23 changes"
+  "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES",
+  "decision": "REJECTED_OR_INCONCLUSIVE",
+  "next_hypothesis": "Model the joint distribution of MFE/MAE or latent continuation species; competing hazards did not add robust OOS separation over the static meta-agent."
 }
