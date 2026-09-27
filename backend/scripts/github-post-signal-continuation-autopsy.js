@@ -57,6 +57,31 @@ function portfolioExit(data,kind){
   }
   return {end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,win_rate:wins/Math.max(1,data.length),scaled};
 }
+function failureExit(r,mode){
+  const p=r.path; let exit=null,minute=null,reason=null;
+  for(let i=1;i<=Math.min(10,p.length-1);i++){
+    const z=p[i], ret=z.c/r.p0-1, low=z.l/r.p0-1;
+    if(mode==='hard1' && low<=-.01){exit=r.p0*.99;minute=i;reason='FAIL_-1';break}
+    if(mode==='weak5' && i>=5 && ret<=-.005){exit=z.c;minute=i;reason='FAIL_WEAK5';break}
+    if(mode==='hybrid' && (low<=-.01 || (i>=5&&ret<=-.005))){exit=low<=-.01?r.p0*.99:z.c;minute=i;reason='FAIL_HYBRID';break}
+  }
+  return exit?{exit,minute,reason}:null;
+}
+function portfolioFull(data,failMode){
+  let cash=START,peakEq=START,maxDD=0,wins=0,scaled=0,early=0;
+  for(const r of data){
+    const equity=cash, seed=equity*SEED; const fe=failureExit(r,failMode);
+    let pnl=0;
+    if(fe){pnl=seed*(fe.exit/r.p0-1-COST);early++;}
+    else {
+      const ep=exitPolicy(r,'trail15'); pnl=seed*(ep.exit/r.p0-1-COST);
+      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-SEED);pnl+=add*(ep.exit/r.k5open-1-COST);scaled++;}
+    }
+    cash+=pnl;if(pnl>0)wins++;peakEq=Math.max(peakEq,cash);maxDD=Math.min(maxDD,cash/peakEq-1);
+  }
+  return {end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,win_rate:wins/Math.max(1,data.length),scaled,early_fail_exits:early};
+}
+const fullPolicies={};for(const m of ['hard1','weak5','hybrid'])fullPolicies[m]={train:portfolioFull(train,m),val:portfolioFull(val,m),test:portfolioFull(test,m),all:portfolioFull(rows,m)};
 const exitPolicies={};
 for(const kind of ['ratchet','trail2','trail15']) exitPolicies[kind]={train:portfolioExit(train,kind),val:portfolioExit(val,kind),test:portfolioExit(test,kind),all:portfolioExit(rows,kind)};
 const portfolioResults={
@@ -65,4 +90,4 @@ const portfolioResults={
   test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
   all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
 };
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies},null,2));})().catch(e=>{console.error(e);process.exit(1)});
