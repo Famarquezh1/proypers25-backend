@@ -54,6 +54,15 @@ function updateLedger(previous = {}, scan = {}, observedAt = new Date().toISOStr
       stable: Number(item?.stable || 0),
       v42: Number(item?.v42 || 0),
       v42_pass_windows: Number(item?.v42_pass_windows || 0),
+      v42_detail: item?.v42_detail ? {
+        ignition: Number(item.v42_detail.ignition || 0),
+        confirm: Number(item.v42_detail.confirm || 0),
+        extension: Number(item.v42_detail.extension || 0),
+        r15: Number(item.v42_detail.r15 || 0),
+        r60: Number(item.v42_detail.r60 || 0),
+        r24: Number(item.v42_detail.r24 || 0),
+        freshEnough: item.v42_detail.freshEnough === true
+      } : null,
       market_regime: String(item?.market_regime || 'UNKNOWN'),
       stage: String(item?.stage || 'PRE_APPROVAL'),
       reasons: normalizeReasons(item?.reasons),
