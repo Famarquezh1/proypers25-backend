@@ -1,0 +1,55 @@
+name: QPU LR v2 Forward Eval
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-lr-v2-forward-eval.js'
+      - '.github/workflows/qpu-lr-v2-forward-eval.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download QPU LR v2 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p .qpu-lr-eval
+          python - <<'PY'
+          import json,subprocess,os
+          repo=os.environ['GITHUB_REPOSITORY']
+          runs=json.loads(subprocess.check_output(['gh','run','list','--repo',repo,'--workflow','qpu-liquidity-resilience-v2.yml','--branch','main','--status','success','--limit','20','--json','databaseId,createdAt']))
+          kept=0
+          for r in runs:
+              rid=str(r['databaseId']); name='qpu-liquidity-resilience-v2-'+rid
+              arts=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{rid}/artifacts']))
+              if name not in [a['name'] for a in arts.get('artifacts',[])]: continue
+              d=f'.qpu-lr-eval/{rid}'
+              os.makedirs(d,exist_ok=True)
+              subprocess.check_call(['gh','run','download',rid,'--repo',repo,'--name',name,'--dir',d])
+              kept+=1
+          print('Downloaded v2 runs:',kept)
+          if kept==0: raise SystemExit('No v2 artifacts')
+          PY
+
+      - name: Evaluate forward returns
+        run: node backend/scripts/github-qpu-lr-v2-forward-eval.js .qpu-lr-eval qpu-lr-v2-forward-eval.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-lr-v2-forward-eval-${{ github.run_id }}
+          path: qpu-lr-v2-forward-eval.json
+          retention-days: 30
