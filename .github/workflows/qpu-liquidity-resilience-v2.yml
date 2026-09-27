@@ -2,6 +2,11 @@ name: QPU Liquidity Resilience v2
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-liquidity-resilience-v2.js'
+      - '.github/workflows/qpu-liquidity-resilience-v2.yml'
   schedule:
     - cron: '*/15 * * * *'
 
