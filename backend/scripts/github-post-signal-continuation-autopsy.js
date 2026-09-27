@@ -1,5 +1,5 @@
 'use strict';
-const GH='https://api.github.com',BIN='https://api.binance.com',TOKEN=process.env.GITHUB_TOKEN,COST=.004,H=240;
+const GH='https://api.github.com',BIN='https://api.binance.com',TOKEN=process.env.GITHUB_TOKEN,COST=.004,H=240,START=500,SEED=.25,SCALE_RET=.004914004914004844,SCALE_MIN=5;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function json(url,h={}){for(let i=0;i<4;i++){const r=await fetch(url,{headers:{'User-Agent':'Proypers25-Research/1.0',...h}});if(r.ok)return r.json();if(r.status===429||r.status>=500){await sleep(250*(i+1));continue;}throw Error(r.status+' '+url)}throw Error('fetch failed')}
 function sym(x){return (x.title+'\n'+(x.body||'')).match(/\b([A-Z0-9]{2,15}USDT)\b/)?.[1]}
@@ -9,7 +9,28 @@ function avg(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:null}
 function summary(a){return {n:a.length,continuation_rate:avg(a.map(x=>x.y.cont?1:0)),avg_net4h:avg(a.map(x=>x.y.net4h)),avg_mfe:avg(a.map(x=>x.y.mfe)),avg_mae:avg(a.map(x=>x.y.mae))}}
 function candidates(rows,m){const F=['ret','adverse','range','closePos','upFrac','volRatio'],out=[];for(const f of F){const vals=rows.map(r=>r.f[m][f]).filter(Number.isFinite).sort((a,b)=>a-b);for(const q of [.2,.35,.5,.65,.8]){const t=vals[Math.floor((vals.length-1)*q)];for(const dir of ['ge','le'])out.push({f,t,dir,test:r=>dir==='ge'?r.f[m][f]>=t:r.f[m][f]<=t})}}return out}
 (async()=>{let issues=[];for(let p=1;p<=5;p++){const a=await json(GH+'/repos/Famarquezh1/proypers25-backend/issues?state=all&per_page=100&page='+p+'&sort=created&direction=desc',{Authorization:'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28'});issues.push(...a.filter(x=>!x.pull_request));if(a.length<100)break}
-const rows=[];for(const x of issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300)){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,f:{1:feat(k,p0,1),2:feat(k,p0,2),3:feat(k,p0,3),5:feat(k,p0,5)},y:outcome(k,p0)});}catch(e){}await sleep(15)}
+const rows=[];for(const x of issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300)){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,p0,k5open:+k[5][1],k5close:+k[5][4],exit:+k[Math.min(H,k.length-1)][4],f:{1:feat(k,p0,1),2:feat(k,p0,2),3:feat(k,p0,3),5:feat(k,p0,5)},y:outcome(k,p0)});}catch(e){}await sleep(15)}
 rows.sort((a,b)=>a.t-b.t);const n=rows.length,a=Math.floor(n*.55),b=Math.floor(n*.75),train=rows.slice(0,a),val=rows.slice(a,b),test=rows.slice(b);
 const results={};for(const m of [1,2,3,5]){const baseT=summary(train),baseV=summary(val),baseX=summary(test);let scored=[];for(const c of candidates(train,m)){const tr=train.filter(c.test),va=val.filter(c.test),te=test.filter(c.test);if(tr.length<25||va.length<10||te.length<10)continue;const st=summary(tr),sv=summary(va),sx=summary(te);const gainTr=st.continuation_rate-baseT.continuation_rate,gainV=sv.continuation_rate-baseV.continuation_rate,gainX=sx.continuation_rate-baseX.continuation_rate;scored.push({feature:c.f,dir:c.dir,threshold:c.t,train:st,val:sv,test:sx,gains:[gainTr,gainV,gainX],robust:Math.min(gainTr,gainV,gainX)});}scored.sort((x,y)=>y.robust-x.robust);results[m+'m']=scored.slice(0,5)}
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+function portfolio(data,staged){
+  let cash=START, peak=START, maxDD=0, wins=0, trades=0, scaled=0;
+  for(const r of data){
+    const equity=cash, seed=staged?equity*SEED:equity;
+    const seedRet=r.exit/r.p0-1-COST;
+    let pnl=seed*seedRet, deployed=seed;
+    if(staged&&r.f[5].ret>=SCALE_RET){
+      const add=equity*(1-SEED), addRet=r.exit/r.k5open-1-COST;
+      pnl+=add*addRet; deployed+=add; scaled++;
+    }
+    cash+=pnl; trades++; if(pnl>0)wins++;
+    peak=Math.max(peak,cash); maxDD=Math.min(maxDD,cash/peak-1);
+  }
+  return {start:START,end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,trades,win_rate:wins/Math.max(1,trades),scaled};
+}
+const portfolioResults={
+  train:{baseline:portfolio(train,false),staged:portfolio(train,true)},
+  val:{baseline:portfolio(val,false),staged:portfolio(val,true)},
+  test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
+  all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
+};
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults},null,2));})().catch(e=>{console.error(e);process.exit(1)});
