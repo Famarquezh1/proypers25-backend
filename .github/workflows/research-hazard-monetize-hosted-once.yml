@@ -1,0 +1,48 @@
+name: Research Hazard Monetization Hosted Once
+
+on:
+  push:
+    branches: [research/post-signal-continuation-autopsy]
+    paths:
+      - '.github/workflows/research-hazard-monetize-hosted-once.yml'
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  monetize-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESEARCH_EXECUTION_ENV: github-hosted-provisional-hazard-money
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Safety preflight
+        shell: bash
+        run: |
+          node --check backend/scripts/github-hazard-monetization-bench.js
+          if grep -E 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin' backend/scripts/github-hazard-monetization-bench.js; then
+            echo "Forbidden execution capability detected"
+            exit 1
+          fi
+          mkdir -p research/results
+      - name: Run hazard monetization hypothesis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-hazard-monetization-bench.js | tee research/results/hazard_monetization.json
+      - name: Commit result
+        shell: bash
+        run: |
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git add research/results/hazard_monetization.json
+          git commit -m "research: provisional hazard monetization result [research-result]"
+          git pull --rebase origin research/post-signal-continuation-autopsy
+          git push origin HEAD:research/post-signal-continuation-autopsy
