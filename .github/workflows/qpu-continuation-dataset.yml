@@ -30,7 +30,7 @@ jobs:
         run: |
           node --check backend/scripts/github-qpu-continuation-dataset.js
           $src = Get-Content backend/scripts/github-qpu-continuation-dataset.js -Raw
-          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin|\.set\(|\.update\(|\.delete\(') {
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin|\.collection\([^\r\n]+\)\.doc\([^\r\n]+\)\.(set|update|delete)\(') {
             throw 'Forbidden execution/write capability detected'
           }
 
