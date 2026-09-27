@@ -1,0 +1,34 @@
+name: QPU v0.4 Historical Backfill Fast
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/qpu-v04-historical-backfill-fast.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      QPU_BACKFILL_MAX: '700'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build historical QPU backfill
+        run: node backend/scripts/github-qpu-v04-historical-backfill.js qpu-v04-historical-backfill.jsonl qpu-v04-historical-backfill.meta.json
+      - name: Show metadata
+        run: cat qpu-v04-historical-backfill.meta.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v04-historical-backfill-fast-${{ github.run_id }}
+          path: |
+            qpu-v04-historical-backfill.jsonl
+            qpu-v04-historical-backfill.meta.json
+          retention-days: 30
