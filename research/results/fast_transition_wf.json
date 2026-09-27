@@ -6,13 +6,13 @@
   "acquisition": {
     "source": "BINANCE_VISION_DATA_API",
     "candidates": 300,
-    "usable": 286,
+    "usable": 287,
     "errors": {}
   },
   "method": {
     "development_n": 243,
-    "final_holdout_n": 43,
-    "embargo_hours": 4,
+    "final_holdout_n": 44,
+    "embargo_minutes": 45,
     "fold_specs": [
       [
         100,
@@ -36,63 +36,461 @@
     "policy": "TP2/SL1/timeout30",
     "cost": 0.004
   },
-  "folds": [],
+  "folds": [
+    {
+      "fold": 1,
+      "boundaries": {
+        "train_raw": 100,
+        "train_purged": 99,
+        "val_raw": 20,
+        "val_purged": 17,
+        "eval": 40
+      },
+      "full": {
+        "val": {
+          "n": 17,
+          "selected_n": 5,
+          "coverage": 0.29411764705882354,
+          "event_rate": 0.23529411764705882,
+          "selected_event_rate": 0.2,
+          "avg_net": -2.000931243320271,
+          "baseline_all_avg_net": -7.999707731863303,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 4
+        },
+        "eval": {
+          "n": 40,
+          "selected_n": 12,
+          "coverage": 0.3,
+          "event_rate": 0.25,
+          "selected_event_rate": 0,
+          "avg_net": -5.498863260817029,
+          "baseline_all_avg_net": -19.495818081921634,
+          "positive": 0.08333333333333333,
+          "profit_factor": 0.00011377898763141873,
+          "symbols": 12
+        },
+        "auc": 0.23333333333333334,
+        "cut": 0.2927867223370738
+      },
+      "baseline": {
+        "val": {
+          "n": 17,
+          "selected_n": 5,
+          "coverage": 0.29411764705882354,
+          "event_rate": 0.23529411764705882,
+          "selected_event_rate": 0.2,
+          "avg_net": -2.004,
+          "baseline_all_avg_net": -7.999707731863303,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 4
+        },
+        "eval": {
+          "n": 40,
+          "selected_n": 5,
+          "coverage": 0.125,
+          "event_rate": 0.25,
+          "selected_event_rate": 0.4,
+          "avg_net": -1.9937568416330194,
+          "baseline_all_avg_net": -19.495818081921634,
+          "positive": 0.2,
+          "profit_factor": 0.002002245677071637,
+          "symbols": 3
+        },
+        "auc": 0.5233333333333333,
+        "cut": 0.296101643740511
+      }
+    },
+    {
+      "fold": 2,
+      "boundaries": {
+        "train_raw": 140,
+        "train_purged": 136,
+        "val_raw": 20,
+        "val_purged": 17,
+        "eval": 40
+      },
+      "full": {
+        "val": {
+          "n": 17,
+          "selected_n": 5,
+          "coverage": 0.29411764705882354,
+          "event_rate": 0.29411764705882354,
+          "selected_event_rate": 0.4,
+          "avg_net": -1.998,
+          "baseline_all_avg_net": -7.997635226114262,
+          "positive": 0.2,
+          "profit_factor": 0.001998001998001998,
+          "symbols": 4
+        },
+        "eval": {
+          "n": 40,
+          "selected_n": 9,
+          "coverage": 0.225,
+          "event_rate": 0.2,
+          "selected_event_rate": 0.3333333333333333,
+          "avg_net": -3.995684378373642,
+          "baseline_all_avg_net": -19.49992909577293,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 7
+        },
+        "auc": 0.49609375,
+        "cut": 0.28537778460444596
+      },
+      "baseline": {
+        "val": {
+          "n": 17,
+          "selected_n": 5,
+          "coverage": 0.29411764705882354,
+          "event_rate": 0.29411764705882354,
+          "selected_event_rate": 0.4,
+          "avg_net": -1.9972731481481483,
+          "baseline_all_avg_net": -7.997635226114262,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 3
+        },
+        "eval": {
+          "n": 40,
+          "selected_n": 9,
+          "coverage": 0.225,
+          "event_rate": 0.2,
+          "selected_event_rate": 0.2222222222222222,
+          "avg_net": -3.9985400855646542,
+          "baseline_all_avg_net": -19.49992909577293,
+          "positive": 0.1111111111111111,
+          "profit_factor": 0.0005554496996477406,
+          "symbols": 7
+        },
+        "auc": 0.44140625,
+        "cut": 0.27252225066263386
+      }
+    },
+    {
+      "fold": 3,
+      "boundaries": {
+        "train_raw": 180,
+        "train_purged": 176,
+        "val_raw": 20,
+        "val_purged": 18,
+        "eval": 43
+      },
+      "full": {
+        "val": {
+          "n": 18,
+          "selected_n": 6,
+          "coverage": 0.3333333333333333,
+          "event_rate": 0.16666666666666666,
+          "selected_event_rate": 0.3333333333333333,
+          "avg_net": -2.4973587272027005,
+          "baseline_all_avg_net": -8.501488393107211,
+          "positive": 0.16666666666666666,
+          "profit_factor": 0.001332964336528033,
+          "symbols": 6
+        },
+        "eval": {
+          "n": 43,
+          "selected_n": 26,
+          "coverage": 0.6046511627906976,
+          "event_rate": 0.20930232558139536,
+          "selected_event_rate": 0.2692307692307692,
+          "avg_net": -12.498703419173388,
+          "baseline_all_avg_net": -20.998934103225317,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 16
+        },
+        "auc": 0.6470588235294118,
+        "cut": 0.2390526710076594
+      },
+      "baseline": {
+        "val": {
+          "n": 18,
+          "selected_n": 6,
+          "coverage": 0.3333333333333333,
+          "event_rate": 0.16666666666666666,
+          "selected_event_rate": 0.3333333333333333,
+          "avg_net": -2.498482010110021,
+          "baseline_all_avg_net": -8.501488393107211,
+          "positive": 0.16666666666666666,
+          "profit_factor": 0.0013323658526874034,
+          "symbols": 4
+        },
+        "eval": {
+          "n": 43,
+          "selected_n": 24,
+          "coverage": 0.5581395348837209,
+          "event_rate": 0.20930232558139536,
+          "selected_event_rate": 0.20833333333333334,
+          "avg_net": -11.501294161143791,
+          "baseline_all_avg_net": -20.998934103225317,
+          "positive": 0,
+          "profit_factor": 0,
+          "symbols": 14
+        },
+        "auc": 0.6209150326797386,
+        "cut": 0.24594863219513174
+      }
+    }
+  ],
   "aggregate": {
     "full": {
-      "selected_n": 0,
-      "avg_net": 0,
-      "positive": 0,
-      "profit_factor": null,
-      "event_rate": 0,
-      "symbols": 0,
+      "selected_n": 47,
+      "avg_net": -22.998166115610115,
+      "positive": 0.02127659574468085,
+      "profit_factor": 0.0000069465883974493246,
+      "event_rate": 0.2127659574468085,
+      "symbols": 33,
       "bootstrap": {
         "n": 1500,
-        "mean": 0,
+        "mean": -22.998240520106673,
         "ci95": [
-          0,
-          0
+          -23.00138098105629,
+          -22.9950487726714
         ],
         "p_le_0": 1
       }
     },
     "baseline": {
-      "selected_n": 0,
-      "avg_net": 0,
-      "positive": 0,
-      "profit_factor": null,
-      "event_rate": 0,
-      "symbols": 0,
+      "selected_n": 38,
+      "avg_net": -18.49965012751836,
+      "positive": 0.02631578947368421,
+      "profit_factor": 0.000028449230799853857,
+      "event_rate": 0.23684210526315788,
+      "symbols": 22,
       "bootstrap": {
         "n": 1500,
-        "mean": 0,
+        "mean": -18.499677475559192,
         "ci95": [
-          0,
-          0
+          -18.50351472473867,
+          -18.495823602351024
         ],
         "p_le_0": 1
       }
     }
   },
   "red_team": {
-    "leave_one_symbol_out": [],
+    "leave_one_symbol_out": [
+      {
+        "excluded": "XPLUSDT",
+        "n": 45,
+        "avg_net": -21.998029247758858,
+        "event_rate": 0.2222222222222222
+      },
+      {
+        "excluded": "ARKMUSDT",
+        "n": 46,
+        "avg_net": -22.498363230357956,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "VTHOUSDT",
+        "n": 46,
+        "avg_net": -22.4982045407446,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "PUMPUSDT",
+        "n": 46,
+        "avg_net": -22.49837007011979,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "VETUSDT",
+        "n": 46,
+        "avg_net": -22.4981107269432,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "IOUSDT",
+        "n": 46,
+        "avg_net": -22.497987862889882,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "RESOLVUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "TLMUSDT",
+        "n": 46,
+        "avg_net": -22.498298361040284,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "STXUSDT",
+        "n": 46,
+        "avg_net": -22.4983344294358,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "TNSRUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "ENJUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "BABYUSDT",
+        "n": 45,
+        "avg_net": -21.998194698494665,
+        "event_rate": 0.2222222222222222
+      },
+      {
+        "excluded": "OPGUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "DASHUSDT",
+        "n": 44,
+        "avg_net": -21.498710910246228,
+        "event_rate": 0.20454545454545456
+      },
+      {
+        "excluded": "OPUSDT",
+        "n": 46,
+        "avg_net": -22.4980096848561,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "MARSCOINUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "DYDXUSDT",
+        "n": 46,
+        "avg_net": -22.498561031166854,
+        "event_rate": 0.1956521739130435
+      },
+      {
+        "excluded": "ORDIUSDT",
+        "n": 46,
+        "avg_net": -22.498561031166854,
+        "event_rate": 0.1956521739130435
+      },
+      {
+        "excluded": "LAUSDT",
+        "n": 46,
+        "avg_net": -22.49801168133584,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "GRAMUSDT",
+        "n": 45,
+        "avg_net": -21.997984536924704,
+        "event_rate": 0.2222222222222222
+      },
+      {
+        "excluded": "AUDIOUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "RADUSDT",
+        "n": 44,
+        "avg_net": -21.498722896219892,
+        "event_rate": 0.18181818181818182
+      },
+      {
+        "excluded": "GLMRUSDT",
+        "n": 46,
+        "avg_net": -22.498561031166854,
+        "event_rate": 0.1956521739130435
+      },
+      {
+        "excluded": "ZECUSDT",
+        "n": 43,
+        "avg_net": -20.997902866854393,
+        "event_rate": 0.20930232558139536
+      },
+      {
+        "excluded": "ZENUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "ARKUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "TOWNSUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "CFGUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "HEIUSDT",
+        "n": 44,
+        "avg_net": -21.498722896219892,
+        "event_rate": 0.18181818181818182
+      },
+      {
+        "excluded": "NEARUSDT",
+        "n": 46,
+        "avg_net": -22.498114251245557,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "RAREUSDT",
+        "n": 46,
+        "avg_net": -22.49790885725381,
+        "event_rate": 0.21739130434782608
+      },
+      {
+        "excluded": "XVGUSDT",
+        "n": 45,
+        "avg_net": -21.998306831859452,
+        "event_rate": 0.2
+      },
+      {
+        "excluded": "SUIUSDT",
+        "n": 45,
+        "avg_net": -21.99848008542138,
+        "event_rate": 0.2222222222222222
+      }
+    ],
     "temporal_halves": [
       {
         "half": 1,
-        "n": 0,
-        "avg_net": 0,
-        "event_rate": 0
+        "n": 23,
+        "avg_net": -10.997913991618727,
+        "event_rate": 0.13043478260869565
       },
       {
         "half": 2,
-        "n": 0,
-        "avg_net": 0,
-        "event_rate": 0
+        "n": 24,
+        "avg_net": -11.498407734435188,
+        "event_rate": 0.2916666666666667
       }
     ],
     "concentration": {
-      "symbols": 0,
-      "top_symbol_share": 0,
-      "top3_share": 0
+      "symbols": 33,
+      "top_symbol_share": 0.0851063829787234,
+      "top3_share": 0.2127659574468085
     }
   },
   "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
