@@ -1,0 +1,102 @@
+{
+  "ok": true,
+  "research_only": true,
+  "hypothesis_id": "H-FAST-TRANSITION-WF-001",
+  "hypothesis": "Front-loaded minute-5 transition structure predicts a monetizable +2% before -1% event within 30 minutes better than a static state baseline.",
+  "acquisition": {
+    "source": "BINANCE_VISION_DATA_API",
+    "candidates": 300,
+    "usable": 286,
+    "errors": {}
+  },
+  "method": {
+    "development_n": 243,
+    "final_holdout_n": 43,
+    "embargo_hours": 4,
+    "fold_specs": [
+      [
+        100,
+        120,
+        160
+      ],
+      [
+        140,
+        160,
+        200
+      ],
+      [
+        180,
+        200,
+        243
+      ]
+    ],
+    "validation_quantile": 0.75,
+    "l2": 0.1,
+    "target": "minute5 entry: +2% before -1% by minute30",
+    "policy": "TP2/SL1/timeout30",
+    "cost": 0.004
+  },
+  "folds": [],
+  "aggregate": {
+    "full": {
+      "selected_n": 0,
+      "avg_net": 0,
+      "positive": 0,
+      "profit_factor": null,
+      "event_rate": 0,
+      "symbols": 0,
+      "bootstrap": {
+        "n": 1500,
+        "mean": 0,
+        "ci95": [
+          0,
+          0
+        ],
+        "p_le_0": 1
+      }
+    },
+    "baseline": {
+      "selected_n": 0,
+      "avg_net": 0,
+      "positive": 0,
+      "profit_factor": null,
+      "event_rate": 0,
+      "symbols": 0,
+      "bootstrap": {
+        "n": 1500,
+        "mean": 0,
+        "ci95": [
+          0,
+          0
+        ],
+        "p_le_0": 1
+      }
+    }
+  },
+  "red_team": {
+    "leave_one_symbol_out": [],
+    "temporal_halves": [
+      {
+        "half": 1,
+        "n": 0,
+        "avg_net": 0,
+        "event_rate": 0
+      },
+      {
+        "half": 2,
+        "n": 0,
+        "avg_net": 0,
+        "event_rate": 0
+      }
+    ],
+    "concentration": {
+      "symbols": 0,
+      "top_symbol_share": 0,
+      "top3_share": 0
+    }
+  },
+  "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
+  "guard": "NO FINAL HOLDOUT SCORING / NO ORDERS / NO PRODUCTION WRITES",
+  "decision": "REJECTED_OR_INCONCLUSIVE",
+  "next_hypothesis": "Investigate discrete failure/recovery transition motifs or market-context interactions using the same purged walk-forward framework."
+}
