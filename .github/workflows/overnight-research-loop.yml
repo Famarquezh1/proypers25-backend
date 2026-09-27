@@ -30,6 +30,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node backend/scripts/github-post-signal-continuation-autopsy.js
+      - name: Run causal multi-agent continuation bench
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-multiagent-continuation-bench.js
       - name: Research guard
         shell: powershell
         run: |
