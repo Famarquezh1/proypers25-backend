@@ -1,0 +1,59 @@
+name: QPU Rich Ledger Dataset
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-rich-ledger-dataset.js'
+      - '.github/workflows/qpu-rich-ledger-dataset.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download latest rejection ledger
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path .qpu-ledger | Out-Null
+          $run = gh run list --repo "$env:GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+          if (-not $run) { throw 'No successful Spot GitHub Radar run found' }
+          gh run download $run --repo "$env:GITHUB_REPOSITORY" --name spot-radar-rejection-ledger --dir .qpu-ledger
+          if (-not (Test-Path .qpu-ledger\spot-radar-rejection-ledger.json)) { throw 'Ledger artifact not found' }
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-qpu-rich-ledger-dataset.js
+          $src = Get-Content backend/scripts/github-qpu-rich-ledger-dataset.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+
+      - name: Build rich labeled QPU dataset
+        shell: powershell
+        run: node backend/scripts/github-qpu-rich-ledger-dataset.js .qpu-ledger\spot-radar-rejection-ledger.json qpu-rich-ledger-dataset.jsonl qpu-rich-ledger-dataset.meta.json
+
+      - name: Show metadata
+        shell: powershell
+        run: Get-Content qpu-rich-ledger-dataset.meta.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-rich-ledger-dataset-${{ github.run_id }}
+          path: |
+            qpu-rich-ledger-dataset.jsonl
+            qpu-rich-ledger-dataset.meta.json
+          retention-days: 30
