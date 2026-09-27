@@ -1,0 +1,60 @@
+name: Research Emergency Hosted Once
+
+on:
+  push:
+    branches: [research/post-signal-continuation-autopsy]
+    paths:
+      - '.github/workflows/research-emergency-hosted-once.yml'
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  selective-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESEARCH_EXECUTION_ENV: github-hosted-provisional
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Safety preflight
+        shell: bash
+        run: |
+          node --check backend/scripts/github-selective-disagreement-bench.js
+          node --check backend/scripts/persist-autonomous-research.js
+          if grep -E 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin' backend/scripts/github-selective-disagreement-bench.js; then
+            echo "Forbidden execution capability detected"
+            exit 1
+          fi
+          mkdir -p research/results
+
+      - name: Run selective disagreement hypothesis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-selective-disagreement-bench.js | tee research/results/selective_disagreement.json
+
+      - name: Persist provisional checkpoint
+        run: node backend/scripts/persist-autonomous-research.js research/results/selective_disagreement.json | tee research/results/checkpoint.json
+
+      - name: Commit provisional research evidence
+        shell: bash
+        run: |
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git pull --rebase origin research/post-signal-continuation-autopsy
+          git add research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/selective_disagreement.json research/results/checkpoint.json
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "research: provisional selective-disagreement result [research-result]"
+            git push origin HEAD:research/post-signal-continuation-autopsy
+          fi
