@@ -1,28 +1,32 @@
 # Proypers25 Autonomous Research State
 
-Updated: 2026-09-27T23:20:13.048Z
+Updated: 2026-09-27T23:23:23.145Z
 
 Branch: research/post-signal-continuation-autopsy
-Execution environment: github-hosted-provisional-hazard-money
 
-## Latest valid batch
-- Universe: 286
-- Hypothesis: H-HAZARD-MONETIZE-001
+## Scientific split status
+- Usable universe: 286
+- Historical development block: first 243 signals
+- Previous TEST block: CONSUMED FOR ARCHITECTURE DEVELOPMENT; do not treat as fresh holdout again
+- FINAL HOLDOUT: last 43 signals — UNTOUCHED_NOT_EVALUATED
+
+## Latest experiment
+- Hypothesis: H-DISTRIBUTIONAL-PATH-001
 - Decision: REJECTED_OR_INCONCLUSIVE
-- Frozen selector TEST selected: 11
-- Exit policy selected on TRAIN/VALIDATION: time30_stop1
-- TEST avg net: -0.839%
-- TEST profit factor: 0.091
-- TEST compound: -8.881%
-- TEST max drawdown: -8.984%
-- Bootstrap 95% avg-return CI: [-1.254%, -0.362%]
-- FINAL HOLDOUT: UNTOUCHED_NOT_EVALUATED
+- Chosen on TRAIN/VALIDATION: terminal_only q=0.75
+- TEST avg net: -2.263%
+- TEST profit factor: 0.211
+- Bootstrap P(avg <= 0): 0.9733333333333334
+- TEST continuation rate among selected: 18.18%
 
 ## Conclusion
-The competing-hazard selector showed classification lift but the preregistered exit family failed to monetize it on TEST. H-HAZARD-MONETIZE-001 is rejected without opening the final holdout.
+The smooth joint MFE/MAE/terminal model did not transport out of sample. Strong TRAIN/VALIDATION performance reversed on the consumed TEST block.
+
+## Next methodology
+Use expanding purged walk-forward over the first 243 development signals. Do not reuse the old TEST as a fresh independent set.
 
 ## Next hypothesis
-Model joint future MFE/MAE and terminal-return distribution; the continuation edge still did not convert robustly into money.
+Front-loaded continuation hazard (6–30 minutes) versus early failure may be more economically relevant than cumulative 4h continuation probability.
 
 ## Guardrails
 Research/shadow/offline only. No production deployment, no V23 modification, no real orders, no trading credentials.
