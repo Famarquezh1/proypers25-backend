@@ -1,0 +1,71 @@
+name: QPU v0.4 Full State Dataset
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-v04-full-state-dataset.js'
+      - '.github/workflows/qpu-v04-full-state-dataset.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download available full radar scans
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path .qpu-v04 | Out-Null
+          $runs = gh run list --repo "$env:GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 60 --json databaseId,createdAt | ConvertFrom-Json
+          $kept = @()
+          foreach ($r in $runs) {
+            $id = [string]$r.databaseId
+            $dir = ".qpu-v04\$id"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            gh run download $id --repo "$env:GITHUB_REPOSITORY" --name "spot-radar-scan-$id" --dir $dir 2>$null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "$dir\spot-radar-scan.json")) {
+              $kept += [pscustomobject]@{ run_id = [long]$r.databaseId; observed_at = [string]$r.createdAt }
+            } else {
+              Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+            }
+          }
+          [pscustomobject]@{ runs = $kept } | ConvertTo-Json -Depth 4 | Set-Content .qpu-v04\manifest.json
+          Write-Host "Full radar scans found: $($kept.Count)"
+          if ($kept.Count -eq 0) { throw 'No full radar scan artifacts found' }
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-qpu-v04-full-state-dataset.js
+          $src = Get-Content backend/scripts/github-qpu-v04-full-state-dataset.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+
+      - name: Build QPU v0.4 full-state dataset
+        shell: powershell
+        run: node backend/scripts/github-qpu-v04-full-state-dataset.js .qpu-v04 .qpu-v04\manifest.json qpu-v04-prebuy-full-state.jsonl qpu-v04-prebuy-full-state.meta.json
+
+      - name: Show metadata
+        shell: powershell
+        run: Get-Content qpu-v04-prebuy-full-state.meta.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v04-full-state-${{ github.run_id }}
+          path: |
+            qpu-v04-prebuy-full-state.jsonl
+            qpu-v04-prebuy-full-state.meta.json
+          retention-days: 30
