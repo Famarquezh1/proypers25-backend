@@ -1,46 +1,79 @@
-name: Overnight Research Loop
+name: Autonomous Research Loop
 
 on:
   push:
     branches: [research/post-signal-continuation-autopsy]
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
 
 concurrency:
-  group: proypers-overnight-research
+  group: proypers-autonomous-research
   cancel-in-progress: false
 
 jobs:
-  regime-research:
+  research-batch:
+    if: ${{ !contains(github.event.head_commit.message || '', '[research-result]') }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 50
     permissions:
-      contents: read
+      contents: write
       issues: read
     steps:
       - uses: actions/checkout@v4
         with:
           ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run frozen causal portfolio study
+
+      - name: Prepare result directory
+        shell: powershell
+        run: New-Item -ItemType Directory -Force -Path research/results | Out-Null
+
+      - name: Frozen causal portfolio study
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-post-signal-continuation-autopsy.js
-      - name: Run causal multi-agent continuation bench
+        run: node backend/scripts/github-post-signal-continuation-autopsy.js | Tee-Object -FilePath research/results/portfolio_autopsy.json
+
+      - name: Causal multi-agent continuation bench
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-multiagent-continuation-bench.js
-      - name: Run causal exit-policy bench
+        run: node backend/scripts/github-multiagent-continuation-bench.js | Tee-Object -FilePath research/results/multiagent.json
+
+      - name: Causal exit-policy bench
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node backend/scripts/github-multiagent-exit-bench.js
-      - name: Research guard
+        run: node backend/scripts/github-multiagent-exit-bench.js | Tee-Object -FilePath research/results/exit_policy.json
+
+      - name: Selective prediction disagreement bench
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node backend/scripts/github-selective-disagreement-bench.js | Tee-Object -FilePath research/results/selective_disagreement.json
+
+      - name: Persist scientific checkpoint
+        shell: powershell
+        run: node backend/scripts/persist-autonomous-research.js research/results/multiagent.json research/results/exit_policy.json research/results/selective_disagreement.json | Tee-Object -FilePath research/results/checkpoint.json
+
+      - name: Commit research results only
         shell: powershell
         run: |
-          Write-Host "RESEARCH ONLY: no production deploy, no order execution, no secrets."
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git add research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/*.json
+          if (git diff --cached --quiet) {
+            Write-Host "No research changes to persist."
+          } else {
+            git commit -m "research: persist autonomous batch [research-result]"
+            git push origin HEAD:research/post-signal-continuation-autopsy
+          }
+
+      - name: Research guard
+        shell: powershell
+        run: Write-Host "RESEARCH ONLY - no production deploy, no order execution, no trading credentials."
