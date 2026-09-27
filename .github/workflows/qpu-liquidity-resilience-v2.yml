@@ -1,0 +1,75 @@
+name: QPU Liquidity Resilience v2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare websocket dependency
+        shell: powershell
+        run: |
+          $deps = Join-Path $env:RUNNER_TEMP 'qpu-liquidity-resilience-v2-deps'
+          if (Test-Path $deps) { Remove-Item -Recurse -Force $deps }
+          New-Item -ItemType Directory -Force -Path $deps | Out-Null
+          npm install --no-save --ignore-scripts --prefix $deps ws
+          "NODE_PATH=$deps\node_modules" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Use latest radar candidates as research universe
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $fallback = @('BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','SUIUSDT','LINKUSDT','NEARUSDT','LTCUSDT','FETUSDT','HBARUSDT','SEIUSDT','WIFUSDT','PEPEUSDT','RAYUSDT','CRVUSDT','LDOUSDT','RENDERUSDT','ARUSDT')
+          $dynamic = @()
+          $runs = gh run list --repo "$env:GITHUB_REPOSITORY" --workflow spot-github-radar.yml --branch main --status success --limit 12 --json databaseId,createdAt | ConvertFrom-Json
+          foreach ($r in $runs) {
+            $id = [string]$r.databaseId
+            $artifact = "spot-radar-scan-$id"
+            $names = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[].name' 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not ($names -contains $artifact)) { continue }
+            $dir = Join-Path $env:RUNNER_TEMP "qpu-radar-$id"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            gh run download $id --repo "$env:GITHUB_REPOSITORY" --name $artifact --dir $dir
+            $scan = Get-Content (Join-Path $dir 'spot-radar-scan.json') -Raw | ConvertFrom-Json
+            if ($scan.symbol) { $dynamic += [string]$scan.symbol }
+            foreach ($x in @($scan.learning_rejections)) { if ($x.symbol) { $dynamic += [string]$x.symbol } }
+            break
+          }
+          $symbols = @($dynamic + $fallback | ForEach-Object { $_.ToUpper() } | Select-Object -Unique | Select-Object -First 20)
+          $joined = ($symbols -join ',')
+          "LR_SYMBOLS=$joined" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "QPU resilience symbols: $joined"
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-qpu-liquidity-resilience-v2.js
+          $src = Get-Content backend/scripts/github-qpu-liquidity-resilience-v2.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+
+      - name: Collect QPU resilience curves
+        env:
+          LR_RUN_MS: '360000'
+        run: node backend/scripts/github-qpu-liquidity-resilience-v2.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-liquidity-resilience-v2-${{ github.run_id }}
+          path: qpu-liquidity-resilience-v2.ndjson
+          retention-days: 30
