@@ -8,6 +8,7 @@ for(const f of files){try{parsed[path.basename(f,'.json')]=JSON.parse(fs.readFil
 const sel=parsed.selective_disagreement||{};
 const exit=parsed.exit_policy||{};
 const multi=parsed.multiagent||{};
+const invalidAcquisition=(sel.universe??0)<50;
 const entry={
  id:'AUTO-'+now.replace(/[-:.TZ]/g,'').slice(0,14),
  date:now,
@@ -17,9 +18,9 @@ const entry={
  experiments:[
   {id:'BASE-MULTIAGENT',family:'meta_agent',status:'REFERENCE_REFRESH',test:multi.decision?.test??null},
   {id:'EXIT-POLICY-BENCH',family:'money_layer',status:exit.FINAL_UNTOUCHED_TEST?'HOLDOUT_ALREADY_CONSUMED_REFERENCE':'INCONCLUSIVE',chosen:exit.chosen??null,result:exit.FINAL_UNTOUCHED_TEST??null},
-  {id:sel.hypothesis_id||'H-SELECTIVE-DISAGREE-001',family:'selective_prediction',status:sel.decision||'FAILED_TO_RUN',test:sel.test??null,final_holdout_status:sel.final_holdout_status??null}
+  {id:sel.hypothesis_id||'H-SELECTIVE-DISAGREE-001',family:'selective_prediction',status:invalidAcquisition?'INVALID_DATA_ACQUISITION':(sel.decision||'FAILED_TO_RUN'),test:sel.test??null,final_holdout_status:sel.final_holdout_status??null}
  ],
- next_hypothesis:sel.next_hypothesis||'Inspect failures and formulate a scientifically distinct causal hypothesis.',
+ next_hypothesis:invalidAcquisition?'Retry the same hypothesis after repairing data acquisition; do not treat the zero-universe run as scientific evidence.':(sel.next_hypothesis||'Inspect failures and formulate a scientifically distinct causal hypothesis.'),
  guard:'RESEARCH ONLY; no production, no orders, no V23 changes'
 };
 const ledger=path.join(root,'research','experiment-ledger.jsonl');
@@ -33,12 +34,12 @@ const state=[
  '## Latest batch',
  '- Multi-agent universe: '+(multi.n??'n/a'),
  '- Selective-disagreement universe: '+(sel.universe??'n/a'),
- '- Selective-disagreement decision: '+(sel.decision??'FAILED_TO_RUN'),
+ '- Selective-disagreement decision: '+(invalidAcquisition?'INVALID_DATA_ACQUISITION':(sel.decision??'FAILED_TO_RUN')),
  '- Final holdout: '+(sel.final_holdout_status??'not evaluated'),
  '- Exit-policy reference chosen: '+(exit.chosen??'n/a'),
  '',
  '## Next hypothesis',
- sel.next_hypothesis||'Inspect failures and generate a distinct hypothesis.',
+ invalidAcquisition?'Retry the same hypothesis after repairing data acquisition; zero-universe execution is invalid.':(sel.next_hypothesis||'Inspect failures and generate a distinct hypothesis.'),
  '',
  '## Guardrails',
  'Research/shadow/offline only. No production deployment, no V23 modification, no real orders, no trading credentials.',
