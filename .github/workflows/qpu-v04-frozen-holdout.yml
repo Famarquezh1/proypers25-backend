@@ -1,0 +1,37 @@
+name: QPU v0.4 Frozen Holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-v04-frozen-holdout.js'
+      - '.github/workflows/qpu-v04-frozen-holdout.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QPU_HOLDOUT_START: '2026-06-01T00:00:00Z'
+      QPU_HOLDOUT_END: '2026-09-01T00:00:00Z'
+      QPU_HOLDOUT_MAX: '1200'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frozen historical holdout
+        run: node backend/scripts/github-qpu-v04-frozen-holdout.js qpu-v04-frozen-holdout.jsonl qpu-v04-frozen-holdout.meta.json
+      - name: Show metadata
+        run: cat qpu-v04-frozen-holdout.meta.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v04-frozen-holdout-${{ github.run_id }}
+          path: |
+            qpu-v04-frozen-holdout.jsonl
+            qpu-v04-frozen-holdout.meta.json
+          retention-days: 30
