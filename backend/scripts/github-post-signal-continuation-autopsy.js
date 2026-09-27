@@ -9,7 +9,7 @@ function avg(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:null}
 function summary(a){return {n:a.length,continuation_rate:avg(a.map(x=>x.y.cont?1:0)),avg_net4h:avg(a.map(x=>x.y.net4h)),avg_mfe:avg(a.map(x=>x.y.mfe)),avg_mae:avg(a.map(x=>x.y.mae))}}
 function candidates(rows,m){const F=['ret','adverse','range','closePos','upFrac','volRatio'],out=[];for(const f of F){const vals=rows.map(r=>r.f[m][f]).filter(Number.isFinite).sort((a,b)=>a-b);for(const q of [.2,.35,.5,.65,.8]){const t=vals[Math.floor((vals.length-1)*q)];for(const dir of ['ge','le'])out.push({f,t,dir,test:r=>dir==='ge'?r.f[m][f]>=t:r.f[m][f]<=t})}}return out}
 (async()=>{let issues=[];for(let p=1;p<=5;p++){const a=await json(GH+'/repos/Famarquezh1/proypers25-backend/issues?state=all&per_page=100&page='+p+'&sort=created&direction=desc',{Authorization:'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28'});issues.push(...a.filter(x=>!x.pull_request));if(a.length<100)break}
-const rows=[];for(const x of issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300)){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,p0,k5open:+k[5][1],k5close:+k[5][4],exit:+k[Math.min(H,k.length-1)][4],path:k.slice(0,H+1).map(z=>({o:+z[1],h:+z[2],l:+z[3],c:+z[4]})),f:{1:feat(k,p0,1),2:feat(k,p0,2),3:feat(k,p0,3),5:feat(k,p0,5)},y:outcome(k,p0)});}catch(e){}await sleep(15)}
+const rows=[];for(const x of issues.filter(x=>/spot signal/i.test(x.title)||/SPOT SIGNAL/i.test(x.body||'')).slice(0,300)){const s=sym(x);if(!s)continue;const t=Date.parse(x.created_at);try{const u=new URL(BIN+'/api/v3/klines');for(const [a,b] of Object.entries({symbol:s,interval:'1m',startTime:t,endTime:t+(H+5)*60000,limit:500}))u.searchParams.set(a,b);const k=await json(u);if(k.length<H+1)continue;const p0=+k[0][1];rows.push({t,s,p0,k5open:+k[5][1],k6open:+k[Math.min(6,k.length-1)][1],k5close:+k[5][4],exit:+k[Math.min(H,k.length-1)][4],path:k.slice(0,H+1).map(z=>({o:+z[1],h:+z[2],l:+z[3],c:+z[4]})),f:{1:feat(k,p0,1),2:feat(k,p0,2),3:feat(k,p0,3),5:feat(k,p0,5)},y:outcome(k,p0)});}catch(e){}await sleep(15)}
 rows.sort((a,b)=>a.t-b.t);const n=rows.length,a=Math.floor(n*.55),b=Math.floor(n*.75),train=rows.slice(0,a),val=rows.slice(a,b),test=rows.slice(b);
 const results={};for(const m of [1,2,3,5]){const baseT=summary(train),baseV=summary(val),baseX=summary(test);let scored=[];for(const c of candidates(train,m)){const tr=train.filter(c.test),va=val.filter(c.test),te=test.filter(c.test);if(tr.length<25||va.length<10||te.length<10)continue;const st=summary(tr),sv=summary(va),sx=summary(te);const gainTr=st.continuation_rate-baseT.continuation_rate,gainV=sv.continuation_rate-baseV.continuation_rate,gainX=sx.continuation_rate-baseX.continuation_rate;scored.push({feature:c.f,dir:c.dir,threshold:c.t,train:st,val:sv,test:sx,gains:[gainTr,gainV,gainX],robust:Math.min(gainTr,gainV,gainX)});}scored.sort((x,y)=>y.robust-x.robust);results[m+'m']=scored.slice(0,5)}
 function portfolio(data,staged){
@@ -19,7 +19,7 @@ function portfolio(data,staged){
     const seedRet=r.exit/r.p0-1-COST;
     let pnl=seed*seedRet, deployed=seed;
     if(staged&&r.f[5].ret>=SCALE_RET){
-      const add=equity*(1-SEED), addRet=r.exit/r.k5open-1-COST;
+      const add=equity*(1-SEED), addRet=r.exit/r.k6open-1-COST;
       pnl+=add*addRet; deployed+=add; scaled++;
     }
     cash+=pnl; trades++; if(pnl>0)wins++;
@@ -51,7 +51,7 @@ function portfolioExit(data,kind){
     const equity=cash, seed=equity*SEED; let pnl=0;
     const ep=exitPolicy(r,kind); const seedRet=ep.exit/r.p0-1-COST; pnl+=seed*seedRet;
     if(r.f[5].ret>=SCALE_RET && ep.minute>5){
-      const add=equity*(1-SEED), addRet=ep.exit/r.k5open-1-COST; pnl+=add*addRet;scaled++;
+      const add=equity*(1-SEED), addRet=ep.exit/r.k6open-1-COST; pnl+=add*addRet;scaled++;
     }
     cash+=pnl;if(pnl>0)wins++;peakEq=Math.max(peakEq,cash);maxDD=Math.min(maxDD,cash/peakEq-1);
   }
@@ -75,7 +75,7 @@ function portfolioFull(data,failMode){
     if(fe){pnl=seed*(fe.exit/r.p0-1-COST);early++;}
     else {
       const ep=exitPolicy(r,'trail15'); pnl=seed*(ep.exit/r.p0-1-COST);
-      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-SEED);pnl+=add*(ep.exit/r.k5open-1-COST);scaled++;}
+      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-SEED);pnl+=add*(ep.exit/r.k6open-1-COST);scaled++;}
     }
     cash+=pnl;if(pnl>0)wins++;peakEq=Math.max(peakEq,cash);maxDD=Math.min(maxDD,cash/peakEq-1);
   }
@@ -88,12 +88,33 @@ function portfolioSeed(data,seedFrac){
     if(fe){pnl=seed*(fe.exit/r.p0-1-COST);early++;}
     else{
       const ep=exitPolicy(r,'trail15'); pnl=seed*(ep.exit/r.p0-1-COST);
-      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-seedFrac);pnl+=add*(ep.exit/r.k5open-1-COST);scaled++;}
+      if(r.f[5].ret>=SCALE_RET && ep.minute>5){const add=equity*(1-seedFrac);pnl+=add*(ep.exit/r.k6open-1-COST);scaled++;}
     }
     cash+=pnl;if(pnl>0)wins++;peakEq=Math.max(peakEq,cash);maxDD=Math.min(maxDD,cash/peakEq-1);
   }
   return {seed_fraction:seedFrac,end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,win_rate:wins/Math.max(1,data.length),scaled,early_fail_exits:early};
 }
+function concurrentPortfolio(data,seedFrac){
+  const events=[...data].sort((a,b)=>a.t-b.t); let cash=START,peak=START,maxDD=0,wins=0,scaled=0,skipped=0;
+  const active=[]; const MAX_DEPLOY=.65, RESERVE=.20;
+  function settleUntil(ts){active.sort((a,b)=>a.end-b.end);while(active.length&&active[0].end<=ts){const x=active.shift();cash+=x.proceeds;if(x.pnl>0)wins++;const eq=cash+active.reduce((q,y)=>q+y.cost,0);peak=Math.max(peak,eq);maxDD=Math.min(maxDD,eq/peak-1);}}
+  for(const r of events){
+    settleUntil(r.t); const equity=cash+active.reduce((q,y)=>q+y.cost,0), reserve=Math.max(50,equity*RESERVE), deployed=active.reduce((q,y)=>q+y.cost,0), capacity=Math.max(0,equity*MAX_DEPLOY-deployed);
+    const seed=Math.min(equity*seedFrac,capacity,Math.max(0,cash-reserve)); if(seed<1){skipped++;continue}
+    const fe=failureExit(r,'weak5'); let proceeds=0,cost=seed,pnl=0,end=r.t+H*60000;
+    if(fe){const ret=fe.exit/r.p0-1-COST;pnl=seed*ret;proceeds=seed+pnl;end=r.t+fe.minute*60000;}
+    else{
+      const ep=exitPolicy(r,'trail15'); let ret=ep.exit/r.p0-1-COST;pnl=seed*ret;proceeds=seed+pnl;end=r.t+ep.minute*60000;
+      if(r.f[5].ret>=SCALE_RET&&ep.minute>5){
+        const addCap=Math.min(Math.max(0,equity*(1-seedFrac)),Math.max(0,capacity-seed),Math.max(0,cash-seed-reserve));
+        if(addCap>=1){const ar=ep.exit/r.k6open-1-COST;pnl+=addCap*ar;proceeds+=addCap*(1+ar);cost+=addCap;scaled++;}
+      }
+    }
+    cash-=cost;active.push({end,cost,proceeds,pnl});
+  }
+  settleUntil(Infinity);return {start:START,end:cash,return_pct:(cash/START-1)*100,max_drawdown_pct:maxDD*100,wins,scaled,skipped,max_deploy_pct:MAX_DEPLOY*100,reserve_pct:RESERVE*100};
+}
+const concurrent={};for(const sf of [.05,.10])concurrent[String(sf)]={train:concurrentPortfolio(train,sf),val:concurrentPortfolio(val,sf),test:concurrentPortfolio(test,sf),all:concurrentPortfolio(rows,sf)};
 const seedArchitecture={};
 for(const sf of [.05,.10,.15,.20,.25])seedArchitecture[String(sf)]={train:portfolioSeed(train,sf),val:portfolioSeed(val,sf),test:portfolioSeed(test,sf),all:portfolioSeed(rows,sf)};
 const fullPolicies={};for(const m of ['hard1','weak5','hybrid'])fullPolicies[m]={train:portfolioFull(train,m),val:portfolioFull(val,m),test:portfolioFull(test,m),all:portfolioFull(rows,m)};
@@ -105,4 +126,4 @@ const portfolioResults={
   test:{baseline:portfolio(test,false),staged:portfolio(test,true)},
   all:{baseline:portfolio(rows,false),staged:portfolio(rows,true)}
 };
-console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+console.log(JSON.stringify({ok:true,research_only:true,n,split:{train:train.length,val:val.length,test:test.length},baseline:{train:summary(train),val:summary(val),test:summary(test)},results,portfolio_policy:{start_usdt:START,seed_fraction:SEED,scale_minute:SCALE_MIN,scale_return:SCALE_RET,note:'sequential historical simulation; one signal resolved before next, no concurrency'},portfolio:portfolioResults,exit_policies:exitPolicies,full_policies:fullPolicies,seed_architecture:seedArchitecture,concurrent_portfolio:concurrent},null,2));})().catch(e=>{console.error(e);process.exit(1)});
