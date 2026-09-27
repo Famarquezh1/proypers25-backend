@@ -32,7 +32,7 @@ function sideDepth(book, side, lo, hi){
   return q;
 }
 function snapshot(sym){
-  const b=books.get(sym); if(!b||!b.bid||!b.ask) return null;
+  const b=books.get(sym); if(!b||!b.bids||!b.asks) return null;
   const bid=Math.max(...[...b.bids.keys()].map(Number)), ask=Math.min(...[...b.asks.keys()].map(Number));
   if(!Number.isFinite(bid)||!Number.isFinite(ask))return null;
   const mid=(bid+ask)/2, lo=mid*(1-BAND), hi=mid*(1+BAND);
