@@ -3,8 +3,6 @@ name: Autonomous Research Loop
 on:
   push:
     branches: [research/post-signal-continuation-autopsy]
-  schedule:
-    - cron: '7 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -12,8 +10,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  trigger-sentinel:
+    if: ${{ !contains(github.event.head_commit.message || '', '[research-result]') && !contains(github.event.head_commit.message || '', '[research-sentinel]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+      - name: Persist trigger evidence
+        shell: bash
+        run: |
+          mkdir -p research
+          printf '{"run_id":"%s","run_attempt":"%s","sha":"%s","triggered_at":"%s","status":"TRIGGERED_SELF_HOSTED_PENDING"}\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > research/TRIGGER_PROBE.json
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git add research/TRIGGER_PROBE.json
+          git commit -m "research: workflow trigger probe [research-sentinel]"
+          git push origin HEAD:research/post-signal-continuation-autopsy
+
   research-batch:
-    if: ${{ !contains(github.event.head_commit.message || '', '[research-result]') }}
+    needs: trigger-sentinel
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 50
     permissions:
@@ -29,9 +50,19 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Prepare result directory
+      - name: Research safety and syntax preflight
         shell: powershell
-        run: New-Item -ItemType Directory -Force -Path research/results | Out-Null
+        run: |
+          node --check backend/scripts/github-post-signal-continuation-autopsy.js
+          node --check backend/scripts/github-multiagent-continuation-bench.js
+          node --check backend/scripts/github-multiagent-exit-bench.js
+          node --check backend/scripts/github-selective-disagreement-bench.js
+          node --check backend/scripts/persist-autonomous-research.js
+          $all = Get-Content backend/scripts/github-post-signal-continuation-autopsy.js,backend/scripts/github-multiagent-continuation-bench.js,backend/scripts/github-multiagent-exit-bench.js,backend/scripts/github-selective-disagreement-bench.js -Raw
+          if ($all -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected in research scripts'
+          }
+          New-Item -ItemType Directory -Force -Path research/results | Out-Null
 
       - name: Frozen causal portfolio study
         shell: powershell
@@ -61,12 +92,25 @@ jobs:
         shell: powershell
         run: node backend/scripts/persist-autonomous-research.js research/results/multiagent.json research/results/exit_policy.json research/results/selective_disagreement.json | Tee-Object -FilePath research/results/checkpoint.json
 
+      - name: Mark runner completion
+        shell: powershell
+        run: |
+          $probe = @{
+            run_id = "$env:GITHUB_RUN_ID"
+            run_attempt = "$env:GITHUB_RUN_ATTEMPT"
+            sha = "$env:GITHUB_SHA"
+            completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            status = "SELF_HOSTED_COMPLETED"
+          } | ConvertTo-Json -Compress
+          Set-Content -Path research/TRIGGER_PROBE.json -Value $probe -Encoding utf8
+
       - name: Commit research results only
         shell: powershell
         run: |
+          git pull --rebase origin research/post-signal-continuation-autopsy
           git config user.name "proypers-research-bot"
           git config user.email "research-bot@users.noreply.github.com"
-          git add research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/*.json
+          git add research/TRIGGER_PROBE.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/*.json
           if (git diff --cached --quiet) {
             Write-Host "No research changes to persist."
           } else {
