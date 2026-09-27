@@ -22,7 +22,7 @@ const MIN_FRAC = 0.05, MAX_FRAC = 0.20;
 const MAX_EPISODE_MOVE = 0.0005;     // 5bp
 const OUT = process.env.LR_OUT || path.join(process.cwd(),'liquidity-resilience-shadow.ndjson');
 
-const books = new Map(), episodes = new Map(), recent = new Map();
+const books = new Map(), episodes = new Map(), recent = new Map(), pendingDepth = new Map();
 let out = fs.createWriteStream(OUT,{flags:'a'});
 
 function now(){return Date.now()}
@@ -81,26 +81,48 @@ async function initBook(sym){
     try{
       const r=await fetch(base+'/api/v3/depth?symbol='+sym+'&limit=1000',{headers:{'User-Agent':'Proypers25-Research/1.0'}});
       if(!r.ok){lastError=new Error(sym+' snapshot '+r.status+' via '+base);continue;}
-      const j=await r.json(), b={last:+j.lastUpdateId,bids:new Map(j.bids),asks:new Map(j.asks),ready:true}; books.set(sym,b); return true;
+      const j=await r.json();
+      const b={last:+j.lastUpdateId,bids:new Map(j.bids),asks:new Map(j.asks),ready:false};
+      books.set(sym,b);
+      const queued=pendingDepth.get(sym)||[];
+      pendingDepth.set(sym,[]);
+      for(const d of queued) depth(sym,d);
+      return true;
     }catch(e){lastError=e;}
   }
   emit({type:'snapshot_unavailable',shadow_only:true,no_order_created:true,symbol:sym,at:now(),error:String(lastError?.message||lastError||'unavailable')});
   return false;
 }
-function depth(sym,d){
-  const b=books.get(sym); if(!b||!b.ready)return;
-  if(d.u<=b.last)return;
-  if(d.U>b.last+1){b.ready=false;emit({type:'sequence_gap',symbol:sym,at:now(),expected:b.last+1,U:d.U,u:d.u});initBook(sym).catch(()=>{});return;}
+function applyDepth(b,d){
   for(const [p,q] of d.b){if(+q===0)b.bids.delete(p);else b.bids.set(p,q)}
   for(const [p,q] of d.a){if(+q===0)b.asks.delete(p);else b.asks.set(p,q)}
   b.last=d.u;
 }
+function depth(sym,d){
+  const b=books.get(sym);
+  if(!b){
+    const q=pendingDepth.get(sym)||[]; q.push(d); if(q.length>5000)q.shift(); pendingDepth.set(sym,q); return;
+  }
+  if(d.u<=b.last)return;
+  if(!b.ready){
+    if(d.U<=b.last+1&&d.u>=b.last+1){applyDepth(b,d);b.ready=true;emit({type:'book_synced',shadow_only:true,no_order_created:true,symbol:sym,at:now(),last:b.last});}
+    return;
+  }
+  if(d.U>b.last+1){
+    b.ready=false; pendingDepth.set(sym,[d]);
+    emit({type:'sequence_gap',shadow_only:true,no_order_created:true,symbol:sym,at:now(),expected:b.last+1,U:d.U,u:d.u});
+    initBook(sym).catch(()=>{}); return;
+  }
+  applyDepth(b,d);
+}
 (async()=>{
-  const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
-  if(!initialized) throw new Error('No Binance depth snapshots available from REST endpoints');
   emit({type:'collector_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('WebSocket open timeout')),15000);ws.once('open',()=>{clearTimeout(timer);resolve();});ws.once('error',reject);});
+  await new Promise(resolve=>setTimeout(resolve,750));
+  const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
+  if(!initialized) throw new Error('No Binance depth snapshots available from REST endpoints');
   ws.on('message',buf=>{try{const x=JSON.parse(buf),sym=String(x.data.s||'').toUpperCase();if(x.stream.includes('@depth'))depth(sym,x.data);else if(x.stream.includes('@trade'))onTrade(sym,x.data);}catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
   ws.on('error',e=>emit({type:'ws_error',at:now(),error:String(e.message||e)}));
   setTimeout(()=>{emit({type:'collector_end',shadow_only:true,no_order_created:true,at:now()});ws.close();out.end();},RUN_MS);
