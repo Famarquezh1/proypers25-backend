@@ -12,6 +12,7 @@ const WebSocket=require('ws');
 const REST_BASES=['https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'];
 const DEFAULT='BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,SUIUSDT,LINKUSDT,NEARUSDT,LTCUSDT,FETUSDT,HBARUSDT,SEIUSDT,WIFUSDT,PEPEUSDT,RAYUSDT,CRVUSDT,LDOUSDT,RENDERUSDT,ARUSDT';
 const SYMBOLS=String(process.env.LR_SYMBOLS||DEFAULT).split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).slice(0,20);
+const RADAR_SYMBOLS=new Set(String(process.env.LR_RADAR_SYMBOLS||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean));
 const RUN_MS=Math.max(120000,Number(process.env.LR_RUN_MS||360000));
 const BAND=0.0025;
 const PERTURB_MS=1000;
@@ -67,6 +68,7 @@ function complete(sym,key,e){
     initial_depth:e.initialDepth,executed:e.executed,perturbation_fraction:e.executed/e.initialDepth,
     R_1s:s1?.R??null,R_2s:s2?.R??null,R_5s:s5.R,recovery_slope,
     mid_move_1s:s1?.mid_move??null,mid_move_2s:s2?.mid_move??null,mid_move_5s:s5.mid_move,
+    radar_candidate:RADAR_SYMBOLS.has(sym),
     persistent_failure:Boolean(valid&&s1.R<0&&s2.R<0&&s5.R<0),
     recovery:Boolean(valid&&s5.R>0&&s5.R>s1.R),valid};
   emit(row);
@@ -83,7 +85,7 @@ function complete(sym,key,e){
   const bidFail=bids.length?bids.filter(x=>x.persistent_failure).length/bids.length:null;
 
   // State is useful even with one side; completeness is explicit.
-  emit({type:'resilience_state_v2',shadow_only:true,no_order_created:true,symbol:sym,at:now(),
+  emit({type:'resilience_state_v2',shadow_only:true,no_order_created:true,symbol:sym,radar_candidate:RADAR_SYMBOLS.has(sym),at:now(),
     ask_R5_median:askR,bid_R5_median:bidR,
     ask_failure_rate:askFail,bid_failure_rate:bidFail,
     S:(askR!==null&&bidR!==null)?bidR-askR:null,
@@ -152,7 +154,7 @@ function depth(sym,d){
 }
 
 (async()=>{
-  emit({type:'collector_start_v2',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],samples_ms:SAMPLE_MS,run_ms:RUN_MS});
+  emit({type:'collector_start_v2',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,radar_symbols:[...RADAR_SYMBOLS],band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],samples_ms:SAMPLE_MS,run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('WebSocket open timeout')),15000);ws.once('open',()=>{clearTimeout(timer);resolve()});ws.once('error',reject)});
