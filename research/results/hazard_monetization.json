@@ -1,0 +1,373 @@
+{
+  "ok": true,
+  "research_only": true,
+  "hypothesis_id": "H-HAZARD-MONETIZE-001",
+  "hypothesis": "The frozen hazard selector has monetizable favorable excursions if profits are captured before 4h mean reversion.",
+  "acquisition": {
+    "source": "BINANCE_VISION_DATA_API",
+    "candidates": 300,
+    "usable": 286,
+    "errors": {}
+  },
+  "split_raw": {
+    "train": 143,
+    "val": 57,
+    "test": 43,
+    "final_holdout": 43
+  },
+  "risk_set": {
+    "train": 92,
+    "val": 46,
+    "test": 32
+  },
+  "selector": {
+    "decision_minute": 5,
+    "validation_cut": -0.3594004333456025,
+    "train_selected": 50,
+    "val_selected": 15,
+    "test_selected": 11
+  },
+  "policy_candidates": [
+    {
+      "name": "tp3_stop1",
+      "train": {
+        "n": 50,
+        "avg": 0.0008767527675276698,
+        "median": -0.014000000000000009,
+        "positive": 0.38,
+        "profit_factor": 1.1010083833557223,
+        "compound": 0.03535291529501827,
+        "max_drawdown": -0.13244028298964272
+      },
+      "val": {
+        "n": 15,
+        "avg": -0.0006666666666666721,
+        "median": -0.014000000000000009,
+        "positive": 0.3333333333333333,
+        "profit_factor": 0.9285714285714283,
+        "compound": -0.012570828706976012,
+        "max_drawdown": -0.0811143069794148
+      }
+    },
+    {
+      "name": "tp5_stop1",
+      "train": {
+        "n": 50,
+        "avg": 0.0003253844409238182,
+        "median": -0.014000000000000009,
+        "positive": 0.26,
+        "profit_factor": 1.0314077645679363,
+        "compound": 0.001100770089922154,
+        "max_drawdown": -0.18409233673133862
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.0026882416396979423,
+        "median": -0.014000000000000009,
+        "positive": 0.26666666666666666,
+        "profit_factor": 1.2806559149472914,
+        "compound": 0.03584867741180098,
+        "max_drawdown": -0.08111430697941457
+      }
+    },
+    {
+      "name": "trail_arm2_trail1",
+      "train": {
+        "n": 50,
+        "avg": -0.0012497547132535197,
+        "median": -0.013999999999999898,
+        "positive": 0.46,
+        "profit_factor": 0.8346885299929211,
+        "compound": -0.06565118336805531,
+        "max_drawdown": -0.17827265114512414
+      },
+      "val": {
+        "n": 15,
+        "avg": -0.0012660063640942524,
+        "median": -0.013999999999999898,
+        "positive": 0.4666666666666667,
+        "profit_factor": 0.830445576237377,
+        "compound": -0.02034559941791958,
+        "max_drawdown": -0.06082888334464576
+      }
+    },
+    {
+      "name": "trail_arm3_trail15",
+      "train": {
+        "n": 50,
+        "avg": 0.0009759900377882116,
+        "median": -0.01600000000000001,
+        "positive": 0.4,
+        "profit_factor": 1.101665628936272,
+        "compound": 0.03681530081933615,
+        "max_drawdown": -0.14241033898596522
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.0015553638067500027,
+        "median": -0.01600000000000001,
+        "positive": 0.3333333333333333,
+        "profit_factor": 1.1458153568828124,
+        "compound": 0.017813794097548907,
+        "max_drawdown": -0.09224094323467913
+      }
+    },
+    {
+      "name": "ratchet",
+      "train": {
+        "n": 50,
+        "avg": -0.0006908439101916056,
+        "median": -0.0159999999999999,
+        "positive": 0.48,
+        "profit_factor": 0.9169658761788935,
+        "compound": -0.043232013206866315,
+        "max_drawdown": -0.13005617547527282
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.0017181053219769372,
+        "median": -0.01600000000000001,
+        "positive": 0.4666666666666667,
+        "profit_factor": 1.201340467419172,
+        "compound": 0.02135307391101482,
+        "max_drawdown": -0.07655811400194479
+      }
+    },
+    {
+      "name": "time30_stop1",
+      "train": {
+        "n": 50,
+        "avg": 0.0016365509965671854,
+        "median": -0.013999999999999898,
+        "positive": 0.32,
+        "profit_factor": 1.2034403233637068,
+        "compound": 0.07213455015877535,
+        "max_drawdown": -0.15852060489997655
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.0055414846686468195,
+        "median": -0.007351206434316412,
+        "positive": 0.4,
+        "profit_factor": 1.818967838179146,
+        "compound": 0.07504090467752933,
+        "max_drawdown": -0.06297693464727205
+      }
+    },
+    {
+      "name": "time60_stop1",
+      "train": {
+        "n": 50,
+        "avg": -0.0027573551955817747,
+        "median": -0.014000000000000009,
+        "positive": 0.3,
+        "profit_factor": 0.7106557624562487,
+        "compound": -0.1369239799951294,
+        "max_drawdown": -0.20050888616450324
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.007644416088958265,
+        "median": -0.009260673096378232,
+        "positive": 0.4,
+        "profit_factor": 2.0352543267479932,
+        "compound": 0.1079342319787282,
+        "max_drawdown": -0.06337757573281977
+      }
+    },
+    {
+      "name": "time120_stop1",
+      "train": {
+        "n": 50,
+        "avg": -0.0051022185302484445,
+        "median": -0.014000000000000009,
+        "positive": 0.18,
+        "profit_factor": 0.5472045185102048,
+        "compound": -0.23414546311003037,
+        "max_drawdown": -0.25005548679661693
+      },
+      "val": {
+        "n": 15,
+        "avg": 0.011945760904719778,
+        "median": -0.014000000000000009,
+        "positive": 0.3333333333333333,
+        "profit_factor": 2.3626576042458143,
+        "compound": 0.17835419480945647,
+        "max_drawdown": -0.08111430697941457
+      }
+    }
+  ],
+  "chosen_policy": "time30_stop1",
+  "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
+  "guard": "NO ORDERS / NO PRODUCTION WRITES",
+  "test": {
+    "base": {
+      "n": 11,
+      "avg": -0.008391475322586184,
+      "median": -0.013999999999999898,
+      "positive": 0.2727272727272727,
+      "profit_factor": 0.09067036344365018,
+      "compound": -0.08881075795561588,
+      "max_drawdown": -0.08984359269766384
+    },
+    "cost06": {
+      "n": 11,
+      "avg": -0.010391475322586184,
+      "median": -0.015999999999999896,
+      "positive": 0.09090909090909091,
+      "profit_factor": 0.04458629803070885,
+      "compound": -0.10882503290720913,
+      "max_drawdown": -0.10882503290720913
+    },
+    "cost08": {
+      "n": 11,
+      "avg": -0.012391475322586186,
+      "median": -0.017999999999999898,
+      "positive": 0.09090909090909091,
+      "profit_factor": 0.023877945104142997,
+      "compound": -0.12843886007887773,
+      "max_drawdown": -0.12843886007887773
+    },
+    "delay10": {
+      "n": 11,
+      "avg": -0.007884482570560927,
+      "median": -0.014000000000000009,
+      "positive": 0.2727272727272727,
+      "profit_factor": 0.14901166216536096,
+      "compound": -0.08377157209487962,
+      "max_drawdown": -0.08772962010617014
+    },
+    "delay15": {
+      "n": 11,
+      "avg": -0.008186428148081801,
+      "median": -0.014000000000000009,
+      "positive": 0.2727272727272727,
+      "profit_factor": 0.1757203200808415,
+      "compound": -0.08686399954399993,
+      "max_drawdown": -0.09317610193184245
+    },
+    "bootstrap": {
+      "mean": -0.0084333585648249,
+      "ci95": [
+        -0.012538655076558741,
+        -0.003618867012167179
+      ],
+      "p_le_0": 1
+    }
+  },
+  "red_team": {
+    "leave_one_symbol_out": [
+      {
+        "excluded": "GRAMUSDT",
+        "n": 10,
+        "avg": -0.009344101673843528,
+        "median": -0.013999999999999898,
+        "positive": 0.2,
+        "profit_factor": 0.07949130707230315,
+        "compound": -0.08984359269766384,
+        "max_drawdown": -0.08984359269766384
+      },
+      {
+        "excluded": "GLMRUSDT",
+        "n": 10,
+        "avg": -0.007830622854844801,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.10517593152112073,
+        "compound": -0.07587297967101014,
+        "max_drawdown": -0.08364135572124098
+      },
+      {
+        "excluded": "ZECUSDT",
+        "n": 9,
+        "avg": -0.010060597151410201,
+        "median": -0.013999999999999898,
+        "positive": 0.2222222222222222,
+        "profit_factor": 0.020230876497719978,
+        "compound": -0.08714245486922578,
+        "max_drawdown": -0.08817718063600088
+      },
+      {
+        "excluded": "ZENUSDT",
+        "n": 10,
+        "avg": -0.007830622854844801,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.10517593152112073,
+        "compound": -0.07587297967101003,
+        "max_drawdown": -0.07692047940939539
+      },
+      {
+        "excluded": "ARKUSDT",
+        "n": 10,
+        "avg": -0.007830622854844812,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.1051759315211206,
+        "compound": -0.07587297967101014,
+        "max_drawdown": -0.0769204794093955
+      },
+      {
+        "excluded": "HEIUSDT",
+        "n": 10,
+        "avg": -0.007830622854844801,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.10517593152112073,
+        "compound": -0.07587297967101003,
+        "max_drawdown": -0.07692047940939539
+      },
+      {
+        "excluded": "NEARUSDT",
+        "n": 10,
+        "avg": -0.00838912175109204,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.09886619139393212,
+        "compound": -0.08107801934578385,
+        "max_drawdown": -0.08211961916178001
+      },
+      {
+        "excluded": "RAREUSDT",
+        "n": 10,
+        "avg": -0.007830622854844812,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.1051759315211206,
+        "compound": -0.07587297967101014,
+        "max_drawdown": -0.0769204794093955
+      },
+      {
+        "excluded": "SUIUSDT",
+        "n": 10,
+        "avg": -0.009304107703329642,
+        "median": -0.013999999999999898,
+        "positive": 0.2,
+        "profit_factor": 0.08343120400490814,
+        "compound": -0.0894798523065723,
+        "max_drawdown": -0.09051192862889845
+      },
+      {
+        "excluded": "XVGUSDT",
+        "n": 10,
+        "avg": -0.007830622854844801,
+        "median": -0.013999999999999898,
+        "positive": 0.3,
+        "profit_factor": 0.10517593152112073,
+        "compound": -0.07587297967101003,
+        "max_drawdown": -0.077598304897463
+      }
+    ],
+    "remove_best_trade": {
+      "n": 10,
+      "avg": -0.009964055812978287,
+      "median": -0.013999999999999898,
+      "positive": 0.2,
+      "profit_factor": 0.018418215810089074,
+      "compound": -0.09544506199536573,
+      "max_drawdown": -0.09713384656601531
+    }
+  },
+  "decision": "REJECTED_OR_INCONCLUSIVE",
+  "next_hypothesis": "Model joint future MFE/MAE and terminal-return distribution; the continuation edge still did not convert robustly into money."
+}
