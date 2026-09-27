@@ -22,15 +22,17 @@ async function getJson(url){
 function mean(xs){return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null}
 function med(xs){if(!xs.length)return null;const a=[...xs].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]}
 function summarize(rows){
+  const mature=(h)=>rows.filter(x=>Number.isFinite(x['ret_'+h+'m_pct']));
   return {
     n:rows.length,
     ask:rows.filter(x=>x.side==='ASK').length,
     bid:rows.filter(x=>x.side==='BID').length,
     persistent_failure:rows.filter(x=>x.persistent_failure).length,
     r5_median:med(rows.map(x=>x.R_5s)),
-    ret_5m_mean:mean(rows.map(x=>x.ret_5m_pct).filter(Number.isFinite)),
-    ret_15m_mean:mean(rows.map(x=>x.ret_15m_pct).filter(Number.isFinite)),
-    ret_30m_mean:mean(rows.map(x=>x.ret_30m_pct).filter(Number.isFinite)),
+    mature_5m:mature(5).length,mature_15m:mature(15).length,mature_30m:mature(30).length,
+    ret_5m_mean:mean(mature(5).map(x=>x.ret_5m_pct)),
+    ret_15m_mean:mean(mature(15).map(x=>x.ret_15m_pct)),
+    ret_30m_mean:mean(mature(30).map(x=>x.ret_30m_pct)),
     up_5m_rate:mean(rows.map(x=>x.ret_5m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_5m_pct))),
     up_15m_rate:mean(rows.map(x=>x.ret_15m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_15m_pct))),
     up_30m_rate:mean(rows.map(x=>x.ret_30m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_30m_pct)))
@@ -77,13 +79,21 @@ function summarize(rows){
     }catch{}
     await sleep(20);
   }
-  const ask=labeled.filter(x=>x.side==='ASK');
+  const deduped=[];const last=new Map();
+  for(const x of labeled.sort((a,b)=>a.available_at-b.available_at)){
+    const key=x.symbol+'|'+x.side,prev=last.get(key)||-Infinity;
+    if(x.available_at-prev<30*60*1000)continue;
+    deduped.push(x);last.set(key,x.available_at);
+  }
+  const ask=deduped.filter(x=>x.side==='ASK');
   const askFail=ask.filter(x=>x.persistent_failure);
   const askRecover=ask.filter(x=>!x.persistent_failure);
   const output={
     generated_at:new Date().toISOString(),research_only:true,no_order_created:true,
-    valid_curves:labeled.length,
-    overall:summarize(labeled),
+    valid_curves_raw:labeled.length,
+    valid_curves_deduped:deduped.length,
+    overall:summarize(deduped),
+    radar_candidates:summarize(deduped.filter(x=>x.radar_candidate===true)),
     ask_all:summarize(ask),
     ask_persistent_failure:summarize(askFail),
     ask_nonfailure:summarize(askRecover),
