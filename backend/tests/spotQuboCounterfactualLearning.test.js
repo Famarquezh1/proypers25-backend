@@ -9,7 +9,9 @@ const {
   classifyDecisionDetail,
   parseExitIssue,
   matchActualExit,
+  dedupeExits,
   exitQuality,
+  learningTarget,
   firstTouchOutcome,
   outcomeMetrics,
   trainAdaptiveWeights,
@@ -108,15 +110,24 @@ const {
   const exit = parseExitIssue({
     number: 99,
     created_at: '2026-09-18T02:00:00Z',
-    body: ['- Símbolo: TESTUSDT', '- Motivo: TRAILING_STOP', '- Entrada aprox.: 1', '- Salida aprox.: 1.025', '- PnL aprox.: 2.500%'].join('\n')
+    body: ['- Símbolo: TESTUSDT', '- Motivo: TRAILING_STOP', '- Entrada aprox.: 1', '- Salida aprox.: 1.025', '- PnL aprox.: 2.500%', '- orderId=999', '- entryOrderId=111', '- entryClientOrderId=proypers-gh-buy-test'].join('\n')
   });
   assert(exit);
-  const signal = { symbol: 'TESTUSDT', created_at: '2026-09-18T01:00:00Z' };
+  assert.strictEqual(exit.order_id, '999');
+  assert.strictEqual(exit.entry_order_id, '111');
+  const signal = { symbol: 'TESTUSDT', created_at: '2026-09-18T01:00:00Z', entry_order_id: '111', price: 1 };
   assert.strictEqual(matchActualExit(signal, [exit]).issue_number, 99);
+  assert.strictEqual(dedupeExits([exit, { ...exit, issue_number: 100 }]).length, 1);
   const quality = exitQuality(exit, { mfe_pct: 4.0 });
   assert.strictEqual(quality.actual_pnl_pct, 2.5);
   assert.strictEqual(quality.capture_ratio, 0.625);
   assert.strictEqual(quality.regret_vs_mfe_pct, 1.5);
+  const realized = learningTarget({ decision: 'EXECUTED', target_pct: 9, exit_quality: quality });
+  assert.strictEqual(realized.source, 'REALIZED_NET_PNL');
+  assert.strictEqual(realized.value, 2.5);
+  const counterfactual = learningTarget({ decision: 'DECLINED', target_pct: 1.75 });
+  assert.strictEqual(counterfactual.source, 'COUNTERFACTUAL_PATH');
+  assert.strictEqual(counterfactual.value, 1.75);
 })();
 
 (function outcomeIsConservative() {
