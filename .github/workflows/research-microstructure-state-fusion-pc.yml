@@ -1,0 +1,148 @@
+name: Microstructure State Fusion PC
+
+on:
+  push:
+    branches: [research/post-signal-continuation-autopsy]
+    paths:
+      - 'backend/scripts/github-microstructure-state-fusion.js'
+      - '.github/workflows/research-microstructure-state-fusion-pc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: proypers-microstructure-state-fusion
+  cancel-in-progress: false
+
+jobs:
+  fusion:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/post-signal-continuation-autopsy
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Safety preflight
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-microstructure-state-fusion.js
+          $src = Get-Content backend/scripts/github-microstructure-state-fusion.js -Raw
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden production capability detected'
+          }
+          New-Item -ItemType Directory -Force -Path .lr-fusion | Out-Null
+          New-Item -ItemType Directory -Force -Path research/results | Out-Null
+
+      - name: Download recent QPU LR v2 artifacts
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $runs = gh run list --repo "$env:GITHUB_REPOSITORY" --workflow qpu-liquidity-resilience-v2.yml --branch main --status success --limit 30 --json databaseId,createdAt | ConvertFrom-Json
+          $kept = 0
+          foreach ($r in $runs) {
+            $id = [string]$r.databaseId
+            $name = "qpu-liquidity-resilience-v2-$id"
+            $names = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[].name' 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not ($names -contains $name)) { continue }
+            $dir = ".lr-fusion/$id"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            gh run download $id --repo "$env:GITHUB_REPOSITORY" --name $name --dir $dir
+            if ($LASTEXITCODE -eq 0) { $kept += 1 }
+          }
+          Write-Host "Downloaded LR artifact sets: $kept"
+          if ($kept -lt 2) { throw "Insufficient LR artifact sets" }
+
+      - name: Evaluate state fusion
+        shell: powershell
+        env:
+          FUSION_COST: '0.004'
+        run: |
+          $ErrorActionPreference = "Stop"
+          node backend/scripts/github-microstructure-state-fusion.js .lr-fusion research/results/microstructure_state_fusion.json
+          if ($LASTEXITCODE -ne 0) { throw "Fusion evaluation failed" }
+          $j = Get-Content research/results/microstructure_state_fusion.json -Raw | ConvertFrom-Json
+          if ($j.final_signal_holdout -ne "UNTOUCHED_NOT_ACCESSED") { throw "FINAL HOLDOUT GUARD" }
+          Write-Host "Fusion status: $($j.status)"
+          Write-Host "Labeled: $($j.labeled) Mature240: $($j.mature_240)"
+
+      - name: Persist scientific checkpoint
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $j = Get-Content research/results/microstructure_state_fusion.json -Raw | ConvertFrom-Json
+          $now = (Get-Date).ToUniversalTime().ToString("o")
+          $state = @(
+            "# Proypers25 Autonomous Research State",
+            "",
+            "Updated: $now",
+            "",
+            "Branch: research/post-signal-continuation-autopsy",
+            "",
+            "## Latest experiment",
+            "- Hypothesis: H-MICROSTRUCTURE-STATE-FUSION-001",
+            "- Status: $($j.status)",
+            "- Labeled microstructure states: $($j.labeled)",
+            "- Mature 240m states: $($j.mature_240)",
+            "- Target: $($j.target)",
+            "- FINAL signal holdout: UNTOUCHED_NOT_ACCESSED",
+            "",
+            "## Result",
+            "- Baseline test net60: $($j.baseline_test.net60_mean)",
+            "- Gated test net60: $($j.gated_test.net60_mean)",
+            "- Net60 improvement: $($j.net60_improvement)",
+            "- Test AUC: $($j.test_auc)",
+            "",
+            "## Next hypothesis",
+            "$($j.next)",
+            "",
+            "## Guardrails",
+            "Research/shadow/offline only. No production, V23, real orders or trading credentials."
+          )
+          $state -join "`n" | Set-Content research/RESEARCH_STATE.md -Encoding utf8
+
+          $entry = [ordered]@{
+            id = "AUTO-MSF-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
+            date = $now
+            branch = "research/post-signal-continuation-autopsy"
+            execution_environment = "self-hosted-windows-x64"
+            hypothesis_id = "H-MICROSTRUCTURE-STATE-FUSION-001"
+            status = $j.status
+            target = $j.target
+            labeled = $j.labeled
+            mature_240 = $j.mature_240
+            test_auc = $j.test_auc
+            baseline_test = $j.baseline_test
+            gated_test = $j.gated_test
+            final_signal_holdout = "UNTOUCHED_NOT_ACCESSED"
+            next_hypothesis = $j.next
+            guard = $j.guard
+          }
+          Add-Content research/experiment-ledger.jsonl (($entry | ConvertTo-Json -Compress -Depth 8)) -Encoding utf8
+
+      - name: Commit research result
+        shell: powershell
+        run: |
+          git config user.name "proypers-research-bot"
+          git config user.email "research-bot@users.noreply.github.com"
+          git add research/results/microstructure_state_fusion.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl
+          if (git diff --cached --quiet) {
+            Write-Host "No scientific changes."
+          } else {
+            git commit -m "research: persist microstructure state fusion result [research-result]"
+            git pull --rebase origin research/post-signal-continuation-autopsy
+            git push origin HEAD:research/post-signal-continuation-autopsy
+          }
+
+      - name: Research guard
+        shell: powershell
+        run: Write-Host "MICROSTRUCTURE STATE FUSION COMPLETE - RESEARCH ONLY"
