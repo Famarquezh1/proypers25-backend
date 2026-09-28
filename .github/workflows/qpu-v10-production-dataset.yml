@@ -1,0 +1,36 @@
+name: QPU V10 Production Dataset
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-v10-production-dataset.js'
+      - '.github/workflows/qpu-v10-production-dataset.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build V10 production dataset
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-qpu-v10-production-dataset.js qpu-v10-production-dataset.jsonl qpu-v10-production-dataset.meta.json
+      - name: Show metadata
+        run: cat qpu-v10-production-dataset.meta.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v10-production-dataset-${{ github.run_id }}
+          path: |
+            qpu-v10-production-dataset.jsonl
+            qpu-v10-production-dataset.meta.json
+          retention-days: 30
