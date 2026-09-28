@@ -1,0 +1,74 @@
+name: QPU V08 Consensus Shadow
+
+on:
+  workflow_run:
+    workflows:
+      - Spot Microflow Hunter V10
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  shadow:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numeric dependency
+        run: python -m pip install --quiet numpy
+      - name: Resolve source V10 run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+          else
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "Spot Microflow Hunter V10" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "source_run=$RUN_ID"
+      - name: Download V10 QPU payload
+        id: payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.source.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .v10-qpu
+          NAME="v10-qpu-shadow-$RUN_ID"
+          if gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$NAME" --dir .v10-qpu; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            printf '{"ok":true,"research_only":true,"shadow_only":true,"no_order_created":true,"scored":false,"reason":"SOURCE_ARTIFACT_NOT_FOUND","source_run_id":%s}\n' "$RUN_ID" > qpu-v08-shadow-decision.json
+          fi
+      - name: Score frozen consensus
+        if: steps.payload.outputs.found == 'true'
+        run: |
+          python backend/scripts/github-qpu-v08-consensus-shadow.py .v10-qpu/v10-hunter-scan.json backend/config/qpu-v08-consensus-frozen.json qpu-v08-shadow-decision.json
+      - name: Guard shadow isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"shadow_only": true' qpu-v08-shadow-decision.json
+          grep -q '"no_order_created": true' qpu-v08-shadow-decision.json
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-qpu-v08-consensus-shadow.py
+      - name: Show decision
+        run: cat qpu-v08-shadow-decision.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v08-consensus-shadow-${{ github.run_id }}
+          path: qpu-v08-shadow-decision.json
+          retention-days: 30
