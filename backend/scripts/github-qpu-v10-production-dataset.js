@@ -71,10 +71,12 @@ async function label(r){
 }
 (async()=>{
   const issues=[],headers=token?{authorization:'Bearer '+token}:{};
-  for(let page=1;page<=5;page++){
-    const arr=await getJson(`https://api.github.com/repos/${OWNER}/${REPO}/issues?state=all&per_page=100&page=${page}&sort=created&direction=asc`,headers);
-    if(!Array.isArray(arr)||!arr.length)break;
-    for(const x of arr){if(!x.pull_request)issues.push(x)}
+  for(let page=1;page<=3;page++){
+    const q=encodeURIComponent(`repo:${OWNER}/${REPO} is:issue "V10_HUNTER"`);
+    const search=await getJson(`https://api.github.com/search/issues?q=${q}&per_page=100&page=${page}&sort=created&order=asc`,headers);
+    const arr=Array.isArray(search?.items)?search.items:[];
+    if(!arr.length)break;
+    for(const x of arr)issues.push(x);
     if(arr.length<100)break;
   }
   const parsed=issues.map(parseIssue).filter(Boolean).sort((a,b)=>Date.parse(a.signal_at)-Date.parse(b.signal_at));
