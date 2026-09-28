@@ -31,7 +31,8 @@ async function exactLabel(r){
 }
 
 (async()=>{
- const now=Date.now(),evalEnd=m.v.utcDay(now),evalStart=evalEnd-DAYS*m.v.DAY_MS;
+ const explicitEnd=process.env.QPU_V10_END?Date.parse(process.env.QPU_V10_END):null;
+ const now=Date.now(),evalEnd=explicitEnd?m.v.utcDay(explicitEnd):m.v.utcDay(now),evalStart=evalEnd-DAYS*m.v.DAY_MS;
  const dataStart=evalStart-(8*m.v.DAY_MS)-m.v.WARM*m.v.STEP_MS;
  const dataEnd=evalEnd+37*m.v.STEP_MS;
  const symbols=(await m.v.universe()).slice(0,40);
