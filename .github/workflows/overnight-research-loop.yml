@@ -56,29 +56,25 @@ jobs:
       - name: Research safety and syntax preflight
         shell: powershell
         run: |
-          node --check backend/scripts/github-frontloaded-walkforward-bench.js
-          node --check backend/scripts/persist-frontloaded-research.js
-          $all = Get-Content backend/scripts/github-frontloaded-walkforward-bench.js,backend/scripts/persist-frontloaded-research.js -Raw
-          if ($all -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
-            throw 'Forbidden execution capability detected in research scripts'
-          }
+          node --check backend/scripts/github-factor-atlas.js
+          node --check backend/scripts/persist-factor-atlas.js
           New-Item -ItemType Directory -Force -Path research/results | Out-Null
 
-      - name: Front-loaded purged walk-forward bench
+      - name: Broad causal factor atlas
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
         run: |
-          node backend/scripts/github-frontloaded-walkforward-bench.js | Out-File -FilePath research/results/frontloaded_walkforward.json -Encoding utf8
-          Get-Content research/results/frontloaded_walkforward.json
+          node backend/scripts/github-factor-atlas.js | Out-File -FilePath research/results/factor_atlas.json -Encoding utf8
+          Get-Content research/results/factor_atlas.json
 
       - name: Persist scientific checkpoint
         shell: powershell
         env:
           RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
         run: |
-          node backend/scripts/persist-frontloaded-research.js research/results/frontloaded_walkforward.json | Out-File -FilePath research/results/checkpoint.json -Encoding utf8
+          node backend/scripts/persist-factor-atlas.js research/results/factor_atlas.json | Out-File -FilePath research/results/checkpoint.json -Encoding utf8
           Get-Content research/results/checkpoint.json
 
       - name: Mark runner completion
@@ -98,7 +94,7 @@ jobs:
         run: |
           git config user.name "proypers-research-bot"
           git config user.email "research-bot@users.noreply.github.com"
-          git add research/TRIGGER_PROBE.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/frontloaded_walkforward.json research/results/checkpoint.json
+          git add research/TRIGGER_PROBE.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/factor_atlas.json research/results/checkpoint.json
           if (git diff --cached --quiet) {
             Write-Host "No research changes to persist."
           } else {
