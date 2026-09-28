@@ -6,6 +6,9 @@ on:
     branches: [research/post-signal-continuation-autopsy]
     paths:
       - '.github/workflows/overnight-research-loop.yml'
+  pull_request:
+    types: [opened, reopened]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
