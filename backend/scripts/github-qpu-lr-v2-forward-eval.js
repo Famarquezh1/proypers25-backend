@@ -29,10 +29,15 @@ function summarize(rows){
     bid:rows.filter(x=>x.side==='BID').length,
     persistent_failure:rows.filter(x=>x.persistent_failure).length,
     r5_median:med(rows.map(x=>x.R_5s)),
-    mature_5m:mature(5).length,mature_15m:mature(15).length,mature_30m:mature(30).length,
+    mature_5m:mature(5).length,mature_15m:mature(15).length,mature_30m:mature(30).length,mature_60m:mature(60).length,
+    mature_240m:rows.filter(x=>x.target_continuator_240!==null&&x.target_continuator_240!==undefined).length,
     ret_5m_mean:mean(mature(5).map(x=>x.ret_5m_pct)),
     ret_15m_mean:mean(mature(15).map(x=>x.ret_15m_pct)),
     ret_30m_mean:mean(mature(30).map(x=>x.ret_30m_pct)),
+    ret_60m_mean:mean(mature(60).map(x=>x.ret_60m_pct)),
+    continuator_240_rate:mean(rows.filter(x=>x.target_continuator_240!==null&&x.target_continuator_240!==undefined).map(x=>x.target_continuator_240?1:0)),
+    hit5_240_rate:mean(rows.filter(x=>x.hit5_240!==null&&x.hit5_240!==undefined).map(x=>x.hit5_240?1:0)),
+    ret_240m_mean:mean(rows.map(x=>x.ret_240m_pct).filter(Number.isFinite)),
     up_5m_rate:mean(rows.map(x=>x.ret_5m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_5m_pct))),
     up_15m_rate:mean(rows.map(x=>x.ret_15m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_15m_pct))),
     up_30m_rate:mean(rows.map(x=>x.ret_30m_pct>0?1:0).filter((_,i)=>Number.isFinite(rows[i].ret_30m_pct)))
@@ -65,7 +70,7 @@ function summarize(rows){
   const now=Date.now(),labeled=[];
   for(const x of unique){
     const start=x.available_at;
-    const q=new URLSearchParams({symbol:x.symbol,interval:'1m',startTime:String(start),endTime:String(start+35*60000),limit:'50'});
+    const q=new URLSearchParams({symbol:x.symbol,interval:'1m',startTime:String(start),endTime:String(start+245*60000),limit:'300'});
     try{
       const k=await getJson(`${BIN}/api/v3/klines?${q}`);
       if(!Array.isArray(k)||!k.length)continue;
@@ -75,7 +80,22 @@ function summarize(rows){
         const row=k[Math.min(h,k.length-1)];
         return row?(Number(row[4])/entry-1)*100:null;
       };
-      labeled.push({...x,ret_5m_pct:ret(5),ret_15m_pct:ret(15),ret_30m_pct:ret(30)});
+      let target240=null,hit3_240=null,hit5_240=null,hit10_240=null,mfe_240_pct=null,mae_240_pct=null,ret_240m_pct=null;
+      if(now>=start+240*60000 && k.length>=241){
+        let first3=null,firstNeg1=null,mfe=-Infinity,mae=Infinity;
+        for(let i=1;i<=Math.min(240,k.length-1);i++){
+          const hi=Number(k[i][2])/entry-1,lo=Number(k[i][3])/entry-1;
+          mfe=Math.max(mfe,hi);mae=Math.min(mae,lo);
+          if(first3===null&&hi>=.03)first3=i;
+          if(firstNeg1===null&&lo<=-.01)firstNeg1=i;
+        }
+        target240=first3!==null&&(firstNeg1===null||first3<firstNeg1);
+        hit3_240=mfe>=.03;hit5_240=mfe>=.05;hit10_240=mfe>=.10;
+        mfe_240_pct=mfe*100;mae_240_pct=mae*100;
+        ret_240m_pct=(Number(k[Math.min(240,k.length-1)][4])/entry-1)*100;
+      }
+      labeled.push({...x,ret_5m_pct:ret(5),ret_15m_pct:ret(15),ret_30m_pct:ret(30),ret_60m_pct:ret(60),
+        target_continuator_240:target240,hit3_240,hit5_240,hit10_240,mfe_240_pct,mae_240_pct,ret_240m_pct});
     }catch{}
     await sleep(20);
   }
