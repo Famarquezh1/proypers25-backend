@@ -1,0 +1,52 @@
+name: QPU V08 Shadow Forward Eval
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-qpu-v08-shadow-forward-eval.js'
+      - '.github/workflows/qpu-v08-shadow-forward-eval.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download recent shadow decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .qpu-v08-shadow-decisions
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow "QPU V08 Consensus Shadow" --limit 100 --json databaseId,status,conclusion             --jq '.[] | select(.status=="completed" and .conclusion=="success") | .databaseId' > /tmp/qpu-v08-runs.txt
+          while read -r RID; do
+            [ -n "$RID" ] || continue
+            mkdir -p ".qpu-v08-shadow-decisions/$RID"
+            gh run download "$RID" --repo "$GITHUB_REPOSITORY" --dir ".qpu-v08-shadow-decisions/$RID" >/dev/null 2>&1 || true
+          done < /tmp/qpu-v08-runs.txt
+      - name: Evaluate matured decisions
+        run: node backend/scripts/github-qpu-v08-shadow-forward-eval.js .qpu-v08-shadow-decisions qpu-v08-shadow-forward-eval.json
+      - name: Guard research isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"shadow_only": true' qpu-v08-shadow-forward-eval.json
+          grep -q '"no_order_created": true' qpu-v08-shadow-forward-eval.json
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-qpu-v08-shadow-forward-eval.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v08-shadow-forward-eval-${{ github.run_id }}
+          path: qpu-v08-shadow-forward-eval.json
+          retention-days: 30
