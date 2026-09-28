@@ -1,45 +1,20 @@
-name: Autonomous Research Loop
+name: Autonomous Research PC Campaign
 
 on:
   push:
     branches: [research/post-signal-continuation-autopsy]
-  pull_request:
-    types: [opened, reopened, synchronize]
-    branches: [main]
+    paths:
+      - '.github/workflows/overnight-research-loop.yml'
   workflow_dispatch:
 
 concurrency:
-  group: proypers-autonomous-research
+  group: proypers-pc-research-campaign
   cancel-in-progress: false
 
 jobs:
-  trigger-sentinel:
-    if: ${{ github.event_name == 'pull_request' || (!contains(github.event.head_commit.message || '', '[research-result]') && !contains(github.event.head_commit.message || '', '[research-sentinel]')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: research/post-signal-continuation-autopsy
-          fetch-depth: 0
-      - name: Persist trigger evidence
-        shell: bash
-        run: |
-          mkdir -p research
-          printf '{"run_id":"%s","run_attempt":"%s","sha":"%s","triggered_at":"%s","status":"TRIGGERED_SELF_HOSTED_PENDING"}\n' \
-            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > research/TRIGGER_PROBE.json
-          git config user.name "proypers-research-bot"
-          git config user.email "research-bot@users.noreply.github.com"
-          git add research/TRIGGER_PROBE.json
-          git commit -m "research: workflow trigger probe [research-sentinel]"
-          git push origin HEAD:research/post-signal-continuation-autopsy
-
-  research-batch:
-    needs: trigger-sentinel
+  research-campaign:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 50
+    timeout-minutes: 150
     permissions:
       contents: write
       issues: read
@@ -53,56 +28,142 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Research safety and syntax preflight
+      - name: Safety preflight
         shell: powershell
         run: |
           node --check backend/scripts/github-factor-atlas.js
-          node --check backend/scripts/persist-factor-atlas.js
-          New-Item -ItemType Directory -Force -Path research/results | Out-Null
+          $all = Get-Content backend/scripts/github-factor-atlas.js -Raw
+          if ($all -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+          New-Item -ItemType Directory -Force -Path research/results/campaign | Out-Null
 
-      - name: Broad causal factor atlas
+      - name: Intensive sequential factor campaign
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
         run: |
-          node backend/scripts/github-factor-atlas.js | Out-File -FilePath research/results/factor_atlas.json -Encoding utf8
-          Get-Content research/results/factor_atlas.json
+          $ErrorActionPreference = "Stop"
+          $base = Get-Content backend/scripts/github-factor-atlas.js -Raw
+          $decisionPoints = @(5, 10, 15, 20)
+          foreach ($k in $decisionPoints) {
+            Write-Host "=== RESEARCH ROUND decision_minute=$k ==="
+            $patched = $base -replace "const H=240,K=10,C=.004;", "const H=240,K=$k,C=.004;"
+            $tmp = "research/results/campaign/factor_atlas_k$k.js"
+            Set-Content -Path $tmp -Value $patched -Encoding utf8
+            node --check $tmp
+            node $tmp | Out-File -FilePath "research/results/campaign/factor_atlas_k$k.json" -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { throw "Round K=$k failed" }
+            Remove-Item $tmp -Force
+          }
 
-      - name: Persist scientific checkpoint
+      - name: Aggregate campaign without opening holdout
         shell: powershell
-        env:
-          RESEARCH_EXECUTION_ENV: self-hosted-windows-x64
         run: |
-          node backend/scripts/persist-factor-atlas.js research/results/factor_atlas.json | Out-File -FilePath research/results/checkpoint.json -Encoding utf8
-          Get-Content research/results/checkpoint.json
+          $ErrorActionPreference = "Stop"
+          $files = Get-ChildItem research/results/campaign/factor_atlas_k*.json | Sort-Object Name
+          $rounds = @()
+          foreach ($f in $files) {
+            $j = Get-Content $f.FullName -Raw | ConvertFrom-Json
+            if ($j.final_holdout_status -ne "UNTOUCHED_NOT_EVALUATED") { throw "FINAL HOLDOUT GUARD" }
+            $k = [int]([regex]::Match($f.Name, 'k(\d+)').Groups[1].Value)
+            $topClass = $j.ranking | Sort-Object med_auc -Descending | Select-Object -First 1
+            $topMoney = $j.ranking | Sort-Object net -Descending | Select-Object -First 1
+            $rounds += [pscustomobject]@{
+              decision_minute = $k
+              usable = $j.usable
+              development = $j.development
+              final_holdout = $j.final_holdout
+              classification_family = $topClass.name
+              classification_median_auc = $topClass.med_auc
+              classification_min_auc = $topClass.min_auc
+              classification_net = $topClass.net
+              money_family = $topMoney.name
+              money_net = $topMoney.net
+              money_median_auc = $topMoney.med_auc
+              decision = $j.decision
+            }
+          }
+          $positiveMoney = @($rounds | Where-Object { $_.money_net -gt 0 }).Count
+          $classStrong = @($rounds | Where-Object { $_.classification_median_auc -ge 0.70 -and $_.classification_min_auc -ge 0.60 }).Count
+          $summary = [pscustomobject]@{
+            ok = $true
+            research_only = $true
+            hypothesis_id = "H-PC-RECURRENT-FACTOR-CAMPAIGN-001"
+            execution_environment = "self-hosted-windows-x64"
+            rounds = $rounds
+            round_count = $rounds.Count
+            positive_money_rounds = $positiveMoney
+            strong_classification_rounds = $classStrong
+            final_holdout_status = "UNTOUCHED_NOT_EVALUATED"
+            conclusion = if ($positiveMoney -ge 3) { "MONEY_SIGNAL_REQUIRES_RED_TEAM" } elseif ($classStrong -ge 3) { "CLASSIFICATION_SIGNAL_WITHOUT_MONEY" } else { "NO_TRANSPORTABLE_FACTOR_IN_MEASURED_FAMILIES" }
+            next = if ($positiveMoney -ge 3) { "freeze recurrent winner and run concentration/permutation/remove-best/cost-delay red-team" } elseif ($classStrong -ge 3) { "classification is recurrent but monetization fails; focus on entry/exit microstructure and depth-state timing" } else { "move to depth/replenishment/cancellation full-state capture and sequence modeling" }
+            guard = "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES"
+          }
+          $summary | ConvertTo-Json -Depth 8 | Set-Content research/results/pc_recurrent_campaign.json -Encoding utf8
 
-      - name: Mark runner completion
-        shell: powershell
-        run: |
-          $probe = @{
-            run_id = "$env:GITHUB_RUN_ID"
-            run_attempt = "$env:GITHUB_RUN_ATTEMPT"
-            sha = "$env:GITHUB_SHA"
-            completed_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-            status = "SELF_HOSTED_COMPLETED"
-          } | ConvertTo-Json -Compress
-          Set-Content -Path research/TRIGGER_PROBE.json -Value $probe -Encoding utf8
+          $now = (Get-Date).ToUniversalTime().ToString("o")
+          $topLines = $rounds | ForEach-Object {
+            "- K=$($_.decision_minute): class=$($_.classification_family) medAUC=$($_.classification_median_auc) minAUC=$($_.classification_min_auc); money=$($_.money_family) net=$([math]::Round(100*$_.money_net,3))%"
+          }
+          $state = @(
+            "# Proypers25 Autonomous Research State",
+            "",
+            "Updated: $now",
+            "",
+            "Branch: research/post-signal-continuation-autopsy",
+            "",
+            "## Scientific split status",
+            "- FINAL HOLDOUT: 43 — UNTOUCHED_NOT_EVALUATED",
+            "- Previous fixed TEST remains consumed; campaign uses expanding purged walk-forward only.",
+            "",
+            "## Latest experiment",
+            "- Hypothesis: H-PC-RECURRENT-FACTOR-CAMPAIGN-001",
+            "- PC rounds: $($rounds.Count)",
+            "- Positive money rounds: $positiveMoney/$($rounds.Count)",
+            "- Strong classification rounds: $classStrong/$($rounds.Count)",
+            "- Conclusion: $($summary.conclusion)",
+            "",
+            "## Recurrent evidence"
+          ) + $topLines + @(
+            "",
+            "## Next hypothesis",
+            $summary.next,
+            "",
+            "## Guardrails",
+            "Research/shadow/offline only. No production, V23, real orders or trading credentials."
+          )
+          $state -join "`n" | Set-Content research/RESEARCH_STATE.md -Encoding utf8
 
-      - name: Commit research results only
+          $entry = [ordered]@{
+            id = "AUTO-PC-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
+            date = $now
+            branch = "research/post-signal-continuation-autopsy"
+            execution_environment = "self-hosted-windows-x64"
+            hypothesis_id = "H-PC-RECURRENT-FACTOR-CAMPAIGN-001"
+            status = $summary.conclusion
+            rounds = $rounds
+            final_holdout_status = "UNTOUCHED_NOT_EVALUATED"
+            next_hypothesis = $summary.next
+            guard = $summary.guard
+          }
+          Add-Content research/experiment-ledger.jsonl (($entry | ConvertTo-Json -Compress -Depth 8)) -Encoding utf8
+
+      - name: Commit one consolidated checkpoint
         shell: powershell
         run: |
           git config user.name "proypers-research-bot"
           git config user.email "research-bot@users.noreply.github.com"
-          git add research/TRIGGER_PROBE.json research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/factor_atlas.json research/results/checkpoint.json
+          git add research/RESEARCH_STATE.md research/experiment-ledger.jsonl research/results/pc_recurrent_campaign.json research/results/campaign/*.json
           if (git diff --cached --quiet) {
-            Write-Host "No research changes to persist."
+            Write-Host "No scientific changes."
           } else {
-            git commit -m "research: persist autonomous batch [research-result]"
+            git commit -m "research: persist recurrent PC campaign [research-result]"
             git pull --rebase origin research/post-signal-continuation-autopsy
             git push origin HEAD:research/post-signal-continuation-autopsy
           }
 
       - name: Research guard
         shell: powershell
-        run: Write-Host "RESEARCH ONLY - no production deploy, no order execution, no trading credentials."
+        run: Write-Host "PC CAMPAIGN COMPLETE - RESEARCH ONLY"
