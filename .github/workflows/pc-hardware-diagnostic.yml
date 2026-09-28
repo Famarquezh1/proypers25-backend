@@ -1,0 +1,29 @@
+name: PC Hardware Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/diagnostico-pc-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: Read-only hardware diagnostic on Chile PC
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect hardware data
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\diagnostico-pc.ps1
+      - name: Print JSON report to workflow log
+        shell: powershell
+        run: |
+          Write-Host "===BEGIN_DIAGNOSTICO_JSON==="
+          Get-Content .\diagnostico-pc.json -Raw
+          Write-Host "===END_DIAGNOSTICO_JSON==="
