@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           node --check backend/scripts/github-spot-microflow-hunter-v10.js
           RESULT=$(node backend/scripts/github-spot-microflow-hunter-v10.js)
-          printf '%s\n' "$RESULT"
+          printf '%s\n' "$RESULT" | tee v10-hunter-scan.json
           test "$(printf '%s' "$RESULT" | jq -r '.ok // false')" = "true"
           NOTIFY=$(printf '%s' "$RESULT" | jq -r '.notify // false')
           echo "notify=$NOTIFY" >> "$GITHUB_OUTPUT"
@@ -57,6 +57,14 @@ jobs:
           echo "cal_stop_rate=$(printf '%s' "$RESULT" | jq -r '.calibration.stopRate')" >> "$GITHUB_OUTPUT"
           echo "trained_samples=$(printf '%s' "$RESULT" | jq -r '.trained_samples')" >> "$GITHUB_OUTPUT"
           echo "calibration_samples=$(printf '%s' "$RESULT" | jq -r '.calibration_samples')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload QPU shadow microflow payload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v10-qpu-shadow-${{ github.run_id }}
+          path: v10-hunter-scan.json
+          retention-days: 30
 
       - name: Enforce V10 signal cooldown
         if: steps.scan.outputs.notify == 'true'
