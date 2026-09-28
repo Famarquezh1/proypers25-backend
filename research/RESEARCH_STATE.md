@@ -1,32 +1,32 @@
 # Proypers25 Autonomous Research State
 
-Updated: 2026-09-28T14:28:04.239Z
+Updated: 2026-09-28T19:32:48.842Z
 
 Branch: research/post-signal-continuation-autopsy
 
 ## Scientific split status
-- Usable universe: 290
-- Development block: 247
+- Usable universe: 293
+- Development block: 250
 - FINAL HOLDOUT: 43 — UNTOUCHED_NOT_EVALUATED
 
 ## Latest experiment
 - Hypothesis: H-FACTOR-ATLAS-WF-001
 - Decision: REJECTED_OR_INCONCLUSIVE
 - Top family: presignal
-- Top pooled net: -1.518%
-- Top median AUC: 0.35964912280701755
+- Top pooled net: -1.774%
+- Top median AUC: 0.29365079365079366
 - Top min AUC: 0.2727272727272727
-- Selected: 27
+- Selected: 33
 
 ## Ranked families
-- presignal: net -1.518%, medAUC 0.35964912280701755, minAUC 0.2727272727272727, n 27
-- temporal: net -1.529%, medAUC 0.39035087719298245, minAUC 0.30357142857142855, n 55
-- sequence: net -2.898%, medAUC 0.83, minAUC 0.696969696969697, n 26
-- sequence+trades+market+presignal: net -2.908%, medAUC 0.8, minAUC 0.7424242424242424, n 26
-- trades: net -3.006%, medAUC 0.6785714285714286, minAUC 0.6060606060606061, n 34
-- sequence+market: net -3.032%, medAUC 0.8, minAUC 0.6666666666666666, n 29
-- trades+market: net -3.349%, medAUC 0.76, minAUC 0.6212121212121212, n 27
-- sequence+presignal: net -3.488%, medAUC 0.8070175438596491, minAUC 0.696969696969697, n 25
+- presignal: net -1.774%, medAUC 0.29365079365079366, minAUC 0.2727272727272727, n 33
+- temporal: net -1.908%, medAUC 0.4603174603174603, minAUC 0.45454545454545453, n 68
+- sequence+trades: net -2.929%, medAUC 0.8181818181818182, minAUC 0.7575757575757576, n 31
+- sequence+trades+market+presignal: net -3.174%, medAUC 0.7727272727272727, minAUC 0.7121212121212122, n 29
+- sequence+market: net -3.195%, medAUC 0.8484848484848485, minAUC 0.7575757575757576, n 29
+- sequence: net -3.277%, medAUC 0.8484848484848485, minAUC 0.7272727272727273, n 27
+- market: net -3.412%, medAUC 0.7878787878787878, minAUC 0.6212121212121212, n 30
+- trades: net -3.636%, medAUC 0.5606060606060606, minAUC 0.5350877192982456, n 28
 
 ## Data gaps
 - historical depth/replenishment/cancellations
