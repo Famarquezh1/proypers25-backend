@@ -1,0 +1,37 @@
+name: QPU V10 External Replication
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/qpu-v10-external-replication.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QPU_V10_DAYS: '30'
+      QPU_V10_END: '2026-08-31T00:00:00Z'
+      V8_MAX_SYMBOLS: '40'
+      V8_MIN_QV: '200000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct external V10 period
+        run: node backend/scripts/github-qpu-v10-reconstructed-history.js qpu-v10-external-replication.jsonl qpu-v10-external-replication.meta.json
+      - name: Show metadata
+        run: cat qpu-v10-external-replication.meta.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v10-external-replication-${{ github.run_id }}
+          path: |
+            qpu-v10-external-replication.jsonl
+            qpu-v10-external-replication.meta.json
+          retention-days: 30
