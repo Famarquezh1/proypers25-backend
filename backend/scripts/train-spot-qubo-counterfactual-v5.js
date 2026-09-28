@@ -150,20 +150,67 @@ function parseExitIssue(issue = {}) {
   const entry = parseNumber(body, /^- Entrada aprox\.:\s*([0-9.eE+-]+)/mi);
   const exit = parseNumber(body, /^- Salida aprox\.:\s*([0-9.eE+-]+)/mi);
   const pnl = parseNumber(body, /^- PnL aprox\.:\s*([+-]?[0-9.]+)%/mi);
+  const orderId = (body.match(/^- orderId=([0-9]+)\s*$/mi) || [])[1] || null;
+  const entryOrderId = (body.match(/^- entryOrderId=([0-9]+)\s*$/mi) || [])[1] || null;
+  const entryClientOrderId = (body.match(/^- entryClientOrderId=([^\r\n]+)\s*$/mi) || [])[1] || null;
   if (!symbol || !Number.isFinite(pnl)) return null;
-  return { issue_number: issue.number, created_at: issue.created_at, symbol, reason, entry_price: entry, exit_price: exit, pnl_pct: pnl };
+  return {
+    issue_number: issue.number,
+    created_at: issue.created_at,
+    symbol,
+    reason,
+    entry_price: entry,
+    exit_price: exit,
+    pnl_pct: pnl,
+    order_id: orderId,
+    entry_order_id: entryOrderId,
+    entry_client_order_id: entryClientOrderId
+  };
+}
+
+function dedupeExits(exits = []) {
+  const seen = new Set();
+  const out = [];
+  for (const exit of [...exits].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))) {
+    const key = exit.order_id || [exit.symbol, exit.created_at, exit.pnl_pct].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(exit);
+  }
+  return out;
 }
 
 function matchActualExit(signal, exits = []) {
+  const clean = dedupeExits(exits);
+  const entryOrderId = String(signal.entry_order_id || '');
+  if (entryOrderId) {
+    const exact = clean.find((exit) => String(exit.entry_order_id || '') === entryOrderId);
+    if (exact) return exact;
+  }
   const start = Date.parse(signal.created_at);
   const end = start + EXIT_MATCH_HOURS * 3600000;
-  return exits
+  const candidates = clean
     .filter((exit) => exit.symbol === signal.symbol)
     .filter((exit) => {
       const t = Date.parse(exit.created_at);
       return t >= start && t <= end;
-    })
-    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0] || null;
+    });
+  if (!candidates.length) return null;
+  return candidates
+    .sort((a, b) => {
+      const da = Number.isFinite(a.entry_price) && signal.price > 0 ? Math.abs(a.entry_price / signal.price - 1) : Infinity;
+      const db = Number.isFinite(b.entry_price) && signal.price > 0 ? Math.abs(b.entry_price / signal.price - 1) : Infinity;
+      if (Math.abs(da - db) > 1e-12) return da - db;
+      return Date.parse(a.created_at) - Date.parse(b.created_at);
+    })[0] || null;
+}
+
+function learningTarget(row = {}) {
+  const realized = Number(row.exit_quality?.actual_pnl_pct);
+  if (row.decision === 'EXECUTED' && Number.isFinite(realized)) {
+    return { value: realized, source: 'REALIZED_NET_PNL' };
+  }
+  return { value: n(row.target_pct, 0), source: 'COUNTERFACTUAL_PATH' };
 }
 
 function firstTouchOutcome(bars, entry, tpPct = 0.03, slPct = 0.05) {
@@ -241,7 +288,7 @@ function correlation(a, b) {
 function spearman(rows, weights) {
   if (!rows.length) return 0;
   const scores = rows.map((row) => row.base * weights.base + row.stable * weights.stable + row.v42 * weights.v42);
-  const targets = rows.map((row) => row.target_pct);
+  const targets = rows.map((row) => Number.isFinite(Number(row.learning_target_pct)) ? Number(row.learning_target_pct) : learningTarget(row).value);
   return correlation(ranks(scores), ranks(targets));
 }
 function weightGrid() {
@@ -489,8 +536,9 @@ async function buildEvidence(repo, now = Date.now()) {
       const outcome = outcomeMetrics(bars, signal.price);
       if (!outcome) return null;
       const regime = classifyMarketRegime(btcBars, Date.parse(signal.created_at));
-      const actualExit = decisionDetail.decision === 'EXECUTED' ? matchActualExit(signal, exits) : null;
-      return {
+      const signalWithEntry = { ...signal, entry_order_id: decisionDetail.order_id };
+      const actualExit = decisionDetail.decision === 'EXECUTED' ? matchActualExit(signalWithEntry, exits) : null;
+      const provisional = {
         ...signal,
         decision: decisionDetail.decision,
         decision_reason: decisionDetail.reason,
@@ -508,6 +556,12 @@ async function buildEvidence(repo, now = Date.now()) {
         actual_exit: actualExit,
         exit_quality: exitQuality(actualExit, outcome),
         ...outcome
+      };
+      const target = learningTarget(provisional);
+      return {
+        ...provisional,
+        learning_target_pct: round(target.value, 4),
+        learning_target_source: target.source
       };
     } catch (error) {
       console.warn(`COUNTERFACTUAL_SAMPLE_SKIPPED issue=${signal.issue_number} symbol=${signal.symbol} reason=${error.message}`);
@@ -531,7 +585,7 @@ function writeResults(rows, trained) {
     source_model_version: BASE_CONFIG.model_version,
     trained_at: new Date().toISOString(),
     training: {
-      method: 'bounded_counterfactual_forward_outcome_holdout',
+      method: 'realized_pnl_first_with_counterfactual_fallback_holdout',
       horizon_hours: HORIZON_HOURS,
       max_signal_history: MAX_SIGNALS,
       samples: trained.samples,
@@ -553,7 +607,9 @@ function writeResults(rows, trained) {
       rejection_reason_stats: rejectionReasonStats,
       regime_stats: regimeStats,
       regime_training: regimeTraining,
-      exit_quality_samples: rows.filter((row) => row.exit_quality).length
+      exit_quality_samples: rows.filter((row) => row.exit_quality).length,
+      realized_pnl_learning_samples: rows.filter((row) => row.learning_target_source === 'REALIZED_NET_PNL').length,
+      counterfactual_learning_samples: rows.filter((row) => row.learning_target_source === 'COUNTERFACTUAL_PATH').length
     },
     weights: trained.weights,
     regime_weights: regimeWeights,
@@ -581,6 +637,9 @@ function writeResults(rows, trained) {
       mfe_pct: row.mfe_pct,
       mae_pct: row.mae_pct,
       target_pct: row.target_pct,
+      learning_target_pct: row.learning_target_pct,
+      learning_target_source: row.learning_target_source,
+      entry_order_id: row.entry_order_id || null,
       first_touch_3pct_vs_5pct: row.first_touch_3pct_vs_5pct,
       actual_exit: row.actual_exit,
       exit_quality: row.exit_quality
@@ -613,6 +672,8 @@ async function main() {
     regime_stats: model.training.regime_stats,
     top_rejection_reasons: model.training.rejection_reason_stats.slice(0, 5),
     exit_quality_samples: model.training.exit_quality_samples,
+    realized_pnl_learning_samples: model.training.realized_pnl_learning_samples,
+    counterfactual_learning_samples: model.training.counterfactual_learning_samples,
     bounded_history: MAX_SIGNALS,
     max_preapproval_samples: MAX_PREAPPROVAL_SAMPLES,
     preapproval_samples: model.training.preapproval_samples,
@@ -638,7 +699,9 @@ module.exports = {
   classifyDecisionDetail,
   parseExitIssue,
   matchActualExit,
+  dedupeExits,
   exitQuality,
+  learningTarget,
   firstTouchOutcome,
   outcomeMetrics,
   spearman,
