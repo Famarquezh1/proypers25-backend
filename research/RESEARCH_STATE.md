@@ -1,6 +1,6 @@
 # Proypers25 Autonomous Research State
 
-Updated: 2026-09-28T03:44:10.325Z
+Updated: 2026-09-28T04:01:19.618Z
 
 Branch: research/post-signal-continuation-autopsy
 
@@ -16,13 +16,13 @@ Branch: research/post-signal-continuation-autopsy
 - Decision: REJECTED_OR_INCONCLUSIVE
 - Walk-forward folds: 3
 - Pooled selected trades: 15
-- Pooled avg net: 0.160%
-- Positive folds: 3/3
-- PF>1 folds: 2/3
+- Pooled avg net: 0.156%
+- Positive folds: 2/3
+- PF>1 folds: 1/3
 
 ## Fold evidence
-- Fold 1: AUC test 1, selected 8, avg net 0.019%, PF 1.0326368518860385
-- Fold 2: AUC test 0.1, selected 5, avg net 0.332%, PF 1.7526409733926465
+- Fold 1: AUC test 1, selected 8, avg net -0.015%, PF 0.9762626520169523
+- Fold 2: AUC test 0.1, selected 5, avg net 0.374%, PF 1.93759037560683
 - Fold 3: AUC test 1, selected 2, avg net 0.296%, PF null
 
 ## Next hypothesis

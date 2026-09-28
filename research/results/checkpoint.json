@@ -1,6 +1,6 @@
 ﻿{
-  "id": "AUTO-20260928034410",
-  "date": "2026-09-28T03:44:10.325Z",
+  "id": "AUTO-20260928040119",
+  "date": "2026-09-28T04:01:19.618Z",
   "branch": "research/post-signal-continuation-autopsy",
   "execution_environment": "self-hosted-windows-x64",
   "universe": 295,
@@ -29,7 +29,7 @@
       "auc_test": 1,
       "chosen": {
         "q": 0.6,
-        "cut": 0.40401180783765134,
+        "cut": 0.4039832790837432,
         "train": {
           "n": 110,
           "selected_n": 45,
@@ -64,13 +64,13 @@
         "selected_n": 8,
         "coverage": 0.32,
         "early_cont_rate": 0.125,
-        "full_cont_rate": 0.5,
-        "avg_net": 0.00019294807454913235,
-        "median_net": -0.0024621682200020555,
+        "full_cont_rate": 0.375,
+        "avg_net": -0.00014843808042419256,
+        "median_net": -0.003827712839895355,
         "positive": 0.5,
-        "profit_factor": 1.0326368518860385,
-        "compound": 0.0007579090035727543,
-        "max_drawdown": -0.020998628000000186,
+        "profit_factor": 0.9762626520169523,
+        "compound": -0.0019898013580650353,
+        "max_drawdown": -0.02728050814626226,
         "symbols": 6
       },
       "stress": {
@@ -79,13 +79,13 @@
           "selected_n": 8,
           "coverage": 0.32,
           "early_cont_rate": 0.125,
-          "full_cont_rate": 0.5,
-          "avg_net": -0.0018070519254508673,
-          "median_net": -0.0044621682200020555,
+          "full_cont_rate": 0.375,
+          "avg_net": -0.0021484380804241924,
+          "median_net": -0.005827712839895355,
           "positive": 0.375,
-          "profit_factor": 0.7460415648613946,
-          "compound": -0.015142630788510303,
-          "max_drawdown": -0.031156781267877243,
+          "profit_factor": 0.7118869834966899,
+          "compound": -0.017852132013183253,
+          "max_drawdown": -0.04087122266912424,
           "symbols": 6
         },
         "cost08": {
@@ -93,13 +93,13 @@
           "selected_n": 8,
           "coverage": 0.32,
           "early_cont_rate": 0.125,
-          "full_cont_rate": 0.5,
-          "avg_net": -0.0038070519254508684,
-          "median_net": -0.0064621682200020555,
+          "full_cont_rate": 0.375,
+          "avg_net": -0.004148438080424193,
+          "median_net": -0.007827712839895355,
           "positive": 0.375,
-          "profit_factor": 0.5449127025576068,
-          "compound": -0.030821679880167596,
-          "max_drawdown": -0.04278659565051146,
+          "profit_factor": 0.5235474577966392,
+          "compound": -0.03349342828399948,
+          "max_drawdown": -0.05429885350684882,
           "symbols": 6
         },
         "delay10": {
@@ -107,23 +107,23 @@
           "selected_n": 8,
           "coverage": 0.32,
           "early_cont_rate": 0.125,
-          "full_cont_rate": 0.5,
-          "avg_net": -0.008207004900462061,
-          "median_net": -0.0111413276231263,
+          "full_cont_rate": 0.375,
+          "avg_net": -0.008556382933394703,
+          "median_net": -0.012014065639651676,
           "positive": 0.125,
-          "profit_factor": 0.09634436554372168,
-          "compound": -0.06399789270106093,
-          "max_drawdown": -0.06399789270106093,
+          "profit_factor": 0.09277536562552059,
+          "compound": -0.06663310205286299,
+          "max_drawdown": -0.06663310205286299,
           "symbols": 6
         }
       },
       "bootstrap": {
-        "mean": 0.00008480361773223478,
+        "mean": -0.0000751247418141421,
         "ci95": [
-          -0.009578572505275874,
-          0.01039999999999996
+          -0.009865542567979082,
+          0.01104037631091916
         ],
-        "p_le_0": 0.50125
+        "p_le_0": 0.53625
       }
     },
     {
@@ -135,7 +135,7 @@
       "auc_test": 0.1,
       "chosen": {
         "q": 0.6,
-        "cut": 0.39612381720405093,
+        "cut": 0.39632569282730556,
         "train": {
           "n": 135,
           "selected_n": 55,
@@ -171,13 +171,13 @@
         "coverage": 0.2,
         "early_cont_rate": 0,
         "full_cont_rate": 0,
-        "avg_net": 0.0033156613082881313,
+        "avg_net": 0.003736168344720881,
         "median_net": 0.0016893819334389305,
         "positive": 0.6,
-        "profit_factor": 1.7526409733926465,
-        "compound": 0.01618372851835459,
-        "max_drawdown": -0.014000000000000012,
-        "symbols": 5
+        "profit_factor": 1.93759037560683,
+        "compound": 0.01833757918594192,
+        "max_drawdown": -0.019841370109044187,
+        "symbols": 4
       },
       "stress": {
         "cost06": {
@@ -186,13 +186,13 @@
           "coverage": 0.2,
           "early_cont_rate": 0,
           "full_cont_rate": 0,
-          "avg_net": 0.001315661308288131,
+          "avg_net": 0.0017361683447208796,
           "median_net": -0.0003106180665610695,
           "positive": 0.4,
-          "profit_factor": 1.2497699328734297,
-          "compound": 0.006093776752467361,
-          "max_drawdown": -0.016000000000000125,
-          "symbols": 5
+          "profit_factor": 1.3581954745907694,
+          "compound": 0.008230549404186771,
+          "max_drawdown": -0.023797521488133522,
+          "symbols": 4
         },
         "cost08": {
           "n": 25,
@@ -200,13 +200,13 @@
           "coverage": 0.2,
           "early_cont_rate": 0,
           "full_cont_rate": 0,
-          "avg_net": -0.0006843386917118694,
+          "avg_net": -0.0002638316552791203,
           "median_net": -0.0023106180665610696,
           "positive": 0.4,
-          "profit_factor": 0.8941879459111456,
-          "compound": -0.003915870721816317,
-          "max_drawdown": -0.018000000000000016,
-          "symbols": 5
+          "profit_factor": 0.9563697239953268,
+          "compound": -0.0017960743316465244,
+          "max_drawdown": -0.027745672867222626,
+          "symbols": 4
         },
         "delay10": {
           "n": 25,
@@ -214,22 +214,22 @@
           "coverage": 0.2,
           "early_cont_rate": 0,
           "full_cont_rate": 0,
-          "avg_net": -0.009498742746027125,
+          "avg_net": -0.008164499126822369,
           "median_net": -0.014,
           "positive": 0.2,
-          "profit_factor": 0.08715318881674897,
-          "compound": -0.04672452551660922,
-          "max_drawdown": -0.04672452551660922,
-          "symbols": 5
+          "profit_factor": 0.09997191675819996,
+          "compound": -0.04030059692145893,
+          "max_drawdown": -0.04030059692145893,
+          "symbols": 4
         }
       },
       "bootstrap": {
-        "mean": 0.002956970143842413,
+        "mean": 0.0034740887346885133,
         "ci95": [
-          -0.010389577284024148,
-          0.016177784921600345
+          -0.009962155227710039,
+          0.017896460644479643
         ],
-        "p_le_0": 0.335
+        "p_le_0": 0.29625
       }
     },
     {
@@ -241,7 +241,7 @@
       "auc_test": 1,
       "chosen": {
         "q": 0.7,
-        "cut": 0.38642392379457685,
+        "cut": 0.38582339272189425,
         "train": {
           "n": 185,
           "selected_n": 57,
@@ -258,16 +258,16 @@
         },
         "val": {
           "n": 25,
-          "selected_n": 6,
-          "coverage": 0.24,
-          "early_cont_rate": 0.16666666666666666,
-          "full_cont_rate": 0.6666666666666666,
-          "avg_net": 0.006916417910447774,
-          "median_net": 0.008749253731343321,
-          "positive": 0.5,
-          "profit_factor": 2.136898920510309,
-          "compound": 0.041089285712011314,
-          "max_drawdown": -0.02238247164179108,
+          "selected_n": 7,
+          "coverage": 0.28,
+          "early_cont_rate": 0.14285714285714285,
+          "full_cont_rate": 0.5714285714285714,
+          "avg_net": 0.003928358208955235,
+          "median_net": -0.008501492537313356,
+          "positive": 0.42857142857142855,
+          "profit_factor": 1.5445088071876132,
+          "compound": 0.02651403571204325,
+          "max_drawdown": -0.03606911703880589,
           "symbols": 5
         }
       },
@@ -330,22 +330,22 @@
         }
       },
       "bootstrap": {
-        "mean": 0.0025734661499758403,
+        "mean": 0.0025350792635463067,
         "ci95": [
           0,
           0.004000000000000229
         ],
-        "p_le_0": 0.12375
+        "p_le_0": 0.13875
       }
     }
   ],
   "pooled": {
     "selected": 15,
     "n": 15,
-    "weighted_net": 0.024044658254630903,
-    "positive_folds": 3,
-    "pf_positive_folds": 2,
-    "avg_net": 0.0016029772169753936
+    "weighted_net": 0.02341610419700805,
+    "positive_folds": 2,
+    "pf_positive_folds": 1,
+    "avg_net": 0.00156107361313387
   },
   "next_hypothesis": "Investigate state-transition/order-of-events representation rather than static early-window features; front-loaded hazard did not transport economically.",
   "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES"
