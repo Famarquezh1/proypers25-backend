@@ -139,6 +139,7 @@ async function main() {
     pct: Number(top.pct.toFixed(6)),
     price: top.price,
     quote_volume: top.quoteVolume,
+    qpu_shadow_flow: Object.fromEntries(m.NAMES.slice(-13).map((name, j) => [name, top.z[m.NAMES.length-13+j]])),
     microflow_score: top.score,
     microflow_margin: margin,
     score_cut: policy.scoreCut,
