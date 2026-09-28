@@ -203,7 +203,7 @@ async function managedSymbols(base) {
   return symbols;
 }
 
-async function notifyExitOnce({ symbol, reason, orderId, entryPrice, exitPrice, pnlPct }) {
+async function notifyExitOnce({ symbol, reason, orderId, entryOrderId = null, entryClientOrderId = null, entryPrice, exitPrice, pnlPct }) {
   if (!GH_TOKEN || !REPOSITORY || !orderId) return;
   const marker = `orderId=${orderId}`;
   const recent = await githubRequest('/issues?state=all&per_page=100&sort=created&direction=desc');
@@ -219,6 +219,8 @@ async function notifyExitOnce({ symbol, reason, orderId, entryPrice, exitPrice, 
     `- Salida aprox.: ${exitPrice}`,
     `- PnL aprox.: ${(pnlPct * 100).toFixed(3)}%`,
     `- orderId=${orderId}`,
+    ...(entryOrderId ? [`- entryOrderId=${entryOrderId}`] : []),
+    ...(entryClientOrderId ? [`- entryClientOrderId=${entryClientOrderId}`] : []),
     '- Ejecución: Binance Spot real',
     '- Aprobación manual requerida: no'
   ].join('\n');
@@ -370,7 +372,7 @@ async function placeProtection(base, info, symbol, quantity, stopPrice, currentP
   return order;
 }
 
-async function marketSell(base, info, symbol, managedQty, reason, entryPrice, currentPrice) {
+async function marketSell(base, info, symbol, managedQty, reason, entryPrice, currentPrice, entryOrderId = null, entryClientOrderId = null) {
   const account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
   const free = freeBalance(account, info.baseAsset);
   const lot = info.filters?.find((f) => f.filterType === 'MARKET_LOT_SIZE' && Number(f.stepSize) > 0) || info.filters?.find((f) => f.filterType === 'LOT_SIZE');
@@ -394,7 +396,7 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
   const exitPrice = Number(order.executedQty || 0) > 0 ? Number(order.cummulativeQuoteQty || 0) / Number(order.executedQty) : currentPrice;
   const pnlPct = exitPrice / entryPrice - 1;
   console.log(`SELL_CREATED symbol=${symbol} reason=${reason} orderId=${order.orderId} status=${order.status} quantity=${quantity} entry=${entryPrice} exit=${exitPrice} pnl_pct=${(pnlPct * 100).toFixed(3)}`);
-  await notifyExitOnce({ symbol, reason, orderId: order.orderId, entryPrice, exitPrice, pnlPct });
+  await notifyExitOnce({ symbol, reason, orderId: order.orderId, entryOrderId, entryClientOrderId, entryPrice, exitPrice, pnlPct });
   return order;
 }
 
@@ -465,7 +467,7 @@ async function main() {
         const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : entryPrice;
         const pnlPct = exitPrice / entryPrice - 1;
         const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
-        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice, exitPrice, pnlPct });
+        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryOrderId: currentBaseBuy.orderId, entryClientOrderId: currentBaseBuy.clientOrderId, entryPrice, exitPrice, pnlPct });
       }
       continue;
     }
@@ -493,7 +495,7 @@ async function main() {
         const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : entryPrice;
         const pnlPct = exitPrice / entryPrice - 1;
         const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
-        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice, exitPrice, pnlPct });
+        await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryOrderId: currentBaseBuy.orderId, entryClientOrderId: currentBaseBuy.clientOrderId, entryPrice, exitPrice, pnlPct });
       }
       continue;
     }
@@ -503,7 +505,7 @@ async function main() {
       const exitPrice = exitQty > 0 ? Number(filledExit.cummulativeQuoteQty || 0) / exitQty : managed.entryPrice;
       const pnlPct = exitPrice / managed.entryPrice - 1;
       const reason = String(filledExit.clientOrderId || '').startsWith('proypers-gh-protect-') ? 'NATIVE_PROTECTIVE_STOP' : 'AUTOMATIC_EXIT';
-      await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryPrice: managed.entryPrice, exitPrice, pnlPct });
+      await notifyExitOnce({ symbol, reason, orderId: filledExit.orderId, entryOrderId: currentBaseBuy.orderId, entryClientOrderId: currentBaseBuy.clientOrderId, entryPrice: managed.entryPrice, exitPrice, pnlPct });
     }
 
     const effectiveEntryPrice = managed.entryPrice;
@@ -558,7 +560,7 @@ async function main() {
 
         if (String(oldProtectionFresh?.status || '').toUpperCase() === 'FILLED') {
           console.warn(`GROWTH_V2_PYRAMID_ABORT symbol=${symbol} reason=base_stop_filled_during_add`);
-          await marketSell(base, info, symbol, addQty, 'PYRAMID_ABORT_BASE_STOP_FILLED', addEntry, currentPrice);
+          await marketSell(base, info, symbol, addQty, 'PYRAMID_ABORT_BASE_STOP_FILLED', addEntry, currentPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
           soldCount += 1;
           continue;
         }
@@ -583,7 +585,7 @@ async function main() {
           if (oldProtectionFresh && ['NEW','PARTIALLY_FILLED'].includes(String(oldProtectionFresh.status || '').toUpperCase())) {
             await cancelProtection(base, symbol, oldProtectionFresh);
           }
-          await marketSell(base, info, symbol, Math.min(postOwned, managedQty + addQty), 'PYRAMID_ACCOUNTING_FAIL_CLOSED', effectiveEntryPrice, postPrice);
+          await marketSell(base, info, symbol, Math.min(postOwned, managedQty + addQty), 'PYRAMID_ACCOUNTING_FAIL_CLOSED', effectiveEntryPrice, postPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
           soldCount += 1;
           console.warn(`GROWTH_V2_PYRAMID_FAIL_CLOSED symbol=${symbol} reason=lot_reconstruction_failed`);
           continue;
@@ -596,7 +598,7 @@ async function main() {
         }
 
         if (postPrice <= protectedStop) {
-          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_CROSSED', postManaged.entryPrice, postPrice);
+          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_CROSSED', postManaged.entryPrice, postPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
           soldCount += 1;
           console.warn(`GROWTH_V2_PYRAMID_FAIL_CLOSED symbol=${symbol} reason=price_below_rearmed_stop`);
           continue;
@@ -608,7 +610,7 @@ async function main() {
           console.log(`GROWTH_V2_PYRAMID_EXECUTED symbol=${symbol} orderId=${addOrder.orderId} add_usdt=${addQuote} add_qty=${addQty} avg_entry=${postManaged.entryPrice} total_qty=${postManaged.managedQty} protected_stop=${protectedStop}`);
         } catch (protectionError) {
           console.warn(`GROWTH_V2_PYRAMID_PROTECTION_FAIL symbol=${symbol} detail=${protectionError.message || protectionError}`);
-          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_FAIL_CLOSED', postManaged.entryPrice, postPrice);
+          await marketSell(base, info, symbol, postManaged.managedQty, 'PYRAMID_PROTECTION_FAIL_CLOSED', postManaged.entryPrice, postPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
           soldCount += 1;
         }
         continue;
@@ -643,7 +645,7 @@ async function main() {
       }
       if (openProtect) await cancelProtection(base, symbol, openProtect);
       try {
-        await marketSell(base, info, symbol, managedQty, reason, effectiveEntryPrice, currentPrice);
+        await marketSell(base, info, symbol, managedQty, reason, effectiveEntryPrice, currentPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
         soldCount += 1;
       } catch (error) {
         if (!isNotionalFilterError(error)) throw error;
@@ -668,7 +670,7 @@ async function main() {
         if (!nativeProtectionFailure) throw error;
         console.warn(`NATIVE_PROTECTION_FAIL_CLOSED symbol=${symbol} stop=${stopPrice} quantity=${quantity} detail=${error.message || error}`);
         try {
-          await marketSell(base, info, symbol, managedQty, 'NATIVE_PROTECTION_REQUIRED', effectiveEntryPrice, currentPrice);
+          await marketSell(base, info, symbol, managedQty, 'NATIVE_PROTECTION_REQUIRED', effectiveEntryPrice, currentPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
           soldCount += 1;
           console.warn(`NATIVE_PROTECTION_EXITED symbol=${symbol} reason=unprotectable_native_stop`);
         } catch (sellError) {
