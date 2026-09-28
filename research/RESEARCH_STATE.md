@@ -1,32 +1,32 @@
 # Proypers25 Autonomous Research State
 
-Updated: 2026-09-27T23:23:23.145Z
+Updated: 2026-09-28T03:44:10.325Z
 
 Branch: research/post-signal-continuation-autopsy
 
 ## Scientific split status
-- Usable universe: 286
-- Historical development block: first 243 signals
-- Previous TEST block: CONSUMED FOR ARCHITECTURE DEVELOPMENT; do not treat as fresh holdout again
+- Usable universe: 295
+- Development block: first 252 signals
+- Previous fixed TEST: CONSUMED FOR ARCHITECTURE DEVELOPMENT; not reused as fresh holdout
 - FINAL HOLDOUT: last 43 signals — UNTOUCHED_NOT_EVALUATED
 
 ## Latest experiment
-- Hypothesis: H-DISTRIBUTIONAL-PATH-001
+- Hypothesis: H-FRONTLOADED-WF-001
+- Family: frontloaded_competing_hazard
 - Decision: REJECTED_OR_INCONCLUSIVE
-- Chosen on TRAIN/VALIDATION: terminal_only q=0.75
-- TEST avg net: -2.263%
-- TEST profit factor: 0.211
-- Bootstrap P(avg <= 0): 0.9733333333333334
-- TEST continuation rate among selected: 18.18%
+- Walk-forward folds: 3
+- Pooled selected trades: 15
+- Pooled avg net: 0.160%
+- Positive folds: 3/3
+- PF>1 folds: 2/3
 
-## Conclusion
-The smooth joint MFE/MAE/terminal model did not transport out of sample. Strong TRAIN/VALIDATION performance reversed on the consumed TEST block.
-
-## Next methodology
-Use expanding purged walk-forward over the first 243 development signals. Do not reuse the old TEST as a fresh independent set.
+## Fold evidence
+- Fold 1: AUC test 1, selected 8, avg net 0.019%, PF 1.0326368518860385
+- Fold 2: AUC test 0.1, selected 5, avg net 0.332%, PF 1.7526409733926465
+- Fold 3: AUC test 1, selected 2, avg net 0.296%, PF null
 
 ## Next hypothesis
-Front-loaded continuation hazard (6–30 minutes) versus early failure may be more economically relevant than cumulative 4h continuation probability.
+Investigate state-transition/order-of-events representation rather than static early-window features; front-loaded hazard did not transport economically.
 
 ## Guardrails
 Research/shadow/offline only. No production deployment, no V23 modification, no real orders, no trading credentials.

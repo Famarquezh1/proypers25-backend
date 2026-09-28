@@ -1,12 +1,15 @@
 ﻿{
-  "id": "AUTO-20260928034410",
-  "date": "2026-09-28T03:44:10.325Z",
-  "branch": "research/post-signal-continuation-autopsy",
-  "execution_environment": "self-hosted-windows-x64",
-  "universe": 295,
+  "ok": true,
+  "research_only": true,
   "hypothesis_id": "H-FRONTLOADED-WF-001",
   "family": "frontloaded_competing_hazard",
-  "status": "REJECTED_OR_INCONCLUSIVE",
+  "hypothesis": "Relative 6-30 minute continuation-vs-failure hazard transports under expanding purged walk-forward and yields selective positive net expectancy.",
+  "acquisition": {
+    "source": "BINANCE_VISION_DATA_API",
+    "candidates": 300,
+    "usable": 295,
+    "errors": {}
+  },
   "development_n": 252,
   "final_holdout_n": 43,
   "final_holdout_status": "UNTOUCHED_NOT_EVALUATED",
@@ -347,6 +350,7 @@
     "pf_positive_folds": 2,
     "avg_net": 0.0016029772169753936
   },
-  "next_hypothesis": "Investigate state-transition/order-of-events representation rather than static early-window features; front-loaded hazard did not transport economically.",
-  "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES"
+  "guard": "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES",
+  "decision": "REJECTED_OR_INCONCLUSIVE",
+  "next_hypothesis": "Investigate state-transition/order-of-events representation rather than static early-window features; front-loaded hazard did not transport economically."
 }
