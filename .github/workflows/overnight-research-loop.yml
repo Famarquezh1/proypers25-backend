@@ -4,7 +4,7 @@ on:
   push:
     branches: [research/post-signal-continuation-autopsy]
   pull_request:
-    types: [opened]
+    types: [opened, reopened, synchronize]
     branches: [main]
   workflow_dispatch:
 
