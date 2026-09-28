@@ -1,6 +1,12 @@
 name: QPU V08 Consensus Shadow
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/qpu-v08-consensus-shadow.yml'
+      - 'backend/scripts/github-qpu-v08-consensus-shadow.py'
+      - 'backend/config/qpu-v08-consensus-frozen.json'
   workflow_run:
     workflows:
       - Spot Microflow Hunter V10
@@ -14,7 +20,7 @@ permissions:
 
 jobs:
   shadow:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
