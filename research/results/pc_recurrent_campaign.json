@@ -1,0 +1,71 @@
+﻿{
+    "ok":  true,
+    "research_only":  true,
+    "hypothesis_id":  "H-PC-RECURRENT-FACTOR-CAMPAIGN-001",
+    "execution_environment":  "self-hosted-windows-x64",
+    "rounds":  [
+                   {
+                       "decision_minute":  10,
+                       "usable":  293,
+                       "development":  250,
+                       "final_holdout":  43,
+                       "classification_family":  "sequence+market",
+                       "classification_median_auc":  0.8484848484848485,
+                       "classification_min_auc":  0.7575757575757576,
+                       "classification_net":  -0.03195174301099065,
+                       "money_family":  "presignal",
+                       "money_net":  -0.017743297667097077,
+                       "money_median_auc":  0.29365079365079366,
+                       "decision":  "REJECTED_OR_INCONCLUSIVE"
+                   },
+                   {
+                       "decision_minute":  15,
+                       "usable":  293,
+                       "development":  250,
+                       "final_holdout":  43,
+                       "classification_family":  "sequence+market",
+                       "classification_median_auc":  0.8484848484848485,
+                       "classification_min_auc":  0.7575757575757576,
+                       "classification_net":  -0.03195174301099065,
+                       "money_family":  "presignal",
+                       "money_net":  -0.017743297667097077,
+                       "money_median_auc":  0.29365079365079366,
+                       "decision":  "REJECTED_OR_INCONCLUSIVE"
+                   },
+                   {
+                       "decision_minute":  20,
+                       "usable":  293,
+                       "development":  250,
+                       "final_holdout":  43,
+                       "classification_family":  "sequence+market",
+                       "classification_median_auc":  0.8484848484848485,
+                       "classification_min_auc":  0.7575757575757576,
+                       "classification_net":  -0.03195174301099065,
+                       "money_family":  "presignal",
+                       "money_net":  -0.017743297667097077,
+                       "money_median_auc":  0.29365079365079366,
+                       "decision":  "REJECTED_OR_INCONCLUSIVE"
+                   },
+                   {
+                       "decision_minute":  5,
+                       "usable":  293,
+                       "development":  250,
+                       "final_holdout":  43,
+                       "classification_family":  "sequence+market",
+                       "classification_median_auc":  0.8484848484848485,
+                       "classification_min_auc":  0.7575757575757576,
+                       "classification_net":  -0.03195174301099065,
+                       "money_family":  "presignal",
+                       "money_net":  -0.017743297667097077,
+                       "money_median_auc":  0.29365079365079366,
+                       "decision":  "REJECTED_OR_INCONCLUSIVE"
+                   }
+               ],
+    "round_count":  4,
+    "positive_money_rounds":  0,
+    "strong_classification_rounds":  4,
+    "final_holdout_status":  "UNTOUCHED_NOT_EVALUATED",
+    "conclusion":  "CLASSIFICATION_SIGNAL_WITHOUT_MONEY",
+    "next":  "classification is recurrent but monetization fails; focus on entry/exit microstructure and depth-state timing",
+    "guard":  "FINAL HOLDOUT CLOSED / NO ORDERS / NO PRODUCTION WRITES"
+}
