@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   fusion:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, research-only]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
