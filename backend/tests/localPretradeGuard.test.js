@@ -1,13 +1,16 @@
 'use strict';
 
 const assert = require('assert');
-const { DEFAULTS, evaluateMicrostructure } = require('../services/localPretradeGuard');
+const { DEFAULTS, evaluateMicrostructure, continuationRequiredForLane } = require('../services/localPretradeGuard');
 
 assert.strictEqual(DEFAULTS.samples, 7);
 assert.strictEqual(DEFAULTS.maxLastSpreadPct, 0.006);
 assert.strictEqual(DEFAULTS.minEndReturnPct, -0.006);
 assert.strictEqual(DEFAULTS.sampleIntervalMs, 15000);
 assert.strictEqual(DEFAULTS.minContinuationScore, 0);
+assert.strictEqual(continuationRequiredForLane('CORE'), true);
+assert.strictEqual(continuationRequiredForLane('V10_HUNTER'), true);
+assert.strictEqual(continuationRequiredForLane('V8_SHADOW'), false);
 
 const healthy = evaluateMicrostructure([
   { bid: 100.00, ask: 100.10, mid: 100.05, spreadPct: 0.0010 },
