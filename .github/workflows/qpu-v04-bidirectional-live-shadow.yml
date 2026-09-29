@@ -1,0 +1,50 @@
+name: QPU v0.4 Bidirectional Live Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qpu-v04-bidirectional-live-shadow
+  cancel-in-progress: false
+
+jobs:
+  shadow:
+    runs-on: [self-hosted, Windows, X64, research-only]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/qpu-v04-bidirectional-frozen-predict.js
+          node --check backend/scripts/github-qpu-v04-bidirectional-live-shadow.js
+          $src = (Get-Content backend/scripts/qpu-v04-bidirectional-frozen-predict.js -Raw) + (Get-Content backend/scripts/github-qpu-v04-bidirectional-live-shadow.js -Raw)
+          if ($src -match 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|createOrder|placeOrder|withdraw|firebase-admin') {
+            throw 'Forbidden execution capability detected'
+          }
+
+      - name: Score current pre-buy state
+        env:
+          QPU_V04_LIVE_OUT: qpu-v04-bidirectional-live-shadow.ndjson
+        run: node backend/scripts/github-qpu-v04-bidirectional-live-shadow.js
+
+      - name: Summarize
+        shell: powershell
+        run: |
+          node -e "const fs=require('fs');const p='qpu-v04-bidirectional-live-shadow.ndjson';const a=fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse):[];const e=a.filter(x=>x.eligible_v42);console.log(JSON.stringify({rows:a.length,eligible_v42:e.length,top_continuation:a.slice(0,5).map(x=>({symbol:x.symbol,qpu_decision:x.qpu_decision,continuation_probability:x.continuation_probability,plus10_probability:x.plus10_probability,elapsed_ms:x.prediction_elapsed_ms}))},null,2));"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-v04-bidirectional-live-shadow-${{ github.run_id }}
+          path: qpu-v04-bidirectional-live-shadow.ndjson
+          retention-days: 30
