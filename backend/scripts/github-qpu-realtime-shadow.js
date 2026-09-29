@@ -21,7 +21,7 @@ const MIN_FRAC=0.02,MAX_FRAC=0.20;
 const MAX_MOVE=0.00075;
 const OUT=process.env.LR_OUT||path.join(process.cwd(),'qpu-realtime-shadow.ndjson');
 
-const books=new Map(),episodes=new Map(),pendingDepth=new Map(),recent=new Map();
+const books=new Map(),episodes=new Map(),pendingDepth=new Map(),recent=new Map(),tradeBuckets=new Map();
 let msgCount=0,depthMsgCount=0,tradeMsgCount=0,lastMsgAt=null;
 const out=fs.createWriteStream(OUT,{flags:'a'});
 const now=()=>Date.now();
@@ -98,6 +98,9 @@ function onTrade(sym,t){
   const s=snapshot(sym);if(!s)return;
   const side=t.m?'BID':'ASK';
   const qty=+t.q,price=+t.p;
+  const tb=tradeBuckets.get(sym)||{buyQty:0,sellQty:0,buyNotional:0,sellNotional:0,trades:0};
+  if(t.m){tb.sellQty+=qty;tb.sellNotional+=qty*price;}else{tb.buyQty+=qty;tb.buyNotional+=qty*price;}
+  tb.trades++;tradeBuckets.set(sym,tb);
   if(!(qty>0)||price<s.lo||price>s.hi)return;
   const key=sym+':'+side;
   let e=episodes.get(key);
@@ -169,8 +172,25 @@ function depth(sym,d){
   await new Promise(r=>setTimeout(r,750));
   const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
   if(!initialized)throw new Error('No Binance depth snapshots available');
+  const telemetry=setInterval(()=>{
+    const at=now();
+    for(const sym of SYMBOLS){
+      const s=snapshot(sym);if(!s)continue;
+      const tb=tradeBuckets.get(sym)||{buyQty:0,sellQty:0,buyNotional:0,sellNotional:0,trades:0};
+      const depthSum=s.bidDepth+s.askDepth;
+      const depthImbalance=depthSum>0?(s.bidDepth-s.askDepth)/depthSum:null;
+      const flowSum=tb.buyNotional+tb.sellNotional;
+      const takerBuyRatio=flowSum>0?tb.buyNotional/flowSum:null;
+      emit({type:'microstructure_1s',shadow_only:true,no_order_created:true,symbol:sym,at,
+        mid:s.mid,spread:s.spread,bid_depth:s.bidDepth,ask_depth:s.askDepth,
+        depth_imbalance:depthImbalance,taker_buy_ratio:takerBuyRatio,
+        buy_notional_1s:tb.buyNotional,sell_notional_1s:tb.sellNotional,trades_1s:tb.trades,
+        book_ready:Boolean(books.get(sym)?.ready)});
+      tradeBuckets.set(sym,{buyQty:0,sellQty:0,buyNotional:0,sellNotional:0,trades:0});
+    }
+  },1000);
   const heartbeat=setInterval(()=>{
     emit({type:'heartbeat',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,last_message_at:lastMsgAt,synced_books:[...books.values()].filter(b=>b.ready).length,total_books:books.size});
   },10000);
-  setTimeout(()=>{clearInterval(heartbeat);emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,synced_books:[...books.values()].filter(b=>b.ready).length});ws.close();out.end()},RUN_MS);
+  setTimeout(()=>{clearInterval(telemetry);clearInterval(heartbeat);emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,synced_books:[...books.values()].filter(b=>b.ready).length});ws.close();out.end()},RUN_MS);
 })().catch(e=>{console.error(e);process.exitCode=1});
