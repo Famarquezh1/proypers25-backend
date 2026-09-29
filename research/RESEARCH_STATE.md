@@ -1,25 +1,28 @@
 ﻿# Proypers25 Autonomous Research State
 
-Updated: 2026-09-29T10:57:16.1099451Z
+Updated: 2026-09-29T11:15:52.2741558Z
 
 Branch: research/post-signal-continuation-autopsy
 
-## Latest experiment
-- Hypothesis: H-MICROSTRUCTURE-STATE-FUSION-001
-- Status: INSUFFICIENT_OVERLAP
-- Labeled microstructure states: 36
-- Mature 240m states: 19
-- Target: positive_net_60m
-- FINAL signal holdout: UNTOUCHED_NOT_ACCESSED
+## Scientific split status
+- FINAL HOLDOUT: 43 - UNTOUCHED_NOT_EVALUATED
+- Previous fixed TEST remains consumed; campaign uses expanding purged walk-forward only.
 
-## Result
-- Baseline test net60: 
-- Gated test net60: 
-- Net60 improvement: 
-- Test AUC: 
+## Latest experiment
+- Hypothesis: H-PC-RECURRENT-FACTOR-CAMPAIGN-001
+- PC rounds: 4
+- Positive money rounds: 0/4
+- Strong classification rounds: 4/4
+- Conclusion: CLASSIFICATION_SIGNAL_WITHOUT_MONEY
+
+## Recurrent evidence
+- K=10: class=sequence medAUC=0.9 minAUC=0.7619047619047619; money=trades net=-1.339%
+- K=15: class=sequence medAUC=0.9 minAUC=0.7619047619047619; money=trades net=-1.339%
+- K=20: class=sequence medAUC=0.9 minAUC=0.7619047619047619; money=trades net=-1.339%
+- K=5: class=sequence medAUC=0.9 minAUC=0.7619047619047619; money=trades net=-1.339%
 
 ## Next hypothesis
-accumulate more prospective depth-state overlap; do not infer edge yet
+classification is recurrent but monetization fails; focus on entry/exit microstructure and depth-state timing
 
 ## Guardrails
 Research/shadow/offline only. No production, V23, real orders or trading credentials.
