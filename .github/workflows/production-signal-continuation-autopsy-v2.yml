@@ -1,0 +1,34 @@
+name: Production Signal Continuation Autopsy V2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-production-signal-continuation-autopsy-v2.js'
+      - '.github/workflows/production-signal-continuation-autopsy-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  validate:
+    runs-on: [self-hosted, Windows, X64, research-only, research-heavy]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-production-signal-continuation-autopsy-v2.js
+          $src=Get-Content backend/scripts/github-production-signal-continuation-autopsy-v2.js -Raw
+          if($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order'){throw 'Forbidden execution capability'}
+      - name: Validate frozen rule
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-production-signal-continuation-autopsy-v2.js
