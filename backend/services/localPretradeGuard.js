@@ -110,6 +110,10 @@ function persist(record) {
   }
 }
 
+function continuationRequiredForLane(lane = 'CORE') {
+  return ['CORE', 'V10_HUNTER'].includes(String(lane || 'CORE').toUpperCase());
+}
+
 async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, lane = 'CORE', config = {} }) {
   const startedAt = Date.now();
   try {
@@ -176,7 +180,7 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
     }
 
     const continuationPass = Number.isFinite(continuation.score) && continuation.score > cfg.minContinuationScore;
-    const continuationRequired = String(lane || 'CORE').toUpperCase() === 'CORE';
+    const continuationRequired = continuationRequiredForLane(lane);
     const allow = micro.allow && !integrity.block && (!continuationRequired || continuationPass);
     const code = !micro.allow
       ? micro.code
@@ -228,6 +232,7 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
 module.exports = {
   DEFAULTS,
   evaluateMicrostructure,
+  continuationRequiredForLane,
   runLocalPretradeGuard,
   memoryPath
 };
