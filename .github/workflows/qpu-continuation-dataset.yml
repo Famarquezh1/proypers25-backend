@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     name: Build QPU continuation dataset on Chile PC
-    runs-on: [self-hosted, Windows, X64, research-only]
+    runs-on: [self-hosted, Windows, X64, research-only, research-heavy]
     timeout-minutes: 20
 
     steps:
