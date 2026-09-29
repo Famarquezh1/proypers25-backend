@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   research-campaign:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, research-only]
     timeout-minutes: 150
     permissions:
       contents: write
