@@ -25,6 +25,8 @@ on:
       - 'backend/scripts/github-spot-orphan-protect.js'
       - 'backend/services/spotOrphanProtection.js'
       - 'backend/services/localPretradeGuard.js'
+      - 'backend/services/spotMetaDecisionEngine.js'
+      - 'backend/tests/spotMetaDecisionEngine.test.js'
       - 'backend/services/spotMomentumContinuation.js'
       - 'backend/tests/spotMomentumContinuation.test.js'
       - 'backend/scripts/train-spot-momentum-continuation-historical.js'
@@ -80,6 +82,8 @@ jobs:
           node --check backend/scripts/github-spot-orphan-audit.js
           node --check backend/services/spotOrphanProtection.js
           node --check backend/services/localPretradeGuard.js
+          node --check backend/services/spotMetaDecisionEngine.js
+          node --check backend/tests/spotMetaDecisionEngine.test.js
           node --check backend/services/spotMomentumContinuation.js
           node --check backend/tests/spotMomentumContinuation.test.js
           node --check backend/scripts/train-spot-momentum-continuation-historical.js
@@ -107,6 +111,7 @@ jobs:
       - name: Local pretrade guard tests
         run: |
           node backend/tests/localPretradeGuard.test.js
+          node backend/tests/spotMetaDecisionEngine.test.js
           node backend/tests/spotMomentumContinuation.test.js
       - name: Defensive manipulation risk tests
         run: node backend/tests/marketManipulationRisk.test.js
@@ -201,6 +206,8 @@ jobs:
           grep -q "MOMENTUM_CONTINUATION_WEAK" backend/services/localPretradeGuard.js
           grep -q "continuationRequired" backend/services/localPretradeGuard.js
           grep -q "continuation_score=" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "META_DECISION_SHADOW" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "SHADOW_ONLY" backend/services/spotMetaDecisionEngine.js
           grep -q "momentumContinuationFactor" backend/services/spotMomentumContinuation.js
           grep -q "production_mutation:false" backend/scripts/train-spot-momentum-continuation-historical.js
           grep -q "evaluateManipulationRisk" backend/services/localPretradeGuard.js
