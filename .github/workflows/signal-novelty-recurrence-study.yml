@@ -1,0 +1,34 @@
+name: Signal Novelty Recurrence Study
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-signal-novelty-recurrence-study.js'
+      - '.github/workflows/signal-novelty-recurrence-study.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  research:
+    runs-on: [self-hosted, Windows, X64, research-only, research-heavy]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-signal-novelty-recurrence-study.js
+          $src=Get-Content backend/scripts/github-signal-novelty-recurrence-study.js -Raw
+          if($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order'){throw 'Forbidden execution capability'}
+      - name: Run historical novelty recurrence study
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-signal-novelty-recurrence-study.js
