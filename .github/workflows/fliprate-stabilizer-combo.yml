@@ -1,0 +1,34 @@
+name: Flip Rate Stabilizer Combo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-fliprate-stabilizer-combo.js'
+      - '.github/workflows/fliprate-stabilizer-combo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  research:
+    runs-on: [self-hosted, Windows, X64, research-only]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        shell: powershell
+        run: |
+          node --check backend/scripts/github-fliprate-stabilizer-combo.js
+          $src=Get-Content backend/scripts/github-fliprate-stabilizer-combo.js -Raw
+          if($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order'){throw 'Forbidden execution capability'}
+      - name: Run historical flip-rate combo study
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-fliprate-stabilizer-combo.js
