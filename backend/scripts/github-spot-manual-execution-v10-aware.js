@@ -18,6 +18,7 @@ const { classifySpotAsset } = require('../services/spotAssetClassification');
 const { resolveConvictionPosition, LEVERAGED_POSITION_USDT } = require('../services/spotConvictionSizing');
 const { estimateAccountEquityUsdt, estimateManagedExposureUsdt, resolveGrowthPosition } = require('../services/spotGrowthEngine');
 const { minimumProtectedQuoteUsdt } = require('../services/spotNativeProtectionPolicy');
+const { evaluateSpotMetaDecision } = require('../services/spotMetaDecisionEngine');
 
 const LEVERAGED_GITHUB_MAX_USDT = LEVERAGED_POSITION_USDT;
 const LEVERAGED_GITHUB_MIN_V61_SCORE = 0.4487136592494857;
