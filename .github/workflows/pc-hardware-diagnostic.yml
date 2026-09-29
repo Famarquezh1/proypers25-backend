@@ -13,7 +13,7 @@ permissions:
 jobs:
   diagnostic:
     name: Read-only hardware diagnostic on Chile PC
-    runs-on: [self-hosted, Windows, X64, research-only]
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
