@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   collect:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, research-only]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
