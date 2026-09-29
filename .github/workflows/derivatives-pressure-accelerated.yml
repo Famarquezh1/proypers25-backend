@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   research:
-    runs-on: [self-hosted, Windows, X64, research-only]
+    runs-on: [self-hosted, Windows, X64, research-only, research-heavy]
     timeout-minutes: 12
     env:
       DP_DAYS: '21'
