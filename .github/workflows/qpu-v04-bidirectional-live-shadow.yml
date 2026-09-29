@@ -2,6 +2,13 @@ name: QPU v0.4 Bidirectional Live Shadow
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/config/qpu-v04-bidirectional-frozen.json'
+      - 'backend/scripts/qpu-v04-bidirectional-frozen-predict.js'
+      - 'backend/scripts/github-qpu-v04-bidirectional-live-shadow.js'
+      - '.github/workflows/qpu-v04-bidirectional-live-shadow.yml'
   schedule:
     - cron: '*/15 * * * *'
 
