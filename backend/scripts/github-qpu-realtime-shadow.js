@@ -22,6 +22,7 @@ const MAX_MOVE=0.00075;
 const OUT=process.env.LR_OUT||path.join(process.cwd(),'qpu-realtime-shadow.ndjson');
 
 const books=new Map(),episodes=new Map(),pendingDepth=new Map(),recent=new Map();
+let msgCount=0,depthMsgCount=0,tradeMsgCount=0,lastMsgAt=null;
 const out=fs.createWriteStream(OUT,{flags:'a'});
 const now=()=>Date.now();
 const emit=x=>out.write(JSON.stringify(x)+'\n');
@@ -157,11 +158,19 @@ function depth(sym,d){
   emit({type:'qpu_realtime_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,radar_symbols:[...RADAR_SYMBOLS],band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],samples_ms:SAMPLE_MS,run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
-  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('WebSocket open timeout')),15000);ws.once('open',()=>{clearTimeout(timer);resolve()});ws.once('error',reject)});
+  ws.on('message',buf=>{try{
+    msgCount++;lastMsgAt=now();
+    const x=JSON.parse(buf),sym=String(x.data?.s||'').toUpperCase();
+    if(x.stream?.includes('@depth')){depthMsgCount++;depth(sym,x.data);}
+    else if(x.stream?.includes('@trade')){tradeMsgCount++;onTrade(sym,x.data);}
+  }catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
+  ws.on('error',e=>emit({type:'ws_error',at:now(),error:String(e.message||e)}));
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('WebSocket open timeout')),15000);ws.once('open',()=>{clearTimeout(timer);emit({type:'ws_open',shadow_only:true,no_order_created:true,at:now(),streams:SYMBOLS.length*2});resolve()});ws.once('error',reject)});
   await new Promise(r=>setTimeout(r,750));
   const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
   if(!initialized)throw new Error('No Binance depth snapshots available');
-  ws.on('message',buf=>{try{const x=JSON.parse(buf),sym=String(x.data.s||'').toUpperCase();if(x.stream.includes('@depth'))depth(sym,x.data);else if(x.stream.includes('@trade'))onTrade(sym,x.data)}catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
-  ws.on('error',e=>emit({type:'ws_error',at:now(),error:String(e.message||e)}));
-  setTimeout(()=>{emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now()});ws.close();out.end()},RUN_MS);
+  const heartbeat=setInterval(()=>{
+    emit({type:'heartbeat',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,last_message_at:lastMsgAt,synced_books:[...books.values()].filter(b=>b.ready).length,total_books:books.size});
+  },10000);
+  setTimeout(()=>{clearInterval(heartbeat);emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,synced_books:[...books.values()].filter(b=>b.ready).length});ws.close();out.end()},RUN_MS);
 })().catch(e=>{console.error(e);process.exitCode=1});
