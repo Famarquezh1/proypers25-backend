@@ -9,7 +9,7 @@ on:
       - 'backend/scripts/github-spot-v22-iceberg-shadow.js'
       - '.github/workflows/spot-v21-shadow-live.yml'
   schedule:
-    - cron: '4,9,14,19,24,29,34,39,44,49,54,59 * * * *'
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
@@ -93,7 +93,7 @@ jobs:
         with:
           name: spot-v21-shadow-state
           path: spot-v21-shadow-state.json
-          retention-days: 30
+          retention-days: 2
           overwrite: true
 
       - name: Upload V21 shadow evidence
@@ -101,7 +101,7 @@ jobs:
         with:
           name: spot-v21-shadow-evidence-${{ github.run_id }}
           path: spot-v21-shadow-evidence.json
-          retention-days: 30
+          retention-days: 2
 
       - name: Load previous V22 iceberg state
         id: previous_v22
@@ -168,7 +168,7 @@ jobs:
         with:
           name: spot-v22-iceberg-state
           path: spot-v22-iceberg-state.json
-          retention-days: 30
+          retention-days: 2
           overwrite: true
 
       - name: Upload V22 iceberg evidence
@@ -176,7 +176,7 @@ jobs:
         with:
           name: spot-v22-iceberg-evidence-${{ github.run_id }}
           path: spot-v22-iceberg-evidence.json
-          retention-days: 30
+          retention-days: 2
 
       - name: Load previous V24 prospective state
         id: previous_v24
@@ -213,7 +213,7 @@ jobs:
         with:
           name: spot-v24-shadow-state
           path: spot-v24-shadow-state.json
-          retention-days: 30
+          retention-days: 2
           overwrite: true
 
       - name: Upload V24 prospective evidence
@@ -221,7 +221,7 @@ jobs:
         with:
           name: spot-v24-shadow-evidence-${{ github.run_id }}
           path: spot-v24-shadow-evidence.json
-          retention-days: 30
+          retention-days: 2
 
       - name: Guard no execution capabilities
         shell: bash
