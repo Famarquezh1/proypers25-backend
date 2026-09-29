@@ -1,0 +1,50 @@
+name: QPU Realtime Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '2 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qpu-realtime-shadow
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install websocket dependency
+        run: npm install --no-save --ignore-scripts ws
+
+      - name: Safety check
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check backend/scripts/github-qpu-realtime-shadow.js
+          ! grep -Eq 'api/v3/order|fapi/v1/order|BINANCE_API_KEY|BINANCE_SECRET|firebase-admin|createOrder|placeOrder|withdraw' backend/scripts/github-qpu-realtime-shadow.js
+
+      - name: Collect continuous public microstructure
+        env:
+          LR_RUN_MS: '3000000'
+          LR_OUT: 'qpu-realtime-shadow.ndjson'
+        run: node backend/scripts/github-qpu-realtime-shadow.js
+
+      - name: Summarize capture
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const p='qpu-realtime-shadow.ndjson';const a=fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split(/\\r?\\n/).filter(Boolean):[];let c=0,s=0,d=0,g=0;for(const l of a){try{const x=JSON.parse(l);if(x.type==='resilience_curve')c++;if(x.type==='resilience_state_v2'){s++;if(x.directional_candidate)d++;}if(x.type==='sequence_gap')g++;}catch{}}console.log(JSON.stringify({rows:a.length,resilience_curves:c,state_updates:s,directional_candidates:d,sequence_gaps:g},null,2));"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qpu-realtime-shadow-${{ github.run_id }}
+          path: qpu-realtime-shadow.ndjson
+          retention-days: 30
