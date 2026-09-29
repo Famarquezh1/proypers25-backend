@@ -14,16 +14,22 @@ concurrency:
 
 jobs:
   collect:
-    runs-on: ubuntu-latest
-    timeout-minutes: 58
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install websocket dependency
-        run: npm install --no-save --ignore-scripts ws
+      - name: Prepare isolated websocket dependency
+        shell: powershell
+        run: |
+          $deps = Join-Path $env:RUNNER_TEMP 'qpu-realtime-shadow-deps'
+          if (Test-Path $deps) { Remove-Item -Recurse -Force $deps }
+          New-Item -ItemType Directory -Force -Path $deps | Out-Null
+          npm install --no-save --ignore-scripts --prefix $deps ws
+          "NODE_PATH=$deps\node_modules" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Safety check
         shell: bash
@@ -34,7 +40,7 @@ jobs:
 
       - name: Collect continuous public microstructure
         env:
-          LR_RUN_MS: '3000000'
+          LR_RUN_MS: '600000'
           LR_OUT: 'qpu-realtime-shadow.ndjson'
         run: node backend/scripts/github-qpu-realtime-shadow.js
 
