@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, research-only]
     timeout-minutes: 35
     env:
       QPU_BACKFILL_MAX: '700'
