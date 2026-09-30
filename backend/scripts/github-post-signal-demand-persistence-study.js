@@ -112,36 +112,89 @@ function obsFeatures(k){
   const thresholds={};
   for(const f of features)thresholds[f]=median(discovery.map(x=>x[f]).filter(Number.isFinite));
 
-  const bv=summarize(validation), bh=summarize(holdout), rules=[];
-  for(const f of features){
+  // Cohort 2: test interaction, not another momentum rank.
+  // Thresholds are frozen from discovery. Candidate selection is performed ONLY
+  // on validation; holdout is opened once for the selected rule.
+  const predicates=[];
+  for(const feature of features){
     for(const dir of ['hi','lo']){
-      const th=thresholds[f], fn=x=>dir==='hi'?x[f]>=th:x[f]<th;
-      const v=summarize(validation.filter(fn)), h=summarize(holdout.filter(fn));
-      const pass=Boolean(
-        v.n>=20&&h.n>=20 &&
-        v.avg_net4h>0&&h.avg_net4h>0 &&
-        v.avg_net4h>bv.avg_net4h&&h.avg_net4h>bh.avg_net4h &&
-        v.continuator_rate>=bv.continuator_rate&&h.continuator_rate>=bh.continuator_rate
-      );
-      rules.push({feature:f,dir,threshold:th,validation:v,holdout:h,
-        validation_delta:{continuator:v.continuator_rate-bv.continuator_rate,net4h:v.avg_net4h-bv.avg_net4h},
-        holdout_delta:{continuator:h.continuator_rate-bh.continuator_rate,net4h:h.avg_net4h-bh.avg_net4h},
-        pass});
+      const threshold=thresholds[feature];
+      predicates.push({
+        label:feature+'_'+dir,
+        terms:[{feature,dir,threshold}],
+        fn:x=>dir==='hi'?x[feature]>=threshold:x[feature]<threshold
+      });
     }
   }
-  rules.sort((x,y)=>Number(y.pass)-Number(x.pass)||Math.min(y.validation.avg_net4h,y.holdout.avg_net4h)-Math.min(x.validation.avg_net4h,x.holdout.avg_net4h));
-  const best=rules[0]||null;
+  for(let i=0;i<predicates.length;i++){
+    for(let j=i+1;j<predicates.length;j++){
+      const a=predicates[i], c=predicates[j];
+      if(a.terms[0].feature===c.terms[0].feature)continue;
+      predicates.push({
+        label:a.label+'__AND__'+c.label,
+        terms:[...a.terms,...c.terms],
+        fn:x=>a.fn(x)&&c.fn(x)
+      });
+    }
+  }
+
+  const bv=summarize(validation), bh=summarize(holdout);
+  const candidates=predicates.map(rule=>{
+    const v=summarize(validation.filter(rule.fn));
+    const validation_delta={
+      continuator:v.continuator_rate-bv.continuator_rate,
+      net4h:v.avg_net4h-bv.avg_net4h
+    };
+    const eligible=Boolean(
+      v.n>=20 &&
+      v.avg_net4h>0 &&
+      v.avg_net4h>bv.avg_net4h &&
+      v.continuator_rate>=bv.continuator_rate
+    );
+    const score=eligible
+      ? validation_delta.net4h + Math.max(0,validation_delta.continuator)*0.05
+      : -Infinity;
+    return {label:rule.label,terms:rule.terms,validation:v,validation_delta,eligible,score,fn:rule.fn};
+  });
+
+  candidates.sort((x,y)=>y.score-x.score);
+  const selected=candidates.find(x=>x.eligible)||null;
+  let holdout_result=null, promote=false;
+  if(selected){
+    const h=summarize(holdout.filter(selected.fn));
+    const holdout_delta={
+      continuator:h.continuator_rate-bh.continuator_rate,
+      net4h:h.avg_net4h-bh.avg_net4h
+    };
+    promote=Boolean(
+      h.n>=20 &&
+      h.avg_net4h>0 &&
+      h.avg_net4h>bh.avg_net4h &&
+      h.continuator_rate>=bh.continuator_rate
+    );
+    holdout_result={
+      label:selected.label,
+      terms:selected.terms,
+      holdout:h,
+      holdout_delta,
+      pass:promote
+    };
+  }
+
   console.log(JSON.stringify({
     ok:true,research_only:true,no_order_created:true,
-    family:'POST_SIGNAL_DEMAND_PERSISTENCE',
+    family:'POST_SIGNAL_DEMAND_PERSISTENCE_COHORT_2',
+    hypothesis:'joint retention/recovery/absorption persistence after signal',
     observation_minutes:OBS,
     rows:rows.length,
     chronological_blocks:{discovery:discovery.length,validation:validation.length,holdout:holdout.length},
     frozen_thresholds:thresholds,
     baselines:{validation:bv,holdout:bh},
-    rules,
-    best,
-    production_decision:best?.pass?'PROMOTE_DEMAND_PERSISTENCE_RULE':'DO_NOT_PROMOTE',
-    promote:Boolean(best?.pass)
+    candidate_count:candidates.length,
+    top_validation_candidates:candidates.slice(0,10).map(({fn,...x})=>x),
+    selected_rule:selected?(({fn,...x})=>x)(selected):null,
+    holdout_result,
+    production_decision:promote?'PROMOTE_DEMAND_PERSISTENCE_RULE':'DO_NOT_PROMOTE',
+    promote
   },null,2));
 })().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
