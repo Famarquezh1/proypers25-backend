@@ -1,0 +1,18 @@
+name: Operation Block Contrast
+on:
+  pull_request:
+    paths: ['backend/scripts/github-operation-block-contrast.js','.github/workflows/operation-block-contrast.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-operation-block-contrast.js
+      - run: node backend/scripts/github-operation-block-contrast.js
+      - uses: actions/upload-artifact@v4
+        with: {name: operation-block-contrast, path: operation-block-contrast.json, retention-days: 30}

@@ -1,0 +1,18 @@
+name: Asymmetric Opportunity Score
+on:
+  pull_request:
+    paths: ['backend/scripts/github-asymmetric-opportunity-score.js','.github/workflows/asymmetric-opportunity-score.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-asymmetric-opportunity-score.js
+      - run: node backend/scripts/github-asymmetric-opportunity-score.js
+      - uses: actions/upload-artifact@v4
+        with: {name: asymmetric-opportunity-score, path: asymmetric-opportunity-score.json, retention-days: 30}
