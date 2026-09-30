@@ -76,7 +76,10 @@ function stateRow(symbol,t,f,bd,rw,p){
 }
 
 (async()=>{
-  const lib=loadFeatureLib(),{v,WARM,STEP,contiguous}=lib;
+  const lib=loadFeatureLib(),{v,WARM,STEP}=lib;
+  // Live shadow has no future bars by definition. Historical contiguous() also
+  // requires FWD bars, so use a past-only continuity check for current scoring.
+  const contiguousPast=(series,i,back=WARM)=>i>=back&&series[i].t-series[i-back].t<=back*STEP+2*STEP;
   const data=new Map(),errors=[];
   for(const s of SYMBOLS){try{data.set(s,await getKlines(s))}catch(e){errors.push({symbol:s,error:String(e.message||e)})}}
   if(!data.has('BTCUSDT'))throw new Error('BTCUSDT unavailable');
@@ -86,7 +89,7 @@ function stateRow(symbol,t,f,bd,rw,p){
   for(const [symbol,series] of data){
     if(symbol==='BTCUSDT')continue;
     const i=series.findIndex(x=>x.t===target);
-    if(i<WARM||!contiguous(series,i))continue;
+    if(i<WARM||!contiguousPast(series,i))continue;
     try{const f=v.feat(series,i,bm);if(Number.isFinite(f.qv))feats.push({symbol,t:target,f})}catch{}
   }
   if(!feats.length)throw new Error('No compatible current feature rows');
