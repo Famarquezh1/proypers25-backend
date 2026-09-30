@@ -126,9 +126,10 @@ function obsFeatures(k){
       });
     }
   }
-  for(let i=0;i<predicates.length;i++){
-    for(let j=i+1;j<predicates.length;j++){
-      const a=predicates[i], c=predicates[j];
+  const basePredicates=[...predicates];
+  for(let i=0;i<basePredicates.length;i++){
+    for(let j=i+1;j<basePredicates.length;j++){
+      const a=basePredicates[i], c=basePredicates[j];
       if(a.terms[0].feature===c.terms[0].feature)continue;
       predicates.push({
         label:a.label+'__AND__'+c.label,
