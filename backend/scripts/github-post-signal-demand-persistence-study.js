@@ -182,20 +182,84 @@ function obsFeatures(k){
     };
   }
 
+  // Cohort 3: negative veto. Learn what to exclude in validation, then open holdout once.
+  const vetoCandidates=predicates.map(rule=>{
+    const kept=validation.filter(x=>!rule.fn(x));
+    const removed=validation.filter(rule.fn);
+    const keptSummary=summarize(kept), removedSummary=summarize(removed);
+    const delta={
+      continuator:keptSummary.continuator_rate-bv.continuator_rate,
+      net4h:keptSummary.avg_net4h-bv.avg_net4h,
+      hit3:keptSummary.hit3-bv.hit3
+    };
+    const removedShare=validation.length?removed.length/validation.length:0;
+    const eligible=Boolean(
+      keptSummary.n>=40 &&
+      removed.length>=15 &&
+      removedShare<=0.50 &&
+      delta.continuator>0 &&
+      delta.net4h>0
+    );
+    const score=eligible
+      ? delta.net4h + delta.continuator*0.05 + Math.max(0,delta.hit3)*0.02
+      : -Infinity;
+    return {
+      label:'VETO__'+rule.label,
+      terms:rule.terms,
+      removed_n:removed.length,
+      removed_share:removedShare,
+      removed:removedSummary,
+      kept:keptSummary,
+      validation_delta:delta,
+      eligible,
+      score,
+      fn:rule.fn
+    };
+  });
+  vetoCandidates.sort((x,y)=>y.score-x.score);
+  const selectedVeto=vetoCandidates.find(x=>x.eligible)||null;
+  let vetoHoldout=null, vetoPromote=false;
+  if(selectedVeto){
+    const kept=holdout.filter(x=>!selectedVeto.fn(x));
+    const removed=holdout.filter(selectedVeto.fn);
+    const keptSummary=summarize(kept), removedSummary=summarize(removed);
+    const delta={
+      continuator:keptSummary.continuator_rate-bh.continuator_rate,
+      net4h:keptSummary.avg_net4h-bh.avg_net4h,
+      hit3:keptSummary.hit3-bh.hit3
+    };
+    vetoPromote=Boolean(
+      keptSummary.n>=40 &&
+      removed.length>=15 &&
+      delta.continuator>0 &&
+      delta.net4h>0
+    );
+    vetoHoldout={
+      label:selectedVeto.label,
+      terms:selectedVeto.terms,
+      removed_n:removed.length,
+      removed_share:holdout.length?removed.length/holdout.length:0,
+      removed:removedSummary,
+      kept:keptSummary,
+      holdout_delta:delta,
+      pass:vetoPromote
+    };
+  }
+
   console.log(JSON.stringify({
     ok:true,research_only:true,no_order_created:true,
-    family:'POST_SIGNAL_DEMAND_PERSISTENCE_COHORT_2',
-    hypothesis:'joint retention/recovery/absorption persistence after signal',
+    family:'POST_SIGNAL_NEGATIVE_VETO_COHORT_3',
+    hypothesis:'exclude early post-signal exhaustion states to improve the remaining universe',
     observation_minutes:OBS,
     rows:rows.length,
     chronological_blocks:{discovery:discovery.length,validation:validation.length,holdout:holdout.length},
     frozen_thresholds:thresholds,
     baselines:{validation:bv,holdout:bh},
-    candidate_count:candidates.length,
-    top_validation_candidates:candidates.slice(0,10).map(({fn,...x})=>x),
-    selected_rule:selected?(({fn,...x})=>x)(selected):null,
-    holdout_result,
-    production_decision:promote?'PROMOTE_DEMAND_PERSISTENCE_RULE':'DO_NOT_PROMOTE',
-    promote
+    candidate_count:vetoCandidates.length,
+    top_validation_vetoes:vetoCandidates.slice(0,10).map(({fn,...x})=>x),
+    selected_veto:selectedVeto?(({fn,...x})=>x)(selectedVeto):null,
+    holdout_result:vetoHoldout,
+    production_decision:vetoPromote?'PROMOTE_NEGATIVE_VETO_RULE':'DO_NOT_PROMOTE',
+    promote:vetoPromote
   },null,2));
 })().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
