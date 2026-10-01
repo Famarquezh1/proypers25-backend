@@ -8,7 +8,11 @@ on:
       - 'backend/scripts/github-qpu-liquidity-resilience-v2.js'
       - '.github/workflows/qpu-liquidity-resilience-v2.yml'
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '12,42 * * * *'
+
+concurrency:
+  group: qpu-liquidity-resilience-v2
+  cancel-in-progress: true
 
 permissions:
   contents: read
