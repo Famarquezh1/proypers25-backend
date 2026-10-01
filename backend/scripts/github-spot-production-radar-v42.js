@@ -282,7 +282,7 @@ async function enrichV42(candidates) {
       const last = bars.length - 2;
       for (let k = Math.max(1, last - 23); k <= last; k += 1) quboReturns.push(pctFrom(bars[k - 1].c, bars[k].c));
       const parts = v42Parts(features);
-      const freshEnough = features.r24 < 0.18 && features.r60 < 0.10 && features.r15 < 0.06;
+      const freshEnough = features.r24 < 0.10 && features.r60 < 0.10 && features.r15 < 0.06;
       const passCount = freshEnough ? v42PassCount(parts) : 0;
       return { ...candidate, v42_pass_windows: passCount, v42_norm: freshEnough ? v42Norm(parts, passCount) : 0, v42_detail: { ...parts, r15: features.r15, r60: features.r60, r24: features.r24, freshEnough }, qubo_returns: quboReturns, market_regime: marketRegime.regime, market_regime_detail: marketRegime };
     } catch (error) {
