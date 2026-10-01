@@ -3,7 +3,11 @@ name: Liquidity Resilience Shadow
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '22,52 * * * *'
+
+concurrency:
+  group: liquidity-resilience-shadow
+  cancel-in-progress: true
 
 permissions:
   contents: read
