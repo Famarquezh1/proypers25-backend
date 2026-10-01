@@ -3,14 +3,14 @@ name: QPU Realtime Shadow
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '2,32 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: qpu-realtime-shadow
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   collect:
