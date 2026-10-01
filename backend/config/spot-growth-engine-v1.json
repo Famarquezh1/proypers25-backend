@@ -1,16 +1,16 @@
 {
-  "version": "SPOT_GROWTH_ENGINE_V1_2026_09_20",
+  "version": "SPOT_GROWTH_ENGINE_V1_DEFENSIVE_2026_10_01",
   "mode": "PRODUCTION",
   "milestone_usdt": 600,
   "core": {
     "max_deployed_equity_pct": 0.65,
-    "cash_reserve_pct": 0.20,
+    "cash_reserve_pct": 0.2,
     "min_cash_reserve_usdt": 50,
-    "high_equity_pct": 0.055,
-    "high_floor_usdt": 30,
-    "high_cap_usdt": 35,
-    "exceptional_equity_pct": 0.10,
-    "exceptional_floor_usdt": 50,
-    "exceptional_cap_usdt": 70
+    "high_equity_pct": 0.02,
+    "high_floor_usdt": 10,
+    "high_cap_usdt": 10,
+    "exceptional_equity_pct": 0.02,
+    "exceptional_floor_usdt": 10,
+    "exceptional_cap_usdt": 10
   }
 }
