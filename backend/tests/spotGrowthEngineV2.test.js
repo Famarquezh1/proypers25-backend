@@ -39,7 +39,7 @@ const second = pyramidDecision({
   currentGainPct:0.10, mfePct:0.12, currentPrice:112, nativeStopPrice:106,
   initialCostUsdt:60, currentPositionValueUsdt:66, equityUsdt:600, usdtFree:300, cashReserveUsdt:120
 });
-assert.strictEqual(second.reason, 'MAX_ADDS_REACHED');
+assert.strictEqual(second.reason, 'PYRAMIDING_DISABLED');
 
 const body = growthStateBody({hwm_usdt:605,activated:true,updated_at:'2026-09-21T00:00:00Z'});
 const parsed = parseGrowthState(body);
