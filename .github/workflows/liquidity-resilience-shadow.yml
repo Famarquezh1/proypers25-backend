@@ -2,8 +2,6 @@ name: Liquidity Resilience Shadow
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '22,52 * * * *'
 
 concurrency:
   group: liquidity-resilience-shadow
