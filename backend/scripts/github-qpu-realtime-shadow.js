@@ -192,5 +192,10 @@ function depth(sym,d){
   const heartbeat=setInterval(()=>{
     emit({type:'heartbeat',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,last_message_at:lastMsgAt,synced_books:[...books.values()].filter(b=>b.ready).length,total_books:books.size});
   },10000);
-  setTimeout(()=>{clearInterval(telemetry);clearInterval(heartbeat);emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,synced_books:[...books.values()].filter(b=>b.ready).length});ws.close();out.end()},RUN_MS);
+  await new Promise(r=>setTimeout(r,RUN_MS));
+  clearInterval(telemetry);
+  clearInterval(heartbeat);
+  emit({type:'qpu_realtime_end',shadow_only:true,no_order_created:true,at:now(),messages:msgCount,depth_messages:depthMsgCount,trade_messages:tradeMsgCount,synced_books:[...books.values()].filter(b=>b.ready).length});
+  ws.close();
+  await new Promise(resolve=>out.end(resolve));
 })().catch(e=>{console.error(e);process.exitCode=1});
