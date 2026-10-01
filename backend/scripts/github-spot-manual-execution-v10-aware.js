@@ -51,7 +51,7 @@ patch(
 
 patch(
   "if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');",
-  "if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');\n  if (SYMBOL === 'XECUSDT') decline('XEC historical holding is exit-only; new XEC entries are disabled');",
+  "if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');\n  if (SYMBOL === 'XECUSDT') decline('XEC historical holding is exit-only; new XEC entries are disabled');\n  if (SIGNAL_LANE === 'CORE' && Number.isFinite(SIGNAL_PCT) && SIGNAL_PCT >= 10) decline(\`Defensive anti-chase: CORE signal already extended \${SIGNAL_PCT.toFixed(3)}% in 24h (limit < 10%)\`);",
   'XEC exit-only entry block'
 );
 
