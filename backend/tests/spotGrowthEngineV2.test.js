@@ -24,8 +24,8 @@ const eligible = pyramidDecision({
   pullbackFromHighPct:0.018, currentPrice:109, nativeStopPrice:104, initialCostUsdt:60,
   currentPositionValueUsdt:64.2, equityUsdt:600, usdtFree:300, cashReserveUsdt:120, ratchetMultiplier:1
 });
-assert.strictEqual(eligible.allow, true);
-assert.strictEqual(eligible.quote_order_qty, 10.79);
+assert.strictEqual(eligible.allow, false);
+assert.strictEqual(eligible.reason, 'PYRAMIDING_DISABLED');
 
 const loss = pyramidDecision({
   lane:'CORE', symbol:'ABCUSDT', hasNativeProtection:true, historyCoversOwned:true,
