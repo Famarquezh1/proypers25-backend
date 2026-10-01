@@ -126,7 +126,9 @@ jobs:
           grep -q "resolveGrowthPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "GROWTH_ENGINE_V1" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q '"max_deployed_equity_pct": 0.65' backend/config/spot-growth-engine-v1.json
-          grep -q '"exceptional_cap_usdt": 70' backend/config/spot-growth-engine-v1.json
+          grep -q '"high_cap_usdt": 10' backend/config/spot-growth-engine-v1.json
+          grep -q '"high_floor_usdt": 10' backend/config/spot-growth-engine-v1.json
+          grep -q '"exceptional_cap_usdt": 10' backend/config/spot-growth-engine-v1.json
           grep -q "SIGNAL_MICROFLOW_SCORE" .github/workflows/spot-manual-approval.yml
           grep -q "V10_HARD_STOP_PCT = 0.012" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "V10_TAKE_PROFIT" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
