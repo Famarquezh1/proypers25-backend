@@ -119,11 +119,14 @@ function depth(sym,d){
   emit({type:'collector_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
+  ws.on('message',buf=>{try{const x=JSON.parse(buf),sym=String(x.data?.s||'').toUpperCase();if(x.stream?.includes('@depth'))depth(sym,x.data);else if(x.stream?.includes('@trade'))onTrade(sym,x.data);}catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
+  ws.on('error',e=>emit({type:'ws_error',at:now(),error:String(e.message||e)}));
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('WebSocket open timeout')),15000);ws.once('open',()=>{clearTimeout(timer);resolve();});ws.once('error',reject);});
   await new Promise(resolve=>setTimeout(resolve,750));
   const initialized=(await Promise.all(SYMBOLS.map(initBook))).filter(Boolean).length;
   if(!initialized) throw new Error('No Binance depth snapshots available from REST endpoints');
-  ws.on('message',buf=>{try{const x=JSON.parse(buf),sym=String(x.data.s||'').toUpperCase();if(x.stream.includes('@depth'))depth(sym,x.data);else if(x.stream.includes('@trade'))onTrade(sym,x.data);}catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
-  ws.on('error',e=>emit({type:'ws_error',at:now(),error:String(e.message||e)}));
-  setTimeout(()=>{emit({type:'collector_end',shadow_only:true,no_order_created:true,at:now()});ws.close();out.end();},RUN_MS);
+  await new Promise(resolve=>setTimeout(resolve,RUN_MS));
+  emit({type:'collector_end',shadow_only:true,no_order_created:true,at:now()});
+  ws.close();
+  await new Promise(resolve=>out.end(resolve));
 })().catch(e=>{console.error(e);process.exitCode=1});
