@@ -1,0 +1,32 @@
+name: Continuator GBT Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-continuator-gbt-gate.js'
+      - '.github/workflows/continuator-gbt-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GATE_START: '2026-04-01T00:00:00Z'
+      GATE_END: '2026-09-01T00:00:00Z'
+      GATE_MAX_ROWS: '450'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        run: |
+          node --check backend/scripts/github-continuator-gbt-gate.js
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' backend/scripts/github-continuator-gbt-gate.js
+      - name: Run nonlinear continuator gate
+        run: node backend/scripts/github-continuator-gbt-gate.js
