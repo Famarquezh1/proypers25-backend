@@ -1,0 +1,31 @@
+name: Derivatives Archive Alpha
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/derivatives_archive_alpha.py'
+      - '.github/workflows/derivatives-archive-alpha.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DA_START: '2026-08-01T00:00:00+00:00'
+      DA_END: '2026-09-01T00:00:00+00:00'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Safety check
+        run: |
+          python -m py_compile backend/scripts/derivatives_archive_alpha.py
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order|createOrder|placeOrder' backend/scripts/derivatives_archive_alpha.py
+      - name: Run derivatives archive alpha study
+        run: python backend/scripts/derivatives_archive_alpha.py
