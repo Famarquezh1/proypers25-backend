@@ -102,7 +102,7 @@ function score(s,b){
 (async()=>{
  process.env.DEV_START=new Date(START).toISOString();process.env.DEV_END=new Date(START+Math.floor((END-START)*.6)).toISOString();process.env.CONFIRM_START=process.env.DEV_END;process.env.CONFIRM_END=new Date(END).toISOString();
  const h=loadLib(),lib=h.loadR7(),built=await h.buildRaw(lib);
- const eligible=dedupe(built.raw.filter(x=>x.t>=START&&x.t<END).filter(h.productionEligible)).slice(0,MAX_ROWS);
+ const eligible=dedupe(built.raw.filter(x=>x.t>=START&&x.t<END).filter(h.productionEligible).filter(x=>Number(x.productionV42?.detail?.r24||0)<0.10)).slice(0,MAX_ROWS);
  const paths=[],skipped=[];for(const s of eligible){try{const p=await pathFor(s);if(p)paths.push(p);else skipped.push({symbol:s.symbol,t:s.t})}catch(e){skipped.push({symbol:s.symbol,t:s.t,error:e.message})}await sleep(10)}
  paths.sort((a,b)=>a.t-b.t);if(paths.length<180)throw Error('insufficient paths '+paths.length);
  const a=Math.floor(paths.length*.6),b=Math.floor(paths.length*.8),train=paths.slice(0,a),validation=paths.slice(a,b),holdout=paths.slice(b);
@@ -114,10 +114,10 @@ function score(s,b){
   promote=Boolean(hs.full_scale_rate>=.12&&hs.avg_net_pct>0&&delta>=.50&&hs.tp1_rate>=.10&&hs.runner_hit_rate>0);
   holdoutResult={cfg:selected.cfg,baseline:baseH,selected:hs,delta_avg_net_pct:delta,pass:promote};
  }
- console.log(JSON.stringify({ok:true,research_only:true,no_order_created:true,family:'SCOUT_CONFIRM_SCALE_RUNNER_V1',
+ console.log(JSON.stringify({ok:true,research_only:true,no_order_created:true,family:'SCOUT_CONFIRM_SCALE_RUNNER_ANTICHASE_V2',
   design:{scout_fraction:SCOUT,runner_target_pct:RUNNER_TARGET*100,tp1_pct:3,full_stop_pct:-1,runner_lock_pct:1,cost_pct:COST*100},
   rows:paths.length,skipped:skipped.length,blocks:{train:train.length,validation:validation.length,holdout:holdout.length},
   baselines:{validation:baseV,holdout:baseH},candidate_count:candidates.length,top_validation:candidates.slice(0,10),selected_config:selected,holdout_result:holdoutResult,
   production_decision:promote?'PROMOTE_TO_SHADOW':'REJECT_EXECUTION_ARCHITECTURE',promote_to_shadow:promote,
-  success_gate:'holdout positive avg net, >=+0.50pp vs immediate full entry, >=12% full-scale rate, >=10% TP1 rate, at least one +7% runner hit'},null,2));
+  anti_chase_r24_max_pct:10,success_gate:'holdout positive avg net, >=+0.50pp vs immediate full entry, >=12% full-scale rate, >=10% TP1 rate, at least one +7% runner hit'},null,2));
 })().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
