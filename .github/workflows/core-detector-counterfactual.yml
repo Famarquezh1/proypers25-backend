@@ -46,8 +46,7 @@ jobs:
               market_regime:str(/^- QUBO contexto: regime=([^ |]+)/m),
               base_utility:num(/^- QUBO features: base=([0-9.eE+-]+)/m),
               stable_norm:num(/stable=([0-9.eE+-]+)/m)};
-          });
-          .filter(x=>x.symbol&&Number.isFinite(x.signal_price));
+          }).filter(x=>x.symbol&&Number.isFinite(x.signal_price));
           fs.writeFileSync('core-counterfactual-input.json',JSON.stringify({signals},null,2));
           console.log('CORE signals:',signals.length);
           NODE
