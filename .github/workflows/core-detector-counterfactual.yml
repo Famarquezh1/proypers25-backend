@@ -1,0 +1,48 @@
+name: CORE Detector-Only Counterfactual
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build mature CORE detector-only cohort
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue list --repo "$GITHUB_REPOSITORY" --state all --search '"[SPOT SIGNAL]" in:title' --limit 100 --json number,title,body,createdAt,url > issues.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const issues=JSON.parse(fs.readFileSync('issues.json','utf8'));
+          const signals=issues.filter(x=>x.title.startsWith('[SPOT SIGNAL] ')&&!/Lane: V10_HUNTER/.test(x.body||'')).map(x=>{
+            const symbol=(x.title.match(/^\[SPOT SIGNAL\] ([^ ]+)/)||[])[1];
+            const price=Number(((x.body||'').match(/^- Precio: ([0-9.eE+-]+)/m)||[])[1]);
+            return {issue:x.number,url:x.url,symbol,signal_price:price,created_at:x.createdAt};
+          }).filter(x=>x.symbol&&Number.isFinite(x.signal_price));
+          fs.writeFileSync('core-counterfactual-input.json',JSON.stringify({signals},null,2));
+          console.log('CORE signals:',signals.length);
+          NODE
+      - name: Evaluate public Binance 1m outcomes
+        run: node backend/scripts/github-core-detector-counterfactual.js core-counterfactual-input.json core-counterfactual-results.json
+      - name: Summary
+        shell: bash
+        run: |
+          echo '### CORE detector-only counterfactual' >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.summary | "- Mature: \(.mature)/\(.total)\n- Continuators: \(.continuators) (\((.continuator_rate*10000|round)/100)%)\n- Hit +5%: \((.hit5_rate*10000|round)/100)%\n- Hit +10%: \((.hit10_rate*10000|round)/100)%\n- Avg MFE: \((.avg_mfe_pct*100|round)/100)%\n- Avg MAE: \((.avg_mae_pct*100|round)/100)%\n- Avg return 1h: \((.avg_return_1h_pct*100|round)/100)%\n- Avg return 4h net: \((.avg_return_4h_net_pct*100|round)/100)%"' core-counterfactual-results.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-detector-counterfactual
+          path: core-counterfactual-results.json
+          retention-days: 30
