@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/scripts/github-core-detector-counterfactual.js'
       - '.github/workflows/core-detector-counterfactual.yml'
+      - 'backend/scripts/github-core-feature-gate.js'
 
 permissions:
   contents: read
@@ -52,6 +53,13 @@ jobs:
           NODE
       - name: Evaluate public Binance 1m outcomes
         run: node backend/scripts/github-core-detector-counterfactual.js core-counterfactual-input.json core-counterfactual-results.json
+      - name: Test existing CORE features chronologically
+        run: node backend/scripts/github-core-feature-gate.js core-counterfactual-results.json core-feature-gate-results.json
+      - name: Feature gate summary
+        shell: bash
+        run: |
+          echo '### Existing CORE feature gate' >> "$GITHUB_STEP_SUMMARY"
+          jq -r '"- Blocks: train=\(.blocks.train), validation=\(.blocks.validation), holdout=\(.blocks.holdout)\n- Rules tested: \(.rules_tested)\n- Selected: \(.selected.id // "none")\n- Holdout pass: \(.holdout_result.pass // false)\n- Decision: \(.decision)"' core-feature-gate-results.json >> "$GITHUB_STEP_SUMMARY"
       - name: Summary
         shell: bash
         run: |
@@ -60,5 +68,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: core-detector-counterfactual
-          path: core-counterfactual-results.json
+          path: |
+            core-counterfactual-results.json
+            core-feature-gate-results.json
           retention-days: 30
