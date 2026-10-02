@@ -2,6 +2,11 @@ name: CORE Detector-Only Counterfactual
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-core-detector-counterfactual.js'
+      - '.github/workflows/core-detector-counterfactual.yml'
 
 permissions:
   contents: read
