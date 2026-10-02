@@ -44,13 +44,13 @@ async function label(s){
 function sigmoid(z){if(z>30)return 1;if(z<-30)return 0;return 1/(1+Math.exp(-z))}
 function mean(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:0}
 function quantiles(vals){const s=[...vals].filter(Number.isFinite).sort((a,b)=>a-b);if(s.length<5)return[];return [.15,.3,.45,.6,.75,.9].map(q=>s[Math.min(s.length-1,Math.floor(q*(s.length-1)))]).filter((v,i,a)=>i===0||v!==a[i-1])}
-function leafValue(rows,resids){return rows.length?mean(rows.map(i=>resids[i])):0}
+function leafValue(rows,resids){return rows.length?mean(rows.map(x=>resids[x.i])):0}
 function fitStump(rows,resids,featureIdxs){
  let best=null,bestErr=Infinity;
  for(const fi of featureIdxs){const f=FEATURES[fi],ths=quantiles(rows.map(i=>i.row[f]));for(const th of ths){
    const L=rows.filter(i=>i.row[f]<th),R=rows.filter(i=>i.row[f]>=th); if(L.length<8||R.length<8)continue;
    const lv=leafValue(L,resids),rv=leafValue(R,resids);
-   const err=L.reduce((s,i)=>s+(resids[i] - lv)**2,0)+R.reduce((s,i)=>s+(resids[i]-rv)**2,0);
+   const err=L.reduce((sum,x)=>sum+(resids[x.i]-lv)**2,0)+R.reduce((sum,x)=>sum+(resids[x.i]-rv)**2,0);
    if(err<bestErr){bestErr=err;best={f,th,lv,rv}}
  }}
  return best;
