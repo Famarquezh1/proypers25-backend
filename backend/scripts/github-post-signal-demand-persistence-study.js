@@ -1,74 +1,33 @@
 'use strict';
 
 /**
- * Cohort 4 — realized-trade continuation gate.
+ * Cohort 5 — delayed pullback/reclaim entry study.
+ * One decisive question: after an existing production signal, is it better to
+ * enter immediately or wait briefly for a controlled pullback + reclaim?
  *
- * Goal: after a real production signal but before a future entry, identify a
- * short early-path condition that preserves as many real winners as possible
- * while rejecting a material share of real losers.
- *
- * Labels come ONLY from real [SPOT EXIT] issues matched to the exact executed
- * entry orderId. Features use only the first 5 minutes after the signal.
- * Candidate selection uses discovery/validation; holdout is opened once.
- *
- * Research/shadow only. No credentials, no orders.
+ * Public Binance 1m candles only. No credentials. No orders.
+ * Candidate timing rules are selected on discovery+validation; holdout opens once.
  */
 
-const GH='https://api.github.com';
-const BIN='https://api.binance.com';
+const GH='https://api.github.com', BIN='https://api.binance.com';
 const TOKEN=process.env.GITHUB_TOKEN;
-const OBS=5;
-const MAX_SIGNALS=350;
-const COST=.004;
+const H=240, COST=.004, MAX_SIGNALS=420;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function json(url,headers={}){
   for(let i=0;i<5;i++){
-    const r=await fetch(url,{headers:{'User-Agent':'Proypers25-RealizedGate/1.0',...headers}});
-    const text=await r.text();
-    let body; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
-    if(r.ok)return body;
-    if(r.status===429||r.status>=500){await sleep(350*(i+1));continue;}
-    throw Error(r.status+' '+url+' '+String(body.message||body.raw||''));
+    const r=await fetch(url,{headers:{'User-Agent':'Proypers25-ReclaimEntry/1.0',...headers}});
+    if(r.ok)return r.json();
+    if(r.status===429||r.status>=500){await sleep(300*(i+1));continue;}
+    throw Error(r.status+' '+url);
   }
   throw Error('fetch failed '+url);
 }
 const ghHeaders=()=>({Authorization:'Bearer '+TOKEN,'X-GitHub-Api-Version':'2022-11-28'});
-function n(v,d=NaN){const x=Number(v);return Number.isFinite(x)?x:d}
-function avg(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:null}
-function median(a){if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]}
 function symbolOf(x){return ((String(x.title||'')+'\n'+String(x.body||'')).match(/\b([A-Z0-9]{2,15}USDT)\b/)||[])[1]||null}
-function orderIdFromComments(comments){
-  const text=(comments||[]).map(x=>String(x.body||'')).join('\n');
-  if(!/ejecut[oó] la compra Spot|compra Spot.*orderId|protecci[oó]n nativa fue armada/i.test(text))return null;
-  return (text.match(/orderId:\s*([0-9]+)/i)||[])[1]||null;
-}
-function parseExit(issue){
-  const b=String(issue.body||'');
-  const symbol=(b.match(/^- Símbolo:\s*([^\s]+USDT)\s*$/mi)||[])[1]||null;
-  const entryOrderId=(b.match(/^- entryOrderId=([0-9]+)\s*$/mi)||[])[1]||null;
-  const pnl=n((b.match(/^- PnL aprox\.:\s*([+-]?[0-9.]+)%/mi)||[])[1]);
-  const entry=n((b.match(/^- Entrada aprox\.:\s*([0-9.eE+-]+)/mi)||[])[1]);
-  const exit=n((b.match(/^- Salida aprox\.:\s*([0-9.eE+-]+)/mi)||[])[1]);
-  const reason=(b.match(/^- Motivo:\s*(.+)$/mi)||[])[1]||'UNKNOWN';
-  if(!symbol||!entryOrderId||!Number.isFinite(pnl))return null;
-  return {issue:issue.number,created_at:issue.created_at,symbol,entry_order_id:String(entryOrderId),pnl_pct:pnl,entry_price:entry,exit_price:exit,reason};
-}
-async function loadExitMap(){
-  const all=[];
-  const q=encodeURIComponent('repo:Famarquezh1/proypers25-backend is:issue in:title "[SPOT EXIT]"');
-  for(let page=1;page<=4;page++){
-    const d=await json(GH+'/search/issues?q='+q+'&sort=created&order=desc&per_page=100&page='+page,ghHeaders());
-    all.push(...(d.items||[]));
-    if((d.items||[]).length<100)break;
-  }
-  const map=new Map();
-  for(const issue of all){
-    const x=parseExit(issue); if(!x)continue;
-    if(!map.has(x.entry_order_id)||Date.parse(x.created_at)>Date.parse(map.get(x.entry_order_id).created_at))map.set(x.entry_order_id,x);
-  }
-  return map;
-}
+function avg(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:null}
+function med(a){if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]}
+
 async function loadSignals(){
   let issues=[];
   for(let p=1;p<=12;p++){
@@ -78,158 +37,177 @@ async function loadSignals(){
   }
   return issues
     .filter(x=>/\[SPOT SIGNAL\]/i.test(String(x.title||''))||/SPOT SIGNAL/i.test(String(x.body||'')))
-    .map(x=>({issue:x.number,symbol:symbolOf(x),t:Date.parse(x.created_at),created_at:x.created_at,title:x.title}))
+    .map(x=>({issue:x.number,symbol:symbolOf(x),t:Date.parse(x.created_at),created_at:x.created_at}))
     .filter(x=>x.symbol&&Number.isFinite(x.t))
-    .sort((a,b)=>b.t-a.t)
-    .slice(0,MAX_SIGNALS)
-    .sort((a,b)=>a.t-b.t);
+    .sort((a,b)=>b.t-a.t).slice(0,MAX_SIGNALS).sort((a,b)=>a.t-b.t);
 }
-async function comments(issue){return json(GH+'/repos/Famarquezh1/proypers25-backend/issues/'+issue+'/comments?per_page=100',ghHeaders())}
 async function klines(symbol,start,end){
   const u=new URL(BIN+'/api/v3/klines');
-  for(const [k,v] of Object.entries({symbol,interval:'1m',startTime:start,endTime:end,limit:30}))u.searchParams.set(k,v);
+  for(const [k,v] of Object.entries({symbol,interval:'1m',startTime:start,endTime:end,limit:500}))u.searchParams.set(k,v);
   return json(u);
 }
-function obsFeatures(k){
-  const open=+k[0][1], closes=k.map(r=>+r[4]), highs=k.map(r=>+r[2]), lows=k.map(r=>+r[3]);
-  const last=closes.at(-1), hi=Math.max(...highs), lo=Math.min(...lows);
-  let maxSeen=open,worstPullback=0,recoveryEvents=0,downEvents=0;
-  for(let i=0;i<closes.length;i++){
-    maxSeen=Math.max(maxSeen,highs[i]);
-    if(maxSeen>0)worstPullback=Math.min(worstPullback,lows[i]/maxSeen-1);
-    if(i>0&&closes[i]<closes[i-1]){
-      downEvents++;
-      if(i+1<closes.length&&closes[i+1]>closes[i])recoveryEvents++;
-    }
+function firstTouch(all,startIndex,entry){
+  let mfe=-Infinity,mae=Infinity,first3=null,firstNeg1=null,first5=null;
+  for(let i=startIndex+1;i<all.length;i++){
+    const hi=+all[i][2]/entry-1, lo=+all[i][3]/entry-1;
+    mfe=Math.max(mfe,hi); mae=Math.min(mae,lo);
+    const rel=i-startIndex;
+    if(first3===null&&hi>=.03)first3=rel;
+    if(first5===null&&hi>=.05)first5=rel;
+    if(firstNeg1===null&&lo<=-.01)firstNeg1=rel;
   }
-  const range=hi-lo;
+  const close=+all[Math.min(startIndex+H,all.length-1)][4];
+  const win=first3!==null&&(firstNeg1===null||first3<firstNeg1);
+  const loss=firstNeg1!==null&&(first3===null||firstNeg1<first3);
+  const fixed=win?.03-COST:loss?-.01-COST:(close/entry-1-COST);
+  return {win,loss,hit5:first5!==null&&(firstNeg1===null||first5<firstNeg1),mfe,mae,fixed_return:fixed};
+}
+function immediate(all){
+  const entry=+all[0][1];
+  if(!(entry>0))return null;
+  return {entered:true,entry_index:0,entry_price:entry,...firstTouch(all,0,entry)};
+}
+function reclaim(all,rule){
+  const signal=+all[0][1];
+  if(!(signal>0)||all.length<=rule.wait+1)return {entered:false};
+  const obs=all.slice(0,rule.wait);
+  const lows=obs.map(r=>+r[3]), highs=obs.map(r=>+r[2]);
+  const low=Math.min(...lows), high=Math.max(...highs);
+  const pullback=low/signal-1;
+  const entry=+all[rule.wait][1];
+  const prevClose=+all[rule.wait-1][4];
+  const reclaimFromLow=entry/low-1;
+  const chase=entry/signal-1;
+  const heldStructure=low/signal-1>=rule.maxDip;
+  const hadPullback=pullback<=rule.minDip;
+  const reclaimed=reclaimFromLow>=rule.minReclaim && entry>=prevClose;
+  const notChased=chase<=rule.maxChase;
+  if(!(heldStructure&&hadPullback&&reclaimed&&notChased))return {entered:false,pullback,reclaim_from_low:reclaimFromLow,chase};
+  return {entered:true,entry_index:rule.wait,entry_price:entry,pullback,reclaim_from_low:reclaimFromLow,chase,...firstTouch(all,rule.wait,entry)};
+}
+function summarize(rows,key){
+  const entered=rows.map(x=>x[key]).filter(x=>x&&x.entered);
+  const wins=entered.filter(x=>x.win);
   return {
-    retention:hi>open?(last-open)/(hi-open):0,
-    close_location:range>0?(last-lo)/range:.5,
-    drawdown_from_peak:hi>0?last/hi-1:0,
-    worst_pullback:worstPullback,
-    recovery_ratio:downEvents?recoveryEvents/downEvents:1,
-    low_breach:open>0?lo/open-1:0,
-    obs_return:open>0?last/open-1:0
+    signals:rows.length,entered:entered.length,coverage:rows.length?entered.length/rows.length:null,
+    wins:wins.length,win_rate:entered.length?wins.length/entered.length:null,
+    hit5_rate:entered.length?entered.filter(x=>x.hit5).length/entered.length:null,
+    avg_fixed_return:avg(entered.map(x=>x.fixed_return)),
+    median_fixed_return:med(entered.map(x=>x.fixed_return)),
+    avg_mfe:avg(entered.map(x=>x.mfe)),
+    avg_mae:avg(entered.map(x=>x.mae))
   };
 }
-function summarize(rows){
-  const wins=rows.filter(x=>x.actual_pnl_pct>0);
-  const losses=rows.filter(x=>x.actual_pnl_pct<0);
+function improvement(base,cand){
   return {
-    n:rows.length,wins:wins.length,losses:losses.length,
-    win_rate:rows.length?wins.length/rows.length:null,
-    avg_actual_pnl_pct:avg(rows.map(x=>x.actual_pnl_pct)),
-    median_actual_pnl_pct:median(rows.map(x=>x.actual_pnl_pct)),
-    avg_delayed_entry_return_pct:avg(rows.map(x=>x.delayed_entry_return_pct).filter(Number.isFinite))
-  };
-}
-function evalKeep(base,kept){
-  const b=summarize(base), k=summarize(kept);
-  const totalWins=b.wins,totalLosses=b.losses;
-  const winnerRetention=totalWins?kept.filter(x=>x.actual_pnl_pct>0).length/totalWins:0;
-  const lossRejection=totalLosses?(totalLosses-kept.filter(x=>x.actual_pnl_pct<0).length)/totalLosses:0;
-  return {
-    summary:k,
-    winner_retention:winnerRetention,
-    loss_rejection:lossRejection,
-    delta_win_rate:k.win_rate-b.win_rate,
-    delta_avg_pnl_pct:k.avg_actual_pnl_pct-b.avg_actual_pnl_pct,
-    delta_delayed_return_pct:k.avg_delayed_entry_return_pct-b.avg_delayed_entry_return_pct
+    delta_win_rate:cand.win_rate-base.win_rate,
+    delta_fixed_return:cand.avg_fixed_return-base.avg_fixed_return,
+    delta_hit5:cand.hit5_rate-base.hit5_rate
   };
 }
 
 (async()=>{
   if(!TOKEN)throw Error('GITHUB_TOKEN required');
-  const [signals,exitMap]=await Promise.all([loadSignals(),loadExitMap()]);
-  const matched=[];
+  const signals=await loadSignals();
+  const rows=[];
   for(const s of signals){
     try{
-      const cs=await comments(s.issue);
-      const oid=orderIdFromComments(cs);
-      if(!oid)continue;
-      const exit=exitMap.get(String(oid));
-      if(!exit||exit.symbol!==s.symbol)continue;
-      const k=await klines(s.symbol,s.t,s.t+(OBS+3)*60000);
-      if(!Array.isArray(k)||k.length<OBS+1)continue;
-      const f=obsFeatures(k.slice(0,OBS));
-      const delayedEntry=+k[OBS][1];
-      const delayedReturn=Number.isFinite(exit.exit_price)&&delayedEntry>0?(exit.exit_price/delayedEntry-1-COST)*100:null;
-      matched.push({...s,...f,entry_order_id:String(oid),actual_pnl_pct:exit.pnl_pct,exit_reason:exit.reason,exit_at:exit.created_at,delayed_entry_price:delayedEntry,delayed_entry_return_pct:delayedReturn});
+      const all=await klines(s.symbol,s.t,s.t+(H+12)*60000);
+      if(!Array.isArray(all)||all.length<90)continue;
+      rows.push({...s,all,immediate:immediate(all)});
     }catch(e){console.error('SKIP',s.issue,s.symbol,e.message)}
     await sleep(15);
   }
-  matched.sort((a,b)=>a.t-b.t);
-  if(matched.length<35)throw Error('insufficient realized trades '+matched.length);
+  if(rows.length<180)throw Error('insufficient rows '+rows.length);
+  rows.sort((a,b)=>a.t-b.t);
+  const a=Math.floor(rows.length*.60), b=Math.floor(rows.length*.80);
+  const discovery=rows.slice(0,a), validation=rows.slice(a,b), holdout=rows.slice(b);
 
-  const a=Math.floor(matched.length*.60), b=Math.floor(matched.length*.80);
-  const discovery=matched.slice(0,a),validation=matched.slice(a,b),holdout=matched.slice(b);
-  const features=['retention','close_location','drawdown_from_peak','worst_pullback','recovery_ratio','low_breach','obs_return'];
-  const thresholds=Object.fromEntries(features.map(feature=>[feature,median(discovery.map(x=>x[feature]).filter(Number.isFinite))]));
-
-  const singles=[];
-  for(const feature of features){
-    for(const dir of ['hi','lo']){
-      const threshold=thresholds[feature];
-      singles.push({label:feature+'_'+dir,terms:[{feature,dir,threshold}],fn:x=>dir==='hi'?x[feature]>=threshold:x[feature]<threshold});
+  const rules=[];
+  for(const wait of [1,2,3,4,5]){
+    for(const minDip of [-.001,-.0025,-.005,-.0075]){
+      for(const minReclaim of [.001,.0025,.005]){
+        for(const maxChase of [.005,.01,.02]){
+          rules.push({wait,minDip,minReclaim,maxChase,maxDip:-.015,label:`w${wait}_dip${minDip}_reclaim${minReclaim}_chase${maxChase}`});
+        }
+      }
     }
   }
-  const rules=[...singles];
-  for(let i=0;i<singles.length;i++){
-    for(let j=i+1;j<singles.length;j++){
-      const x=singles[i],y=singles[j];
-      if(x.terms[0].feature===y.terms[0].feature)continue;
-      rules.push({label:x.label+'__AND__'+y.label,terms:[...x.terms,...y.terms],fn:r=>x.fn(r)&&y.fn(r)});
-    }
+  for(const row of rows){
+    row.candidates={};
+    for(const rule of rules)row.candidates[rule.label]=reclaim(row.all,rule);
   }
 
-  const vb=summarize(validation), hb=summarize(holdout);
+  const dBase=summarize(discovery,'immediate'), vBase=summarize(validation,'immediate'), hBase=summarize(holdout,'immediate');
   const candidates=rules.map(rule=>{
-    const kept=validation.filter(rule.fn);
-    const ev=evalKeep(validation,kept);
+    const dk='candidates.'+rule.label;
+    const get=(set)=>set.map(r=>({...r,tmp:r.candidates[rule.label]}));
+    const dRows=get(discovery),vRows=get(validation);
+    const summarizeTmp=(set)=> {
+      const entered=set.map(x=>x.tmp).filter(x=>x&&x.entered);
+      return {
+        signals:set.length,entered:entered.length,coverage:set.length?entered.length/set.length:null,
+        wins:entered.filter(x=>x.win).length,
+        win_rate:entered.length?entered.filter(x=>x.win).length/entered.length:null,
+        hit5_rate:entered.length?entered.filter(x=>x.hit5).length/entered.length:null,
+        avg_fixed_return:avg(entered.map(x=>x.fixed_return)),
+        median_fixed_return:med(entered.map(x=>x.fixed_return)),
+        avg_mfe:avg(entered.map(x=>x.mfe)),
+        avg_mae:avg(entered.map(x=>x.mae))
+      };
+    };
+    const d=summarizeTmp(dRows),v=summarizeTmp(vRows);
+    const di=improvement(dBase,d),vi=improvement(vBase,v);
     const eligible=Boolean(
-      kept.length>=Math.max(6,Math.floor(validation.length*.30)) &&
-      ev.winner_retention>=.50 &&
-      ev.loss_rejection>=.20 &&
-      ev.delta_win_rate>0 &&
-      ev.delta_avg_pnl_pct>0
+      d.entered>=30 && v.entered>=12 &&
+      d.coverage>=.15 && v.coverage>=.15 &&
+      d.avg_fixed_return>dBase.avg_fixed_return &&
+      v.avg_fixed_return>vBase.avg_fixed_return &&
+      d.win_rate>dBase.win_rate &&
+      v.win_rate>vBase.win_rate
     );
     const score=eligible
-      ? ev.delta_avg_pnl_pct + ev.delta_win_rate*2 + ev.loss_rejection*.5 + ev.winner_retention*.25
+      ? vi.delta_fixed_return*4 + vi.delta_win_rate + Math.max(0,vi.delta_hit5)*.25 + v.coverage*.10
       : -Infinity;
-    return {label:rule.label,terms:rule.terms,validation:ev,eligible,score,fn:rule.fn};
+    return {rule,discovery:d,validation:v,discovery_improvement:di,validation_improvement:vi,eligible,score};
   }).sort((x,y)=>y.score-x.score);
 
   const selected=candidates.find(x=>x.eligible)||null;
   let holdoutResult=null,promote=false;
   if(selected){
-    const kept=holdout.filter(selected.fn);
-    const ev=evalKeep(holdout,kept);
+    const entered=holdout.map(r=>r.candidates[selected.rule.label]).filter(x=>x&&x.entered);
+    const h={
+      signals:holdout.length,entered:entered.length,coverage:holdout.length?entered.length/holdout.length:null,
+      wins:entered.filter(x=>x.win).length,
+      win_rate:entered.length?entered.filter(x=>x.win).length/entered.length:null,
+      hit5_rate:entered.length?entered.filter(x=>x.hit5).length/entered.length:null,
+      avg_fixed_return:avg(entered.map(x=>x.fixed_return)),
+      median_fixed_return:med(entered.map(x=>x.fixed_return)),
+      avg_mfe:avg(entered.map(x=>x.mfe)),
+      avg_mae:avg(entered.map(x=>x.mae))
+    };
+    const hi=improvement(hBase,h);
     promote=Boolean(
-      kept.length>=Math.max(4,Math.floor(holdout.length*.25)) &&
-      ev.winner_retention>=.50 &&
-      ev.loss_rejection>0 &&
-      ev.delta_win_rate>0 &&
-      ev.delta_avg_pnl_pct>0
+      h.entered>=12 && h.coverage>=.15 &&
+      h.avg_fixed_return>hBase.avg_fixed_return &&
+      h.win_rate>hBase.win_rate &&
+      h.avg_fixed_return>0
     );
-    holdoutResult={label:selected.label,terms:selected.terms,holdout:ev,pass:promote};
+    holdoutResult={rule:selected.rule,baseline:hBase,reclaim:h,improvement:hi,pass:promote};
   }
 
   console.log(JSON.stringify({
     ok:true,research_only:true,no_order_created:true,
-    family:'REALIZED_TRADE_CONTINUATION_GATE_COHORT_4',
-    objective:'preserve real winners while rejecting real losers before a future entry',
-    observation_minutes:OBS,
-    realized_trades:matched.length,
+    family:'DELAYED_PULLBACK_RECLAIM_ENTRY_COHORT_5',
+    objective:'improve realized-style +3/-1 payoff by changing entry timing after an existing signal',
+    rows:rows.length,
     blocks:{discovery:discovery.length,validation:validation.length,holdout:holdout.length},
-    baselines:{validation:vb,holdout:hb},
-    frozen_thresholds:thresholds,
+    baseline:{discovery:dBase,validation:vBase,holdout:hBase},
     candidate_count:candidates.length,
-    top_validation_candidates:candidates.slice(0,10).map(({fn,...x})=>x),
-    selected_rule:selected?(({fn,...x})=>x)(selected):null,
+    top_validation_candidates:candidates.slice(0,12),
+    selected_rule:selected,
     holdout_result:holdoutResult,
-    production_decision:promote?'PROMOTE_TO_SHADOW':'DO_NOT_PROMOTE',
-    promote_to_shadow:promote,
-    note:'A passing rule remains shadow-only; production entry logic is unchanged.'
+    production_decision:promote?'PROMOTE_RECLAIM_ENTRY_TO_SHADOW':'DO_NOT_PROMOTE',
+    promote_to_shadow:promote
   },null,2));
 })().catch(e=>{console.error(e.stack||e.message||String(e));process.exit(1)});
