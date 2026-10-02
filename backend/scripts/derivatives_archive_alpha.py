@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Trigger after workflow registration.
 import csv, io, json, math, os, statistics, time, urllib.request, zipfile
 from datetime import datetime, timedelta, timezone
 
