@@ -1,0 +1,32 @@
+name: Pullback Reclaim Entry Study
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-pullback-reclaim-entry-study.js'
+      - '.github/workflows/pullback-reclaim-entry-study.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PR_START: '2026-04-01T00:00:00Z'
+      PR_END: '2026-09-01T00:00:00Z'
+      PR_MAX_ROWS: '450'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        run: |
+          node --check backend/scripts/github-pullback-reclaim-entry-study.js
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' backend/scripts/github-pullback-reclaim-entry-study.js
+      - name: Run pullback reclaim entry study
+        run: node backend/scripts/github-pullback-reclaim-entry-study.js
