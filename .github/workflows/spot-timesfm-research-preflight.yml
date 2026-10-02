@@ -1,0 +1,46 @@
+name: Spot TimesFM Research Preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/preflight.py'
+permissions:
+  contents: read
+jobs:
+  preflight:
+    name: TimesFM read-only resource check
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate compatible Python
+        id: py
+        shell: powershell
+        run: |
+          $candidates = @('py -3.13','py -3.12','py -3.11','py -3.10','python')
+          foreach ($candidate in $candidates) {
+            try {
+              $parts=$candidate.Split(' ')
+              $exe=$parts[0]; $args=@($parts[1..($parts.Length-1)]) + @('-c','import sys; print(sys.executable); assert sys.version_info >= (3,10)')
+              & $exe @args
+              if ($LASTEXITCODE -eq 0) { "cmd=$candidate" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append; exit 0 }
+            } catch {}
+          }
+          throw 'Python >=3.10 not found'
+      - name: Install tiny preflight dependency
+        shell: powershell
+        run: |
+          $cmd="${{ steps.py.outputs.cmd }}"
+          Invoke-Expression "$cmd -m pip install --quiet psutil"
+      - name: Run preflight
+        shell: powershell
+        run: |
+          $cmd="${{ steps.py.outputs.cmd }}"
+          Invoke-Expression "$cmd research/timesfm/preflight.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: timesfm-preflight-${{ github.run_id }}
+          path: timesfm-preflight.json
+          retention-days: 7
