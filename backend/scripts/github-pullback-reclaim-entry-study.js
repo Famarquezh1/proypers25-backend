@@ -1,4 +1,5 @@
 'use strict';
+// Trigger after workflow registration.
 
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const HIST=path.join(__dirname,'train-spot-momentum-continuation-historical.js');
