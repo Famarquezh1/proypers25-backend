@@ -1,4 +1,5 @@
 'use strict';
+// Trigger historical replay after workflow registration.
 
 const fs = require('fs');
 const os = require('os');
