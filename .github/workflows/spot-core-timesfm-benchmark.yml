@@ -40,7 +40,7 @@ jobs:
               rows.extend(x for x in batch if "pull_request" not in x)
               if len(batch)<100: break
           slim=[{"number":x["number"],"title":x["title"],"body":x.get("body") or "","createdAt":x["created_at"],"url":x["html_url"]} for x in rows]
-          json.dump(slim,open("issues.json","w"),ensure_ascii=False)
+          json.dump(slim,open("issues.json","w",encoding="utf-8"),ensure_ascii=False)
           print("issues="+str(len(slim)))
           '@ | Set-Content fetch_issues.py -Encoding utf8
           & $env:PROYPERS_PY fetch_issues.py
@@ -57,7 +57,7 @@ jobs:
               if not m:
                   continue
               out.append({"issue":x["number"],"url":x["url"],"symbol":x["title"].split()[2],"signal_price":float(m.group(1)),"created_at":x["createdAt"]})
-          json.dump({"signals":out},open("core-timesfm-input.json","w"),indent=2)
+          json.dump({"signals":out},open("core-timesfm-input.json","w",encoding="utf-8"),indent=2)
           print("signals="+str(len(out)))
           '@ | Set-Content build_cohort.py -Encoding utf8
           & $env:PROYPERS_PY build_cohort.py
