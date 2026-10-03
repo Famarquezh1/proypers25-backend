@@ -1,0 +1,41 @@
+name: Spot TimesFM 2.5 Smoke
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/smoke.py'
+      - '.github/workflows/spot-timesfm-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    name: TimesFM 2.5 CPU research smoke
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Python 3.13
+        shell: powershell
+        run: |
+          $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.13 path unavailable to runner' }
+          "PROYPERS_PY=$py" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $cache=Join-Path $env:RUNNER_TEMP 'timesfm-hf-cache'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "HF_HOME=$cache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install TimesFM 2.5 runtime
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY -m pip install --quiet --upgrade "timesfm[torch]==2.0.2"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run real model smoke
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY research/timesfm/smoke.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: timesfm-smoke-${{ github.run_id }}
+          path: timesfm-smoke.json
+          retention-days: 7
