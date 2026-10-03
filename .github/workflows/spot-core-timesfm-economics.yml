@@ -1,0 +1,31 @@
+name: Spot CORE TimesFM Economic Evaluation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/evaluate_economics.py'
+      - '.github/workflows/spot-core-timesfm-economics.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download frozen fixed-score evaluation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 37089782121 --repo "$GITHUB_REPOSITORY" -n core-timesfm-fixed-score-evaluation -D frozen
+      - name: Evaluate net growth
+        run: |
+          cp frozen/core-timesfm-evaluation.json .
+          python research/timesfm/evaluate_economics.py | tee economic-summary.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-timesfm-economic-evaluation
+          path: |
+            core-timesfm-economic-evaluation.json
+            economic-summary.txt
+          retention-days: 30
