@@ -1,0 +1,62 @@
+name: Spot CORE TimesFM Prospective Shadow
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    if: startsWith(github.event.issue.title, '[SPOT SIGNAL] ')
+    runs-on: ubuntu-latest
+    outputs:
+      symbol: ${{ steps.s.outputs.symbol }}
+      lane: ${{ steps.s.outputs.lane }}
+      price: ${{ steps.s.outputs.price }}
+    steps:
+      - id: s
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
+          LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
+          PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
+          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
+          echo "lane=${LANE:-CORE}" >> "$GITHUB_OUTPUT"
+          echo "price=$PRICE" >> "$GITHUB_OUTPUT"
+  forecast:
+    needs: prepare
+    if: needs.prepare.outputs.lane == 'CORE'
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    timeout-minutes: 20
+    env:
+      SIGNAL_SYMBOL: ${{ needs.prepare.outputs.symbol }}
+      SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
+      SIGNAL_CREATED_AT: ${{ github.event.issue.created_at }}
+      SIGNAL_ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use TimesFM runtime
+        shell: powershell
+        run: |
+          $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.13 unavailable' }
+          "PROYPERS_PY=$py" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $cache=Join-Path $env:RUNNER_TEMP 'timesfm-hf-cache'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "HF_HOME=$cache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Ensure TimesFM 2.5
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY -m pip install --quiet "timesfm[torch]==2.0.2"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Freeze prospective decision
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY research/timesfm/prospective_shadow.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-timesfm-prospective-${{ needs.prepare.outputs.symbol }}-${{ github.run_id }}
+          path: core-timesfm-prospective.json
+          retention-days: 30
