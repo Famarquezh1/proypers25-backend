@@ -1,39 +1,31 @@
 name: Spot CORE TimesFM Prospective Shadow
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
+    inputs:
+      symbol:
+        required: true
+        type: string
+      price:
+        required: true
+        type: string
+      signal_created_at:
+        required: true
+        type: string
+      signal_issue:
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
-  prepare:
-    if: startsWith(github.event.issue.title, '[SPOT SIGNAL] ')
-    runs-on: ubuntu-latest
-    outputs:
-      symbol: ${{ steps.s.outputs.symbol }}
-      lane: ${{ steps.s.outputs.lane }}
-      price: ${{ steps.s.outputs.price }}
-    steps:
-      - id: s
-        env:
-          TITLE: ${{ github.event.issue.title }}
-          BODY: ${{ github.event.issue.body }}
-        run: |
-          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
-          LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
-          PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
-          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
-          echo "lane=${LANE:-CORE}" >> "$GITHUB_OUTPUT"
-          echo "price=$PRICE" >> "$GITHUB_OUTPUT"
   forecast:
-    needs: prepare
-    if: needs.prepare.outputs.lane == 'CORE'
+    # Dispatched directly by the production radar only for its CORE signal path.
     runs-on: [self-hosted, Windows, X64, research-only, research-light]
     timeout-minutes: 20
     env:
-      SIGNAL_SYMBOL: ${{ needs.prepare.outputs.symbol }}
-      SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
-      SIGNAL_CREATED_AT: ${{ github.event.issue.created_at }}
-      SIGNAL_ISSUE: ${{ github.event.issue.number }}
+      SIGNAL_SYMBOL: ${{ inputs.symbol }}
+      SIGNAL_PRICE: ${{ inputs.price }}
+      SIGNAL_CREATED_AT: ${{ inputs.signal_created_at }}
+      SIGNAL_ISSUE: ${{ inputs.signal_issue }}
     steps:
       - uses: actions/checkout@v4
       - name: Use TimesFM runtime
@@ -57,6 +49,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
-          name: core-timesfm-prospective-${{ needs.prepare.outputs.symbol }}-${{ github.run_id }}
+          name: core-timesfm-prospective-${{ inputs.symbol }}-${{ github.run_id }}
           path: core-timesfm-prospective.json
           retention-days: 30
