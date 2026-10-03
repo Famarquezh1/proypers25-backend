@@ -323,6 +323,19 @@ jobs:
             'V8 HUNTER es solo evidencia independiente: no habilita, bloquea, prioriza ni modifica la orden. Acción real: validación y ejecución autónoma V4.2/QUBO en el runner local.')
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
 
+      - name: Dispatch CORE TimesFM prospective shadow
+        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+          PRICE: ${{ steps.scan.outputs.price }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNAL_CREATED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          gh workflow run spot-core-timesfm-prospective.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f symbol="$SYMBOL" -f price="$PRICE" -f signal_created_at="$SIGNAL_CREATED_AT" -f signal_issue=""
+          echo "TimesFM prospective shadow dispatched for $SYMBOL; no order authority."
+
       - name: Dispatch autonomous local validator
         if: steps.scan.outputs.notify == 'true'
         env:
