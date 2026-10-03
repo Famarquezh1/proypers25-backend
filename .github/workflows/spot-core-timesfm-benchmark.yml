@@ -1,0 +1,51 @@
+name: Spot CORE TimesFM Historical Benchmark
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/core_benchmark.py'
+      - '.github/workflows/spot-core-timesfm-benchmark.yml'
+permissions:
+  contents: read
+  issues: read
+jobs:
+  benchmark:
+    name: CORE TimesFM retrospective benchmark
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CORE cohort from signal issues
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue list --repo $env:GITHUB_REPOSITORY --state all --search '"[SPOT SIGNAL]" in:title' --limit 100 --json number,title,body,createdAt,url | Out-File issues.json -Encoding utf8
+          node -e "const fs=require('fs'),a=JSON.parse(fs.readFileSync('issues.json','utf8'));const signals=a.filter(x=>x.title.startsWith('[SPOT SIGNAL] ')&&!/Lane: V10_HUNTER/.test(x.body||'')).map(x=>{const b=x.body||'',n=r=>{const m=b.match(r);return m?Number(m[1]):null};return {issue:x.number,url:x.url,symbol:(x.title.match(/^\[SPOT SIGNAL\] ([^ ]+)/)||[])[1],signal_price:n(/^- Precio: ([0-9.eE+-]+)/m),created_at:x.createdAt}}).filter(x=>x.symbol&&Number.isFinite(x.signal_price));fs.writeFileSync('core-timesfm-input.json',JSON.stringify({signals},null,2));console.log('signals='+signals.length)"
+      - name: Use existing TimesFM runtime
+        shell: powershell
+        run: |
+          $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.13 unavailable' }
+          "PROYPERS_PY=$py" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $cache=Join-Path $env:RUNNER_TEMP 'timesfm-hf-cache'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "HF_HOME=$cache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Ensure TimesFM 2.5 runtime
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY -m pip install --quiet "timesfm[torch]==2.0.2"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Forecast historical CORE contexts
+        shell: powershell
+        run: |
+          & $env:PROYPERS_PY research/timesfm/core_benchmark.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-timesfm-benchmark-${{ github.run_id }}
+          path: |
+            core-timesfm-input.json
+            core-timesfm-results.json
+          retention-days: 30
