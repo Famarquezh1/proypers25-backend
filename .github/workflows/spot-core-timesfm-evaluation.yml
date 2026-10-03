@@ -1,0 +1,31 @@
+name: Spot CORE TimesFM Fixed-Score Evaluation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/evaluate_core_forecasts.py'
+      - '.github/workflows/spot-core-timesfm-evaluation.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download frozen TimesFM forecasts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 37088444452 --repo "$GITHUB_REPOSITORY" -n core-timesfm-benchmark-37088444452 -D frozen
+      - name: Evaluate predefined score against mature outcomes
+        run: |
+          cp frozen/core-timesfm-results.json .
+          python research/timesfm/evaluate_core_forecasts.py | tee evaluation-summary.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-timesfm-fixed-score-evaluation
+          path: |
+            core-timesfm-evaluation.json
+            evaluation-summary.txt
+          retention-days: 30
