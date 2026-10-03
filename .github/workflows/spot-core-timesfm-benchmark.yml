@@ -15,14 +15,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Build CORE cohort from signal issues
-        shell: powershell
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh issue list --repo $env:GITHUB_REPOSITORY --state all --search '"[SPOT SIGNAL]" in:title' --limit 100 --json number,title,body,createdAt,url | Out-File issues.json -Encoding utf8
-          node -e "const fs=require('fs'),a=JSON.parse(fs.readFileSync('issues.json','utf8'));const signals=a.filter(x=>x.title.startsWith('[SPOT SIGNAL] ')&&!/Lane: V10_HUNTER/.test(x.body||'')).map(x=>{const b=x.body||'',n=r=>{const m=b.match(r);return m?Number(m[1]):null};return {issue:x.number,url:x.url,symbol:(x.title.match(/^\[SPOT SIGNAL\] ([^ ]+)/)||[])[1],signal_price:n(/^- Precio: ([0-9.eE+-]+)/m),created_at:x.createdAt}}).filter(x=>x.symbol&&Number.isFinite(x.signal_price));fs.writeFileSync('core-timesfm-input.json',JSON.stringify({signals},null,2));console.log('signals='+signals.length)"
-      - name: Use existing TimesFM runtime
+      - name: Use Python 3.13
         shell: powershell
         run: |
           $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
@@ -31,6 +24,29 @@ jobs:
           $cache=Join-Path $env:RUNNER_TEMP 'timesfm-hf-cache'
           New-Item -ItemType Directory -Force -Path $cache | Out-Null
           "HF_HOME=$cache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build CORE cohort from signal issues
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue list --repo $env:GITHUB_REPOSITORY --state all --limit 100 --json number,title,body,createdAt,url | Out-File issues.json -Encoding utf8
+          @'
+          import json,re
+          a=json.load(open("issues.json",encoding="utf-8-sig"))
+          out=[]
+          for x in a:
+              body=x.get("body") or ""
+              if not x["title"].startswith("[SPOT SIGNAL] ") or "Lane: V10_HUNTER" in body:
+                  continue
+              m=re.search(r"^- Precio: ([0-9.eE+-]+)",body,re.M)
+              if not m:
+                  continue
+              out.append({"issue":x["number"],"url":x["url"],"symbol":x["title"].split()[2],"signal_price":float(m.group(1)),"created_at":x["createdAt"]})
+          json.dump({"signals":out},open("core-timesfm-input.json","w"),indent=2)
+          print("signals="+str(len(out)))
+          '@ | Set-Content build_cohort.py -Encoding utf8
+          & $env:PROYPERS_PY build_cohort.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Ensure TimesFM 2.5 runtime
         shell: powershell
         run: |
