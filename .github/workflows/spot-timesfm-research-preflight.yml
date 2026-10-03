@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'research/timesfm/preflight.py'
+      - '.github/workflows/spot-timesfm-research-preflight.yml'
 permissions:
   contents: read
 jobs:
@@ -18,26 +19,47 @@ jobs:
         id: py
         shell: powershell
         run: |
-          $candidates = @('py -3.13','py -3.12','py -3.11','py -3.10','python')
+          $candidates = @(
+            @{exe='py'; prefix=@('-3.13')},
+            @{exe='py'; prefix=@('-3.12')},
+            @{exe='py'; prefix=@('-3.11')},
+            @{exe='py'; prefix=@('-3.10')},
+            @{exe='python'; prefix=@()},
+            @{exe='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'; prefix=@()},
+            @{exe='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python39\python.exe'; prefix=@()}
+          )
           foreach ($candidate in $candidates) {
             try {
-              $parts=$candidate.Split(' ')
-              $exe=$parts[0]; $args=@($parts[1..($parts.Length-1)]) + @('-c','import sys; print(sys.executable); assert sys.version_info >= (3,10)')
-              & $exe @args
-              if ($LASTEXITCODE -eq 0) { "cmd=$candidate" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append; exit 0 }
+              $exe=$candidate.exe
+              if ($exe -match '\\' -and -not (Test-Path $exe)) { continue }
+              $prefix=@($candidate.prefix)
+              & $exe @prefix -c "import sys; print(sys.executable); assert sys.version_info >= (3,10)"
+              if ($LASTEXITCODE -eq 0) {
+                "exe=$exe" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+                "prefix=$($prefix -join ' ')" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+                exit 0
+              }
             } catch {}
           }
-          throw 'Python >=3.10 not found'
+          throw 'Python >=3.10 not found or inaccessible to runner service'
       - name: Install tiny preflight dependency
         shell: powershell
         run: |
-          $cmd="${{ steps.py.outputs.cmd }}"
-          Invoke-Expression "$cmd -m pip install --quiet psutil"
+          $exe="${{ steps.py.outputs.exe }}"
+          $prefix="${{ steps.py.outputs.prefix }}"
+          $argv=@()
+          if ($prefix) { $argv += $prefix.Split(' ') }
+          & $exe @argv -m pip install --quiet psutil
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run preflight
         shell: powershell
         run: |
-          $cmd="${{ steps.py.outputs.cmd }}"
-          Invoke-Expression "$cmd research/timesfm/preflight.py"
+          $exe="${{ steps.py.outputs.exe }}"
+          $prefix="${{ steps.py.outputs.prefix }}"
+          $argv=@()
+          if ($prefix) { $argv += $prefix.Split(' ') }
+          & $exe @argv research/timesfm/preflight.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
