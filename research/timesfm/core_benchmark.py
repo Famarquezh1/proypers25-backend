@@ -4,6 +4,8 @@ import torch, timesfm
 
 BASE="https://data-api.binance.vision"
 IN=os.environ.get("CORE_INPUT","core-timesfm-input.json")
+SHARD_INDEX=int(os.environ.get("CORE_SHARD_INDEX","0"))
+SHARD_COUNT=max(1,int(os.environ.get("CORE_SHARD_COUNT","1")))
 OUT=os.environ.get("CORE_OUTPUT","core-timesfm-results.json")
 CONTEXT=512
 HORIZON=60
@@ -30,7 +32,7 @@ data=json.load(open(IN,encoding="utf-8"))
 model=timesfm.TimesFM_2p5_200M_torch.from_pretrained("google/timesfm-2.5-200m-pytorch",cache_dir=os.environ.get("HF_HOME"),force_download=False)
 model.compile(timesfm.ForecastConfig(max_context=CONTEXT,max_horizon=HORIZON,per_core_batch_size=8,normalize_inputs=True,use_continuous_quantile_head=True,force_flip_invariance=True,infer_is_positive=True,fix_quantile_crossing=True))
 rows=[]; prepared=[]
-signals=data.get("signals",[])
+signals=[s for i,s in enumerate(data.get("signals",[])) if i % SHARD_COUNT == SHARD_INDEX]
 for idx,s in enumerate(signals,1):
     row=dict(s); rows.append(row)
     try:
@@ -57,7 +59,7 @@ for off in range(0,len(prepared),BATCH):
         for ri,_,_ in batch: rows[ri].update({"status":"ERROR","error":repr(e)})
     print(f"[{min(off+BATCH,len(prepared))}/{len(prepared)}] forecast batch",flush=True)
 result={"ok":True,"research_only":True,"shadow_only":True,"no_order_created":True,"model":"google/timesfm-2.5-200m-pytorch",
- "context_bars":CONTEXT,"horizon_min":HORIZON,"definition":"Forecast inputs end before signal timestamp; outcome labels are never model inputs.",
+ "context_bars":CONTEXT,"horizon_min":HORIZON,"shard_index":SHARD_INDEX,"shard_count":SHARD_COUNT,"definition":"Forecast inputs end before signal timestamp; outcome labels are never model inputs.",
  "rows":rows,"coverage":{"total":len(rows),"forecasted":sum(r["status"]=="FORECASTED" for r in rows),"errors":sum(r["status"]=="ERROR" for r in rows)}}
 json.dump(result,open(OUT,"w",encoding="utf-8"),indent=2)
 print(json.dumps(result["coverage"],indent=2))
