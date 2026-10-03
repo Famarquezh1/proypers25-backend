@@ -1,0 +1,38 @@
+name: Spot CORE TimesFM Full Economic Evaluation
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/spot-core-timesfm-full-economics.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all 8 frozen forecast shards
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p merged
+          gh run download 37131231885 --repo "$GITHUB_REPOSITORY" -p 'core-timesfm-benchmark-37131231885-*' -D downloaded
+          find downloaded -type f -name 'core-timesfm-results-*.json' -exec cp {} merged/ \;
+          echo "forecast_files=$(find merged -type f | wc -l)"
+      - name: Evaluate realized 4h outcomes
+        run: python research/timesfm/evaluate_core_forecasts.py | tee full-score-summary.txt
+      - name: Evaluate economics
+        run: python research/timesfm/evaluate_economics.py | tee full-economic-summary.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-timesfm-full-economic-evaluation
+          path: |
+            core-timesfm-evaluation.json
+            core-timesfm-economic-evaluation.json
+            full-score-summary.txt
+            full-economic-summary.txt
+          retention-days: 30
