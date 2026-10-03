@@ -12,3 +12,5 @@ report["resource_gate"]=bool(report["compatible_python"] and report["disk_free_g
 with open("timesfm-preflight.json","w",encoding="utf-8") as f: json.dump(report,f,indent=2)
 print(json.dumps(report,indent=2))
 if not report["resource_gate"]: sys.exit(2)
+
+# Triggered after workflow registration; read-only research preflight.
