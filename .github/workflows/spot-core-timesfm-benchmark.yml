@@ -13,6 +13,11 @@ jobs:
     name: CORE TimesFM retrospective benchmark
     runs-on: [self-hosted, Windows, X64, research-only, research-light]
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
       - name: Use Python 3.13
@@ -69,14 +74,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Forecast historical CORE contexts
         shell: powershell
+        env:
+          CORE_SHARD_INDEX: ${{ matrix.shard }}
+          CORE_SHARD_COUNT: 8
+          CORE_OUTPUT: core-timesfm-results-${{ matrix.shard }}.json
         run: |
           & $env:PROYPERS_PY research/timesfm/core_benchmark.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: core-timesfm-benchmark-${{ github.run_id }}
+          name: core-timesfm-benchmark-${{ github.run_id }}-${{ matrix.shard }}
           path: |
             core-timesfm-input.json
-            core-timesfm-results.json
+            core-timesfm-results-${{ matrix.shard }}.json
           retention-days: 30
