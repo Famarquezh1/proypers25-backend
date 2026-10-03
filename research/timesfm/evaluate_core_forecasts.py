@@ -1,6 +1,12 @@
 import json, time, urllib.parse, urllib.request, statistics
 H=240
-d=json.load(open("core-timesfm-results.json",encoding="utf-8"))
+import glob, os
+files=sorted(glob.glob(os.environ.get("CORE_RESULTS_GLOB","merged/core-timesfm-results-*.json")))
+if not files: files=["core-timesfm-results.json"]
+merged=[]
+for f in files:
+  z=json.load(open(f,encoding="utf-8")); merged.extend(z.get("rows",[]))
+d={"rows":merged}
 rows=[]
 def get(url):
   for i in range(5):
@@ -40,4 +46,5 @@ result={"ok":True,"research_only":True,"no_order_created":True,"rule":"forecast_
  "chronological_second_half":{"baseline":stats(rows[mid:]),"selected":stats([x for x in rows[mid:] if x["forecast_edge_pct"]>0])},
  "rows":rows}
 json.dump(result,open("core-timesfm-evaluation.json","w"),indent=2)
+print("forecast_files="+str(len(files))+" merged_rows="+str(len(merged)))
 print(json.dumps({k:v for k,v in result.items() if k!="rows"},indent=2))
