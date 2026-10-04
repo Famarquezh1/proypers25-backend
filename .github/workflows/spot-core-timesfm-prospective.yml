@@ -20,7 +20,7 @@ jobs:
   forecast:
     # Dispatched directly by the production radar only for its CORE signal path.
     runs-on: [self-hosted, Windows, X64, research-only, research-light]
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       SIGNAL_SYMBOL: ${{ inputs.symbol }}
       SIGNAL_PRICE: ${{ inputs.price }}
@@ -34,9 +34,11 @@ jobs:
           $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
           if (-not (Test-Path $py)) { throw 'Python 3.13 unavailable' }
           "PROYPERS_PY=$py" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $cache=Join-Path $env:RUNNER_TEMP 'timesfm-hf-cache'
+          $cache=Join-Path $env:USERPROFILE '.cache\proypers-timesfm'
           New-Item -ItemType Directory -Force -Path $cache | Out-Null
           "HF_HOME=$cache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          # Keep model cache persistent; clear only disposable runner temp from prior TimesFM jobs.
+          Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'timesfm-hf-cache*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
       - name: Ensure TimesFM 2.5
         shell: powershell
         run: |
