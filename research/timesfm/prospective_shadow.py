@@ -7,7 +7,8 @@ BASE="https://data-api.binance.vision"
 SYMBOL=os.environ["SIGNAL_SYMBOL"]
 PRICE=float(os.environ["SIGNAL_PRICE"])
 CREATED=os.environ["SIGNAL_CREATED_AT"]
-ISSUE_RAW=os.environ.get("SIGNAL_ISSUE","").strip()\nISSUE=int(ISSUE_RAW) if ISSUE_RAW else None
+ISSUE_RAW=os.environ.get("SIGNAL_ISSUE","").strip()
+ISSUE=int(ISSUE_RAW) if ISSUE_RAW else None
 CONTEXT=512; HORIZON=60
 OUT="core-timesfm-prospective.json"
 
