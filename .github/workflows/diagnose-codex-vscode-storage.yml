@@ -1,0 +1,49 @@
+name: Diagnose Codex VSCode Storage
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Codex and VS Code storage read-only
+        shell: powershell
+        run: |
+          $ErrorActionPreference='SilentlyContinue'
+          Write-Host "=== DRIVES ==="
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name,@{N='FreeGB';E={[math]::Round($_.Free/1GB,3)}},@{N='UsedGB';E={[math]::Round($_.Used/1GB,3)}} | Format-Table -AutoSize
+          $roots=@(
+            (Join-Path $env:USERPROFILE '.codex'),
+            (Join-Path $env:APPDATA 'Code\User\globalStorage'),
+            (Join-Path $env:APPDATA 'Code\User\workspaceStorage'),
+            (Join-Path $env:APPDATA 'Code\Cache'),
+            (Join-Path $env:APPDATA 'Code\CachedData'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code'),
+            (Join-Path $env:USERPROFILE '.vscode')
+          ) | Select-Object -Unique
+          function SizeOf($p) {
+            if(-not (Test-Path $p)){ return 0 }
+            return [double]((Get-ChildItem -LiteralPath $p -File -Recurse -Force | Measure-Object Length -Sum).Sum)
+          }
+          Write-Host "=== ROOT SIZES ==="
+          $rootRows=foreach($p in $roots){ if(Test-Path $p){ [pscustomobject]@{GB=[math]::Round((SizeOf $p)/1GB,4); Path=$p} } }
+          $rootRows | Sort-Object GB -Descending | Format-Table -AutoSize
+          Write-Host "=== CODEX TOP-LEVEL ==="
+          $codex=Join-Path $env:USERPROFILE '.codex'
+          if(Test-Path $codex){
+            Get-ChildItem $codex -Force | ForEach-Object {
+              $s=if($_.PSIsContainer){SizeOf $_.FullName}else{$_.Length}
+              [pscustomobject]@{MB=[math]::Round($s/1MB,2); Modified=$_.LastWriteTime; Path=$_.FullName}
+            } | Sort-Object MB -Descending | Select-Object -First 40 | Format-Table -AutoSize
+          }
+          Write-Host "=== LARGE CODEX FILES / POSSIBLE SESSIONS ==="
+          $scan=@($codex,(Join-Path $env:APPDATA 'Code\User\globalStorage'),(Join-Path $env:APPDATA 'Code\User\workspaceStorage'))
+          Get-ChildItem $scan -File -Recurse -Force | Where-Object { $_.Length -ge 1MB -or $_.FullName -match 'codex|chat|session|conversation' } |
+            Sort-Object Length -Descending | Select-Object -First 100 @{N='MB';E={[math]::Round($_.Length/1MB,2)}},LastWriteTime,FullName | Format-Table -AutoSize
+          Write-Host "=== LARGEST STORAGE DIRECTORIES ==="
+          $dirs=@()
+          foreach($base in $scan){ if(Test-Path $base){ $dirs += Get-ChildItem $base -Directory -Force } }
+          $dirs | ForEach-Object { [pscustomobject]@{MB=[math]::Round((SizeOf $_.FullName)/1MB,2); Modified=$_.LastWriteTime; Path=$_.FullName} } |
+            Sort-Object MB -Descending | Select-Object -First 60 | Format-Table -AutoSize
