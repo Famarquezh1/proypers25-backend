@@ -63,15 +63,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Evaluate recent mature frozen decisions
-        shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
-          if (-not (Test-Path $py)) { throw 'Python 3.13 unavailable' }
-          & $py research/timesfm/evaluate_recent_mature.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: python research/timesfm/evaluate_recent_mature.py
       - uses: actions/upload-artifact@v4
         with:
           name: core-timesfm-mature-batch-${{ github.run_id }}
