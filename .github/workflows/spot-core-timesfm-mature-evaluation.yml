@@ -67,9 +67,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Download prospective artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: core-timesfm-prospective-*
+          path: prospective-artifacts
+          merge-multiple: false
       - name: Evaluate recent mature frozen decisions
         env:
-          GH_TOKEN: ${{ github.token }}
+          PROSPECTIVE_ARTIFACT_DIR: prospective-artifacts
         run: python research/timesfm/evaluate_recent_mature.py
       - uses: actions/upload-artifact@v4
         with:
