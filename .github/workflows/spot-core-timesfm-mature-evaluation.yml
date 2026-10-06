@@ -1,0 +1,49 @@
+name: Spot CORE TimesFM Mature Evaluation
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        required: true
+        type: string
+      price:
+        required: true
+        type: string
+      signal_created_at:
+        required: true
+        type: string
+      signal_issue:
+        required: false
+        type: string
+      forecast_edge_pct:
+        required: true
+        type: string
+      selected_shadow_buy:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    timeout-minutes: 3
+    env:
+      SIGNAL_SYMBOL: ${{ inputs.symbol }}
+      SIGNAL_PRICE: ${{ inputs.price }}
+      SIGNAL_CREATED_AT: ${{ inputs.signal_created_at }}
+      SIGNAL_ISSUE: ${{ inputs.signal_issue }}
+      FORECAST_EDGE_PCT: ${{ inputs.forecast_edge_pct }}
+      SELECTED_SHADOW_BUY: ${{ inputs.selected_shadow_buy }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Evaluate frozen decision against Binance history
+        shell: powershell
+        run: |
+          $py='C:\Users\Famarquezh1\AppData\Local\Programs\Python\Python313\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.13 unavailable' }
+          & $py research/timesfm/evaluate_mature_shadow.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-timesfm-mature-${{ inputs.symbol }}-${{ github.run_id }}
+          path: core-timesfm-mature-evaluation.json
+          retention-days: 30
