@@ -19,7 +19,16 @@ def get_bytes(url):
     with urllib.request.urlopen(req,timeout=60) as r:return r.read()
 
 # Artifacts are the immutable prospective records; do not scrape job logs.
-arts=get_json(f"https://api.github.com/repos/{REPO}/actions/artifacts?per_page=100",github=True).get("artifacts",[])
+# List artifacts from the prospective workflow itself. Repository-wide artifact listing can
+# omit the older prospective records when frequent 5-minute backfill artifacts fill page 1.
+workflow="spot-core-timesfm-prospective.yml"
+runs=get_json(f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?status=success&per_page=100",github=True).get("workflow_runs",[])
+arts=[]
+for run in runs:
+    created=datetime.fromisoformat(run["created_at"].replace("Z","+00:00"))
+    if NOW-created < timedelta(hours=4) or NOW-created > timedelta(days=3): continue
+    page=get_json(f"https://api.github.com/repos/{REPO}/actions/runs/{run['id']}/artifacts?per_page=20",github=True)
+    arts.extend(page.get("artifacts",[]))
 decisions=[]; seen=set()
 for a in arts:
     name=a.get("name","")
