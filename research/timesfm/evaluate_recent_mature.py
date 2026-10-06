@@ -18,38 +18,26 @@ def get_bytes(url):
     req=urllib.request.Request(url,headers=headers)
     with urllib.request.urlopen(req,timeout=60) as r:return r.read()
 
-# Artifacts are the immutable prospective records; do not scrape job logs.
-# List artifacts from the prospective workflow itself. Repository-wide artifact listing can
-# omit the older prospective records when frequent 5-minute backfill artifacts fill page 1.
-workflow="spot-core-timesfm-prospective.yml"
-runs=get_json(f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?status=success&per_page=100",github=True).get("workflow_runs",[])
-arts=[]
-for run in runs:
-    created=datetime.fromisoformat(run["created_at"].replace("Z","+00:00"))
-    if NOW-created < timedelta(hours=4) or NOW-created > timedelta(days=3): continue
-    page=get_json(f"https://api.github.com/repos/{REPO}/actions/runs/{run['id']}/artifacts?per_page=20",github=True)
-    arts.extend(page.get("artifacts",[]))
+# Prospective artifacts are downloaded by actions/download-artifact. This avoids
+# expiring signed blob URLs and keeps the evaluator independent of artifact storage auth.
+root=os.environ.get("PROSPECTIVE_ARTIFACT_DIR","prospective-artifacts")
 decisions=[]; seen=set()
-for a in arts:
-    name=a.get("name","")
-    if not name.startswith("core-timesfm-prospective-") or a.get("expired"): continue
-    created=datetime.fromisoformat(a["created_at"].replace("Z","+00:00"))
-    if NOW-created < timedelta(hours=4) or NOW-created > timedelta(days=3): continue
+for dirpath, _, filenames in os.walk(root):
+    if "core-timesfm-prospective.json" not in filenames: continue
+    path=os.path.join(dirpath,"core-timesfm-prospective.json")
     try:
-        blob=get_bytes(f"https://api.github.com/repos/{REPO}/actions/artifacts/{a['id']}/zip")
-        with zipfile.ZipFile(io.BytesIO(blob)) as z:
-            candidates=[n for n in z.namelist() if n.endswith("core-timesfm-prospective.json")]
-            if not candidates: continue
-            d=json.loads(z.read(candidates[0]).decode("utf-8-sig"))
+        with open(path,"r",encoding="utf-8-sig") as fh: d=json.load(fh)
     except Exception as e:
-        print(f"WARN artifact {a.get('id')} skipped: {type(e).__name__}: {e}")
-        continue
+        print(f"WARN prospective file {path} skipped: {type(e).__name__}: {e}"); continue
     symbol=d.get("symbol"); created_s=d.get("signal_created_at"); price=float(d.get("signal_price") or 0)
     if not symbol or not created_s or price<=0: continue
+    signal_dt=datetime.fromisoformat(created_s.replace("Z","+00:00"))
+    age=NOW-signal_dt
+    if age < timedelta(hours=4) or age > timedelta(days=3): continue
     key=(symbol,created_s)
     if key in seen: continue
     seen.add(key)
-    ts=int(datetime.fromisoformat(created_s.replace("Z","+00:00")).timestamp()*1000)
+    ts=int(signal_dt.timestamp()*1000)
     selected=bool(d.get("selected_shadow_buy"))
     q=urllib.parse.urlencode({"symbol":symbol,"interval":"1m","startTime":ts,"endTime":ts+4*3600*1000,"limit":300})
     try:
@@ -59,7 +47,7 @@ for a in arts:
     if not rows: continue
     close=float(rows[-1][4]); high=max(float(v[2]) for v in rows); low=min(float(v[3]) for v in rows)
     ret=(close/price-1)*100
-    decisions.append({"artifact_id":a["id"],"symbol":symbol,"signal_price":price,"signal_created_at":created_s,
+    decisions.append({"symbol":symbol,"signal_price":price,"signal_created_at":created_s,
       "forecast_edge_pct":float(d.get("forecast_edge_pct") or 0),"selected_shadow_buy":selected,
       "return_4h_pct":ret,"net_4h_pct_after_0_2_cost":ret-0.2,
       "mfe_4h_pct":(high/price-1)*100,"mae_4h_pct":(low/price-1)*100,
