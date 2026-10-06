@@ -59,7 +59,7 @@ jobs:
 
   evaluate-recent:
     if: github.event_name == 'schedule' || github.event_name == 'push'
-    runs-on: [self-hosted, Windows, X64, research-only, research-light]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
