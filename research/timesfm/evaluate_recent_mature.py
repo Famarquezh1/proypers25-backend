@@ -74,7 +74,7 @@ def strategy_metrics(items):
     losses=[r for r in rets if r<0]
     gross_profit=sum(wins)
     gross_loss=abs(sum(losses))
-    pf=(gross_profit/gross_loss) if gross_loss>0 else (math.inf if gross_profit>0 else None)
+    pf=(gross_profit/gross_loss) if gross_loss>0 else None
     equity=100.0
     peak=100.0
     max_dd=0.0
