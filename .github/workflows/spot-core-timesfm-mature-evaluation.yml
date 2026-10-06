@@ -22,6 +22,11 @@ on:
         type: string
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'research/timesfm/evaluate_recent_mature.py'
+      - '.github/workflows/spot-core-timesfm-mature-evaluation.yml'
 permissions:
   contents: read
   actions: read
@@ -53,7 +58,7 @@ jobs:
           retention-days: 30
 
   evaluate-recent:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'push'
     runs-on: [self-hosted, Windows, X64, research-only, research-light]
     timeout-minutes: 5
     steps:
