@@ -1,7 +1,7 @@
-import json, os, sys, time, urllib.parse, urllib.request
+import json, os, urllib.parse, urllib.request
 from datetime import datetime, timezone
 import numpy as np
-import torch, timesfm
+import timesfm
 
 BASE="https://data-api.binance.vision"
 SYMBOL=os.environ["SIGNAL_SYMBOL"]
@@ -33,4 +33,23 @@ result={"research_only":True,"shadow_only":True,"no_order_created":True,"issue":
 "frozen_rule":"forecast_edge_pct > 0 (verified historical ranking rule; shadow only, not production approval)","forecast_upside_pct":up,"forecast_downside_pct":down,"forecast_edge_pct":edge,
 "forecast_terminal_pct":(float(p[-1])/ref-1)*100,"selected_shadow_buy":selected,
 "evaluation_due_at":datetime.fromtimestamp(ts/1000+4*3600,tz=timezone.utc).isoformat().replace("+00:00","Z")}
+
+# When the signal is already mature, score the frozen decision immediately from Binance public history.
+now_ms=int(datetime.now(timezone.utc).timestamp()*1000)
+if now_ms >= ts+4*3600*1000:
+    eq=urllib.parse.urlencode({"symbol":SYMBOL,"interval":"1m","startTime":ts,"endTime":ts+4*3600*1000,"limit":300})
+    future=get_json(f"{BASE}/api/v3/klines?{eq}")
+    closes=[float(v[4]) for v in future if ts <= int(v[0]) <= ts+4*3600*1000]
+    highs=[float(v[2]) for v in future if ts <= int(v[0]) <= ts+4*3600*1000]
+    lows=[float(v[3]) for v in future if ts <= int(v[0]) <= ts+4*3600*1000]
+    if closes:
+        result["mature_evaluation"]={
+          "bars":len(closes),
+          "return_4h_pct":(closes[-1]/PRICE-1)*100,
+          "mfe_4h_pct":(max(highs)/PRICE-1)*100,
+          "mae_4h_pct":(min(lows)/PRICE-1)*100,
+          "avoided_loss_if_rejected": (not selected) and closes[-1] < PRICE,
+          "missed_gain_if_rejected": (not selected) and closes[-1] > PRICE
+        }
+
 json.dump(result,open(OUT,"w"),indent=2);print(json.dumps(result,indent=2))
