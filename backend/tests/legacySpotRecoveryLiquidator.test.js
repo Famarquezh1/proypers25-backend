@@ -3,6 +3,7 @@
 const assert = require('assert');
 const {
   DEFAULT_TARGET_ASSETS,
+  MANDATORY_RECOVERY_ASSETS,
   HARD_PROTECTED_ASSETS,
   normalizeConfig,
   isProtectedAsset,
@@ -12,7 +13,8 @@ const {
   buildClientOrderId
 } = require('../services/legacySpotRecoveryLiquidator');
 
-assert.deepStrictEqual(DEFAULT_TARGET_ASSETS, ['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI']);
+assert.deepStrictEqual(DEFAULT_TARGET_ASSETS, ['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI', 'RKLBB']);
+assert.deepStrictEqual(MANDATORY_RECOVERY_ASSETS, ['RKLBB']);
 assert.deepStrictEqual(HARD_PROTECTED_ASSETS, ['XEC']);
 assert.strictEqual(isProtectedAsset('XEC'), true);
 assert.strictEqual(isProtectedAsset('xec'), true);
@@ -22,9 +24,29 @@ const config = normalizeConfig({
   target_assets: ['XEC', 'QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI', 'QTUM'],
   protected_assets: []
 });
-assert.deepStrictEqual(config.target_assets, ['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI']);
+assert.deepStrictEqual(config.target_assets, ['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI', 'RKLBB']);
 assert.ok(config.protected_assets.includes('XEC'));
 assert.strictEqual(config.xec_never_sell, true);
+
+const rklbbConfig = normalizeConfig({ target_assets: ['QTUM'] });
+assert.ok(rklbbConfig.target_assets.includes('RKLBB'));
+
+const profitableLegacySale = evaluateRecoveryDecision({
+  state: {
+    baseline_price: 60,
+    baseline_drawdown_pct: 10,
+    last_price: 70,
+    positive_cycles: 0,
+    status: 'WATCHING'
+  },
+  currentPrice: 74.95,
+  averageCost: 65,
+  oneHourChangePct: -0.1,
+  change24hPct: 1,
+  config: { take_profit_pct: 3 }
+});
+assert.strictEqual(profitableLegacySale.sell, true);
+assert.strictEqual(profitableLegacySale.reason, 'TAKE_PROFIT');
 
 assert.strictEqual(floorToStep(73.6263, '0.10000000'), 73.6);
 assert.strictEqual(floorToStep(10027.2627, '0.10000000'), 10027.2);
