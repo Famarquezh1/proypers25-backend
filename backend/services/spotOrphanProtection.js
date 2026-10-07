@@ -2,7 +2,7 @@
 
 const DEFAULTS = Object.freeze({
   minNotionalUsdt: 10,
-  takeProfitPct: 0.03,
+  takeProfitPct: 0.10,
   breakEvenTriggerPct: 0.05,
   breakEvenLockPct: 0.002,
   trailingTriggerPct: 0.08,
