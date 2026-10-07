@@ -12,7 +12,7 @@
  * No trading credentials, no orders.
  */
 
-const GH='https://api.github.com', BIN='https://api.binance.com', TOKEN=process.env.GITHUB_TOKEN;
+const GH='https://api.github.com', BIN='https://data-api.binance.vision', TOKEN=process.env.GITHUB_TOKEN;
 const OBS_MS=5*60*1000, HALF_MS=OBS_MS/2, H=240, COST=.004;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
