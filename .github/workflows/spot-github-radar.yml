@@ -336,6 +336,19 @@ jobs:
           gh workflow run spot-core-timesfm-prospective.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f symbol="$SYMBOL" -f price="$PRICE" -f signal_created_at="$SIGNAL_CREATED_AT" -f signal_issue=""
           echo "TimesFM prospective shadow dispatched for $SYMBOL; no order authority."
 
+      - name: Dispatch CORE post-signal resilience shadow
+        if: steps.scan.outputs.notify == 'true' && steps.dedupe.outputs.duplicate != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYMBOL: ${{ steps.scan.outputs.symbol }}
+          PRICE: ${{ steps.scan.outputs.price }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNAL_CREATED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          gh workflow run core-post-signal-resilience.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f symbol="$SYMBOL" -f price="$PRICE" -f signal_created_at="$SIGNAL_CREATED_AT" -f signal_issue="" -f lane="CORE"
+          echo "CORE resilience shadow dispatched for $SYMBOL; no order authority."
+
       - name: Dispatch autonomous local validator
         if: steps.scan.outputs.notify == 'true'
         env:
