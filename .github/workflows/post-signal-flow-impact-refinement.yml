@@ -1,0 +1,70 @@
+name: Post Signal Flow Impact Refinement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-post-signal-flow-impact-refinement.js'
+      - '.github/workflows/post-signal-flow-impact-refinement.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Safety check
+        run: |
+          node --check backend/scripts/github-post-signal-flow-impact-refinement.js
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' backend/scripts/github-post-signal-flow-impact-refinement.js
+      - name: Run refinement
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node backend/scripts/github-post-signal-flow-impact-refinement.js > post-signal-flow-impact-refinement.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: post-signal-flow-impact-refinement-${{ github.run_id }}
+          path: post-signal-flow-impact-refinement.json
+          retention-days: 30
+      - name: Publish result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE='[RESEARCH] Post Signal Flow Impact Refinement'
+          ROWS=$(jq -r '.rows' post-signal-flow-impact-refinement.json)
+          DECISION=$(jq -r '.decision' post-signal-flow-impact-refinement.json)
+          FEATURE=$(jq -r '.final.rule.feature // "none"' post-signal-flow-impact-refinement.json)
+          DIR=$(jq -r '.final.rule.dir // "none"' post-signal-flow-impact-refinement.json)
+          TH=$(jq -r '.final.rule.threshold // "null"' post-signal-flow-impact-refinement.json)
+          HN=$(jq -r '.final.holdout.n // 0' post-signal-flow-impact-refinement.json)
+          HNET=$(jq -r '.final.holdout.avg_net4h // null' post-signal-flow-impact-refinement.json)
+          HCONT=$(jq -r '.final.holdout.continuator_rate // null' post-signal-flow-impact-refinement.json)
+          HPF=$(jq -r '.final.holdout.profit_factor // null' post-signal-flow-impact-refinement.json)
+          ANET=$(jq -r '.final.anchor_holdout.avg_net4h // null' post-signal-flow-impact-refinement.json)
+          ACONT=$(jq -r '.final.anchor_holdout.continuator_rate // null' post-signal-flow-impact-refinement.json)
+          PASS=$(jq -r '.final.pass // false' post-signal-flow-impact-refinement.json)
+          BODY=$(cat <<EOF
+          Refinamiento de alignment_decay < 0 con una sola segunda condición.
+
+          - Filas: $ROWS
+          - Segunda feature: $FEATURE
+          - Dirección: $DIR
+          - Threshold: $TH
+          - Holdout seleccionado: n=$HN | avg_net4h=$HNET | continuator_rate=$HCONT | PF=$HPF
+          - Anchor alignment_decay<0: avg_net4h=$ANET | continuator_rate=$ACONT
+          - Pass: $PASS
+          - Decisión: $DECISION
+
+          Nota: este holdout no es completamente prístino porque alignment_decay ya fue observado previamente; cualquier pass requiere confirmación prospectiva shadow.
+          EOF
+          )
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --limit 20 --json number,title --jq '.[] | select(.title=="'"$TITLE"'") | .number' | head -1)
+          if [ -n "$NUM" ]; then gh issue edit "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"; else gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"; fi
