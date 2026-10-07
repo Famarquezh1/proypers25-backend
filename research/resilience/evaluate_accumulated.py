@@ -117,11 +117,17 @@ def metrics(items):
       "avg_mae":avg([x["outcome"]["mae"] for x in items]),
       "profit_factor":gp/gl if gl>0 else None,"compound_100_to":eq,"max_drawdown":mdd}
 
+def confidence_rank(value):
+    return {"LOW":1,"MEDIUM":2,"HIGH":3}.get(str(value or "").upper(),0)
+
 def select_rule(states,name):
     if not states: return False
     latest=states[-1]
+    medium_plus=confidence_rank(latest.get("confidence"))>=2
     if name=="S_POSITIVE": return float(latest.get("S") or 0)>0
+    if name=="S_POSITIVE_MEDIUM_PLUS": return medium_plus and float(latest.get("S") or 0)>0
     if name=="DIRECTIONAL": return latest.get("directional_candidate") is True
+    if name=="DIRECTIONAL_MEDIUM_PLUS": return medium_plus and latest.get("directional_candidate") is True
     if name=="SUSTAINED_DIRECTIONAL":
         tail=states[-3:]
         return len(tail)>=2 and sum(1 for x in tail if x.get("directional_candidate") is True)>=2
@@ -146,7 +152,15 @@ def main():
             errors.append({"symbol":symbol,"issue":meta.get("issue_number"),"error":f"klines: {e}"}); continue
         matured.append({"symbol":symbol,"issue":meta.get("issue_number"),"signal_ms":signal_ms,"states":states,"klines":kl})
 
+    captured_with_state=sum(1 for item in observations if any(x.get("type")=="resilience_state" for x in item["obs"]))
+    confidence_counts={"LOW":0,"MEDIUM":0,"HIGH":0,"UNKNOWN":0}
+    for item in observations:
+        states=[x for x in item["obs"] if x.get("type")=="resilience_state"]
+        if not states: continue
+        conf=str(states[-1].get("confidence") or "UNKNOWN").upper()
+        confidence_counts[conf if conf in confidence_counts else "UNKNOWN"]+=1
     report={"generated_at":datetime.now(timezone.utc).isoformat(),"artifacts_loaded":len(observations),
+      "captured_with_state":captured_with_state,"capture_confidence":confidence_counts,
       "matured":len(matured),"immature":immature,"mature_without_state":no_state,"errors":errors[:20],"horizons":{}}
 
     for h in HORIZONS:
@@ -158,7 +172,7 @@ def main():
             out=trade_outcome(x["klines"],cutoff)
             if out: rows.append({**x,"states_h":states,"outcome":out})
         hr={"coverage":len(rows),"baseline":metrics(rows),"rules":{}}
-        for rule in ["S_POSITIVE","DIRECTIONAL","SUSTAINED_DIRECTIONAL"]:
+        for rule in ["S_POSITIVE","S_POSITIVE_MEDIUM_PLUS","DIRECTIONAL","DIRECTIONAL_MEDIUM_PLUS","SUSTAINED_DIRECTIONAL"]:
             sel=[x for x in rows if select_rule(x["states_h"],rule)]
             rej=[x for x in rows if not select_rule(x["states_h"],rule)]
             bad=[x for x in rej if x["outcome"]["net"]<0]; good=[x for x in rej if x["outcome"]["net"]>0]
@@ -185,7 +199,7 @@ def main():
 
     lines=["CORE Post-Signal Resilience — acumulado","",
       f"Generado: {report['generated_at']}",
-      f"Artefactos cargados: {report['artifacts_loaded']} · maduros: {report['matured']} · inmaduros: {report['immature']} · maduros sin estado: {report['mature_without_state']}",
+      f"Artefactos cargados: {report['artifacts_loaded']} · con resilience_state: {report['captured_with_state']} · confianza={report['capture_confidence']} · maduros: {report['matured']} · inmaduros: {report['immature']} · maduros sin estado: {report['mature_without_state']}",
       f"Costo aplicado: {COST*100:.2f}%.",""]
     for h in HORIZONS:
         hr=report["horizons"][str(h)]; b=hr["baseline"]
