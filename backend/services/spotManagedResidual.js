@@ -69,7 +69,7 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
   if (!(buyEntryPrice > 0 && buyQty > 0) || !(owned > 0)) {
     return { active: false, openProtect, filledExit, reason: 'NO_OWNED_POSITION' };
   }
-  if (filledExit && !openProtect) {
+  if (filledExit && !openProtect && !forceReconstruct) {
     return { active: false, openProtect: null, filledExit, reason: 'FULL_EXIT_DETECTED' };
   }
 
@@ -98,6 +98,14 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
         ? Math.min(Math.max(managedQty, reconstructed.quantity), reconstructed.quantity, owned)
         : Math.min(reconstructed.quantity, owned);
       residualMode = Boolean(filledExit);
+    } else if (forceReconstruct && filledExit && !openProtect) {
+      return {
+        active: false,
+        openProtect: null,
+        filledExit,
+        reconstructed,
+        reason: 'POST_EXIT_BALANCE_UNATTRIBUTED'
+      };
     }
   }
 
