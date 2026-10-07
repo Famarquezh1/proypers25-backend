@@ -119,7 +119,7 @@ function flowFeatures(a,start){
     .map(x=>({issue:x.number,symbol:symbolOf(x),t:Date.parse(x.created_at)}))
     .filter(x=>x.symbol&&Number.isFinite(x.t))
     .sort((a,b)=>a.t-b.t)
-    .slice(-420);
+    .slice(-260);
 
   const rows=[];
   for(const s of sig){
@@ -145,7 +145,7 @@ function flowFeatures(a,start){
   }
 
   rows.sort((a,b)=>a.t-b.t);
-  if(rows.length<180)throw Error('insufficient rows '+rows.length);
+  if(rows.length<120)throw Error('insufficient rows '+rows.length);
 
   const a=Math.floor(rows.length*.60),b=Math.floor(rows.length*.80);
   const discovery=rows.slice(0,a),validation=rows.slice(a,b),holdout=rows.slice(b);
