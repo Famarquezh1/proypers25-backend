@@ -1,0 +1,41 @@
+name: CORE Resilience Accumulated Evaluation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/resilience/evaluate_accumulated.py'
+      - '.github/workflows/core-resilience-accumulated-evaluation.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Safety check
+        run: |
+          python -m py_compile research/resilience/evaluate_accumulated.py
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' research/resilience/evaluate_accumulated.py
+      - name: Evaluate all mature CORE resilience artifacts
+        run: python research/resilience/evaluate_accumulated.py
+      - name: Upload accumulated report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-resilience-accumulated-${{ github.run_id }}
+          path: core-resilience-accumulated.json
+          retention-days: 30
