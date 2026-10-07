@@ -9,7 +9,8 @@ const STATE_COLLECTION = 'legacy_spot_recovery_states';
 const RUN_COLLECTION = 'legacy_spot_recovery_runs';
 const VERSION = 'legacy_spot_recovery_v1';
 
-const DEFAULT_TARGET_ASSETS = Object.freeze(['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI']);
+const DEFAULT_TARGET_ASSETS = Object.freeze(['QTUM', 'ANKR', 'BAR', 'LAYER', 'CATI', 'RKLBB']);
+const MANDATORY_RECOVERY_ASSETS = Object.freeze(['RKLBB']);
 const HARD_PROTECTED_ASSETS = Object.freeze(['XEC']);
 
 const DEFAULT_CONFIG = Object.freeze({
@@ -23,6 +24,7 @@ const DEFAULT_CONFIG = Object.freeze({
   target_max_loss_pct: -10,
   trailing_pullback_pct: 2.5,
   minimum_improvement_at_sale_pct: 3,
+  take_profit_pct: 3,
   use_market_sell_to_usdt: true,
   sell_entire_free_balance: true,
   xec_never_sell: true
@@ -42,8 +44,9 @@ function normalizeAsset(value) {
 }
 
 function normalizeConfig(config = {}) {
-  const targets = [...new Set((Array.isArray(config.target_assets) ? config.target_assets : DEFAULT_TARGET_ASSETS)
-    .map(normalizeAsset).filter(Boolean))]
+  const configuredTargets = (Array.isArray(config.target_assets) ? config.target_assets : DEFAULT_TARGET_ASSETS)
+    .map(normalizeAsset).filter(Boolean);
+  const targets = [...new Set([...configuredTargets, ...MANDATORY_RECOVERY_ASSETS])]
     .filter((asset) => !HARD_PROTECTED_ASSETS.includes(asset));
   const protectedAssets = [...new Set([
     ...HARD_PROTECTED_ASSETS,
@@ -62,6 +65,7 @@ function normalizeConfig(config = {}) {
     target_max_loss_pct: Math.min(0, n(config.target_max_loss_pct, DEFAULT_CONFIG.target_max_loss_pct)),
     trailing_pullback_pct: Math.max(0.5, n(config.trailing_pullback_pct, DEFAULT_CONFIG.trailing_pullback_pct)),
     minimum_improvement_at_sale_pct: Math.max(0, n(config.minimum_improvement_at_sale_pct, DEFAULT_CONFIG.minimum_improvement_at_sale_pct)),
+    take_profit_pct: Math.max(0.1, n(config.take_profit_pct, DEFAULT_CONFIG.take_profit_pct)),
     xec_never_sell: true,
     version: VERSION
   };
@@ -166,10 +170,11 @@ function evaluateRecoveryDecision({ state = {}, currentPrice, averageCost, oneHo
   const armed = armedBefore || shouldArm;
   const highestPrice = armed ? Math.max(n(state.highest_price_after_arm, price), price) : null;
   const pullbackPct = armed && highestPrice > 0 ? ((highestPrice - price) / highestPrice) * 100 : 0;
+  const takeProfitReached = currentDrawdownPct !== null && currentDrawdownPct >= policy.take_profit_pct;
   const targetReached = currentDrawdownPct !== null && currentDrawdownPct >= policy.target_max_loss_pct;
   const trailingReached = armed && pullbackPct >= policy.trailing_pullback_pct && improvementPct >= policy.minimum_improvement_at_sale_pct;
-  const sell = targetReached || trailingReached;
-  const reason = targetReached ? 'LOSS_REDUCED_TO_TARGET' : trailingReached ? 'RECOVERY_TRAILING_EXIT' : null;
+  const sell = takeProfitReached || targetReached || trailingReached;
+  const reason = takeProfitReached ? 'TAKE_PROFIT' : targetReached ? 'LOSS_REDUCED_TO_TARGET' : trailingReached ? 'RECOVERY_TRAILING_EXIT' : null;
 
   return {
     sell,
@@ -445,6 +450,7 @@ module.exports = {
   VERSION,
   DEFAULT_CONFIG,
   DEFAULT_TARGET_ASSETS,
+  MANDATORY_RECOVERY_ASSETS,
   HARD_PROTECTED_ASSETS,
   normalizeConfig,
   isProtectedAsset,
