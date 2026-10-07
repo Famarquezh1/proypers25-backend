@@ -10,11 +10,11 @@ on:
 
 permissions:
   contents: read
-  issues: read
+  issues: write
 
 jobs:
   research:
-    runs-on: [self-hosted, Windows, X64, research-only, research-heavy]
+    runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -22,13 +22,57 @@ jobs:
         with:
           node-version: '20'
       - name: Safety check
-        shell: powershell
         run: |
           node --check backend/scripts/github-post-signal-flow-impact-asymmetry.js
-          $src=Get-Content backend/scripts/github-post-signal-flow-impact-asymmetry.js -Raw
-          if($src -match 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order'){throw 'Forbidden execution capability'}
+          ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' backend/scripts/github-post-signal-flow-impact-asymmetry.js
       - name: Run historical flow impact study
-        shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node backend/scripts/github-post-signal-flow-impact-asymmetry.js
+        run: node backend/scripts/github-post-signal-flow-impact-asymmetry.js > post-signal-flow-impact-asymmetry.json
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-signal-flow-impact-asymmetry-${{ github.run_id }}
+          path: post-signal-flow-impact-asymmetry.json
+          retention-days: 30
+      - name: Publish accumulated research result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROWS=$(jq -r '.rows' post-signal-flow-impact-asymmetry.json)
+          DECISION=$(jq -r '.production_decision' post-signal-flow-impact-asymmetry.json)
+          FEATURE=$(jq -r '.best.feature // "none"' post-signal-flow-impact-asymmetry.json)
+          DIR=$(jq -r '.best.dir // "none"' post-signal-flow-impact-asymmetry.json)
+          TH=$(jq -r '.best.threshold // "null"' post-signal-flow-impact-asymmetry.json)
+          VN=$(jq -r '.best.validation.n // 0' post-signal-flow-impact-asymmetry.json)
+          VNET=$(jq -r '.best.validation.avg_net4h // null' post-signal-flow-impact-asymmetry.json)
+          VCONT=$(jq -r '.best.validation.continuator_rate // null' post-signal-flow-impact-asymmetry.json)
+          HN=$(jq -r '.best.holdout.n // 0' post-signal-flow-impact-asymmetry.json)
+          HNET=$(jq -r '.best.holdout.avg_net4h // null' post-signal-flow-impact-asymmetry.json)
+          HCONT=$(jq -r '.best.holdout.continuator_rate // null' post-signal-flow-impact-asymmetry.json)
+          BVAL=$(jq -r '.baselines.validation.avg_net4h // null' post-signal-flow-impact-asymmetry.json)
+          BHOLD=$(jq -r '.baselines.holdout.avg_net4h // null' post-signal-flow-impact-asymmetry.json)
+          PASS=$(jq -r '.best.pass // false' post-signal-flow-impact-asymmetry.json)
+          TITLE='[RESEARCH] Post Signal Flow Impact Asymmetry'
+          BODY=$(cat <<EOF
+          Resultado histórico acumulado de microestructura post-señal.
+
+          - Filas válidas: $ROWS
+          - Mejor feature: $FEATURE
+          - Dirección: $DIR
+          - Threshold congelado desde discovery: $TH
+          - Validation: n=$VN | avg_net4h=$VNET | continuator_rate=$VCONT | baseline_net4h=$BVAL
+          - Holdout: n=$HN | avg_net4h=$HNET | continuator_rate=$HCONT | baseline_net4h=$BHOLD
+          - Pass: $PASS
+          - Decisión: $DECISION
+
+          Research-only. Coste incorporado por el script: 0.4%. No crea órdenes.
+          EOF
+          )
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --limit 20 --json number,title --jq '.[] | select(.title=="'"$TITLE"'") | .number' | head -1)
+          if [ -n "$NUM" ]; then
+            gh issue edit "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+          fi
