@@ -15,7 +15,7 @@ permissions:
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,9 +26,19 @@ jobs:
           node --check backend/scripts/github-post-signal-flow-impact-asymmetry.js
           ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' backend/scripts/github-post-signal-flow-impact-asymmetry.js
       - name: Run historical flow impact study
+        id: study
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node backend/scripts/github-post-signal-flow-impact-asymmetry.js > post-signal-flow-impact-asymmetry.json
+        shell: bash
+        run: |
+          set +e
+          node backend/scripts/github-post-signal-flow-impact-asymmetry.js > post-signal-flow-impact-asymmetry.json 2> post-signal-flow-impact-asymmetry.err
+          CODE=$?
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -ne 0 ]; then
+            cat post-signal-flow-impact-asymmetry.err >&2 || true
+          fi
+          exit "$CODE"
       - name: Upload result
         uses: actions/upload-artifact@v4
         with:
@@ -36,6 +46,7 @@ jobs:
           path: post-signal-flow-impact-asymmetry.json
           retention-days: 30
       - name: Publish accumulated research result
+        if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -70,6 +81,23 @@ jobs:
           Research-only. Coste incorporado por el script: 0.4%. No crea órdenes.
           EOF
           )
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --limit 20 --json number,title --jq '.[] | select(.title=="'"$TITLE"'") | .number' | head -1)
+          if [ -n "$NUM" ]; then
+            gh issue edit "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+          fi
+
+      - name: Publish failure diagnostic
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TITLE='[RESEARCH] Post Signal Flow Impact Asymmetry'
+          ERR=$(tail -40 post-signal-flow-impact-asymmetry.err 2>/dev/null || true)
+          [ -n "$ERR" ] || ERR='Workflow failed before producing a research result.'
+          BODY=$(printf '%s\n\n%s\n%s' 'El estudio histórico no logró producir un resultado válido.' "- Exit code: ${{ steps.study.outputs.exit_code || 'unknown' }}" "```$ERR```")
           NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$TITLE in:title" --limit 20 --json number,title --jq '.[] | select(.title=="'"$TITLE"'") | .number' | head -1)
           if [ -n "$NUM" ]; then
             gh issue edit "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
