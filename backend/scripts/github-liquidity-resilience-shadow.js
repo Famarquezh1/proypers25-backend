@@ -52,11 +52,14 @@ function complete(sym,e){
   emit(row);
   const arr=recent.get(sym)||[]; arr.push(row); while(arr.length&&arr[0].available_at<now()-120000)arr.shift(); recent.set(sym,arr);
   const asks=arr.filter(x=>x.valid&&x.side==='ASK').slice(-3), bids=arr.filter(x=>x.valid&&x.side==='BID').slice(-3);
-  if(asks.length>=3&&bids.length>=3){
+  if(asks.length>=1&&bids.length>=1){
     const med=a=>a.map(x=>x.R).sort((x,y)=>x-y)[Math.floor(a.length/2)];
     const rA=med(asks),rB=med(bids),S=rB-rA;
+    const paired=Math.min(asks.length,bids.length);
+    const confidence=paired>=3?'HIGH':paired>=2?'MEDIUM':'LOW';
     emit({type:'resilience_state',shadow_only:true,no_order_created:true,symbol:sym,at:now(),ask_R_median:rA,bid_R_median:rB,S,
-      directional_candidate:rA<0&&rB>=0,episodes_120s:arr.length});
+      directional_candidate:rA<0&&rB>=0,episodes_120s:arr.length,ask_valid_count:asks.length,bid_valid_count:bids.length,
+      paired_valid_count:paired,confidence});
   }
 }
 function onTrade(sym,t){
