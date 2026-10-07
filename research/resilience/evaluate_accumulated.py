@@ -69,7 +69,7 @@ def load_observations():
                 for line in z.read(on[0]).decode("utf-8-sig").splitlines():
                     try: obs.append(json.loads(line))
                     except Exception: pass
-            key=(str(meta.get("issue_number")),str(meta.get("symbol")))
+            key=(str(meta.get("symbol")),str(meta.get("signal_created_at")),str(meta.get("issue_number") or ""))
             if key in seen: continue
             seen.add(key)
             rows.append({"run_id":run["id"],"head_sha":run.get("head_sha"),"artifact_id":a["id"],"meta":meta,"obs":obs})
