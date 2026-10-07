@@ -290,7 +290,8 @@ async function main() {
 
       if (decision.action === 'EXIT') {
         if (orphanStop) await cancelOrder(base, symbol, orphanStop.orderId);
-        await marketSell(base, info, symbol, orphanQty, decision.protection === 'ORPHAN_TRAILING' ? 'ORPHAN_TRAILING_STOP' : 'ORPHAN_BREAK_EVEN_STOP', reconstructed.entryPrice, currentPrice);
+        const exitReason = decision.reason || (decision.protection === 'ORPHAN_TRAILING' ? 'ORPHAN_TRAILING_STOP' : 'ORPHAN_BREAK_EVEN_STOP');
+        await marketSell(base, info, symbol, orphanQty, exitReason, reconstructed.entryPrice, currentPrice);
         sold += 1;
         continue;
       }
