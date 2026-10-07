@@ -34,10 +34,10 @@ assert.strictEqual(immediateProfit.action, 'EXIT');
 assert.strictEqual(immediateProfit.reason, 'ORPHAN_TAKE_PROFIT');
 assert.strictEqual(immediateProfit.protection, 'ORPHAN_TAKE_PROFIT');
 
-const trailing = decideProfitProtection({ entryPrice: 0.02, currentPrice: 0.0234, recentHigh: 0.0255, tickSize: 0.00001 });
+const trailing = decideProfitProtection({ entryPrice: 0.02, currentPrice: 0.0218, recentHigh: 0.0234, tickSize: 0.00001 });
 assert.strictEqual(trailing.action, 'EXIT');
 assert.strictEqual(trailing.protection, 'ORPHAN_TRAILING');
-assert(Math.abs(trailing.stopPrice - 0.02397) < 1e-9);
+assert(Math.abs(trailing.stopPrice - 0.02199) < 1e-9);
 
 const protect = decideProfitProtection({ entryPrice: 100, currentPrice: 108, recentHigh: 110, tickSize: 0.01 });
 assert.strictEqual(protect.action, 'PROTECT');
