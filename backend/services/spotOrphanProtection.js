@@ -2,6 +2,7 @@
 
 const DEFAULTS = Object.freeze({
   minNotionalUsdt: 10,
+  takeProfitPct: 0.03,
   breakEvenTriggerPct: 0.05,
   breakEvenLockPct: 0.002,
   trailingTriggerPct: 0.08,
@@ -77,6 +78,21 @@ function decideProfitProtection({ entryPrice, currentPrice, recentHigh, tickSize
 
   const highGainPct = high / entry - 1;
   const gainPct = current / entry - 1;
+
+  // Orphaned/legacy inventory must rotate capital rather than become passive holding.
+  // Once the reconstructed position is already net-positive enough, realize the gain
+  // instead of merely arming a stop and waiting for a later pullback.
+  if (gainPct >= cfg.takeProfitPct) {
+    return {
+      action: 'EXIT',
+      reason: 'ORPHAN_TAKE_PROFIT',
+      protection: 'ORPHAN_TAKE_PROFIT',
+      gainPct,
+      highGainPct,
+      stopPrice: 0
+    };
+  }
+
   let rawStop = 0;
   let protection = null;
 
