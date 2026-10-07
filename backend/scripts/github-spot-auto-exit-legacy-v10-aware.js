@@ -36,8 +36,8 @@ patch(
 );
 
 patch(
-  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {",
-  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'V10_TAKE_PROFIT', 'V10_TIMEOUT_3H'].includes(reason)) {",
+  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {",
+  "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT', 'V10_TAKE_PROFIT', 'V10_TIMEOUT_3H'].includes(reason)) {",
   'market exit permission'
 );
 
