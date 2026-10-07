@@ -2,11 +2,29 @@ name: CORE Post-Signal Resilience Shadow
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      symbol:
+        required: true
+        type: string
+      price:
+        required: true
+        type: string
+      signal_created_at:
+        required: true
+        type: string
+      signal_issue:
+        required: false
+        type: string
+      lane:
+        required: false
+        default: CORE
+        type: string
 permissions:
   contents: read
 jobs:
   prepare:
-    if: startsWith(github.event.issue.title, '[SPOT SIGNAL] ')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[SPOT SIGNAL] ')
     runs-on: ubuntu-latest
     outputs:
       symbol: ${{ steps.s.outputs.symbol }}
@@ -15,12 +33,22 @@ jobs:
     steps:
       - id: s
         env:
+          EVENT_NAME: ${{ github.event_name }}
           TITLE: ${{ github.event.issue.title }}
           BODY: ${{ github.event.issue.body }}
+          INPUT_SYMBOL: ${{ inputs.symbol }}
+          INPUT_PRICE: ${{ inputs.price }}
+          INPUT_LANE: ${{ inputs.lane }}
         run: |
-          SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
-          LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
-          PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SYMBOL="$INPUT_SYMBOL"
+            PRICE="$INPUT_PRICE"
+            LANE="${INPUT_LANE:-CORE}"
+          else
+            SYMBOL=$(printf '%s' "$TITLE" | sed -n 's/^\[SPOT SIGNAL\] \([^[:space:]]*USDT\).*/\1/p')
+            LANE=$(printf '%s' "$BODY" | sed -n 's/^- Lane: \([A-Z0-9_-]*\).*/\1/p' | head -1)
+            PRICE=$(printf '%s' "$BODY" | sed -n 's/^- Precio: \([0-9.eE+-]*\).*/\1/p' | head -1)
+          fi
           echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
           echo "lane=${LANE:-CORE}" >> "$GITHUB_OUTPUT"
           echo "price=$PRICE" >> "$GITHUB_OUTPUT"
@@ -33,8 +61,8 @@ jobs:
       LR_SYMBOLS: ${{ needs.prepare.outputs.symbol }}
       LR_RUN_MS: '240000'
       SIGNAL_PRICE: ${{ needs.prepare.outputs.price }}
-      SIGNAL_CREATED_AT: ${{ github.event.issue.created_at }}
-      SIGNAL_ISSUE: ${{ github.event.issue.number }}
+      SIGNAL_CREATED_AT: ${{ github.event_name == 'workflow_dispatch' && inputs.signal_created_at || github.event.issue.created_at }}
+      SIGNAL_ISSUE: ${{ github.event_name == 'workflow_dispatch' && inputs.signal_issue || github.event.issue.number }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
