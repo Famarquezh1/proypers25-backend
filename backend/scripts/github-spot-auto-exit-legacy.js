@@ -472,8 +472,9 @@ async function main() {
       continue;
     }
 
+    const multipleManagedBuys = managedBuys.length > 1;
     let residualTrades = [];
-    if ((filledExit && openProtect) || hasPyramidAddOn) {
+    if (filledExit || hasPyramidAddOn || multipleManagedBuys) {
       residualTrades = await signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }).catch((error) => {
         console.warn(`RESIDUAL_TRADES_UNAVAILABLE symbol=${symbol} error=${error.message || error}`);
         return [];
@@ -486,7 +487,7 @@ async function main() {
       trades: residualTrades,
       ownedTotal,
       baseAsset: info.baseAsset,
-      forceReconstruct: hasPyramidAddOn
+      forceReconstruct: hasPyramidAddOn || multipleManagedBuys || Boolean(filledExit && ownedTotal > 0)
     });
 
     if (!managed.active) {
@@ -627,7 +628,8 @@ async function main() {
       : decideCoreGrowthExit({ ageHours, gainPct, recentHighPct: recentHigh / effectiveEntryPrice - 1, policy: CORE_EXIT });
 
     let reason = null;
-    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';
+    if (managed.residualMode && gainPct >= 0.10) reason = 'RESIDUAL_TAKE_PROFIT';
+    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';
     else if (growthExit.reason) reason = growthExit.reason;
     else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';
 
@@ -636,7 +638,7 @@ async function main() {
     const existingStop = Number(openProtect?.stopPrice || 0);
     const nativeStopCurrent = openProtect && existingStop + Math.max(tickSize * 0.5, Number.EPSILON) >= stopPrice;
     if (reason) {
-      if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {
+      if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {
         if (nativeStopCurrent) {
           console.log(`EXIT_NATIVE_PENDING symbol=${symbol} reason=${reason} orderId=${openProtect.orderId}`);
           continue;
