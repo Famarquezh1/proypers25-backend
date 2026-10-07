@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
-const { managedCoreProtectionSymbols, isProypersSpotBuyOrder } = require('../services/spotOrphanProtection');
+const { managedCoreProtectionSymbols, isProypersSpotBuyOrder, classifyProtectionOrder } = require('../services/spotOrphanProtection');
 const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing');
 const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');
 const { classifySpotAsset } = require('../services/spotAssetClassification');
@@ -373,12 +373,29 @@ async function placeProtection(base, info, symbol, quantity, stopPrice, currentP
 }
 
 async function marketSell(base, info, symbol, managedQty, reason, entryPrice, currentPrice, entryOrderId = null, entryClientOrderId = null) {
-  const account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
-  const free = freeBalance(account, info.baseAsset);
+  let account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
+  let free = freeBalance(account, info.baseAsset);
   const lot = info.filters?.find((f) => f.filterType === 'MARKET_LOT_SIZE' && Number(f.stepSize) > 0) || info.filters?.find((f) => f.filterType === 'LOT_SIZE');
   if (!lot) throw new Error(`LOT_SIZE missing for ${symbol}`);
-  const quantity = floorToStep(Math.min(managedQty, free), lot.stepSize);
-  if (!(quantity >= Number(lot.minQty || 0))) throw new Error(`SELL quantity below minimum for ${symbol}`);
+
+  let quantity = floorToStep(Math.min(managedQty, free), lot.stepSize);
+  if (!(quantity >= Number(lot.minQty || 0))) {
+    const openOrders = await signed(base, 'GET', '/api/v3/openOrders', { symbol }).catch(() => []);
+    const managedBlockers = (Array.isArray(openOrders) ? openOrders : []).filter((order) => {
+      const kind = classifyProtectionOrder(order).kind;
+      return ['CORE_PROTECTION', 'V61_PROTECTION', 'ORPHAN_PROTECTION'].includes(kind);
+    });
+    if (managedBlockers.length) {
+      for (const order of managedBlockers) {
+        await signed(base, 'DELETE', '/api/v3/order', { symbol, orderId: String(order.orderId) });
+        console.log(`MANAGED_SELL_BLOCKER_CANCELLED symbol=${symbol} orderId=${order.orderId} clientOrderId=${order.clientOrderId || ''}`);
+      }
+      account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
+      free = freeBalance(account, info.baseAsset);
+      quantity = floorToStep(Math.min(managedQty, free), lot.stepSize);
+    }
+  }
+  if (!(quantity >= Number(lot.minQty || 0))) throw new Error(`SELL quantity below minimum for ${symbol}; free=${free} managed=${managedQty}`);
 
   const notional = quantity * currentPrice;
   const minNotional = minimumNotional(info, 'MARKET');
