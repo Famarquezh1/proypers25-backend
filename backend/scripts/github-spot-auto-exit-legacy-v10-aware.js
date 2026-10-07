@@ -30,8 +30,8 @@ patch(
 );
 
 patch(
-  "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-  "let reason = null;\n    if (isV10Hunter && gainPct >= 0.03) reason = 'V10_TAKE_PROFIT';\n    else if (isV10Hunter && ageHours >= 3) reason = 'V10_TIMEOUT_3H';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (!isV10Hunter && growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+  "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10) reason = 'RESIDUAL_TAKE_PROFIT';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+  "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10) reason = 'RESIDUAL_TAKE_PROFIT';\n    else if (isV10Hunter && gainPct >= 0.03) reason = 'V10_TAKE_PROFIT';\n    else if (isV10Hunter && ageHours >= 3) reason = 'V10_TIMEOUT_3H';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (!isV10Hunter && growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
   'V10 exit rules'
 );
 
