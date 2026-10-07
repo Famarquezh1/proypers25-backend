@@ -111,4 +111,39 @@ assert.strictEqual(pyramidManaged.active, true);
 assert.strictEqual(pyramidManaged.managedQty, 11);
 assert(Math.abs(pyramidManaged.entryPrice - (111 / 11)) < 1e-9);
 
+
+const firstRklbbBuy = {
+  side: 'BUY', status: 'FILLED', orderId: 26157111, time: 10000, updateTime: 10000,
+  executedQty: '0.22954', cummulativeQuoteQty: '14.60',
+  clientOrderId: 'proypers-gh-rklbb-first'
+};
+const secondRklbbBuy = {
+  side: 'BUY', status: 'FILLED', orderId: 26164413, time: 11000, updateTime: 11000,
+  executedQty: '0.23300', cummulativeQuoteQty: '14.98',
+  clientOrderId: 'proypers-gh-rklbb-second'
+};
+const secondRklbbExit = {
+  side: 'SELL', status: 'FILLED', orderId: 26298787, time: 12000, updateTime: 12000,
+  executedQty: '0.23300', origQty: '0.23300', cummulativeQuoteQty: '14.67201',
+  clientOrderId: 'proypers-gh-protect-rklbb'
+};
+const rklbbTrades = [
+  { orderId: 26157111, id: 1, time: 10000, isBuyer: true, qty: '0.22954', quoteQty: '14.60', price: '63.605', commission: '0', commissionAsset: 'BNB' },
+  { orderId: 26164413, id: 2, time: 11000, isBuyer: true, qty: '0.23300', quoteQty: '14.98', price: '64.292', commission: '0', commissionAsset: 'BNB' },
+  { orderId: 26298787, id: 3, time: 12000, isBuyer: false, qty: '0.23300', quoteQty: '14.67201', price: '62.97', commission: '0', commissionAsset: 'BNB' }
+];
+const rklbbResidual = resolveManagedResidual({
+  buy: secondRklbbBuy,
+  orders: [firstRklbbBuy, secondRklbbBuy, secondRklbbExit],
+  trades: rklbbTrades,
+  ownedTotal: 0.22954,
+  baseAsset: 'RKLBB',
+  forceReconstruct: true
+});
+assert.strictEqual(rklbbResidual.active, true);
+assert.strictEqual(rklbbResidual.residualMode, true);
+assert(Math.abs(rklbbResidual.managedQty - 0.22954) < 1e-8);
+assert(rklbbResidual.entryPrice > 63 && rklbbResidual.entryPrice < 64);
+assert.strictEqual(rklbbResidual.reason, 'RESIDUAL_RECONSTRUCTED');
+
 console.log('spotManagedResidual tests passed');
