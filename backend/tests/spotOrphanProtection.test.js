@@ -28,6 +28,12 @@ assert(Math.abs(position.entryPrice - 0.15) < 1e-9);
 assert.strictEqual(historyCoversBalance(150, 149), true);
 assert.strictEqual(historyCoversBalance(80, 100), false);
 
+
+const immediateProfit = decideProfitProtection({ entryPrice: 64.3, currentPrice: 73.7, recentHigh: 73.7, tickSize: 0.01 });
+assert.strictEqual(immediateProfit.action, 'EXIT');
+assert.strictEqual(immediateProfit.reason, 'ORPHAN_TAKE_PROFIT');
+assert.strictEqual(immediateProfit.protection, 'ORPHAN_TAKE_PROFIT');
+
 const trailing = decideProfitProtection({ entryPrice: 0.02, currentPrice: 0.0234, recentHigh: 0.0255, tickSize: 0.00001 });
 assert.strictEqual(trailing.action, 'EXIT');
 assert.strictEqual(trailing.protection, 'ORPHAN_TRAILING');
