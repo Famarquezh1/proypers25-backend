@@ -7,6 +7,9 @@ on:
       - 'research/resilience/evaluate_accumulated.py'
       - '.github/workflows/core-resilience-accumulated-evaluation.yml'
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CORE Post-Signal Resilience Shadow"]
+    types: [completed]
   schedule:
     - cron: '17 * * * *'
 
