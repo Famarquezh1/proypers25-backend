@@ -85,10 +85,10 @@ def binance_klines(symbol,start_ms,end_ms):
         except Exception as e: last=e
     raise last or RuntimeError("Binance unavailable")
 
-def trade_outcome(klines,decision_ms):
+def trade_outcome(klines,decision_ms,end_override_ms=None):
     eligible=[r for r in klines if int(r[0])>=decision_ms]
     if len(eligible)<2: return None
-    entry=float(eligible[0][1]); end_ms=decision_ms+4*3600*1000
+    entry=float(eligible[0][1]); end_ms=min(decision_ms+4*3600*1000,end_override_ms) if end_override_ms else decision_ms+4*3600*1000
     window=[r for r in eligible if int(r[0])<=end_ms]
     if not window or entry<=0: return None
     first3=None; firstneg1=None; mfe=-1e9; mae=1e9
@@ -148,18 +148,24 @@ def main():
     current=[x for x in observations if is_current_cohort(x)]
     legacy_excluded=len(observations)-len(current)
     now_ms=int(datetime.now(timezone.utc).timestamp()*1000)
-    matured=[]; immature=0; no_state=0
+    matured=[]; provisional=[]; immature=0; no_state=0
+    provisional_age_ms=int(3.75*3600*1000)
     for item in current:
         meta=item["meta"]; symbol=str(meta.get("symbol") or "").upper(); created=meta.get("signal_created_at")
         if not symbol or not created: continue
         signal_ms=int(parse_iso(created).timestamp()*1000)
-        if now_ms < signal_ms+(4*3600+max(HORIZONS))*1000: immature+=1; continue
         states=sorted([x for x in item["obs"] if x.get("type")=="resilience_state" and isinstance(x.get("at"),(int,float))],key=lambda x:x["at"])
         if not states: no_state+=1
-        try: kl=binance_klines(symbol,signal_ms,signal_ms+(4*3600+max(HORIZONS)+120)*1000)
+        try: kl=binance_klines(symbol,signal_ms,min(now_ms,signal_ms+(4*3600+max(HORIZONS)+120)*1000))
         except Exception as e:
             errors.append({"symbol":symbol,"issue":meta.get("issue_number"),"error":f"klines: {e}"}); continue
-        matured.append({"symbol":symbol,"issue":meta.get("issue_number"),"signal_ms":signal_ms,"states":states,"klines":kl})
+        row={"symbol":symbol,"issue":meta.get("issue_number"),"signal_ms":signal_ms,"states":states,"klines":kl}
+        if now_ms >= signal_ms+(4*3600+max(HORIZONS))*1000:
+            matured.append(row)
+        elif now_ms >= signal_ms+provisional_age_ms:
+            provisional.append(row); immature+=1
+        else:
+            immature+=1
 
     captured_with_state=sum(1 for item in current if any(x.get("type")=="resilience_state" for x in item["obs"]))
     confidence_counts={"LOW":0,"MEDIUM":0,"HIGH":0,"UNKNOWN":0}
@@ -205,6 +211,25 @@ def main():
         best={"horizon_sec":int(h),"rule":rule,"selected":r["selected"],"rejected":r["rejected"],"baseline":base,
               "selected_count":r["selected_count"],"rejected_count":r["rejected_count"],"rejected_losses":r["rejected_losses"],
               "rejected_positive":r["rejected_positive"],"avoided_loss_sum":r["avoided_loss_sum"],"missed_gain_sum":r["missed_gain_sum"]}
+
+    provisional_report={}
+    for h in HORIZONS:
+        rows=[]
+        for x in provisional:
+            cutoff=x["signal_ms"]+h*1000
+            states=[s for s in x["states"] if int(s["at"])<=cutoff]
+            if not states: continue
+            out=trade_outcome(x["klines"],cutoff,end_override_ms=now_ms)
+            if out: rows.append({**x,"states_h":states,"outcome":out})
+        hr={"coverage":len(rows),"baseline":metrics(rows),"rules":{}}
+        for rule in ["S_POSITIVE","S_POSITIVE_MEDIUM_PLUS","DIRECTIONAL","DIRECTIONAL_MEDIUM_PLUS","SUSTAINED_DIRECTIONAL"]:
+            sel=[x for x in rows if select_rule(x["states_h"],rule)]
+            rej=[x for x in rows if not select_rule(x["states_h"],rule)]
+            hr["rules"][rule]={"selected":metrics(sel),"rejected":metrics(rej),
+              "selected_count":len(sel),"rejected_count":len(rej)}
+        provisional_report[str(h)]=hr
+    report["provisional_checkpoint"]={"min_age_hours":3.75,"cases":len(provisional),"horizons":provisional_report}
+
     report["best_current"]=best; report["research_only"]=True; report["no_order_created"]=True
     with open("core-resilience-accumulated.json","w",encoding="utf-8") as f: json.dump(report,f,indent=2)
 
@@ -221,6 +246,16 @@ def main():
         for rule,r in hr["rules"].items():
             m=r["selected"]
             lines.append(f"- {rule}: n={m.get('n',0)} · net4h={pct(m.get('avg_net4h'))} · PF={num(m.get('profit_factor'))} · WR={pct(m.get('win_rate'))} · cont={pct(m.get('continuator_rate'))} · rechazadas={r['rejected_count']} (pérdidas={r['rejected_losses']}, positivas={r['rejected_positive']})")
+        lines.append("")
+    if provisional:
+        lines += ["## Checkpoint provisional inmediato (>=3h45; NO sustituye la medición final de 4h)"]
+        for h in HORIZONS:
+            ph=report["provisional_checkpoint"]["horizons"][str(h)]
+            pb=ph["baseline"]
+            lines.append(f"- {h}s: cobertura={ph['coverage']} · baseline net={pct(pb.get('avg_net4h'))} · PF={num(pb.get('profit_factor'))} · WR={pct(pb.get('win_rate'))} · cont={pct(pb.get('continuator_rate'))}")
+            for rule in ["S_POSITIVE","DIRECTIONAL"]:
+                pm=ph["rules"][rule]["selected"]
+                lines.append(f"  - {rule}: n={pm.get('n',0)} · net={pct(pm.get('avg_net4h'))} · PF={num(pm.get('profit_factor'))} · WR={pct(pm.get('win_rate'))} · cont={pct(pm.get('continuator_rate'))}")
         lines.append("")
     if best:
         m=best["selected"]
