@@ -46,7 +46,8 @@ function isNotionalFilterError(error) {
   const bodyMessage = String(error?.body?.msg || '');
   return /Filter failure:\s*(NOTIONAL|MIN_NOTIONAL)/i.test(message) ||
     /Filter failure:\s*(NOTIONAL|MIN_NOTIONAL)/i.test(bodyMessage) ||
-    /notional below minimum/i.test(message);
+    /notional below minimum/i.test(message) ||
+    /SELL quantity below minimum/i.test(message);
 }
 
 function minimumNotional(info, orderType = 'MARKET') {
@@ -668,7 +669,7 @@ async function main() {
         soldCount += 1;
       } catch (error) {
         if (!isNotionalFilterError(error)) throw error;
-        console.warn(`EXIT_SKIPPED_NOTIONAL symbol=${symbol} reason=${reason} detail=${error.message || error}`);
+        console.warn(`EXIT_SKIPPED_UNTRADABLE symbol=${symbol} reason=${reason} detail=${error.message || error}`);
       }
       continue;
     }
