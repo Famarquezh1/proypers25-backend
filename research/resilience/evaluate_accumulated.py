@@ -136,11 +136,20 @@ def select_rule(states,name):
 def pct(v): return "—" if v is None else f"{v*100:.3f}%"
 def num(v): return "—" if v is None else f"{v:.3f}"
 
+def is_current_cohort(item):
+    obs=item.get("obs") or []
+    if any(x.get("type")=="resilience_state" and x.get("quality_basis")=="USABLE_WITH_STRICT_CONFIDENCE" for x in obs):
+        return True
+    starts=[x for x in obs if x.get("type")=="collector_start"]
+    return any(isinstance(x.get("usable_perturbation"),list) and x.get("usable_max_mid_move") is not None for x in starts)
+
 def main():
     observations,errors=load_observations()
+    current=[x for x in observations if is_current_cohort(x)]
+    legacy_excluded=len(observations)-len(current)
     now_ms=int(datetime.now(timezone.utc).timestamp()*1000)
     matured=[]; immature=0; no_state=0
-    for item in observations:
+    for item in current:
         meta=item["meta"]; symbol=str(meta.get("symbol") or "").upper(); created=meta.get("signal_created_at")
         if not symbol or not created: continue
         signal_ms=int(parse_iso(created).timestamp()*1000)
@@ -152,14 +161,16 @@ def main():
             errors.append({"symbol":symbol,"issue":meta.get("issue_number"),"error":f"klines: {e}"}); continue
         matured.append({"symbol":symbol,"issue":meta.get("issue_number"),"signal_ms":signal_ms,"states":states,"klines":kl})
 
-    captured_with_state=sum(1 for item in observations if any(x.get("type")=="resilience_state" for x in item["obs"]))
+    captured_with_state=sum(1 for item in current if any(x.get("type")=="resilience_state" for x in item["obs"]))
     confidence_counts={"LOW":0,"MEDIUM":0,"HIGH":0,"UNKNOWN":0}
-    for item in observations:
+    for item in current:
         states=[x for x in item["obs"] if x.get("type")=="resilience_state"]
         if not states: continue
         conf=str(states[-1].get("confidence") or "UNKNOWN").upper()
         confidence_counts[conf if conf in confidence_counts else "UNKNOWN"]+=1
     report={"generated_at":datetime.now(timezone.utc).isoformat(),"artifacts_loaded":len(observations),
+      "eligible_current_cohort":len(current),"legacy_excluded":legacy_excluded,
+      "cohort_rule":"collector_start.usable_perturbation present; thresholds frozen at usable 2%-150%, max mid move 25bp",
       "captured_with_state":captured_with_state,"capture_confidence":confidence_counts,
       "matured":len(matured),"immature":immature,"mature_without_state":no_state,"errors":errors[:20],"horizons":{}}
 
@@ -199,7 +210,9 @@ def main():
 
     lines=["CORE Post-Signal Resilience — acumulado","",
       f"Generado: {report['generated_at']}",
-      f"Artefactos cargados: {report['artifacts_loaded']} · con resilience_state: {report['captured_with_state']} · confianza={report['capture_confidence']} · maduros: {report['matured']} · inmaduros: {report['immature']} · maduros sin estado: {report['mature_without_state']}",
+      f"Artefactos totales: {report['artifacts_loaded']} · cohorte actual elegible: {report['eligible_current_cohort']} · legacy excluidos: {report['legacy_excluded']}",
+      f"Cohorte congelada: {report['cohort_rule']}",
+      f"Con resilience_state: {report['captured_with_state']} · confianza={report['capture_confidence']} · maduros: {report['matured']} · inmaduros: {report['immature']} · maduros sin estado: {report['mature_without_state']}",
       f"Costo aplicado: {COST*100:.2f}%.",""]
     for h in HORIZONS:
         hr=report["horizons"][str(h)]; b=hr["baseline"]
