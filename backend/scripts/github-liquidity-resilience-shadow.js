@@ -18,8 +18,12 @@ const RUN_MS = Math.max(60000, Number(process.env.LR_RUN_MS || 240000));
 const BAND = 0.0025;                 // fixed +/-25bp
 const PERTURB_MS = 1000;
 const RESPONSE_MS = 5000;
-const MIN_FRAC = 0.05, MAX_FRAC = 0.20;
-const MAX_EPISODE_MOVE = 0.0005;     // 5bp
+// Preserve the original "strict" research definition, but also retain a broader
+// observational tier so volatile/thin books are not silently discarded.
+const STRICT_MIN_FRAC = 0.05, STRICT_MAX_FRAC = 0.20;
+const STRICT_MAX_EPISODE_MOVE = 0.0005; // 5bp
+const USABLE_MIN_FRAC = 0.02, USABLE_MAX_FRAC = 1.50;
+const USABLE_MAX_EPISODE_MOVE = 0.0025; // 25bp
 const OUT = process.env.LR_OUT || path.join(process.cwd(),'liquidity-resilience-shadow.ndjson');
 
 const books = new Map(), episodes = new Map(), recent = new Map(), pendingDepth = new Map();
@@ -45,21 +49,32 @@ function complete(sym,e){
   const final=e.side==='ASK'?sideDepth(b,'asks',e.mid,e.hi):sideDepth(b,'bids',e.lo,e.mid);
   const R=(final-e.initialDepth+e.executed)/Math.max(e.executed,1e-12);
   const move=(s.mid-e.mid)/e.mid;
-  const valid=Math.abs(move)<=MAX_EPISODE_MOVE;
+  const perturbationFraction=e.executed/e.initialDepth;
+  const strictValid=perturbationFraction>=STRICT_MIN_FRAC&&perturbationFraction<=STRICT_MAX_FRAC&&Math.abs(move)<=STRICT_MAX_EPISODE_MOVE;
+  const usable=perturbationFraction>=USABLE_MIN_FRAC&&perturbationFraction<=USABLE_MAX_FRAC&&Math.abs(move)<=USABLE_MAX_EPISODE_MOVE;
+  const invalidReasons=[];
+  if(perturbationFraction<USABLE_MIN_FRAC) invalidReasons.push('PERTURBATION_TOO_SMALL');
+  if(perturbationFraction>USABLE_MAX_FRAC) invalidReasons.push('PERTURBATION_TOO_LARGE');
+  if(Math.abs(move)>USABLE_MAX_EPISODE_MOVE) invalidReasons.push('MID_MOVE_TOO_LARGE');
   const row={type:'resilience_episode',shadow_only:true,no_order_created:true,symbol:sym,side:e.side,
     started_at:e.start,available_at:now(),mid:e.mid,spread:e.spread,initial_depth:e.initialDepth,
-    executed:e.executed,perturbation_fraction:e.executed/e.initialDepth,final_depth:final,R,mid_move:move,valid};
+    executed:e.executed,perturbation_fraction:perturbationFraction,final_depth:final,R,mid_move:move,
+    valid:usable,usable,strict_valid:strictValid,quality:strictValid?'STRICT':usable?'OBSERVATIONAL':'REJECTED',
+    invalid_reasons:invalidReasons};
   emit(row);
   const arr=recent.get(sym)||[]; arr.push(row); while(arr.length&&arr[0].available_at<now()-120000)arr.shift(); recent.set(sym,arr);
-  const asks=arr.filter(x=>x.valid&&x.side==='ASK').slice(-3), bids=arr.filter(x=>x.valid&&x.side==='BID').slice(-3);
+  const asks=arr.filter(x=>x.usable&&x.side==='ASK').slice(-3), bids=arr.filter(x=>x.usable&&x.side==='BID').slice(-3);
   if(asks.length>=1&&bids.length>=1){
     const med=a=>a.map(x=>x.R).sort((x,y)=>x-y)[Math.floor(a.length/2)];
     const rA=med(asks),rB=med(bids),S=rB-rA;
     const paired=Math.min(asks.length,bids.length);
-    const confidence=paired>=3?'HIGH':paired>=2?'MEDIUM':'LOW';
+    const strictAsks=asks.filter(x=>x.strict_valid).length, strictBids=bids.filter(x=>x.strict_valid).length;
+    const strictPaired=Math.min(strictAsks,strictBids);
+    const confidence=strictPaired>=3?'HIGH':(strictPaired>=1&&paired>=2)?'MEDIUM':'LOW';
     emit({type:'resilience_state',shadow_only:true,no_order_created:true,symbol:sym,at:now(),ask_R_median:rA,bid_R_median:rB,S,
       directional_candidate:rA<0&&rB>=0,episodes_120s:arr.length,ask_valid_count:asks.length,bid_valid_count:bids.length,
-      paired_valid_count:paired,confidence});
+      paired_valid_count:paired,ask_strict_count:strictAsks,bid_strict_count:strictBids,strict_paired_count:strictPaired,
+      confidence,quality_basis:'USABLE_WITH_STRICT_CONFIDENCE'});
   }
 }
 function onTrade(sym,t){
@@ -74,8 +89,8 @@ function onTrade(sym,t){
   }
   if(now()-e.start<=PERTURB_MS){
     e.executed+=qty; const frac=e.executed/e.initialDepth;
-    if(frac>=MIN_FRAC&&frac<=MAX_FRAC&&!e.armed){e.armed=true;setTimeout(()=>{episodes.delete(key);complete(sym,e)},RESPONSE_MS);}
-    else if(frac>MAX_FRAC&&!e.armed) episodes.delete(key);
+    if(frac>=USABLE_MIN_FRAC&&frac<=USABLE_MAX_FRAC&&!e.armed){e.armed=true;setTimeout(()=>{episodes.delete(key);complete(sym,e)},RESPONSE_MS);}
+    else if(frac>USABLE_MAX_FRAC&&!e.armed) episodes.delete(key);
   }
 }
 async function initBook(sym){
@@ -119,7 +134,9 @@ function depth(sym,d){
   applyDepth(b,d);
 }
 (async()=>{
-  emit({type:'collector_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,perturbation:[MIN_FRAC,MAX_FRAC],run_ms:RUN_MS});
+  emit({type:'collector_start',shadow_only:true,no_order_created:true,at:now(),symbols:SYMBOLS,band:BAND,
+    strict_perturbation:[STRICT_MIN_FRAC,STRICT_MAX_FRAC],usable_perturbation:[USABLE_MIN_FRAC,USABLE_MAX_FRAC],
+    strict_max_mid_move:STRICT_MAX_EPISODE_MOVE,usable_max_mid_move:USABLE_MAX_EPISODE_MOVE,run_ms:RUN_MS});
   const streams=SYMBOLS.flatMap(s=>[s.toLowerCase()+'@depth@100ms',s.toLowerCase()+'@trade']).join('/');
   const ws=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
   ws.on('message',buf=>{try{const x=JSON.parse(buf),sym=String(x.data?.s||'').toUpperCase();if(x.stream?.includes('@depth'))depth(sym,x.data);else if(x.stream?.includes('@trade'))onTrade(sym,x.data);}catch(e){emit({type:'parse_error',at:now(),error:String(e.message||e)})}});
