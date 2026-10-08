@@ -80,7 +80,7 @@ def load_observations():
 def binance_klines(symbol,start_ms,end_ms):
     q=urllib.parse.urlencode({"symbol":symbol,"interval":"1m","startTime":start_ms,"endTime":end_ms,"limit":500})
     last=None
-    for b in ["https://api.binance.com","https://api1.binance.com","https://api2.binance.com","https://api3.binance.com"]:
+    for b in ["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com","https://api2.binance.com","https://api3.binance.com"]:
         try: return get_json(f"{b}/api/v3/klines?{q}")
         except Exception as e: last=e
     raise last or RuntimeError("Binance unavailable")
