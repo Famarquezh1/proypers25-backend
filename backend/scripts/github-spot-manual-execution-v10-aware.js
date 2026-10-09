@@ -44,12 +44,6 @@ patch(
 );
 
 patch(
-  "function validateInputs() {\n  if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');",
-  "function validateInputs() {\n  if (SIGNAL_LANE === 'CORE') decline('CORE_DETECTOR_ONLY: CORE remains observable but real buying is disabled pending validated holdout economics');\n  if (!API_KEY || !API_SECRET) technicalFail('BINANCE_API_KEY/BINANCE_SECRET_KEY missing in GitHub Actions Secrets');",
-  'CORE detector-only execution block'
-);
-
-patch(
   'const MIN_USDT = 10;\nconst MAX_USDT = 100;',
   'const MIN_USDT = 5;\nconst MAX_USDT = 70;\nconst DUPLICATE_POSITION_USDT = 15;\nconst V10_HARD_STOP_PCT = 0.012;',
   'entry sizing'
