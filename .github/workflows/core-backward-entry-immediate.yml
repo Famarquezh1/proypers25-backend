@@ -1,0 +1,35 @@
+name: CORE Backward Entry Immediate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/backward_entry_immediate.py'
+      - '.github/workflows/core-backward-entry-immediate.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run immediate backward-entry study
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python research/continuator/backward_entry_immediate.py
+      - name: Upload study
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-backward-entry-immediate-${{ github.run_id }}
+          path: |
+            backward-entry-immediate.json
+            backward-entry-immediate.md
