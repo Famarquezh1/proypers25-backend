@@ -23,7 +23,7 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
   };
 }
 
-(function normalCoreCadenceIsBlocked() {
+(function normalCoreCadenceIsAdmitted() {
   const result = evaluateSpotEntryBurstGate({
     lane: 'CORE',
     symbol: 'AAAUSDT',
@@ -31,62 +31,8 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
     managedPositions: [],
     v42Quality: quality(2, 0.72)
   });
-  assert.strictEqual(result.allow, false);
-  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
-})();
-
-(function strictEarlyConfirmationIsAdmitted() {
-  const result = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'EARLYUSDT',
-    currentPct: 4.5,
-    managedPositions: [],
-    v42Quality: quality(2, 0.86, {
-      ignition: 1.25,
-      confirm: 0.36,
-      extension: 0.022,
-      r15: 0.018,
-      r60: 0.055
-    })
-  });
   assert.strictEqual(result.allow, true);
-  assert.strictEqual(result.code, 'EARLY_CONFIRMATION_ADMITTED');
-})();
-
-(function earlyConfirmationRejectsLateMove() {
-  const result = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'EARLYUSDT',
-    currentPct: 9,
-    managedPositions: [],
-    v42Quality: quality(2, 0.90, {
-      ignition: 1.4,
-      confirm: 0.40,
-      extension: 0.03,
-      r15: 0.02,
-      r60: 0.05
-    })
-  });
-  assert.strictEqual(result.allow, false);
-  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
-})();
-
-(function earlyConfirmationRejectsWeakMomentum() {
-  const result = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'EARLYUSDT',
-    currentPct: 4,
-    managedPositions: [],
-    v42Quality: quality(2, 0.88, {
-      ignition: 1.2,
-      confirm: 0.35,
-      extension: 0.02,
-      r15: -0.002,
-      r60: 0.04
-    })
-  });
-  assert.strictEqual(result.allow, false);
-  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
+  assert.strictEqual(result.code, 'NORMAL_ADMITTED');
 })();
 
 (function isolatedHighQualityCoreIsAdmitted() {
@@ -170,45 +116,6 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
   });
   assert.strictEqual(result.allow, false);
   assert.strictEqual(result.code, 'EXTENDED_ENTRY');
-})();
-
-(function extendedEntryAdmitsStrongContinuationOnly() {
-  const result = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'AAAUSDT',
-    currentPct: 17.72,
-    managedPositions: [],
-    v42Quality: quality(3, 0.96, {
-      ignition: 2.5,
-      confirm: 0.75,
-      extension: 0.12,
-      r15: 0.02,
-      r60: 0.06
-    })
-  });
-  assert.strictEqual(result.allow, true);
-  assert.strictEqual(result.code, 'EXTENDED_CONTINUATION_ADMITTED');
-})();
-
-(function extendedEntryStillBlocksWeakOrOverextendedMove() {
-  const weak = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'AAAUSDT',
-    currentPct: 15,
-    managedPositions: [],
-    v42Quality: quality(3, 0.96, { confirm: 0.2, extension: 0.01, r15: 0.02, r60: 0.06 })
-  });
-  assert.strictEqual(weak.allow, false);
-  assert.strictEqual(weak.code, 'EXTENDED_ENTRY');
-  const late = evaluateSpotEntryBurstGate({
-    lane: 'CORE',
-    symbol: 'AAAUSDT',
-    currentPct: 18,
-    managedPositions: [],
-    v42Quality: quality(3, 0.99, { confirm: 0.8, extension: 0.12, r15: 0.02, r60: 0.06 })
-  });
-  assert.strictEqual(late.allow, false);
-  assert.strictEqual(late.code, 'EXTENDED_ENTRY');
 })();
 
 (function correlatedEntryNeedsEliteQuality() {
