@@ -1,0 +1,41 @@
+name: Pre-CORE Live Progression Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/precore_live_progression.js'
+      - '.github/workflows/precore-live-progression-audit.yml'
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+permissions:
+  actions: read
+  contents: read
+  issues: write
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Measure live pre-CORE progression
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node research/continuator/precore_live_progression.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precore-live-progression-${{ github.run_id }}
+          path: |
+            precore-live-progression.json
+            precore-live-progression.md
+          retention-days: 14
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order|workflow_dispatch.*execution' research/continuator/precore_live_progression.js
+          grep -q "production_action:'NONE'" research/continuator/precore_live_progression.js
