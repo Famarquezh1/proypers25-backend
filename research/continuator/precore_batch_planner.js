@@ -169,9 +169,22 @@ async function main(){
     return {...x,...f,stats,plan,spreadPct:spread};
   });
 
-  const candidates=scanned.filter(x=>x&&x.plan?.eligible)
+  const observed=scanned.filter(x=>x);
+  const candidates=observed.filter(x=>x.plan?.eligible)
     .sort((a,b)=>(b.plan.confidence-a.plan.confidence)||(b.score-a.score))
     .slice(0,MAX_SLOTS);
+
+  const rejected=observed.filter(x=>!x.plan?.eligible)
+    .map(x=>({
+      symbol:x.symbol,stage:x.stage,passCount:x.passCount,pct24h:+x.pct.toFixed(3),score:+x.score.toFixed(4),
+      analogs:x.stats?.n||0,usable:x.stats?.usable===true,
+      expected_net_pct:x.stats?.usable?+(x.stats.expected_net*100).toFixed(3):null,
+      continuation_rate_pct:x.stats?.usable?+(x.stats.continuation_rate*100).toFixed(2):null,
+      profit_factor:x.stats?.usable?+Number(x.stats.profit_factor).toFixed(3):null,
+      reward_risk:x.plan?.reward_risk??null,
+      reason:x.plan?.reason||'NO_PLAN'
+    }))
+    .sort((a,b)=>(b.score-a.score));
 
   const generatedAt=new Date().toISOString();
   const batchId='precore-batch-'+generatedAt.replace(/[:.]/g,'-');
@@ -196,9 +209,11 @@ async function main(){
     ok:true,mode:'PRE_CORE_BATCH_PLANNER_V1',research_only:true,shadow_only:true,no_order_created:true,production_action:'NONE',
     generated_at:generatedAt,batch_id:batchId,
     budget_usdt:BUDGET_USDT,slot_usdt:SLOT_USDT,max_slots:MAX_SLOTS,
-    planned_slots:slots.length,planned_capital_usdt:slots.length*SLOT_USDT,cash_unallocated_usdt:BUDGET_USDT-slots.length*SLOT_USDT,
+    observed_precursors:observed.length,planned_slots:slots.length,planned_capital_usdt:slots.length*SLOT_USDT,cash_unallocated_usdt:BUDGET_USDT-slots.length*SLOT_USDT,
     batch_rule:'freeze candidate set and individual exits before any execution; do not fill weak slots merely to reach 20',
     decision_gate:{min_analogs:MIN_ANALOGS,min_expected_net_pct:MIN_EXPECTED_NET*100,min_reward_risk:MIN_RR,min_continuation_rate_pct:MIN_CONTINUATION*100,cost_pct:COST*100},
+    rejection_summary:rejected.reduce((o,x)=>(o[x.reason]=(o[x.reason]||0)+1,o),{}),
+    top_rejected:rejected.slice(0,30),
     slots
   };
   console.log(JSON.stringify(result));
