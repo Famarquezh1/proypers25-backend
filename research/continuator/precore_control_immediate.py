@@ -57,9 +57,14 @@ def feat(sym,btc,dm):
     con=1.2*br60+.65*rs60+.35*math.log(max(.2,vol30))-.8*max(0,r24-.10)-.5*max(0,r60-.06)
     ext=1.15*rs60+.75*rs240+.35*r30+.25*br240-.45*max(0,r24-.12)
     fresh=r24<.10 and r60<.10 and r15<.06
-    return {"price":c,"ignition":ign,"confirm":con,"extension":ext,"fresh":fresh}
+    pc=sum(1 for th in V42_THRESHOLDS if ign>=th["i"] and con>=th["c"] and ext>=th["e"]) if fresh else 0
+    return {"price":c,"ignition":ign,"confirm":con,"extension":ext,"fresh":fresh,"passCount":pc}
 
-def trigger(f):return bool(f and f["fresh"] and f["ignition"]>0 and f["confirm"]>0 and f["extension"]>0)
+def trigger_rule(f,rule):
+    if not f:return False
+    if rule=="PASS1":return f["passCount"]>=1
+    if rule=="PASS2":return f["passCount"]>=2
+    return bool(f["fresh"] and f["ignition"]>0 and f["confirm"]>0 and f["extension"]>0)
 
 def outcome(sym,dm,end,entry):
     fut=[x for x in sym if int(x[0])>=dm and int(x[0])<=end]
@@ -75,7 +80,7 @@ def outcome(sym,dm,end,entry):
 def metrics(rows):
     if not rows:return {"n":0}
     vals=[r["net"] for r in rows]; wins=[x for x in vals if x>0]; losses=[x for x in vals if x<0]
-    return {"n":len(rows),"trigger_rate":sum(r["trigger"] for r in rows)/len(rows),
+    return {"n":len(rows),
       "avg_net":sum(vals)/len(vals),"wr":sum(x>0 for x in vals)/len(vals),
       "pf":sum(wins)/abs(sum(losses)) if losses else (999 if wins else 0),
       "cont":sum(r["cont"] for r in rows)/len(rows),
@@ -111,7 +116,9 @@ def one(task):
     if not f:return None,None
     o=outcome(sb,dm,end,f["price"])
     if not o:return None,None
-    return {"target":is_target,"anchor_issue":s["issue"],"symbol":sym,"trigger":trigger(f),**o},None
+    return {"target":is_target,"anchor_issue":s["issue"],"symbol":sym,
+            "PASS1":trigger_rule(f,"PASS1"),"PASS2":trigger_rule(f,"PASS2"),
+            "ALL_PARTS_POSITIVE":trigger_rule(f,"ALL_PARTS_POSITIVE"),**o},None
   except Exception as e:return None,{"symbol":sym,"issue":s["issue"],"error":str(e)}
 
 with ThreadPoolExecutor(max_workers=16) as ex:
@@ -122,17 +129,21 @@ with ThreadPoolExecutor(max_workers=16) as ex:
     if err:errors.append(err)
 
 target=[r for r in rows if r["target"]]; control=[r for r in rows if not r["target"]]
-tt=[r for r in target if r["trigger"]]; ct=[r for r in control if r["trigger"]]
 report={"generated_at":datetime.now(timezone.utc).isoformat(),"research_only":True,"no_order_created":True,
-        "events":len(mature),"errors":errors,"target_all":metrics(target),"control_all":metrics(control),
-        "target_triggered":metrics(tt),"control_triggered":metrics(ct)}
+        "events":len(mature),"errors":errors,"target_all":metrics(target),"control_all":metrics(control),"rules":{}}
 def pct(x):return "—" if x is None else f"{100*x:.3f}%"
 lines=["# CORE Precursor Control","",f"Generated: {report['generated_at']}",
 f"Anchors: {len(mature)} · target rows: {len(target)} · matched control rows: {len(control)} · errors: {len(errors)}",
-"Rule frozen from prior study: fresh + ignition>0 + confirm>0 + extension>0 at -60m.","",
-"| group | n | trigger rate | net avg | WR | PF | continuator | MFE | MAE |","|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
-for name,m in [("future CORE targets",metrics(target)),("matched controls",metrics(control)),("triggered targets",metrics(tt)),("triggered controls",metrics(ct))]:
-  lines.append(f"| {name} | {m.get('n',0)} | {pct(m.get('trigger_rate'))} | {pct(m.get('avg_net'))} | {pct(m.get('wr'))} | {m.get('pf','—') if m.get('n',0) else '—'} | {pct(m.get('cont'))} | {pct(m.get('avg_mfe'))} | {pct(m.get('avg_mae'))} |")
+"Rules frozen before this control test: PASS1, PASS2, ALL_PARTS_POSITIVE at -60m.","",
+"| rule | target triggers | control triggers | target trigger rate | control trigger rate | target net | control net | target PF | control PF | target cont | control cont |",
+"|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+for rule in ["PASS1","PASS2","ALL_PARTS_POSITIVE"]:
+  tt=[r for r in target if r[rule]]; ct=[r for r in control if r[rule]]
+  tm=metrics(tt); cm=metrics(ct)
+  report["rules"][rule]={"target_trigger_rate":len(tt)/len(target) if target else 0,
+                          "control_trigger_rate":len(ct)/len(control) if control else 0,
+                          "target_triggered":tm,"control_triggered":cm}
+  lines.append(f"| {rule} | {len(tt)} | {len(ct)} | {pct(len(tt)/len(target) if target else 0)} | {pct(len(ct)/len(control) if control else 0)} | {pct(tm.get('avg_net'))} | {pct(cm.get('avg_net'))} | {tm.get('pf','—') if tm.get('n',0) else '—'} | {cm.get('pf','—') if cm.get('n',0) else '—'} | {pct(tm.get('cont'))} | {pct(cm.get('cont'))} |")
 lines+=["","Research only; matched controls are other historically active CORE symbols with no CORE signal within ±2h of the anchor."]
 open("precore-control.json","w").write(json.dumps(report,indent=2));open("precore-control.md","w").write("\n".join(lines));print("\n".join(lines))
 if TOKEN:
