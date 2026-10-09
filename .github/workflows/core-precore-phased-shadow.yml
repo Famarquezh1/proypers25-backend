@@ -1,0 +1,46 @@
+name: CORE Pre-CORE Phased Shadow
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/github-spot-precore-shadow.js'
+      - '.github/workflows/core-precore-phased-shadow.yml'
+  schedule:
+    - cron: '4,9,14,19,24,29,34,39,44,49,54,59 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: core-precore-phased-shadow
+  cancel-in-progress: true
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run phased pre-CORE shadow
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node backend/scripts/github-spot-precore-shadow.js)
+          printf '%s\n' "$RESULT"
+          printf '%s\n' "$RESULT" > precore-phased-shadow.json
+          test "$(printf '%s' "$RESULT" | jq -r '.ok')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.shadow_only')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.no_order_created')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.production_action')" = "NONE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precore-phased-shadow-${{ github.run_id }}
+          path: precore-phased-shadow.json
+          retention-days: 14
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order|workflow_dispatch.*execution' backend/scripts/github-spot-precore-shadow.js
+          grep -q "production_action:'NONE'" backend/scripts/github-spot-precore-shadow.js
