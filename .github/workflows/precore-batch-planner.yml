@@ -1,0 +1,46 @@
+name: Pre-CORE 100 USDT Batch Planner
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/precore_batch_planner.js'
+      - '.github/workflows/precore-batch-planner.yml'
+  schedule:
+    - cron: '11,26,41,56 * * * *'
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frozen 100 USDT research batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT=$(node research/continuator/precore_batch_planner.js)
+          printf '%s\n' "$RESULT"
+          printf '%s\n' "$RESULT" > precore-batch-plan.json
+          test "$(printf '%s' "$RESULT" | jq -r '.ok')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.shadow_only')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.no_order_created')" = "true"
+          test "$(printf '%s' "$RESULT" | jq -r '.production_action')" = "NONE"
+          test "$(printf '%s' "$RESULT" | jq -r '.budget_usdt')" = "100"
+          test "$(printf '%s' "$RESULT" | jq -r '.slot_usdt')" = "5"
+          test "$(printf '%s' "$RESULT" | jq -r '.max_slots')" = "20"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precore-batch-plan-${{ github.run_id }}
+          path: precore-batch-plan.json
+          retention-days: 14
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|api/v3/order|placeOrder|createOrder|withdraw|signed\(' research/continuator/precore_batch_planner.js
+          grep -q "production_action:'NONE'" research/continuator/precore_batch_planner.js
