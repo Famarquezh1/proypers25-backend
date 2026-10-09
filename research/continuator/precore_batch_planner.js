@@ -153,20 +153,24 @@ async function main(){
   const bookMap=new Map((books||[]).map(x=>[x.symbol,x]));
   const active=new Set((info.symbols||[]).filter(x=>x.status==='TRADING'&&x.isSpotTradingAllowed!==false).map(x=>x.symbol));
   const eligible=(ticks||[]).map(x=>({symbol:String(x.symbol||''),pct:+x.priceChangePercent||0,qv:+x.quoteVolume||0,price:+x.lastPrice||0}))
-    .filter(x=>active.has(x.symbol)&&x.symbol.endsWith('USDT')&&!/(UP|DOWN|BULL|BEAR)USDT$/.test(x.symbol)&&x.price>0&&x.pct>=.25&&x.pct<12&&x.qv>=200000)
+    .filter(x=>active.has(x.symbol)&&x.symbol.endsWith('USDT')&&!/(UP|DOWN|BULL|BEAR)USDT$/.test(x.symbol)&&x.price>0&&x.pct>=.25&&x.pct<50&&x.qv>=200000)
     .sort((a,b)=>(b.qv*(1+Math.max(0,b.pct)/12))-(a.qv*(1+Math.max(0,a.pct)/12))).slice(0,PROBE);
 
   const scanned=await mapLimit(eligible,CONCURRENCY,async x=>{
     const sb=await klines(x.symbol,1000);
     const i=sb.length-2,bi=Math.min(btc.length-2,i);
     const f=features(sb,btc,i,bi);
-    if(!f||f.stage==='NONE')return null;
-    const stats=analogStats(sb,btc,f);
+    if(!f)return null;
+    const continuationLane = f.stage==='NONE' && x.pct>=5 && x.pct<50 && f.r15>0 && f.r60>0;
+    if(f.stage==='NONE' && !continuationLane)return null;
+    const observedStage = continuationLane ? 'WINNER_CONTINUATION' : f.stage;
+    const observed = {...f,stage:observedStage,allPositive: continuationLane ? true : f.allPositive};
+    const stats=analogStats(sb,btc,observed);
     const b=bookMap.get(x.symbol)||{};
     const bid=+b.bidPrice||0,ask=+b.askPrice||0,mid=bid>0&&ask>0?(bid+ask)/2:0;
     const spread=mid>0?(ask-bid)/mid:0;
-    const plan=exitPlan(f,stats,spread);
-    return {...x,...f,stats,plan,spreadPct:spread};
+    const plan=exitPlan(observed,stats,spread);
+    return {...x,...observed,lane:continuationLane?'WINNER_CONTINUATION':'PRE_CORE',stats,plan,spreadPct:spread};
   });
 
   const observed=scanned.filter(x=>x);
@@ -176,7 +180,7 @@ async function main(){
 
   const rejected=observed.filter(x=>!x.plan?.eligible)
     .map(x=>({
-      symbol:x.symbol,stage:x.stage,passCount:x.passCount,pct24h:+x.pct.toFixed(3),score:+x.score.toFixed(4),
+      symbol:x.symbol,lane:x.lane,stage:x.stage,passCount:x.passCount,pct24h:+x.pct.toFixed(3),score:+x.score.toFixed(4),
       analogs:x.stats?.n||0,usable:x.stats?.usable===true,
       expected_net_pct:x.stats?.usable?+(x.stats.expected_net*100).toFixed(3):null,
       continuation_rate_pct:x.stats?.usable?+(x.stats.continuation_rate*100).toFixed(2):null,
@@ -189,7 +193,7 @@ async function main(){
   const generatedAt=new Date().toISOString();
   const batchId='precore-batch-'+generatedAt.replace(/[:.]/g,'-');
   const slots=candidates.map((x,idx)=>({
-    slot:idx+1,symbol:x.symbol,stage:x.stage,passCount:x.passCount,
+    slot:idx+1,symbol:x.symbol,lane:x.lane,stage:x.stage,passCount:x.passCount,
     planned_entry_usdt:SLOT_USDT,reference_price:x.price,
     max_entry_price:+(x.price*(1+x.plan.max_entry_slippage_pct/100)).toPrecision(10),
     tp1_price:+(x.price*(1+x.plan.take_profit_pct/100)).toPrecision(10),
@@ -209,8 +213,8 @@ async function main(){
     ok:true,mode:'PRE_CORE_BATCH_PLANNER_V1',research_only:true,shadow_only:true,no_order_created:true,production_action:'NONE',
     generated_at:generatedAt,batch_id:batchId,
     budget_usdt:BUDGET_USDT,slot_usdt:SLOT_USDT,max_slots:MAX_SLOTS,
-    observed_precursors:observed.length,planned_slots:slots.length,planned_capital_usdt:slots.length*SLOT_USDT,cash_unallocated_usdt:BUDGET_USDT-slots.length*SLOT_USDT,
-    batch_rule:'freeze candidate set and individual exits before any execution; do not fill weak slots merely to reach 20',
+    observed_candidates:observed.length,observed_precursors:observed.filter(x=>x.lane==='PRE_CORE').length,observed_live_winners:observed.filter(x=>x.lane==='WINNER_CONTINUATION').length,planned_slots:slots.length,planned_capital_usdt:slots.length*SLOT_USDT,cash_unallocated_usdt:BUDGET_USDT-slots.length*SLOT_USDT,
+    batch_rule:'observe both pre-CORE and already-rising winner-continuation lanes; freeze candidate set and individual exits before any execution; do not fill weak slots merely to reach 20',
     decision_gate:{min_analogs:MIN_ANALOGS,min_expected_net_pct:MIN_EXPECTED_NET*100,min_reward_risk:MIN_RR,min_continuation_rate_pct:MIN_CONTINUATION*100,cost_pct:COST*100},
     rejection_summary:rejected.reduce((o,x)=>(o[x.reason]=(o[x.reason]||0)+1,o),{}),
     top_rejected:rejected.slice(0,30),
