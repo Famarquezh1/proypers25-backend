@@ -1,0 +1,37 @@
+name: Spot Relaxed Filters Counterfactual
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/spot/relaxed-filters-counterfactual.js'
+      - '.github/workflows/spot-relaxed-filters-counterfactual.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Evaluate recent declined entries under relaxed filters
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node research/spot/relaxed-filters-counterfactual.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spot-relaxed-filters-counterfactual-${{ github.run_id }}
+          path: |
+            spot-relaxed-filters-counterfactual.json
+            spot-relaxed-filters-counterfactual.md
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order|gh workflow run' research/spot/relaxed-filters-counterfactual.js
+          grep -q "production_action:'NONE'" research/spot/relaxed-filters-counterfactual.js
