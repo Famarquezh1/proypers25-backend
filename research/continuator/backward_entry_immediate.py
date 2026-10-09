@@ -1,4 +1,5 @@
 import json, os, re, statistics, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 BASE="https://data-api.binance.vision"
@@ -81,19 +82,22 @@ for page in range(1,MAX_PAGES+1):
 
 signals=[x for x in (parse_signal(i) for i in issues) if x]
 signals=sorted(signals,key=lambda x:x["signal_ms"])
+# Keep a large but bounded recent mature cohort so the answer is produced in minutes, not hours.
+signals=signals[-160:]
 rows_by_offset={o:[] for o in OFFSETS}
 errors=[]
 now_ms=int(datetime.now(timezone.utc).timestamp()*1000)
-for s in signals:
-    if now_ms < s["signal_ms"]+4*3600*1000: continue
+def evaluate_signal(s):
+    if now_ms < s["signal_ms"]+4*3600*1000:
+        return [], None
     try:
         ks=klines(s["symbol"],s["signal_ms"]-62*60000,s["signal_ms"]+4*3600*1000)
     except Exception as e:
-        errors.append({"issue":s["issue"],"symbol":s["symbol"],"error":str(e)}); continue
-    if not ks: continue
-    by_open={int(k[0]):k for k in ks}
+        return [], {"issue":s["issue"],"symbol":s["symbol"],"error":str(e)}
+    if not ks: return [], None
     signal_bucket=(s["signal_ms"]//60000)*60000
     end=s["signal_ms"]+4*3600*1000
+    out=[]
     for off in OFFSETS:
         target=signal_bucket-off*60000
         candidates=[k for k in ks if int(k[0])<=target]
@@ -103,7 +107,7 @@ for s in signals:
         fut=[k for k in ks if int(k[0])>=int(k0[0]) and int(k[0])<=end]
         if len(fut)<5: continue
         highs=[float(k[2]) for k in fut]; lows=[float(k[3]) for k in fut]; closes=[float(k[4]) for k in fut]
-        rows_by_offset[off].append({
+        out.append({
           **s,"offset_min":off,"entry":entry,
           "entry_advantage_vs_signal":s["signal_price"]/entry-1,
           "net_terminal":closes[-1]/entry-1-COST,
@@ -111,6 +115,17 @@ for s in signals:
           "mae":min(lows)/entry-1,
           "continuator":first_hit(highs,lows,entry)
         })
+    return out, None
+
+with ThreadPoolExecutor(max_workers=12) as ex:
+    futs=[ex.submit(evaluate_signal,s) for s in signals]
+    for fut in as_completed(futs):
+        rows,err=fut.result()
+        if err: errors.append(err)
+        for row in rows:
+            rows_by_offset[row["offset_min"]].append(row)
+for off in OFFSETS:
+    rows_by_offset[off].sort(key=lambda x:x["signal_ms"])
 
 report={"research_only":True,"no_order_created":True,"generated_at":datetime.now(timezone.utc).isoformat(),
         "rule":"fixed backward offsets only; no threshold search","cost":COST,"signals_found":len(signals),"errors":errors,"offsets":{}}
