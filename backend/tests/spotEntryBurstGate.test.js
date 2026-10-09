@@ -270,13 +270,13 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
   assert(corr > 0.999);
 })();
 
-(function coreExecutionBoundaryIsDetectorOnlyAndV10RemainsExecutable() {
+(function coreExecutionBoundaryIsReopenedAndV10RemainsExecutable() {
   const fs = require('fs');
   const path = require('path');
   const executor = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'github-spot-manual-execution-v10-aware.js'), 'utf8');
-  assert(executor.includes("if (SIGNAL_LANE === 'CORE') decline('CORE_DETECTOR_ONLY:"));
+  assert(!executor.includes('CORE_DETECTOR_ONLY'));
   assert(executor.includes("SIGNAL_LANE === 'V10_HUNTER'"));
-  assert(!executor.includes("if (SIGNAL_LANE === 'V10_HUNTER') decline('CORE_DETECTOR_ONLY:"));
+  assert(executor.includes('evaluateSpotEntryBurstGate'));
 })();
 
 console.log('spotEntryBurstGate tests passed');
