@@ -1,0 +1,31 @@
+name: CORE Precursor Immediate
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/precore_detector_immediate.py'
+      - '.github/workflows/core-precore-immediate.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Evaluate pre-CORE precursor immediately
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python research/continuator/precore_detector_immediate.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-precore-immediate-${{ github.run_id }}
+          path: |
+            precore-immediate.json
+            precore-immediate.md
