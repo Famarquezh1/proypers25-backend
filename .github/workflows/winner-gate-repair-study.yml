@@ -1,0 +1,39 @@
+name: Winner Continuation Gate Repair Study
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/winner_gate_repair_study.js'
+      - '.github/workflows/winner-gate-repair-study.yml'
+permissions:
+  actions: read
+  contents: read
+  issues: write
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Compare winner gate rules on mature episodes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node research/continuator/winner_gate_repair_study.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winner-gate-repair-${{ github.run_id }}
+          path: |
+            winner-gate-repair.json
+            winner-gate-repair.md
+          retention-days: 14
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|api/v3/order|placeOrder|createOrder|withdraw|signed\(' research/continuator/winner_gate_repair_study.js
+          grep -q "production_action:'NONE'" research/continuator/winner_gate_repair_study.js
