@@ -180,7 +180,7 @@ async function main(){
 
   const rejected=observed.filter(x=>!x.plan?.eligible)
     .map(x=>({
-      symbol:x.symbol,lane:x.lane,stage:x.stage,passCount:x.passCount,pct24h:+x.pct.toFixed(3),score:+x.score.toFixed(4),
+      symbol:x.symbol,lane:x.lane,stage:x.stage,passCount:x.passCount,pct24h:+x.pct.toFixed(3),reference_price:x.price,score:+x.score.toFixed(4),
       analogs:x.stats?.n||0,usable:x.stats?.usable===true,
       expected_net_pct:x.stats?.usable?+(x.stats.expected_net*100).toFixed(3):null,
       continuation_rate_pct:x.stats?.usable?+(x.stats.continuation_rate*100).toFixed(2):null,
