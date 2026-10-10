@@ -170,7 +170,22 @@ async function main(){
     const bid=+b.bidPrice||0,ask=+b.askPrice||0,mid=bid>0&&ask>0?(bid+ask)/2:0;
     const spread=mid>0?(ask-bid)/mid:0;
     const plan=exitPlan(observed,stats,spread);
-    return {...x,...observed,lane:continuationLane?'WINNER_CONTINUATION':'PRE_CORE',stats,plan,spreadPct:spread};
+    const lane=continuationLane?'WINNER_CONTINUATION':'PRE_CORE';
+    // Forward-evaluated repair: the old >=45% historical continuation gate was inversely selecting live losers.
+    // For WINNER_CONTINUATION only, use the fixed WINNER_EXPECTANCY rule validated by the repair study.
+    if(lane==='WINNER_CONTINUATION' && stats.usable){
+      const winnerAccepted=
+        x.pct>=5 && x.pct<35 &&
+        (stats.expected_net*100)>=0.3 &&
+        stats.profit_factor>=1.4 &&
+        Number(plan.reward_risk||0)>=1.3;
+      plan.eligible=winnerAccepted;
+      plan.reason=winnerAccepted?'WINNER_EXPECTANCY_ACCEPTED':'WINNER_EXPECTANCY_REJECTED';
+      plan.gate_version='WINNER_EXPECTANCY_V1_FORWARD_VALIDATED';
+    } else {
+      plan.gate_version='PRE_CORE_EMPIRICAL_V1';
+    }
+    return {...x,...observed,lane,stats,plan,spreadPct:spread};
   });
 
   const observed=scanned.filter(x=>x);
@@ -215,7 +230,11 @@ async function main(){
     budget_usdt:BUDGET_USDT,slot_usdt:SLOT_USDT,max_slots:MAX_SLOTS,
     observed_candidates:observed.length,observed_precursors:observed.filter(x=>x.lane==='PRE_CORE').length,observed_live_winners:observed.filter(x=>x.lane==='WINNER_CONTINUATION').length,planned_slots:slots.length,planned_capital_usdt:slots.length*SLOT_USDT,cash_unallocated_usdt:BUDGET_USDT-slots.length*SLOT_USDT,
     batch_rule:'observe both pre-CORE and already-rising winner-continuation lanes; freeze candidate set and individual exits before any execution; do not fill weak slots merely to reach 20',
-    decision_gate:{min_analogs:MIN_ANALOGS,min_expected_net_pct:MIN_EXPECTED_NET*100,min_reward_risk:MIN_RR,min_continuation_rate_pct:MIN_CONTINUATION*100,cost_pct:COST*100},
+    decision_gate:{
+      pre_core:{min_analogs:MIN_ANALOGS,min_expected_net_pct:MIN_EXPECTED_NET*100,min_reward_risk:MIN_RR,min_continuation_rate_pct:MIN_CONTINUATION*100},
+      winner_continuation:{rule:'WINNER_EXPECTANCY_V1_FORWARD_VALIDATED',pct24h_min:5,pct24h_max_exclusive:35,min_expected_net_pct:0.3,min_profit_factor:1.4,min_reward_risk:1.3},
+      cost_pct:COST*100
+    },
     rejection_summary:rejected.reduce((o,x)=>(o[x.reason]=(o[x.reason]||0)+1,o),{}),
     top_rejected:rejected.slice(0,30),
     slots
