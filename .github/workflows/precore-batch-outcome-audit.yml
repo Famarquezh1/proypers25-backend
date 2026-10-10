@@ -1,0 +1,41 @@
+name: Pre-CORE Batch Outcome Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/continuator/precore_batch_outcome_audit.js'
+      - '.github/workflows/precore-batch-outcome-audit.yml'
+  schedule:
+    - cron: '13,28,43,58 * * * *'
+permissions:
+  actions: read
+  contents: read
+  issues: write
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Audit batch outcomes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node research/continuator/precore_batch_outcome_audit.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precore-batch-outcomes-${{ github.run_id }}
+          path: |
+            precore-batch-outcomes.json
+            precore-batch-outcomes.md
+          retention-days: 14
+      - name: Guard zero execution capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'BINANCE_(API|SECRET)_KEY|api/v3/order|placeOrder|createOrder|withdraw|signed\(' research/continuator/precore_batch_outcome_audit.js
+          grep -q "production_action:'NONE'" research/continuator/precore_batch_outcome_audit.js
