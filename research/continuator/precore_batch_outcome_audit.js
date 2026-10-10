@@ -108,24 +108,49 @@ async function main(){
 
   const matured=rows.filter(r=>r.age_min>=175&&r.entry);
   const planned=matured.filter(r=>r.decision==='PLANNED');
+  const rejected=matured.filter(r=>r.decision==='REJECTED_WINNER');
+
+  function uniqueEpisodes(items){
+    const bySymbol=new Map();
+    for(const r of items.slice().sort((a,b)=>String(a.batch_id).localeCompare(String(b.batch_id)))){
+      if(!bySymbol.has(r.symbol)) bySymbol.set(r.symbol,[]);
+      const arr=bySymbol.get(r.symbol);
+      const last=arr[arr.length-1];
+      const t=Date.parse(String(r.batch_id||'').replace(/^precore-batch-/,'').replace(/-(\d{3})Z$/,'$1Z').replace(/-/g,':'));
+      const lt=last?last._t:NaN;
+      if(!last || !Number.isFinite(t) || !Number.isFinite(lt) || t-lt>=180*60000){
+        arr.push({...r,_t:t});
+      }
+    }
+    return [...bySymbol.values()].flat().map(({_t,...r})=>r);
+  }
+
+  const plannedUnique=uniqueEpisodes(planned);
+  const rejectedUnique=uniqueEpisodes(rejected);
   const summary={
     research_only:true,shadow_only:true,no_order_created:true,production_action:'NONE',
     generated_at:new Date().toISOString(),
     plans_scanned:plans.length,observations:rows.length,matured: matured.length,
     matured_planned:planned.length,
-    planned_avg_return_pct:planned.length?+(planned.reduce((s,x)=>s+x.return_pct,0)/planned.length).toFixed(3):null,
-    planned_avg_mfe_pct:planned.length?+(planned.reduce((s,x)=>s+x.mfe_pct,0)/planned.length).toFixed(3):null,
-    planned_avg_mae_pct:planned.length?+(planned.reduce((s,x)=>s+x.mae_pct,0)/planned.length).toFixed(3):null,
-    tp_hits:planned.filter(x=>x.outcome==='TP_HIT').length,
-    sl_hits:planned.filter(x=>x.outcome==='SL_HIT').length,
+    matured_planned_unique:plannedUnique.length,
+    matured_rejected_winner_unique:rejectedUnique.length,
+    planned_avg_return_pct:plannedUnique.length?+(plannedUnique.reduce((s,x)=>s+x.return_pct,0)/plannedUnique.length).toFixed(3):null,
+    planned_avg_mfe_pct:plannedUnique.length?+(plannedUnique.reduce((s,x)=>s+x.mfe_pct,0)/plannedUnique.length).toFixed(3):null,
+    planned_avg_mae_pct:plannedUnique.length?+(plannedUnique.reduce((s,x)=>s+x.mae_pct,0)/plannedUnique.length).toFixed(3):null,
+    rejected_avg_return_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.return_pct,0)/rejectedUnique.length).toFixed(3):null,
+    rejected_avg_mfe_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.mfe_pct,0)/rejectedUnique.length).toFixed(3):null,
+    rejected_avg_mae_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.mae_pct,0)/rejectedUnique.length).toFixed(3):null,
+    tp_hits:plannedUnique.filter(x=>x.outcome==='TP_HIT').length,
+    sl_hits:plannedUnique.filter(x=>x.outcome==='SL_HIT').length,
     rows
   };
 
   const lines=[
     '# Pre-CORE Batch Outcome Audit','',
     'Research/shadow only. No orders are created or modified.','',
-    `Plans scanned: ${summary.plans_scanned} · observations: ${summary.observations} · matured planned positions: ${summary.matured_planned}`,
-    `Matured planned avg return: ${summary.planned_avg_return_pct??'—'}% · avg MFE: ${summary.planned_avg_mfe_pct??'—'}% · avg MAE: ${summary.planned_avg_mae_pct??'—'}% · TP hits: ${summary.tp_hits} · SL hits: ${summary.sl_hits}`,'',
+    `Plans scanned: ${summary.plans_scanned} · observations: ${summary.observations} · matured planned snapshots: ${summary.matured_planned} · unique planned episodes: ${summary.matured_planned_unique} · unique rejected-winner episodes: ${summary.matured_rejected_winner_unique}`,
+    `Unique planned avg return: ${summary.planned_avg_return_pct??'—'}% · avg MFE: ${summary.planned_avg_mfe_pct??'—'}% · avg MAE: ${summary.planned_avg_mae_pct??'—'}% · TP hits: ${summary.tp_hits} · SL hits: ${summary.sl_hits}`,
+    `Unique rejected-winner avg return: ${summary.rejected_avg_return_pct??'—'}% · avg MFE: ${summary.rejected_avg_mfe_pct??'—'}% · avg MAE: ${summary.rejected_avg_mae_pct??'—'}%`,'',
     '| batch | symbol | decision | age | return | MFE | MAE | outcome |',
     '|---|---|---|---:|---:|---:|---:|---|'
   ];
