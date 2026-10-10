@@ -52,6 +52,12 @@ async function klines(symbol,start,end){
   });
   return await get(BASE+'/api/v3/klines?'+q.toString());
 }
+async function referencePriceAt(symbol,decisionMs){
+  const ks=await klines(symbol,decisionMs-10*60000,decisionMs+5*60000);
+  const eligible=ks.filter(r=>+r[0]<=decisionMs);
+  const k=eligible[eligible.length-1]||ks[0];
+  return k?+k[4]:0;
+}
 async function main(){
   const runs=await gh('/actions/workflows/'+WORKFLOW+'/runs?status=completed&per_page='+MAX_RUNS);
   const plans=[];
@@ -80,10 +86,14 @@ async function main(){
     ];
     for(const x of inspect){
       if(!x.symbol) continue;
-      const entry=Number(x.reference_price||x.price||0);
-      // rejected rows do not store reference price; skip exact outcome until planner exposes it
-      if(!(entry>0)) {
-        rows.push({run_id:p.run_id,batch_id:p.batch_id,symbol:x.symbol,decision:x.decision,status:'NO_REFERENCE_PRICE'});
+      let entry=Number(x.reference_price||x.price||0);
+      let reference_source='PLANNER';
+      if(!(entry>0)){
+        entry=await referencePriceAt(x.symbol,generated);
+        reference_source='RECOVERED_5M_CLOSE';
+      }
+      if(!(entry>0)){
+        rows.push({run_id:p.run_id,batch_id:p.batch_id,decision_at_ms:generated,symbol:x.symbol,decision:x.decision,status:'NO_REFERENCE_PRICE'});
         continue;
       }
       const ks=await klines(x.symbol,generated,horizonEnd);
@@ -94,7 +104,7 @@ async function main(){
       const max=Math.max(...ks.map(r=>+r[2]));
       const min=Math.min(...ks.map(r=>+r[3]));
       rows.push({
-        run_id:p.run_id,batch_id:p.batch_id,symbol:x.symbol,decision:x.decision,
+        run_id:p.run_id,batch_id:p.batch_id,decision_at_ms:generated,symbol:x.symbol,decision:x.decision,reference_source,
         age_min:+((horizonEnd-generated)/60000).toFixed(1),
         entry,latest:last,
         return_pct:+((last/entry-1)*100).toFixed(3),
@@ -112,17 +122,17 @@ async function main(){
 
   function uniqueEpisodes(items){
     const bySymbol=new Map();
-    for(const r of items.slice().sort((a,b)=>String(a.batch_id).localeCompare(String(b.batch_id)))){
+    for(const r of items.slice().sort((a,b)=>(a.decision_at_ms||0)-(b.decision_at_ms||0))){
       if(!bySymbol.has(r.symbol)) bySymbol.set(r.symbol,[]);
       const arr=bySymbol.get(r.symbol);
       const last=arr[arr.length-1];
-      const t=Date.parse(String(r.batch_id||'').replace(/^precore-batch-/,'').replace(/-(\d{3})Z$/,'$1Z').replace(/-/g,':'));
-      const lt=last?last._t:NaN;
+      const t=Number(r.decision_at_ms);
+      const lt=last?Number(last.decision_at_ms):NaN;
       if(!last || !Number.isFinite(t) || !Number.isFinite(lt) || t-lt>=180*60000){
-        arr.push({...r,_t:t});
+        arr.push(r);
       }
     }
-    return [...bySymbol.values()].flat().map(({_t,...r})=>r);
+    return [...bySymbol.values()].flat();
   }
 
   const plannedUnique=uniqueEpisodes(planned);
@@ -140,6 +150,10 @@ async function main(){
     rejected_avg_return_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.return_pct,0)/rejectedUnique.length).toFixed(3):null,
     rejected_avg_mfe_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.mfe_pct,0)/rejectedUnique.length).toFixed(3):null,
     rejected_avg_mae_pct:rejectedUnique.length?+(rejectedUnique.reduce((s,x)=>s+x.mae_pct,0)/rejectedUnique.length).toFixed(3):null,
+    planned_positive_rate_pct:plannedUnique.length?+(100*plannedUnique.filter(x=>x.return_pct>0).length/plannedUnique.length).toFixed(2):null,
+    rejected_positive_rate_pct:rejectedUnique.length?+(100*rejectedUnique.filter(x=>x.return_pct>0).length/rejectedUnique.length).toFixed(2):null,
+    planned_mfe_ge_3_rate_pct:plannedUnique.length?+(100*plannedUnique.filter(x=>x.mfe_pct>=3).length/plannedUnique.length).toFixed(2):null,
+    rejected_mfe_ge_3_rate_pct:rejectedUnique.length?+(100*rejectedUnique.filter(x=>x.mfe_pct>=3).length/rejectedUnique.length).toFixed(2):null,
     tp_hits:plannedUnique.filter(x=>x.outcome==='TP_HIT').length,
     sl_hits:plannedUnique.filter(x=>x.outcome==='SL_HIT').length,
     rows
@@ -150,7 +164,8 @@ async function main(){
     'Research/shadow only. No orders are created or modified.','',
     `Plans scanned: ${summary.plans_scanned} · observations: ${summary.observations} · matured planned snapshots: ${summary.matured_planned} · unique planned episodes: ${summary.matured_planned_unique} · unique rejected-winner episodes: ${summary.matured_rejected_winner_unique}`,
     `Unique planned avg return: ${summary.planned_avg_return_pct??'—'}% · avg MFE: ${summary.planned_avg_mfe_pct??'—'}% · avg MAE: ${summary.planned_avg_mae_pct??'—'}% · TP hits: ${summary.tp_hits} · SL hits: ${summary.sl_hits}`,
-    `Unique rejected-winner avg return: ${summary.rejected_avg_return_pct??'—'}% · avg MFE: ${summary.rejected_avg_mfe_pct??'—'}% · avg MAE: ${summary.rejected_avg_mae_pct??'—'}%`,'',
+    `Unique rejected-winner avg return: ${summary.rejected_avg_return_pct??'—'}% · avg MFE: ${summary.rejected_avg_mfe_pct??'—'}% · avg MAE: ${summary.rejected_avg_mae_pct??'—'}%`,
+    `Positive rate planned/rejected: ${summary.planned_positive_rate_pct??'—'}% / ${summary.rejected_positive_rate_pct??'—'}% · MFE>=3% planned/rejected: ${summary.planned_mfe_ge_3_rate_pct??'—'}% / ${summary.rejected_mfe_ge_3_rate_pct??'—'}%`,'',
     '| batch | symbol | decision | age | return | MFE | MAE | outcome |',
     '|---|---|---|---:|---:|---:|---:|---|'
   ];
