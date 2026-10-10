@@ -12,11 +12,9 @@ function outcome(rows,entry,decisionMs,tpPct=3,slPct=-1,costPct=COST_PCT) {
   if(!(entry>0))return {status:'NO_ENTRY'};
   const bars=eligibleBars(rows,decisionMs);
   if(!bars.length)return {status:'NO_BARS'};
-  let max=-Infinity,min=Infinity;
   for(const bar of bars){
     const high=Number(bar[2]),low=Number(bar[3]);
     if(!Number.isFinite(high)||!Number.isFinite(low))return {status:'BAD_BAR'};
-    max=Math.max(max,high);min=Math.min(min,low);
     const tp=(high/entry-1)*100>=tpPct;
     const sl=(low/entry-1)*100<=slPct;
     if(tp&&sl)return {status:'AMBIGUOUS_SAME_BAR',net_pct:null,hit3before1:null};
