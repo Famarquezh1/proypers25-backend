@@ -1,0 +1,18 @@
+name: Explosion Autonomous Excavation
+on:
+  pull_request:
+    paths: ['backend/scripts/github-explosion-autonomous-excavation.js','.github/workflows/explosion-autonomous-excavation.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-explosion-autonomous-excavation.js
+      - run: node backend/scripts/github-explosion-autonomous-excavation.js
+      - uses: actions/upload-artifact@v4
+        with: {name: explosion-autonomous-excavation, path: explosion-autonomous-excavation.json, retention-days: 30}

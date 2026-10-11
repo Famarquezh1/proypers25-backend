@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('fs'),BASE='https://data-api.binance.vision';
+const S='TUTUSDT,RAYUSDT,LTCUSDT,FETUSDT,CRVUSDT,HBARUSDT,DOGEUSDT,ADAUSDT,SUIUSDT,SEIUSDT,WIFUSDT,PEPEUSDT'.split(',');
+const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0,pct=(a,b)=>a?b/a-1:0,med=a=>{a=[...a].sort((x,y)=>x-y);return a[Math.floor((a.length-1)/2)]};
+async function get(u){let r=await fetch(u,{headers:{'user-agent':'proypers-regime-contrast/1'}});if(!r.ok)throw Error('HTTP_'+r.status);return r.json()}
+async function bars(s,st,en){let o=[],c=st;while(c<en){let a=await get(BASE+'/api/v3/klines?'+new URLSearchParams({symbol:s,interval:'1h',startTime:c,endTime:en,limit:1000}));if(!a.length)break;o.push(...a.map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],q:+r[7],n:+r[8]})));let nx=+a.at(-1)[0]+36e5;if(nx<=c)break;c=nx;if(a.length<1000)break}return o}
+(async()=>{let end=Date.now()-20*6e4,start=end-27*864e5,data={};for(const s of ['BTCUSDT',...S])data[s]=await bars(s,start,end);
+let blocks=[];for(let k=5;k>=1;k--){let bs=end-k*5*864e5,be=bs+5*864e5,b=data.BTCUSDT.filter(x=>x.t>=bs&&x.t<be),alts=S.map(s=>data[s].filter(x=>x.t>=bs&&x.t<be)).filter(x=>x.length>12);
+let btcRet=pct(b[0]?.c,b.at(-1)?.c),btcRange=(Math.max(...b.map(x=>x.h))-Math.min(...b.map(x=>x.l)))/(b[0]?.c||1),btcVol=avg(b.map(x=>(x.h-x.l)/x.c));
+let ars=alts.map(a=>pct(a[0].c,a.at(-1).c)),up=ars.filter(x=>x>0).length/Math.max(1,ars.length),disp=Math.sqrt(avg(ars.map(x=>(x-avg(ars))**2))),medAlt=med(ars),qAccel=avg(alts.map(a=>{let h=Math.floor(a.length/2);return avg(a.slice(h).map(x=>x.q))/Math.max(avg(a.slice(0,h).map(x=>x.q)),1)})),tradeAccel=avg(alts.map(a=>{let h=Math.floor(a.length/2);return avg(a.slice(h).map(x=>x.n))/Math.max(avg(a.slice(0,h).map(x=>x.n)),1)}));
+blocks.push({start:new Date(bs).toISOString(),end:new Date(be).toISOString(),btcRet,btcRange,btcVol,breadthUp:up,medianAltRet:medAlt,dispersion:disp,quoteAccel:qAccel,tradeAccel})}
+// attach already-observed portfolio returns strictly as labels, not features
+const labels=[-3.6523306743,5.3933147385,-4.9940753109,-7.6611204712,8.2511575154];blocks.forEach((b,i)=>b.portfolioReturn=labels[i]);
+// First 3 blocks = development; derive direction only. Last 2 = untouched check for this regime study.
+let dev=blocks.slice(0,3),test=blocks.slice(3),features=['btcRet','btcRange','btcVol','breadthUp','medianAltRet','dispersion','quoteAccel','tradeAccel'],rules=[];
+for(const f of features){let pos=dev.filter(x=>x.portfolioReturn>0),neg=dev.filter(x=>x.portfolioReturn<=0);if(!pos.length||!neg.length)continue;let ap=avg(pos.map(x=>x[f])),an=avg(neg.map(x=>x[f])),th=(ap+an)/2,op=ap>an?'>=':'<=',pred=x=>op==='>='?x[f]>=th:x[f]<=th;let good=dev.filter(pred),bad=dev.filter(x=>!pred(x));rules.push({f,op,th,dev_good_n:good.length,dev_good_return:avg(good.map(x=>x.portfolioReturn)),dev_bad_return:avg(bad.map(x=>x.portfolioReturn)),test_good:test.filter(pred).map(x=>x.portfolioReturn),test_bad:test.filter(x=>!pred(x)).map(x=>x.portfolioReturn)})}
+let out={generated_at:new Date().toISOString(),mode:'FIVE_DAY_REGIME_CONTRAST_RESEARCH_ONLY',production_influence:false,orders:false,note:'features use only market data; portfolio returns are labels from prior fixed replay; first 3 blocks derive simple directions, last 2 are check only',blocks,rules};fs.writeFileSync('five-day-regime-contrast.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2))})().catch(e=>{console.error(e);process.exit(1)});

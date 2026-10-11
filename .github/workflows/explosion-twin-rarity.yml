@@ -1,0 +1,19 @@
+name: Explosion Twin Rarity
+on:
+  pull_request:
+    paths: ['backend/scripts/github-explosion-twin-rarity.js','.github/workflows/explosion-twin-rarity.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env: {REPLAY_DAYS: '35'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-explosion-twin-rarity.js
+      - run: node backend/scripts/github-explosion-twin-rarity.js
+      - uses: actions/upload-artifact@v4
+        with: {name: explosion-twin-rarity, path: explosion-twin-rarity.json, retention-days: 30}
