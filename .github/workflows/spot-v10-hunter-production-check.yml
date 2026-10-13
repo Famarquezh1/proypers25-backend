@@ -77,8 +77,8 @@ jobs:
           const required = [
             "const buy = managedBuys[managedBuys.length - 1];",
             "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {"
+            "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10) reason = 'RESIDUAL_TAKE_PROFIT';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {"
           ];
           for (const target of required) {
             if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);
