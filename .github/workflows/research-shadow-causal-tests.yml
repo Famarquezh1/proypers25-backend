@@ -1,0 +1,26 @@
+name: Research Shadow Causal Audit Tests
+on:
+  pull_request:
+    paths:
+      - 'research/continuator/shadow_outcome_safe.js'
+      - 'research/continuator/shadow_outcome_safe.test.js'
+      - 'research/continuator/precore_batch_outcome_audit.js'
+      - '.github/workflows/research-shadow-causal-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --check research/continuator/shadow_outcome_safe.js
+      - run: node --check research/continuator/precore_batch_outcome_audit.js
+      - run: node research/continuator/shadow_outcome_safe.test.js
+      - name: Verify no execution imports
+        run: |
+          ! grep -Eq 'api/v3/order|placeOrder|createOrder|BINANCE_API_KEY|BINANCE_SECRET_KEY' research/continuator/shadow_outcome_safe.js
