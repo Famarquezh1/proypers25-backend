@@ -201,8 +201,8 @@ jobs:
           grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "manipulation_risk=" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "local-pretrade-memory.jsonl" backend/services/localPretradeGuard.js
-          grep -q "sampleIntervalMs: 15000" backend/services/localPretradeGuard.js
-          grep -q "samples: 7" backend/services/localPretradeGuard.js
+          grep -q "sampleIntervalMs: 3500" backend/services/localPretradeGuard.js
+          grep -q "samples: 5" backend/services/localPretradeGuard.js
           grep -q "MOMENTUM_CONTINUATION_WEAK" backend/services/localPretradeGuard.js
           grep -q "continuationRequired" backend/services/localPretradeGuard.js
           grep -q "continuation_score=" backend/scripts/github-spot-manual-execution-v10-aware.js
