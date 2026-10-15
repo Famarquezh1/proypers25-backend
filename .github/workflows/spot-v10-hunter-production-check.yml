@@ -74,14 +74,16 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const source = fs.readFileSync('backend/scripts/github-spot-auto-exit-legacy.js', 'utf8').replace(/\r\n/g, '\n');
+          const wrapper = fs.readFileSync('backend/scripts/github-spot-auto-exit-legacy-v10-aware.js', 'utf8');
           const required = [
             "const buy = managedBuys[managedBuys.length - 1];",
             "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {"
+            "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10)",
+            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {"
           ];
           for (const target of required) {
             if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);
+            if (!wrapper.includes(target) && !wrapper.includes(target.replace(/\n/g, '\\n'))) throw new Error(`V10 wrapper does not patch target: ${target.slice(0, 90)}`);
           }
           console.log('V10 wrapper patch targets compatible with legacy exit source');
           NODE
