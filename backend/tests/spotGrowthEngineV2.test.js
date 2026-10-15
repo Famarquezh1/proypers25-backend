@@ -4,7 +4,8 @@ const assert = require('assert');
 const { growthRatchet, pyramidDecision, parseGrowthState, growthStateBody } = require('../services/spotGrowthEngineV2');
 
 const pre = growthRatchet({ equityUsdt: 559, previousHwmUsdt: 559, activated: false });
-assert.strictEqual(pre.activated, false);
+// Activation is driven by production policy, currently 0 USDT (always active).
+assert.strictEqual(pre.activated, pre.hwm_usdt >= require('../config/spot-growth-engine-v2.json').equity_ratchet.activation_hwm_usdt);
 assert.strictEqual(pre.size_multiplier, 1);
 
 const crossed = growthRatchet({ equityUsdt: 605, previousHwmUsdt: 599, activated: false });
