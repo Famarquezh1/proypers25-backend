@@ -187,12 +187,14 @@ async function managedSymbols(base) {
   const [issues, openOrders] = await Promise.all([
     githubRequest('/issues?state=closed&per_page=100&sort=updated&direction=desc')
       .catch((error) => {
-        console.warn(`EXIT_SCOPE_GITHUB_FALLBACK error=${error.message || error}`);
-        return [];
+        // Do not turn an unavailable managed-position registry into an empty scope.
+        // Binance open orders alone cannot reveal unprotected managed positions.
+        throw new Error(`EXIT_SCOPE_INCOMPLETE github_registry_unavailable: ${error.message || error}`);
       }),
     signed(base, 'GET', '/api/v3/openOrders')
   ]);
-  const issueSymbols = (Array.isArray(issues) ? issues : [])
+  if (!Array.isArray(issues)) throw new Error('EXIT_SCOPE_INCOMPLETE github_registry_missing');
+  const issueSymbols = issues
     .filter((issue) => issue.state_reason === 'completed')
     .filter((issue) => new Date(issue.created_at).getTime() >= since)
     .map((issue) => String(issue.title || '').match(/^\[SPOT SIGNAL\] ([A-Z0-9]+USDT)\b/))
