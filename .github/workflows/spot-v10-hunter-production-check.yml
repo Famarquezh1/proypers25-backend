@@ -78,7 +78,7 @@ jobs:
           const required = [
             "const buy = managedBuys[managedBuys.length - 1];",
             "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\\n    if (managed.residualMode && gainPct >= 0.10)",
+            "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10)",
             "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {"
           ];
           for (const target of required) {
