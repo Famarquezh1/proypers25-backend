@@ -83,7 +83,7 @@ jobs:
           ];
           for (const target of required) {
             if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);
-            if (!wrapper.includes(target)) throw new Error(`V10 wrapper does not patch target: ${target.slice(0, 90)}`);
+            if (!wrapper.includes(target) && !wrapper.includes(target.replace(/\n/g, '\\n'))) throw new Error(`V10 wrapper does not patch target: ${target.slice(0, 90)}`);
           }
           console.log('V10 wrapper patch targets compatible with legacy exit source');
           NODE
