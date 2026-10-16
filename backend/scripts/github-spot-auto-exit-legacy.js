@@ -80,12 +80,22 @@ async function request(base, path, options = {}) {
 }
 
 async function signed(base, method, path, params = {}) {
-  const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
-  const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
-  return request(base, `${path}?${query}&signature=${signature}`, {
-    method,
-    headers: { 'X-MBX-APIKEY': API_KEY }
-  });
+  const maxAttempts = method === 'GET' ? 3 : 1;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
+    const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
+    try {
+      return await request(base, `${path}?${query}&signature=${signature}`, {
+        method,
+        headers: { 'X-MBX-APIKEY': API_KEY }
+      });
+    } catch (error) {
+      const transient = !error?.status || error.status === 429 || error.status >= 500;
+      if (!transient || attempt === maxAttempts) throw error;
+      console.warn(`BINANCE_READ_RETRY path=${path} attempt=${attempt} error=${error.message || error}`);
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    }
+  }
 }
 
 async function chooseBase() {
