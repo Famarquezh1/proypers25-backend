@@ -681,7 +681,7 @@ async function main() {
         soldCount += 1;
       } catch (error) {
         if (!isNotionalFilterError(error)) throw error;
-        console.warn(`EXIT_SKIPPED_UNTRADABLE symbol=${symbol} reason=${reason} detail=${error.message || error}`);
+        console.warn(`EXIT_SKIPPED_NOTIONAL symbol=${symbol} reason=${reason} detail=${error.message || error}`);
       }
       continue;
     }
