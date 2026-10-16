@@ -126,6 +126,7 @@ jobs:
       - name: Confirm production wiring
         run: |
           set -euo pipefail
+          set -x
           grep -q "github-spot-v61-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -q "workflow_run:" .github/workflows/spot-auto-exit-local.yml
           grep -q "Spot GitHub Radar" .github/workflows/spot-auto-exit-local.yml
