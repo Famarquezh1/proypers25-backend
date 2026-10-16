@@ -122,6 +122,7 @@ jobs:
           node backend/tests/spotManagedResidual.test.js
           node backend/tests/spotHighHistoryPolicy.test.js
           node backend/tests/spotNativeProtectionPolicy.test.js
+          node backend/tests/spotExitSafeReadRetry.test.js
           node backend/tests/spotGrowthEngineV2.test.js
       - name: Confirm production wiring
         run: |
