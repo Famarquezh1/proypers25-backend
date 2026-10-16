@@ -93,6 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          set -x
           grep -q "const MAX_USDT = 70" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "const MIN_USDT = 5" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "DUPLICATE_POSITION_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
