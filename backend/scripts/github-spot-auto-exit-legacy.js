@@ -393,7 +393,7 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
 
   let quantity = floorToStep(Math.min(managedQty, free), lot.stepSize);
   if (!(quantity >= Number(lot.minQty || 0))) {
-    const openOrders = await signed(base, 'GET', '/api/v3/openOrders', { symbol }).catch(() => []);
+    const openOrders = await signed(base, 'GET', '/api/v3/openOrders', { symbol });
     const managedBlockers = (Array.isArray(openOrders) ? openOrders : []).filter((order) => {
       const kind = classifyProtectionOrder(order).kind;
       return ['CORE_PROTECTION', 'V61_PROTECTION', 'ORPHAN_PROTECTION'].includes(kind);
