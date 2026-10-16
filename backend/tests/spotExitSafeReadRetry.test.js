@@ -1,0 +1,10 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const source = fs.readFileSync(path.join(__dirname, '../scripts/github-spot-auto-exit-legacy.js'), 'utf8');
+assert.match(source, /const maxAttempts = method === 'GET' \? 3 : 1;/, 'only idempotent reads may retry');
+assert.match(source, /timestamp: String\(Date\.now\(\)\)/, 'signed retry must regenerate timestamp');
+assert.match(source, /if \(!transient \|\| attempt === maxAttempts\) throw error;/, 'bounded retries must fail closed');
+assert.doesNotMatch(source, /openOrders[^\n]*\.catch\(\(\) => \[\]\)/, 'inventory read errors must not become empty inventory');
+console.log('Spot exit safe-read regression checks passed');
