@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { submitOrder, requestJson, journalStore } = require('../services/spotOrderSafety');
 const EXIT_POLICY = require('../config/spot-exit-policy-v2.json');
 const { managedCoreProtectionSymbols, isProypersSpotBuyOrder, classifyProtectionOrder } = require('../services/spotOrphanProtection');
 const { resolveTrailingDistance } = require('../services/spotProgressiveTrailing');
@@ -12,6 +13,7 @@ const { highHistoryCadence } = require('../services/spotHighHistoryPolicy');
 const { decideCoreGrowthExit } = require('../services/spotGrowthExitPolicy');
 const { resolveNativeProtectionStop } = require('../services/spotNativeProtectionPolicy');
 
+const cancelledProtections = new Map();
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
 const GH_TOKEN = process.env.GITHUB_TOKEN || '';
@@ -66,20 +68,15 @@ function minimumNotional(info, orderType = 'MARKET') {
 }
 
 async function request(base, path, options = {}) {
-  const response = await fetch(`${base}${path}`, options);
-  const text = await response.text();
-  let body;
-  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
-  if (!response.ok) {
-    const error = new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
-    error.status = response.status;
-    error.body = body;
-    throw error;
-  }
-  return body;
+  return requestJson(`${base}${path}`, options);
 }
 
 async function signed(base, method, path, params = {}) {
+  if (method === 'POST' && path === '/api/v3/order') return submitOrder(rawSigned, base, params);
+  return rawSigned(base, method, path, params);
+}
+
+async function rawSigned(base, method, path, params = {}) {
   const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
   const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
   return request(base, `${path}?${query}&signature=${signature}`, {
@@ -128,7 +125,8 @@ async function resolveGrowthRatchet(equityUsdt) {
   }
 
   const title = String(GROWTH_V2_POLICY.equity_ratchet.state_issue_title || '[SPOT GROWTH STATE]');
-  const issues = await githubRequest('/issues?state=open&per_page=100&sort=updated&direction=desc').catch(() => []);
+  const issues = await githubRequest('/issues?state=open&per_page=100&sort=updated&direction=desc');
+  if (!Array.isArray(issues)) throw new Error('GROWTH_STATE_UNAVAILABLE');
   const issue = (Array.isArray(issues) ? issues : []).find((item) => String(item.title || '') === title);
   const previous = issue ? parseGrowthState(issue.body || '') : null;
   const ratchet = growthRatchet({
@@ -187,12 +185,12 @@ async function managedSymbols(base) {
   const [issues, openOrders] = await Promise.all([
     githubRequest('/issues?state=closed&per_page=100&sort=updated&direction=desc')
       .catch((error) => {
-        console.warn(`EXIT_SCOPE_GITHUB_FALLBACK error=${error.message || error}`);
-        return [];
+        throw new Error(`EXIT_SCOPE_INCOMPLETE github_registry_unavailable: ${error.message || error}`);
       }),
     signed(base, 'GET', '/api/v3/openOrders')
   ]);
-  const issueSymbols = (Array.isArray(issues) ? issues : [])
+  if (!Array.isArray(issues) || !Array.isArray(openOrders)) throw new Error('EXIT_SCOPE_INCOMPLETE registry_or_orders_missing');
+  const issueSymbols = issues
     .filter((issue) => issue.state_reason === 'completed')
     .filter((issue) => new Date(issue.created_at).getTime() >= since)
     .map((issue) => String(issue.title || '').match(/^\[SPOT SIGNAL\] ([A-Z0-9]+USDT)\b/))
@@ -279,7 +277,7 @@ async function getHighSince(base, symbol, startTime, entryPrice, currentPrice) {
     }
     console.log(`HIGH_HISTORY symbol=${symbol} interval=${cadence.interval} high=${high} start=${startTime}`);
   } catch (error) {
-    console.log(`HIGH_HISTORY_FALLBACK symbol=${symbol} error=${error.message || error}`);
+    throw new Error(`HIGH_HISTORY_UNAVAILABLE symbol=${symbol}: ${error.message || error}`);
   }
   return high;
 }
@@ -309,6 +307,7 @@ function protectionParams(info, entryPrice, recentHigh) {
 
 async function cancelProtection(base, symbol, protectionOrder) {
   if (!protectionOrder) return;
+  cancelledProtections.set(symbol, protectionOrder);
   await signed(base, 'DELETE', '/api/v3/order', { symbol, orderId: String(protectionOrder.orderId) });
   console.log(`NATIVE_STOP_CANCELLED symbol=${symbol} orderId=${protectionOrder.orderId}`);
 }
@@ -318,7 +317,11 @@ async function placeProtection(base, info, symbol, quantity, stopPrice, currentP
   const priceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');
   if (!lot || !priceFilter) throw new Error(`Protection filters missing for ${symbol}`);
   const normalizedQty = floorToStep(quantity, lot.stepSize);
-  if (!(normalizedQty >= Number(lot.minQty || 0))) throw new Error(`Protection quantity below minimum for ${symbol}`);
+  if (!(normalizedQty > 0 && normalizedQty >= Number(lot.minQty || 0))) {
+    const error = new Error(`Protection quantity below minimum for ${symbol}`);
+    error.code = 'PROTECTION_QUANTITY_TOO_SMALL';
+    throw error;
+  }
 
   const resolved = resolveNativeProtectionStop({
     info,
@@ -379,16 +382,20 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
   const lot = info.filters?.find((f) => f.filterType === 'MARKET_LOT_SIZE' && Number(f.stepSize) > 0) || info.filters?.find((f) => f.filterType === 'LOT_SIZE');
   if (!lot) throw new Error(`LOT_SIZE missing for ${symbol}`);
 
+  const availableTotal = totalBalance(account, info.baseAsset);
+  const candidateQty = floorToStep(Math.min(managedQty, availableTotal), lot.stepSize);
+  if (!(candidateQty > 0 && candidateQty >= Number(lot.minQty || 0))) throw new Error(`SELL quantity below minimum for ${symbol}`);
+  if (candidateQty * currentPrice < minimumNotional(info, 'MARKET')) throw new Error(`SELL notional below minimum for ${symbol}`);
   let quantity = floorToStep(Math.min(managedQty, free), lot.stepSize);
-  if (!(quantity >= Number(lot.minQty || 0))) {
-    const openOrders = await signed(base, 'GET', '/api/v3/openOrders', { symbol }).catch(() => []);
+  if (quantity < candidateQty) {
+    const openOrders = await signed(base, 'GET', '/api/v3/openOrders', { symbol });
     const managedBlockers = (Array.isArray(openOrders) ? openOrders : []).filter((order) => {
       const kind = classifyProtectionOrder(order).kind;
       return ['CORE_PROTECTION', 'V61_PROTECTION', 'ORPHAN_PROTECTION'].includes(kind);
     });
     if (managedBlockers.length) {
       for (const order of managedBlockers) {
-        await signed(base, 'DELETE', '/api/v3/order', { symbol, orderId: String(order.orderId) });
+        await cancelProtection(base, symbol, order);
         console.log(`MANAGED_SELL_BLOCKER_CANCELLED symbol=${symbol} orderId=${order.orderId} clientOrderId=${order.clientOrderId || ''}`);
       }
       account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
@@ -410,12 +417,33 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
     newOrderRespType: 'FULL',
     newClientOrderId: `proypers-gh-exit-${Date.now()}`
   });
-  if (!order?.orderId) throw new Error(`SELL returned no orderId for ${symbol}`);
+  if (!order?.orderId || order.status !== 'FILLED') throw new Error(`SELL not confirmed FILLED for ${symbol}`);
   const exitPrice = Number(order.executedQty || 0) > 0 ? Number(order.cummulativeQuoteQty || 0) / Number(order.executedQty) : currentPrice;
   const pnlPct = exitPrice / entryPrice - 1;
   console.log(`SELL_CREATED symbol=${symbol} reason=${reason} orderId=${order.orderId} status=${order.status} quantity=${quantity} entry=${entryPrice} exit=${exitPrice} pnl_pct=${(pnlPct * 100).toFixed(3)}`);
-  await notifyExitOnce({ symbol, reason, orderId: order.orderId, entryOrderId, entryClientOrderId, entryPrice, exitPrice, pnlPct });
+  try { await notifyExitOnce({ symbol, reason, orderId: order.orderId, entryOrderId, entryClientOrderId, entryPrice, exitPrice, pnlPct }); }
+  catch (error) { console.error(`EXIT_NOTIFICATION_FAILED ${error.message}`); process.exitCode = 2; }
   return order;
+}
+
+async function recoverCancelledProtection(base, symbol) {
+  const previous = cancelledProtections.get(symbol);
+  if (!previous) return;
+  if (journalStore().read(symbol)) throw new Error('ORDER_OUTCOME_UNCERTAIN: protection recovery requires reconciliation');
+  const [orders, account, exchange, ticker] = await Promise.all([
+    signed(base, 'GET', '/api/v3/openOrders', { symbol }),
+    signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' }),
+    request(base, `/api/v3/exchangeInfo?symbol=${symbol}`),
+    request(base, `/api/v3/ticker/price?symbol=${symbol}`)
+  ]);
+  if (!Array.isArray(orders) || !Array.isArray(account?.balances)) throw new Error('INVALID_RECOVERY_DATA');
+  if (orders.some((o) => o.side === 'SELL')) throw new Error('RECOVERY_EXISTING_SELL_REQUIRES_REVIEW');
+  const info = exchange.symbols?.[0];
+  if (!info) throw new Error('RECOVERY_EXCHANGE_INFO_MISSING');
+  const qty = Math.min(Number(previous.origQty) - Number(previous.executedQty || 0), freeBalance(account, info.baseAsset));
+  if (!(qty > 0)) return; // Fresh balance confirms no free position to rearm.
+  await placeProtection(base, info, symbol, qty, Number(previous.stopPrice), Number(ticker.price));
+  cancelledProtections.delete(symbol);
 }
 
 async function main() {
@@ -432,13 +460,19 @@ async function main() {
   if (restrictions.enableWithdrawals !== false) fail('API withdrawals must remain disabled');
 
   const growthEquityUsdt = estimateAccountEquityUsdt(initialAccount, allPrices);
-  const growthRatchetState = await resolveGrowthRatchet(growthEquityUsdt);
+  const errors = [];
+  const growthRatchetState = await resolveGrowthRatchet(growthEquityUsdt).catch((error) => {
+    errors.push({ component: 'growth_state', error: error.message });
+    console.error(`GROWTH_STATE_DEGRADED ${error.message}`);
+    return { ...growthRatchet({ equityUsdt: growthEquityUsdt }), size_multiplier: 0 };
+  });
   const growthCashReserveUsdt = Math.max(
     Number(GROWTH_V1_POLICY.core.min_cash_reserve_usdt || 50),
     growthEquityUsdt * Number(GROWTH_V1_POLICY.core.cash_reserve_pct || 0.20)
   );
 
   if (!symbols.length) {
+    if (errors.length) throw new Error(`EXIT_ENGINE_DEGRADED ${JSON.stringify(errors)}`);
     console.log('EXIT_ENGINE_OK no managed symbols');
     return;
   }
@@ -448,6 +482,7 @@ async function main() {
   let protectedCount = 0;
 
   for (const symbol of symbols) {
+    try {
     const orders = await signed(base, 'GET', '/api/v3/allOrders', { symbol, limit: '100' });
     const managedBuys = orders
       .filter(isProypersSpotBuyOrder)
@@ -493,10 +528,7 @@ async function main() {
     const multipleManagedBuys = managedBuys.length > 1;
     let residualTrades = [];
     if (filledExit || hasPyramidAddOn || multipleManagedBuys) {
-      residualTrades = await signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }).catch((error) => {
-        console.warn(`RESIDUAL_TRADES_UNAVAILABLE symbol=${symbol} error=${error.message || error}`);
-        return [];
-      });
+      residualTrades = await signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' });
     }
 
     const managed = resolveManagedResidual({
@@ -634,7 +666,7 @@ async function main() {
         }
         continue;
       } catch (pyramidError) {
-        console.warn(`GROWTH_V2_PYRAMID_SKIPPED symbol=${symbol} reason=${pyramidError.message || pyramidError}`);
+        throw new Error(`GROWTH_V2_PYRAMID_FAILED symbol=${symbol}: ${pyramidError.message || pyramidError}`);
       }
     }
     if (managed.residualMode) {
@@ -654,7 +686,10 @@ async function main() {
     console.log(`MONITOR symbol=${symbol} entry=${effectiveEntryPrice} current=${currentPrice} gain_pct=${(gainPct * 100).toFixed(3)} high=${recentHigh} stop=${stopPrice} protection=${protection} age_h=${ageHours.toFixed(2)} native_stop=${openProtect?.orderId || 'none'} residual=${managed.residualMode} action=${reason || 'HOLD'}`);
 
     const existingStop = Number(openProtect?.stopPrice || 0);
-    const nativeStopCurrent = openProtect && existingStop + Math.max(tickSize * 0.5, Number.EPSILON) >= stopPrice;
+    const nativeQty = Math.max(0, Number(openProtect?.origQty || 0) - Number(openProtect?.executedQty || 0));
+    const lotStep = Number(info.filters?.find((f) => f.filterType === 'LOT_SIZE')?.stepSize || 0);
+    const nativeQtyCurrent = nativeQty + 1e-10 >= floorToStep(managedQty, lotStep);
+    const nativeStopCurrent = openProtect && nativeQtyCurrent && existingStop + Math.max(tickSize * 0.5, Number.EPSILON) >= stopPrice;
     if (reason) {
       if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {
         if (nativeStopCurrent) {
@@ -663,19 +698,24 @@ async function main() {
         }
         console.log(`EXIT_NATIVE_STALE symbol=${symbol} reason=${reason} orderId=${openProtect.orderId} existing_stop=${existingStop} desired_stop=${stopPrice}`);
       }
-      if (openProtect) await cancelProtection(base, symbol, openProtect);
       try {
         await marketSell(base, info, symbol, managedQty, reason, effectiveEntryPrice, currentPrice, currentBaseBuy.orderId, currentBaseBuy.clientOrderId);
         soldCount += 1;
       } catch (error) {
-        if (!isNotionalFilterError(error)) throw error;
-        console.warn(`EXIT_SKIPPED_UNTRADABLE symbol=${symbol} reason=${reason} detail=${error.message || error}`);
+        if (isNotionalFilterError(error)) console.warn(`EXIT_SKIPPED_UNTRADABLE symbol=${symbol} reason=${reason} detail=${error.message || error}`);
+        throw error;
       }
       continue;
     }
 
-    const shouldUpgrade = openProtect && stopPrice > existingStop + Math.max(tickSize * 0.5, Number.EPSILON);
+    const shouldUpgrade = openProtect && (!nativeQtyCurrent || stopPrice > existingStop + Math.max(tickSize * 0.5, Number.EPSILON));
     if (!openProtect || shouldUpgrade) {
+      if (openProtect) {
+        const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
+        const qty = floorToStep(managedQty, lot?.stepSize);
+        const candidate = resolveNativeProtectionStop({ info, quantity: qty, desiredStopPrice: stopPrice, currentPrice, stopLimitGapPct: STOP_LIMIT_GAP_PCT });
+        if (!lot || !(qty > 0 && qty >= Number(lot.minQty)) || !candidate.ok) throw new Error('NATIVE_UPGRADE_PREFLIGHT_FAILED existing_stop_preserved');
+      }
       if (openProtect) await cancelProtection(base, symbol, openProtect);
       const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       const free = freeBalance(refreshed, info.baseAsset);
@@ -686,6 +726,7 @@ async function main() {
       } catch (error) {
         const nativeProtectionFailure = isNotionalFilterError(error) ||
           error?.code === 'PROTECTION_NOTIONAL_TOO_SMALL' ||
+          error?.code === 'PROTECTION_QUANTITY_TOO_SMALL' ||
           error?.code === 'PROTECTION_NATIVE_UNAVAILABLE';
         if (!nativeProtectionFailure) throw error;
         console.warn(`NATIVE_PROTECTION_FAIL_CLOSED symbol=${symbol} stop=${stopPrice} quantity=${quantity} detail=${error.message || error}`);
@@ -694,14 +735,22 @@ async function main() {
           soldCount += 1;
           console.warn(`NATIVE_PROTECTION_EXITED symbol=${symbol} reason=unprotectable_native_stop`);
         } catch (sellError) {
-          if (!isNotionalFilterError(sellError)) throw sellError;
-          console.warn(`NATIVE_PROTECTION_DUST_UNRESOLVED symbol=${symbol} detail=${sellError.message || sellError}`);
+          if (isNotionalFilterError(sellError)) console.warn(`NATIVE_PROTECTION_DUST_UNRESOLVED symbol=${symbol} detail=${sellError.message || sellError}`);
+          throw sellError;
         }
       }
     }
+    } catch (error) {
+      try { await recoverCancelledProtection(base, symbol); }
+      catch (recoveryError) { console.error(`PROTECTION_RECOVERY_UNRESOLVED symbol=${symbol} error=${recoveryError.message}`); }
+      errors.push({ symbol, error: error.message || String(error) });
+      console.error(`EXIT_SYMBOL_ERROR symbol=${symbol} error=${error.message || error}`);
+    }
   }
 
+  if (errors.length) throw new Error(`EXIT_ENGINE_DEGRADED ${JSON.stringify(errors)}`);
   console.log(`EXIT_ENGINE_OK managed_symbols=${symbols.length} open_positions=${openCount} sells=${soldCount} protection_updates=${protectedCount} model=${EXIT_POLICY.model_version} growth_v2=${GROWTH_V2_POLICY.version} equity_usdt=${growthEquityUsdt} ratchet=${growthRatchetState.size_multiplier}`);
 }
 
-main().catch((error) => fail(error.message || String(error)));
+module.exports = { main, managedSymbols, marketSell, placeProtection, protectionParams };
+if (require.main === module) main().catch((error) => fail(error.message || String(error)));

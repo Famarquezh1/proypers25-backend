@@ -2,8 +2,11 @@ name: Spot V10 Hunter Production Check
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/spot-safety-ci-20261017]
     paths:
+      - 'backend/services/spotOrderSafety.js'
+      - 'backend/tests/spotSafetyRegression.test.js'
+      - 'backend/tests/spotExitWrapper.test.js'
       - 'backend/scripts/github-spot-microflow-trainer-v10.js'
       - 'backend/scripts/github-spot-microflow-hunter-v10.js'
       - 'backend/scripts/github-spot-manual-execution-v10-aware.js'
@@ -71,20 +74,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node - <<'NODE'
-          const fs = require('fs');
-          const source = fs.readFileSync('backend/scripts/github-spot-auto-exit-legacy.js', 'utf8').replace(/\r\n/g, '\n');
-          const required = [
-            "const buy = managedBuys[managedBuys.length - 1];",
-            "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {"
-          ];
-          for (const target of required) {
-            if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);
-          }
-          console.log('V10 wrapper patch targets compatible with legacy exit source');
-          NODE
+          node backend/tests/spotExitWrapper.test.js
+          node backend/tests/spotSafetyRegression.test.js
 
 
       - name: Guard production invariants
