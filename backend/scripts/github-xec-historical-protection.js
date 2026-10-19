@@ -76,7 +76,7 @@ async function request(base, pathName, options = {}) {
     const error = new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
     error.status = response.status;
     error.body = body;
-    error.binanceCode = Number.isFinite(Number(body.code)) ? Number(body.code) : null;
+    error.binanceCode = body && typeof body.code === 'number' && Number.isFinite(body.code) ? body.code : null;
     throw error;
   }
   return body;
