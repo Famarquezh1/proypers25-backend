@@ -76,6 +76,7 @@ async function request(base, pathName, options = {}) {
     const error = new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
     error.status = response.status;
     error.body = body;
+    error.binanceCode = Number.isFinite(Number(body.code)) ? Number(body.code) : null;
     throw error;
   }
   return body;
@@ -93,11 +94,18 @@ async function chooseBase() {
       await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
       return base;
     } catch (error) {
-      failures.push(`${base}=${error.status || error.message}`);
+      const code = error.binanceCode;
+      // Binance authentication, permissions and clock errors are not endpoint outages.
+      // Never conceal them behind retries against all five API hosts.
+      if ([ -1021, -1022, -2014, -2015 ].includes(code)) {
+        throw new Error(`Binance private API rejected request: HTTP ${error.status || 'unknown'} code=${code} reason=${error.body?.msg || 'unknown'}; check clock, API key permissions and IP allowlist`);
+      }
+      failures.push(`${base}=HTTP_${error.status || 'NETWORK'}_BINANCE_${code ?? 'NA'}`);
     }
   }
-  throw new Error(`Binance private API unreachable (${failures.join(', ')})`);
+  throw new Error(`Binance private API unavailable or rejected request (${failures.join(', ')})`);
 }
+
 function balanceRow(account, asset) {
   return (account.balances || []).find((item) => String(item.asset || '').toUpperCase() === asset) || {};
 }
