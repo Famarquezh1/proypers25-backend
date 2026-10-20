@@ -710,6 +710,14 @@ async function main() {
 
     const shouldUpgrade = openProtect && (!nativeQtyCurrent || stopPrice > existingStop + Math.max(tickSize * 0.5, Number.EPSILON));
     if (!openProtect || shouldUpgrade) {
+      // Never cancel an existing stop, or attempt a new stop, for unsellable dust.
+      // A residual below LOT_SIZE cannot be protected through an exchange order.
+      const protectionLot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
+      const protectionQty = protectionLot ? floorToStep(managedQty, protectionLot.stepSize) : 0;
+      if (!protectionLot || !(protectionQty > 0 && protectionQty >= Number(protectionLot.minQty || 0))) {
+        console.warn(`NATIVE_PROTECTION_DUST_SKIPPED symbol=${symbol} quantity=${managedQty} existing_stop_preserved=${Boolean(openProtect)}`);
+        continue;
+      }
       if (openProtect) {
         const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
         const qty = floorToStep(managedQty, lot?.stepSize);
