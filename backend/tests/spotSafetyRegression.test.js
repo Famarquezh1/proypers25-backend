@@ -108,10 +108,11 @@ async function engineTests() {
     throw new Error(`unmocked ${url}`);
   };
   const {engine,logs}=engineWith(fake);
-  await assert.rejects(engine.main(),/EXIT_ENGINE_DEGRADED/);
+  await engine.main();
   assert.equal(created,1,'dust must not prevent next symbol from receiving protection');
   assert(logs.some(x=>x.includes('NATIVE_STOP_ARMED symbol=GOODUSDT')));
-  assert(!logs.some(x=>x.startsWith('EXIT_ENGINE_OK')));
+  assert(logs.some(x=>x.includes('NATIVE_PROTECTION_DUST_SKIPPED symbol=DUSTUSDT')));
+  assert(logs.some(x=>x.startsWith('EXIT_ENGINE_OK')));
   let deletes=0;
   const preflight=engineWith(async(url,options={})=>{if(options.method==='DELETE')deletes++;return reply(account);});
   await assert.rejects(preflight.engine.marketSell('https://mock',info('DUSTUSDT'),'DUSTUSDT',.1,'TIMEOUT_STALE',10,10),/quantity below minimum/);
