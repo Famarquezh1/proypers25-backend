@@ -8,6 +8,14 @@ const { submitOrder, requestJson } = require('../services/spotOrderSafety');
 const { resolveManagedResidual } = require('../services/spotManagedResidual');
 const { evaluateMicrostructure } = require('../services/localPretradeGuard');
 const { evaluateSpotEntryBurstGate } = require('../services/spotEntryBurstGate');
+// Regression: untradable residuals must be skipped before any native-stop cancellation.
+const exitSource = fs.readFileSync(path.join(__dirname, '../scripts/github-spot-auto-exit-legacy.js'), 'utf8');
+const dustGuard = exitSource.indexOf('NATIVE_PROTECTION_DUST_SKIPPED');
+const upgradeCancel = exitSource.indexOf('if (openProtect) await cancelProtection(base, symbol, openProtect);');
+assert(dustGuard !== -1 && upgradeCancel !== -1 && dustGuard < upgradeCancel,
+  'dust guard must precede protection cancellation');
+assert(exitSource.includes('protectionQty >= Number(protectionLot.minQty || 0)'),
+  'dust guard must enforce LOT_SIZE minimum');
 function memory() {
   const records = new Map();
   return { read: s => records.get(s), write: (s, x) => { assert(!records.has(s)); records.set(s,x); }, clear: s => records.delete(s) };
