@@ -79,10 +79,8 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
   let residualMode = false;
   let reconstructed = null;
 
-  if (openProtect) {
-    const protectedQty = remainingOrderQty(openProtect);
-    if (protectedQty > 0) managedQty = Math.min(protectedQty, owned);
-  }
+  // A partial native stop is coverage, not evidence of a smaller owned position.
+  // Keep supervising the entire attributable position so missing coverage is repaired.
 
   if ((forceReconstruct || (filledExit && openProtect)) && Array.isArray(trades) && trades.length && baseAsset) {
     const reconstructionTrades = forceReconstruct ? managedTradesOnly(trades, orders) : trades;
@@ -93,7 +91,11 @@ function resolveManagedResidual({ buy = {}, orders = [], trades = [], ownedTotal
       historyCoversBalance(reconstructed.quantity, owned)
     ) {
       entryPrice = reconstructed.entryPrice;
-      startTime = reconstructed.startTime || buyTime;
+      const baseBuys = orders.filter((o) => String(o.side).toUpperCase() === 'BUY' && Number(o.executedQty) > 0
+        && isOwnedManagedOrder(o) && !String(o.clientOrderId || '').startsWith('proypers-gh-add-')
+        && n(o.updateTime || o.time) <= buyTime);
+      const latestBaseTime = Math.max(0, ...baseBuys.map((o) => n(o.updateTime || o.time)));
+      startTime = Math.max(reconstructed.startTime || buyTime, latestBaseTime);
       managedQty = openProtect
         ? Math.min(Math.max(managedQty, reconstructed.quantity), reconstructed.quantity, owned)
         : Math.min(reconstructed.quantity, owned);

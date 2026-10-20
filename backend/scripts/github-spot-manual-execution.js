@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { submitOrder, requestJson } = require('../services/spotOrderSafety');
 const fs = require('fs');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
@@ -53,17 +54,13 @@ function validateInputs() {
 }
 
 async function request(base, path, options = {}) {
-  const response = await fetch(`${base}${path}`, options);
-  const text = await response.text();
-  let body;
-  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
-  if (!response.ok) {
-    const error = new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
-    error.status = response.status; error.body = body; throw error;
-  }
-  return body;
+  return requestJson(`${base}${path}`, options);
 }
 async function signed(base, method, path, params = {}) {
+  if (method === 'POST' && path === '/api/v3/order') return submitOrder(rawSigned, base, params);
+  return rawSigned(base, method, path, params);
+}
+async function rawSigned(base, method, path, params = {}) {
   const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
   const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
   return request(base, `${path}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': API_KEY } });
@@ -156,7 +153,7 @@ async function main() {
   const executedQty = Number(order.executedQty || 0), quoteFilled = Number(order.cummulativeQuoteQty || 0), entryPrice = executedQty > 0 ? quoteFilled / executedQty : currentPrice;
   console.log(`ORDER_CREATED symbol=${SYMBOL} orderId=${order.orderId} status=${order.status} quoteOrderQty=${quoteOrderQty}`);
   let protectedNow = false, protectionError = '';
-  for (let attempt = 1; attempt <= 2 && !protectedNow; attempt += 1) { try { await placeNativeProtection(base, order, entryPrice); protectedNow = true; } catch (error) { protectionError = error.message || String(error); if (attempt < 2) await new Promise((r) => setTimeout(r, 1500)); } }
+  for (let attempt = 1; attempt <= 2 && !protectedNow; attempt += 1) { try { await placeNativeProtection(base, order, entryPrice); protectedNow = true; } catch (error) { protectionError = error.message || String(error); if (error.code === 'ORDER_OUTCOME_UNCERTAIN') throw error; if (attempt < 2) await new Promise((r) => setTimeout(r, 1500)); } }
   if (!protectedNow) { finish('executed_protection_pending', protectionError, order.orderId); console.warn(`BUY_EXECUTED_PROTECTION_PENDING symbol=${SYMBOL} orderId=${order.orderId} reason=${protectionError}`); return; }
   finish('executed', '', order.orderId);
 }

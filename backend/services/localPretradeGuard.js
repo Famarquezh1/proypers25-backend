@@ -13,7 +13,8 @@ const DEFAULTS = Object.freeze({
   minEndReturnPct: -0.006,
   minPeakToEndPct: -0.012,
   maxLatencyMs: 1500,
-  maxClockSkewMs: 3000
+  maxClockSkewMs: 3000,
+  minContinuationScore: 0
 });
 
 function finite(value, fallback = 0) {
@@ -26,6 +27,10 @@ function median(values) {
   if (!rows.length) return NaN;
   const i = Math.floor(rows.length / 2);
   return rows.length % 2 ? rows[i] : (rows[i - 1] + rows[i]) / 2;
+}
+
+function continuationRequiredForLane(lane) {
+  return ['CORE', 'V10_HUNTER'].includes(String(lane).toUpperCase());
 }
 
 function evaluateMicrostructure(samples, health = {}, config = {}) {
@@ -62,11 +67,16 @@ function evaluateMicrostructure(samples, health = {}, config = {}) {
   if (Number.isFinite(endReturnPct) && endReturnPct < cfg.minEndReturnPct) reasons.push('MICRO_REVERSAL');
   if (Number.isFinite(peakToEndPct) && peakToEndPct < cfg.minPeakToEndPct) reasons.push('MICRO_PEAK_REJECTION');
 
+  const continuationScore = endReturnPct;
+  const continuationRequired = config.continuationRequired === true;
+  if (continuationRequired && !(continuationScore > cfg.minContinuationScore)) reasons.push('MOMENTUM_CONTINUATION_WEAK');
   return {
     allow: reasons.length === 0,
     code: reasons.length ? reasons[0] : 'LOCAL_MICRO_OK',
     reason: reasons.length ? reasons.join(',') : 'local microstructure healthy',
     metrics: {
+      continuationScore,
+      continuationPass: continuationScore > cfg.minContinuationScore,
       samples: rows.length,
       startMid,
       endMid,
@@ -84,7 +94,7 @@ async function fetchJson(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
   const text = await response.text();
   let body;
-  try { body = text ? JSON.parse(text) : {}; } catch { body = {}; }
+  try { body = JSON.parse(text); } catch { throw new Error('INVALID_JSON_RESPONSE'); }
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.msg || response.statusText}`);
   return body;
 }
@@ -141,7 +151,7 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
       fetchJson(`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&limit=10`)
     ]);
 
-    const micro = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, cfg);
+    const micro = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, { ...cfg, continuationRequired: continuationRequiredForLane(lane) });
     const integrity = evaluateManipulationRisk({ depthSnapshots, recentTrades, recentKlines });
     const allow = micro.allow && !integrity.block;
     const code = !micro.allow ? micro.code : integrity.block ? integrity.code : micro.code;
@@ -181,6 +191,7 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
 
 module.exports = {
   DEFAULTS,
+  continuationRequiredForLane,
   evaluateMicrostructure,
   runLocalPretradeGuard,
   memoryPath
