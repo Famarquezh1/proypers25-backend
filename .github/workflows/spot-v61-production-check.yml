@@ -175,7 +175,7 @@ jobs:
           grep -q '"max_adds": 1' backend/config/spot-growth-engine-v2.json
           grep -q '"trigger_mfe_pct": 0.08' backend/config/spot-growth-engine-v2.json
           grep -q '"activation_hwm_usdt": 600' backend/config/spot-growth-engine-v2.json
-          grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
+          grep -q "EXIT_SKIPPED_DUST" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
           grep -q '"mode": "PRODUCTION"' backend/config/spot-exit-policy-v2.json
           grep -q '"mfe": 0.018' backend/config/spot-exit-policy-v2.json
