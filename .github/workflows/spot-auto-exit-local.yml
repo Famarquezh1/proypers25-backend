@@ -53,6 +53,15 @@ jobs:
             Write-Host "AUTO_EXIT_TRIGGER_SOURCE workflow=${{ github.event.workflow_run.name }} run_id=${{ github.event.workflow_run.id }} conclusion=${{ github.event.workflow_run.conclusion }} head_branch=${{ github.event.workflow_run.head_branch }}"
           }
 
+      - name: Verify shared Spot coordination configuration (fail closed)
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SPOT_COORDINATION_ACCOUNT_ID)) {
+            Write-Error "SPOT_COORDINATION_ACCOUNT_REQUIRED: configure the same non-secret account identifier in GitHub Actions and Cloud Run before enabling Spot order mutations."
+            exit 1
+          }
+          Write-Host "SPOT_COORDINATION_ACCOUNT_ID configured (value withheld); Firestore project and Cloud Run parity still require independent verification."
+
       - name: Monitor positions and execute protective Spot sells
         working-directory: backend
         shell: powershell
