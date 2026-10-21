@@ -570,6 +570,14 @@ async function marketSell(base, info, symbol, managedQty, reason, entryPrice, cu
 async function reconcilePendingTransitions(base) {
   const blockedSymbols = new Set();
   for (const intent of orderJournal.list()) {
+    let releaseLease;
+    try {
+      releaseLease = orderJournal.acquireLease(intent.symbol, 'legacy-exit-recovery');
+    } catch (error) {
+      blockedSymbols.add(intent.symbol);
+      console.error(`ORDER_MUTATION_BLOCKED symbol=${intent.symbol} reason=${error.message || error}; another executor holds the symbol lease`);
+      continue;
+    }
     try {
       const result = await reconcileTransition(intent, {
         getOpenOrders: (symbol) => signed(base, 'GET', '/api/v3/openOrders', { symbol }),
@@ -614,6 +622,8 @@ async function reconcilePendingTransitions(base) {
     } catch (error) {
       blockedSymbols.add(intent.symbol);
       console.error(`ORDER_TRANSITION_AMBIGUOUS symbol=${intent.symbol} intent=${intent.intent} phase=${intent.phase} error=${error.message || error}; mutations blocked`);
+    } finally {
+      releaseLease();
     }
   }
   return blockedSymbols;

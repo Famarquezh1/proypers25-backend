@@ -377,8 +377,29 @@ async function wrapperCompatibilityTest() {
   }
 }
 
+function coordinationTests() {
+  const root = temporaryJournal();
+  const a = journalStore(root);
+  const b = journalStore(root);
+  const releaseA = a.acquireLease('ABCUSDT', 'executor-a');
+  assert.throws(() => b.acquireLease('ABCUSDT', 'executor-b'), /SYMBOL_MUTATION_LEASE_HELD/);
+  const other = b.acquireLease('XYZUSDT', 'executor-b');
+  other();
+  releaseA();
+  b.acquireLease('ABCUSDT', 'executor-b')();
+  const stale = a.acquireLease('ABCUSDT', 'crashed');
+  const old = new Date(Date.now() - 10 * 60 * 1000);
+  fs.utimesSync(path.join(root, 'ABCUSDT.lock'), old, old);
+  b.acquireLease('ABCUSDT', 'takeover')();
+  void stale;
+  const first = transition(a);
+  assert.throws(() => transition(b), /SYMBOL_TRANSITION_PENDING/);
+  assert.equal(b.read('ABCUSDT').id, first.id);
+}
+
 (async () => {
   guardTests();
+  coordinationTests();
   await orderRecoveryTests();
   await mutationTests();
   await wrapperCompatibilityTest();

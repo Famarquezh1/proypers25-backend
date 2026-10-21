@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const ACTIVE_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
+const LEASE_STALE_MS = Number(process.env.PROYPERS_SPOT_LEASE_STALE_MS || 120000);
 const TERMINAL_STATUSES = new Set(['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH']);
 
 function syncDirectory(root) {
@@ -48,8 +49,59 @@ function journalStore(root = process.env.PROYPERS_SPOT_ORDER_JOURNAL_DIR ||
     syncDirectory(root);
   };
 
+  const leaseFor = (symbol) => fileFor(symbol).replace(/\.json$/, '.lock');
+  const acquireLease = (symbol, owner = 'unknown', staleMs = LEASE_STALE_MS) => {
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    const target = leaseFor(symbol);
+    const token = crypto.randomUUID();
+    const attempt = () => {
+      const fd = fs.openSync(target, 'wx', 0o600);
+      try {
+        fs.writeFileSync(fd, JSON.stringify({ token, owner, pid: process.pid, host: os.hostname(), acquiredAt: Date.now() }), 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+    };
+    for (let tries = 0; tries < 2; tries += 1) {
+      try {
+        attempt();
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          try {
+            if (JSON.parse(fs.readFileSync(target, 'utf8')).token === token) fs.unlinkSync(target);
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
+        };
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        let age;
+        try {
+          age = Date.now() - fs.statSync(target).mtimeMs;
+        } catch (statError) {
+          if (statError.code === 'ENOENT') continue;
+          throw statError;
+        }
+        if (!(age > staleMs)) throw uncertain(`SYMBOL_MUTATION_LEASE_HELD ${symbol}`, error);
+        const stale = `${target}.stale.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+        try { fs.renameSync(target, stale); fs.unlinkSync(stale); } catch (renameError) {
+          if (renameError.code !== 'ENOENT') throw renameError;
+        }
+      }
+    }
+    throw uncertain(`SYMBOL_MUTATION_LEASE_HELD ${symbol}`);
+  };
+
   return {
     read,
+    acquireLease,
+    async withLease(symbol, owner, fn) {
+      const release = acquireLease(symbol, owner);
+      try { return await fn(); } finally { release(); }
+    },
     list() {
       fs.mkdirSync(root, { recursive: true, mode: 0o700 });
       return fs.readdirSync(root)
@@ -63,7 +115,13 @@ function journalStore(root = process.env.PROYPERS_SPOT_ORDER_JOURNAL_DIR ||
       const existing = read(symbol);
       if (existing && existing.phase !== 'COMPLETE') throw uncertain(`SYMBOL_TRANSITION_PENDING ${symbol}`);
       if (existing) fs.unlinkSync(target);
-      const fd = fs.openSync(target, 'wx', 0o600);
+      let fd;
+      try {
+        fd = fs.openSync(target, 'wx', 0o600);
+      } catch (error) {
+        if (error.code === 'EEXIST') throw uncertain(`SYMBOL_TRANSITION_PENDING ${symbol}`, error);
+        throw error;
+      }
       try {
         fs.writeFileSync(fd, JSON.stringify({ ...intent, symbol: String(symbol).toUpperCase() }), 'utf8');
         fs.fsyncSync(fd);
