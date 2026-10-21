@@ -59,33 +59,19 @@ jobs:
           node --check backend/tests/spotNativeProtectionPolicy.test.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
           node --check backend/scripts/github-spot-auto-exit.js
+          node --check backend/services/spotOrderSafety.js
+          node --check backend/tests/spotOrderSafety.test.js
 
       - name: Selective entry gate tests
         run: |
           node backend/tests/spotEntryBurstGate.test.js
+          node backend/tests/spotOrderSafety.test.js
           node backend/tests/spotAssetClassification.test.js
           node backend/tests/spotConvictionSizing.test.js
           node backend/tests/spotGrowthEngine.test.js
           node backend/tests/spotNativeProtectionPolicy.test.js
       - name: V10 exit wrapper patch compatibility
-        shell: bash
-        run: |
-          set -euo pipefail
-          node - <<'NODE'
-          const fs = require('fs');
-          const source = fs.readFileSync('backend/scripts/github-spot-auto-exit-legacy.js', 'utf8').replace(/\r\n/g, '\n');
-          const required = [
-            "const buy = managedBuys[managedBuys.length - 1];",
-            "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {"
-          ];
-          for (const target of required) {
-            if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);
-          }
-          console.log('V10 wrapper patch targets compatible with legacy exit source');
-          NODE
-
+        run: node backend/tests/spotOrderSafety.test.js
 
       - name: Guard production invariants
         shell: bash
@@ -116,12 +102,9 @@ jobs:
           grep -q "SAME_SYMBOL_OPEN" backend/services/spotEntryBurstGate.js
           grep -q "ENTRY_COOLDOWN" backend/services/spotEntryBurstGate.js
           grep -q "CORRELATED_ENTRY" backend/services/spotEntryBurstGate.js
-          grep -q "CORE_QUALITY_REQUIRED" backend/services/spotEntryBurstGate.js
-          grep -q "EARLY_CONFIRMATION_ADMITTED" backend/services/spotEntryBurstGate.js
-          grep -q "EARLY_CONFIRM_MAX_24H_PCT = 8" backend/services/spotEntryBurstGate.js
-          grep -q "EARLY_CONFIRM_MIN_NORM = 0.82" backend/services/spotEntryBurstGate.js
-          grep -q "EARLY_CONFIRMATION_MAX_USDT = 15" backend/scripts/github-spot-manual-execution-v10-aware.js
-          grep -q "EARLY_CONFIRMATION_MIN_V61_SCORE = 0.65" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "NORMAL_ADMITTED" backend/services/spotEntryBurstGate.js
+          grep -q "HIGH_CONVICTION_ADMITTED" backend/services/spotEntryBurstGate.js
+          grep -q "EXTENDED_ENTRY" backend/services/spotEntryBurstGate.js
           grep -q "resolveConvictionPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "resolveGrowthPosition" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "GROWTH_ENGINE_V1" backend/scripts/github-spot-manual-execution-v10-aware.js

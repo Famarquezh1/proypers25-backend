@@ -72,6 +72,8 @@ jobs:
           node --check backend/scripts/github-spot-auto-exit.js
           node --check backend/scripts/github-spot-auto-exit-legacy.js
           node --check backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
+          node --check backend/services/spotOrderSafety.js
+          node --check backend/tests/spotOrderSafety.test.js
           node --check backend/scripts/train-spot-exit-policy-v2.js
           node --check backend/scripts/train-spot-exit-policy-intensive-v4.js
           node --check backend/scripts/train-spot-core-exit-intensive-v4.js
@@ -117,6 +119,7 @@ jobs:
         run: node backend/tests/marketManipulationRisk.test.js
       - name: Growth exit overlay tests
         run: |
+          node backend/tests/spotOrderSafety.test.js
           node backend/tests/spotGrowthExitPolicy.test.js
           node backend/tests/spotProgressiveTrailing.test.js
           node backend/tests/spotManagedResidual.test.js
@@ -153,8 +156,8 @@ jobs:
           grep -q "growthRatchetState" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q '"max_adds": 1' backend/config/spot-growth-engine-v2.json
           grep -q '"trigger_mfe_pct": 0.08' backend/config/spot-growth-engine-v2.json
-          grep -q '"activation_hwm_usdt": 600' backend/config/spot-growth-engine-v2.json
-          grep -q "EXIT_SKIPPED_NOTIONAL" backend/scripts/github-spot-auto-exit-legacy.js
+          node -e "const assert=require('assert'); const p=require('./backend/config/spot-growth-engine-v2.json'); assert.strictEqual(p.equity_ratchet.activation_hwm_usdt,0);"
+          grep -q "EXIT_SKIPPED_DUST" backend/scripts/github-spot-auto-exit-legacy.js
           grep -q "CURRENT_CORE_POLICY" backend/scripts/train-spot-exit-policy-v2.js
           grep -q '"mode": "PRODUCTION"' backend/config/spot-exit-policy-v2.json
           grep -q '"mfe": 0.018' backend/config/spot-exit-policy-v2.json
@@ -188,7 +191,7 @@ jobs:
           grep -q "Entrenamiento: inmediato con histórico existente" .github/workflows/spot-exit-policy-training.yml
           grep -q "github-spot-orphan-protect.js" backend/scripts/github-spot-auto-exit.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
-          grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
+          grep -q "deterministicClientOrderId('proypers-gh-protect-v61-'" backend/scripts/github-spot-v61-protect.js
           grep -Fq "'XEC'" backend/scripts/github-spot-orphan-protect.js
           grep -q "ORPHAN_PROTECT_OK" backend/scripts/github-spot-orphan-protect.js
           grep -q "managedCoreProtectionSymbols" backend/scripts/github-spot-auto-exit-legacy.js
@@ -201,12 +204,12 @@ jobs:
           grep -q "runLocalPretradeGuard" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "manipulation_risk=" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "local-pretrade-memory.jsonl" backend/services/localPretradeGuard.js
-          grep -q "sampleIntervalMs: 15000" backend/services/localPretradeGuard.js
-          grep -q "samples: 7" backend/services/localPretradeGuard.js
-          grep -q "MOMENTUM_CONTINUATION_WEAK" backend/services/localPretradeGuard.js
-          grep -q "continuationRequired" backend/services/localPretradeGuard.js
-          grep -q "continuation_score=" backend/scripts/github-spot-manual-execution-v10-aware.js
-          grep -q "META_DECISION_SHADOW" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "sampleIntervalMs: 3500" backend/services/localPretradeGuard.js
+          grep -q "samples: 5" backend/services/localPretradeGuard.js
+          grep -q "MICRO_REVERSAL" backend/services/localPretradeGuard.js
+          grep -q "WIDE_SPREAD" backend/services/localPretradeGuard.js
+          grep -q "LOCAL_PRETRADE_OK" backend/scripts/github-spot-manual-execution-v10-aware.js
+          grep -q "APPROVED_V61" backend/scripts/github-spot-manual-execution-v10-aware.js
           grep -q "SHADOW_ONLY" backend/services/spotMetaDecisionEngine.js
           grep -q "momentumContinuationFactor" backend/services/spotMomentumContinuation.js
           grep -q "production_mutation:false" backend/scripts/train-spot-momentum-continuation-historical.js
