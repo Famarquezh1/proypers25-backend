@@ -6,15 +6,20 @@ const path = require('path');
 const { evaluateManipulationRisk } = require('./marketManipulationRisk');
 
 const DEFAULTS = Object.freeze({
-  samples: 5,
-  sampleIntervalMs: 3500,
+  samples: 7,
+  sampleIntervalMs: 15000,
   maxLastSpreadPct: 0.006,
   maxMedianSpreadPct: 0.004,
   minEndReturnPct: -0.006,
   minPeakToEndPct: -0.012,
   maxLatencyMs: 1500,
-  maxClockSkewMs: 3000
+  maxClockSkewMs: 3000,
+  minContinuationScore: 0
 });
+
+function continuationRequiredForLane(lane) {
+  return ['CORE', 'V10_HUNTER'].includes(String(lane || '').toUpperCase());
+}
 
 function finite(value, fallback = 0) {
   const n = Number(value);
@@ -61,12 +66,19 @@ function evaluateMicrostructure(samples, health = {}, config = {}) {
   if (Number.isFinite(medianSpreadPct) && medianSpreadPct > cfg.maxMedianSpreadPct) reasons.push('PERSISTENT_WIDE_SPREAD');
   if (Number.isFinite(endReturnPct) && endReturnPct < cfg.minEndReturnPct) reasons.push('MICRO_REVERSAL');
   if (Number.isFinite(peakToEndPct) && peakToEndPct < cfg.minPeakToEndPct) reasons.push('MICRO_PEAK_REJECTION');
+  const continuationScore = endReturnPct;
+  const continuationRequired = config.continuationRequired === true;
+  if (continuationRequired && !(continuationScore > cfg.minContinuationScore)) {
+    reasons.push('MOMENTUM_CONTINUATION_WEAK');
+  }
 
   return {
     allow: reasons.length === 0,
     code: reasons.length ? reasons[0] : 'LOCAL_MICRO_OK',
     reason: reasons.length ? reasons.join(',') : 'local microstructure healthy',
     metrics: {
+      continuationScore,
+      continuationPass: continuationScore > cfg.minContinuationScore,
       samples: rows.length,
       startMid,
       endMid,
@@ -141,7 +153,10 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
       fetchJson(`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&limit=10`)
     ]);
 
-    const micro = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, cfg);
+    const micro = evaluateMicrostructure(rows, { latencyMs, clockSkewMs }, {
+      ...cfg,
+      continuationRequired: continuationRequiredForLane(lane)
+    });
     const integrity = evaluateManipulationRisk({ depthSnapshots, recentTrades, recentKlines });
     const allow = micro.allow && !integrity.block;
     const code = !micro.allow ? micro.code : integrity.block ? integrity.code : micro.code;
@@ -181,6 +196,7 @@ async function runLocalPretradeGuard({ base, symbol, signalPrice, currentPrice, 
 
 module.exports = {
   DEFAULTS,
+  continuationRequiredForLane,
   evaluateMicrostructure,
   runLocalPretradeGuard,
   memoryPath

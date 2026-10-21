@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { floorToStep, buildCurrentCostBasis } = require('./legacySpotRecoveryLiquidator');
 const { evaluateXecHistoricalHolding, normalizeXecPolicy } = require('./xecHistoricalHoldingPolicy');
+const { createSpotExecutionCoordinator } = require('./spotExecutionCoordination');
 
 const VERSION = 'xec_historical_holding_manager_v1';
 const CONFIG_DOC = 'real_spot_config/xec_holding_manager';
@@ -12,6 +13,7 @@ const STATE_DOC = 'real_spot_holding_states/XEC';
 const RUN_COLLECTION = 'xec_holding_manager_runs';
 const SYMBOL = 'XECUSDT';
 const ASSET = 'XEC';
+const TERMINAL_SELL_STATUSES = new Set(['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH']);
 
 const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
@@ -114,23 +116,66 @@ async function findExistingSellOrder(clientOrderId, dependencies = {}) {
 
 async function placeMarketSell(quantity, clientOrderId, dependencies = {}) {
   const requestPrivate = dependencies.privateRequest || privateRequest;
+  const accountId = dependencies.accountId || process.env.SPOT_COORDINATION_ACCOUNT_ID;
+  const coordinator = dependencies.coordinator ||
+    createSpotExecutionCoordinator(dependencies.db || require('../firebase-admin-config'));
+  const getOpenOrders = dependencies.getOpenOrders || ((symbol) =>
+    requestPrivate('GET', '/api/v3/openOrders', { symbol }));
   const existing = await findExistingSellOrder(clientOrderId, { privateRequest: requestPrivate });
-  if (existing) return { order: existing, recovered_existing_order: true };
-  try {
-    const order = await requestPrivate('POST', '/api/v3/order', {
-      symbol: SYMBOL,
-      side: 'SELL',
-      type: 'MARKET',
-      quantity,
-      newClientOrderId: clientOrderId,
-      newOrderRespType: 'FULL'
+  if (existing) {
+    await coordinator.resolveAmbiguous(accountId, SYMBOL, clientOrderId, {
+      orderFound: true, status: existing.status, side: existing.side, type: existing.type, orderId: existing.orderId
     });
-    return { order, recovered_existing_order: false };
-  } catch (error) {
-    const recovered = await findExistingSellOrder(clientOrderId, { privateRequest: requestPrivate });
-    if (recovered) return { order: recovered, recovered_existing_order: true };
-    throw error;
+    if (!TERMINAL_SELL_STATUSES.has(String(existing.status || '').toUpperCase())) {
+      throw Object.assign(new Error(`XEC_SELL_ORDER_PENDING:${clientOrderId}`), { code: 'ORDER_OUTCOME_UNCERTAIN' });
+    }
+    return { order: existing, recovered_existing_order: true };
   }
+  const execution = await coordinator.withMutation(
+    accountId,
+    SYMBOL,
+    clientOrderId,
+    async () => {
+      try {
+        const order = await requestPrivate('POST', '/api/v3/order', {
+          symbol: SYMBOL,
+          side: 'SELL',
+          type: 'MARKET',
+          quantity,
+          newClientOrderId: clientOrderId,
+          newOrderRespType: 'FULL'
+        });
+        return { order, orderId: order.orderId, status: order.status, recovered_existing_order: false };
+      } catch (error) {
+        let recovered;
+        try {
+          recovered = await findExistingSellOrder(clientOrderId, { privateRequest: requestPrivate });
+        } catch (lookupError) {
+          throw Object.assign(new Error(`ORDER_OUTCOME_UNCERTAIN:${SYMBOL}:${clientOrderId}`), {
+            code: 'ORDER_OUTCOME_UNCERTAIN', cause: lookupError
+          });
+        }
+        if (recovered) return { order: recovered, orderId: recovered.orderId, status: recovered.status, recovered_existing_order: true };
+        throw Object.assign(new Error(`ORDER_OUTCOME_UNCERTAIN:${SYMBOL}:${clientOrderId}`), {
+          code: 'ORDER_OUTCOME_UNCERTAIN', cause: error
+        });
+      }
+    },
+    { clientOrderId, side: 'SELL', type: 'MARKET', quantity },
+    async () => {
+      const openOrders = await getOpenOrders(SYMBOL);
+      if (!Array.isArray(openOrders)) throw new Error(`OPEN_SELL_ORDERS_UNAVAILABLE:${SYMBOL}`);
+      if (openOrders.some((order) =>
+        String(order.side || '').toUpperCase() === 'SELL' &&
+        ['NEW', 'PARTIALLY_FILLED'].includes(String(order.status || '').toUpperCase()))) {
+        throw new Error(`ACTIVE_SELL_ORDER_BLOCKER:${SYMBOL}`);
+      }
+    }
+  );
+  if (!TERMINAL_SELL_STATUSES.has(String(execution.status || '').toUpperCase())) {
+    throw Object.assign(new Error(`XEC_SELL_ORDER_PENDING:${clientOrderId}`), { code: 'ORDER_OUTCOME_UNCERTAIN' });
+  }
+  return execution;
 }
 
 async function loadSnapshot(dependencies = {}) {
@@ -251,6 +296,7 @@ async function executePendingSale(db, stateRef, state, dependencies = {}) {
 
 async function runXecHistoricalHoldingCycle(db, options = {}, dependencies = {}) {
   if (!db) throw new Error('xec_holding_manager_requires_db');
+  dependencies = { ...dependencies, db, accountId: dependencies.accountId || process.env.SPOT_COORDINATION_ACCOUNT_ID };
   const configRef = db.doc(CONFIG_DOC);
   const configSnap = await configRef.get();
   const config = normalizeConfig({ ...(configSnap.exists ? configSnap.data() : {}), ...options });

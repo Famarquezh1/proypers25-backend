@@ -9,7 +9,8 @@ const {
   resolveAdaptiveProtection,
   isProtectedProfitableRunner,
   buildExitClientOrderId,
-  recoverPendingExit
+  recoverPendingExit,
+  executeMarketSell
 } = require('../services/controlledSpotExitExecutor');
 const {
   assetFromSymbol,
@@ -219,19 +220,65 @@ assert.throws(() => assertExitConfig({
   assert.strictEqual(recovered.action, 'RECOVERED_SELL');
   assert.strictEqual(updates.length, 0);
 
-  const retryReady = await recoverPendingExit({}, {
+  const stillAmbiguous = await recoverPendingExit({}, {
     id: position.id,
     update: async (value) => updates.push(value)
   }, position, {
     findExistingSellOrder: async () => null
   });
-  assert.strictEqual(retryReady.action, 'EXIT_RETRY_READY');
+  assert.strictEqual(stillAmbiguous.action, 'EXIT_OUTCOME_AMBIGUOUS');
   assert.deepStrictEqual(updates[0], {
-    exit_status: 'EXIT_RETRY_READY',
-    exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND',
+    exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND_OUTCOME_AMBIGUOUS',
     exit_recovered_at: updates[0].exit_recovered_at
   });
   assert.ok(typeof updates[0].exit_recovered_at === 'string');
+
+  let submissions = 0;
+  let lookups = 0;
+  let beforeSubmitCalls = 0;
+  const acceptedTimeout = await executeMarketSell('XECUSDT', 10, 'px25x_timeout', {
+    findExistingSellOrder: async () => {
+      lookups += 1;
+      return lookups === 1 ? null : {
+        orderId: 9010, clientOrderId: 'px25x_timeout', side: 'SELL',
+        executedQty: '10', cummulativeQuoteQty: '2', status: 'FILLED'
+      };
+    },
+    getOpenOrders: async () => [],
+    beforeSubmit: async () => { beforeSubmitCalls += 1; },
+    privateRequest: async (method) => {
+      if (method === 'POST') {
+        submissions += 1;
+        throw new Error('socket timeout after accepted order');
+      }
+      throw new Error(`unexpected request ${method}`);
+    }
+  });
+  assert.strictEqual(acceptedTimeout.orderId, 9010);
+  assert.strictEqual(submissions, 1, 'timeout reconciliation never resubmits the market sell');
+  assert.strictEqual(beforeSubmitCalls, 1);
+
+  await assert.rejects(executeMarketSell('XECUSDT', 10, 'px25x_uncertain', {
+    findExistingSellOrder: async () => null,
+    getOpenOrders: async () => [],
+    privateRequest: async (method) => {
+      if (method === 'POST') throw new Error('timeout and order not visible yet');
+      throw new Error(`unexpected request ${method}`);
+    }
+  }), (error) => error.code === 'ORDER_OUTCOME_UNCERTAIN');
+
+  let protectedPostCount = 0;
+  await assert.rejects(executeMarketSell('XECUSDT', 10, 'px25x_protected', {
+    findExistingSellOrder: async () => null,
+    getOpenOrders: async () => [{
+      orderId: 9011, side: 'SELL', type: 'STOP_LOSS_LIMIT', status: 'NEW'
+    }],
+    privateRequest: async (method) => {
+      if (method === 'POST') protectedPostCount += 1;
+      throw new Error(`unexpected request ${method}`);
+    }
+  }), /ACTIVE_SELL_ORDER_BLOCKER/);
+  assert.strictEqual(protectedPostCount, 0, 'an active native protection blocks a second sell');
   console.log('pending exit restart recovery tests passed');
 })().catch((error) => {
   console.error(error);
