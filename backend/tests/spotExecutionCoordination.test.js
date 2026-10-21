@@ -99,6 +99,15 @@ function fakeFirestore() {
     orderFound: true, status: 'FILLED', orderId: 'mock-order-1', symbol: 'ETHUSDT', clientOrderId: 'exit-1'
   });
   assert.strictEqual(wrongSymbol, false, 'different Binance symbol must not unlock the lease');
+  const missingOrderId = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
+    orderFound: true, status: 'FILLED', symbol: 'BTCUSDT', clientOrderId: 'exit-1'
+  });
+  assert.strictEqual(missingOrderId, false, 'an order without Binance orderId cannot unlock an ambiguous intent');
+  const wrongSide = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
+    orderFound: true, status: 'FILLED', orderId: 'mock-buy', symbol: 'BTCUSDT',
+    clientOrderId: 'exit-1', side: 'BUY'
+  });
+  assert.strictEqual(wrongSide, false, 'an order with mismatched side must not unlock a SELL intent');
   const resolved = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
     orderFound: true, status: 'FILLED', orderId: 'mock-order-1',
     symbol: 'BTCUSDT', clientOrderId: 'exit-1'
