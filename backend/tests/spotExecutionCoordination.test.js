@@ -91,8 +91,17 @@ function fakeFirestore() {
   const unresolved = await second.acquire(accountId, 'BTCUSDT', 'retry');
   assert.strictEqual(unresolved.acquired, false);
 
+  const unrelatedOrder = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
+    orderFound: true, status: 'FILLED', orderId: 'other-order', symbol: 'BTCUSDT', clientOrderId: 'another-intent'
+  });
+  assert.strictEqual(unrelatedOrder, false, 'unrelated client order must not unlock the lease');
+  const wrongSymbol = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
+    orderFound: true, status: 'FILLED', orderId: 'mock-order-1', symbol: 'ETHUSDT', clientOrderId: 'exit-1'
+  });
+  assert.strictEqual(wrongSymbol, false, 'different Binance symbol must not unlock the lease');
   const resolved = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
-    orderFound: true, status: 'FILLED', orderId: 'mock-order-1'
+    orderFound: true, status: 'FILLED', orderId: 'mock-order-1',
+    symbol: 'BTCUSDT', clientOrderId: 'exit-1'
   });
   assert.strictEqual(resolved, true);
   const nextLease = await second.acquire(accountId, 'BTCUSDT', 'retry-after-reconcile');
@@ -123,20 +132,27 @@ function fakeFirestore() {
       const timeout = new Error('request timed out after write');
       timeout.code = 'ETIMEDOUT';
       throw timeout;
-    }),
+    }, { side: 'SELL', type: 'MARKET', clientOrderId: 'sell-timeout' }),
     /request timed out/
   );
   const timeoutLease = await timeoutCoordinator.acquire(accountId, 'ETHUSDT', 'duplicate-sell');
   assert.strictEqual(timeoutLease.acquired, false);
   assert.strictEqual(timeoutLease.reason, 'SPOT_SYMBOL_AMBIGUOUS');
   const activeMarketOrder = await timeoutCoordinator.resolveAmbiguous(accountId, 'ETHUSDT', 'sell-timeout', {
-    orderFound: true, status: 'NEW', side: 'SELL', type: 'MARKET', orderId: 'mock-active-sell'
+    orderFound: true, status: 'NEW', side: 'SELL', type: 'MARKET', orderId: 'mock-active-sell',
+    symbol: 'ETHUSDT', clientOrderId: 'sell-timeout'
   });
   assert.strictEqual(activeMarketOrder, false, 'an in-flight sell remains fail-closed');
   const activeStop = await timeoutCoordinator.resolveAmbiguous(accountId, 'ETHUSDT', 'sell-timeout', {
-    orderFound: true, status: 'NEW', side: 'SELL', type: 'STOP_LOSS_LIMIT', orderId: 'mock-active-stop'
+    orderFound: true, status: 'NEW', side: 'SELL', type: 'STOP_LOSS_LIMIT', orderId: 'mock-active-stop',
+    symbol: 'ETHUSDT', clientOrderId: 'sell-timeout'
   });
-  assert.strictEqual(activeStop, true, 'a confirmed active protection resolves an ambiguous stop placement');
+  assert.strictEqual(activeStop, false, 'an unrelated stop cannot resolve a MARKET sell timeout');
+  const terminalSell = await timeoutCoordinator.resolveAmbiguous(accountId, 'ETHUSDT', 'sell-timeout', {
+    orderFound: true, status: 'FILLED', side: 'SELL', type: 'MARKET', orderId: 'mock-active-sell',
+    symbol: 'ETHUSDT', clientOrderId: 'sell-timeout'
+  });
+  assert.strictEqual(terminalSell, true, 'matching terminal sell reconciles the ambiguous intent');
 
   console.log('spotExecutionCoordination.test.js passed');
 })().catch((error) => {
