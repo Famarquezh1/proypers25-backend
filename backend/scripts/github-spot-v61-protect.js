@@ -2,11 +2,13 @@
 
 const crypto=require('crypto');
 const {journalStore,deterministicClientOrderId,submitOrder,cancelOrder,reconcileTransition,uncertain}=require('../services/spotOrderSafety');
+const {withLocalSpotMutation,resolveLocalSpotMutation}=require('../services/spotExecutionCoordination');
 const EXIT_POLICY=require('../config/spot-exit-policy-v2.json');
 const {resolveNativeProtectionStop}=require('../services/spotNativeProtectionPolicy');
 const orderJournal=journalStore();
 const API_KEY=process.env.BINANCE_API_KEY||'';
 const API_SECRET=process.env.BINANCE_SECRET_KEY||process.env.BINANCE_SECRET||'';
+const COORDINATION_ACCOUNT_ID=process.env.SPOT_COORDINATION_ACCOUNT_ID||'';
 const GH_TOKEN=process.env.GITHUB_TOKEN||'';
 const REPOSITORY=process.env.GITHUB_REPOSITORY||'';
 const BASES=['https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'];
@@ -17,8 +19,8 @@ const V61=EXIT_POLICY.v61;
 const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
 const ret=(a,b)=>a>0?b/a-1:0;
 function fail(m){console.error(`V61_PROTECT_BLOCKED: ${m}`);process.exit(2);}
-async function request(base,path,options={}){const r=await fetch(`${base}${path}`,options),text=await r.text();let body;try{body=text?JSON.parse(text):{};}catch{body={raw:text};}if(!r.ok){const e=new Error(`HTTP ${r.status}: ${body.msg||body.raw||r.statusText}`);e.status=r.status;throw e;}return body;}
-async function signed(base,method,path,params={}){const query=new URLSearchParams({...params,recvWindow:'5000',timestamp:String(Date.now())}).toString(),sig=crypto.createHmac('sha256',API_SECRET).update(query).digest('hex');return request(base,`${path}?${query}&signature=${sig}`,{method,headers:{'X-MBX-APIKEY':API_KEY}});}
+async function request(base,path,options={}){const r=await fetch(`${base}${path}`,options),text=await r.text();let body;try{body=text?JSON.parse(text):{};}catch{body={raw:text};}if(!r.ok){const e=new Error(`HTTP ${r.status}: ${body.msg||body.raw||r.statusText}`);e.status=r.status;e.body=body;throw e;}return body;}
+async function signed(base,method,path,params={}){const query=new URLSearchParams({...params,recvWindow:'5000',timestamp:String(Date.now())}).toString(),sig=crypto.createHmac('sha256',API_SECRET).update(query).digest('hex'),send=()=>request(base,`${path}?${query}&signature=${sig}`,{method,headers:{'X-MBX-APIKEY':API_KEY}});if(['POST','DELETE'].includes(String(method).toUpperCase())&&path==='/api/v3/order'){const intentId=String(params.newClientOrderId||params.origClientOrderId||params.orderId||''),mutationOptions={metadata:{clientOrderId:intentId,side:params.side,type:params.type,quantity:params.quantity||params.quoteOrderQty}};if(String(method).toUpperCase()==='POST'&&params.newClientOrderId)mutationOptions.findExisting=async()=>{try{return await signed(base,'GET','/api/v3/order',{symbol:params.symbol,origClientOrderId:intentId});}catch(error){if(Number(error.body?.code||error.code)===-2013)return null;throw error;}};return withLocalSpotMutation(COORDINATION_ACCOUNT_ID,params.symbol,intentId,send,mutationOptions);}const result=await send();if(path==='/api/v3/order'&&['FILLED','CANCELED','EXPIRED','REJECTED','EXPIRED_IN_MATCH'].includes(String(result?.status||'').toUpperCase()))for(const reference of [params.origClientOrderId,params.orderId,result.clientOrderId,result.orderId].filter(Boolean))await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID,params.symbol||result.symbol,String(reference),{orderFound:true,status:result.status,side:result.side,type:result.type,orderId:result.orderId});return result;}
 async function chooseBase(){for(const base of BASES){try{await request(base,'/api/v3/ping');await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'});return base;}catch{}}fail('Binance private API unreachable');}
 async function github(path){if(!GH_TOKEN||!REPOSITORY)return null;const r=await fetch(`https://api.github.com/repos/${REPOSITORY}${path}`,{headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'proypers25-v61-protect'}});if(!r.ok)throw new Error(`GitHub HTTP ${r.status}`);return r.json();}
 async function managedSymbols(){const since=Date.now()-MAX_MANAGED_AGE_DAYS*86400000,issues=await github('/issues?state=closed&per_page=100&sort=updated&direction=desc');if(!Array.isArray(issues))return[];return[...new Set(issues.filter(i=>i.state_reason==='completed'&&new Date(i.created_at).getTime()>=since).map(i=>String(i.title||'').match(/^\[SPOT SIGNAL\] ([A-Z0-9]+USDT)\b/)).filter(Boolean).map(m=>m[1]))];}

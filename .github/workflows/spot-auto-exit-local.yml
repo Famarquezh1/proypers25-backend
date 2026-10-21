@@ -34,6 +34,7 @@ jobs:
     env:
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
       BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+      SPOT_COORDINATION_ACCOUNT_ID: ${{ vars.SPOT_COORDINATION_ACCOUNT_ID }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository

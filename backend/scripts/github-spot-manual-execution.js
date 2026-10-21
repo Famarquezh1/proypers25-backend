@@ -2,10 +2,12 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
-const { journalStore } = require('../services/spotOrderSafety');
+const { journalStore, deterministicClientOrderId } = require('../services/spotOrderSafety');
+const { withLocalSpotMutation, resolveLocalSpotMutation } = require('../services/spotExecutionCoordination');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
+const COORDINATION_ACCOUNT_ID = process.env.SPOT_COORDINATION_ACCOUNT_ID || '';
 let SYMBOL = String(process.env.SIGNAL_SYMBOL || '').toUpperCase();
 let SIGNAL_PRICE = Number(process.env.SIGNAL_PRICE || 0);
 let SIGNAL_PCT = Number(process.env.SIGNAL_PCT || 0);
@@ -68,7 +70,27 @@ async function request(base, path, options = {}) {
 async function signed(base, method, path, params = {}) {
   const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
   const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
-  return request(base, `${path}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': API_KEY } });
+  const send = () => request(base, `${path}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': API_KEY } });
+  if (['POST', 'DELETE'].includes(String(method).toUpperCase()) && path === '/api/v3/order') {
+    const intentId = String(params.newClientOrderId || params.origClientOrderId || params.orderId || '');
+    const mutationOptions = { metadata: { clientOrderId: intentId, side: params.side, type: params.type, quantity: params.quantity || params.quoteOrderQty } };
+    if (String(method).toUpperCase() === 'POST' && params.newClientOrderId) {
+      mutationOptions.findExisting = async () => {
+        try { return await signed(base, 'GET', '/api/v3/order', { symbol: params.symbol, origClientOrderId: intentId }); }
+        catch (error) { if (Number(error.body?.code || error.code) === -2013) return null; throw error; }
+      };
+    }
+    return withLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol, intentId, send, mutationOptions);
+  }
+  const result = await send();
+  if (path === '/api/v3/order' && ['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(result?.status || '').toUpperCase())) {
+    for (const reference of [params.origClientOrderId, params.orderId, result.clientOrderId, result.orderId].filter(Boolean)) {
+      await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol || result.symbol, String(reference), {
+        orderFound: true, status: result.status, side: result.side, type: result.type, orderId: result.orderId
+      });
+    }
+  }
+  return result;
 }
 async function chooseBase() {
   const failures = [];
@@ -111,6 +133,10 @@ function positionFraction(score) {
   return clamp(BASE_POSITION_FRACTION + (quality - 0.5) * V61_SIZE_SLOPE, MIN_POSITION_FRACTION, MAX_POSITION_FRACTION);
 }
 
+function entryClientOrderId() {
+  return deterministicClientOrderId('proypers-gh-entry-', SYMBOL, SIGNAL_CREATED_AT, SIGNAL_PRICE, SIGNAL_PCT);
+}
+
 async function placeNativeProtection(base, order, entryPrice) {
   const exchangeInfo = await request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(SYMBOL)}`);
   const info = exchangeInfo.symbols?.[0];
@@ -121,7 +147,7 @@ async function placeNativeProtection(base, order, entryPrice) {
   const executedQty = Number(order.executedQty || 0); const free = freeBalance(account, info.baseAsset); const quantity = floorToStep(Math.min(executedQty, free), lot.stepSize);
   if (!(quantity >= Number(lot.minQty || 0))) throw new Error(`protection quantity below minimum for ${SYMBOL}`);
   const stopPrice = floorToStep(entryPrice * (1 - HARD_STOP_PCT), priceFilter.tickSize); if (!(stopPrice > 0)) throw new Error(`stop price invalid for ${SYMBOL}`);
-  const clientId = `proypers-gh-protect-${Date.now()}`; let protectionOrder;
+  const clientId = deterministicClientOrderId('proypers-gh-protect-', SYMBOL, order.clientOrderId || order.orderId, quantity, stopPrice); let protectionOrder;
   if ((info.orderTypes || []).includes('STOP_LOSS')) protectionOrder = await signed(base, 'POST', '/api/v3/order', { symbol: SYMBOL, side: 'SELL', type: 'STOP_LOSS', quantity: String(quantity), stopPrice: String(stopPrice), newOrderRespType: 'RESULT', newClientOrderId: clientId });
   else if ((info.orderTypes || []).includes('STOP_LOSS_LIMIT')) { const limitPrice = floorToStep(stopPrice * (1 - STOP_LIMIT_GAP_PCT), priceFilter.tickSize); protectionOrder = await signed(base, 'POST', '/api/v3/order', { symbol: SYMBOL, side: 'SELL', type: 'STOP_LOSS_LIMIT', timeInForce: 'GTC', quantity: String(quantity), stopPrice: String(stopPrice), price: String(limitPrice), newOrderRespType: 'RESULT', newClientOrderId: clientId }); }
   else throw new Error(`${SYMBOL} does not support STOP_LOSS orders`);
@@ -155,7 +181,7 @@ async function main() {
   const pendingTransition = orderJournal.read(SYMBOL);
   if (pendingTransition) technicalFail(`Spot symbol has unresolved order transition (${pendingTransition.intent}/${pendingTransition.phase})`);
   console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT} current_pct=${currentPct} v61_score=${Number.isFinite(score) ? score.toFixed(6) : 'fallback'} position_fraction=${fraction.toFixed(4)} usdt_free=${usdtFree} quote_order_qty=${quoteOrderQty}`);
-  const order = await signed(base, 'POST', '/api/v3/order', { symbol: SYMBOL, side: 'BUY', type: 'MARKET', quoteOrderQty: quoteOrderQty.toFixed(2), newOrderRespType: 'FULL', newClientOrderId: `proypers-gh-${Date.now()}` });
+  const order = await signed(base, 'POST', '/api/v3/order', { symbol: SYMBOL, side: 'BUY', type: 'MARKET', quoteOrderQty: quoteOrderQty.toFixed(2), newOrderRespType: 'FULL', newClientOrderId: entryClientOrderId() });
   if (!order?.orderId) technicalFail('Binance returned no orderId');
   const executedQty = Number(order.executedQty || 0), quoteFilled = Number(order.cummulativeQuoteQty || 0), entryPrice = executedQty > 0 ? quoteFilled / executedQty : currentPrice;
   console.log(`ORDER_CREATED symbol=${SYMBOL} orderId=${order.orderId} status=${order.status} quoteOrderQty=${quoteOrderQty}`);

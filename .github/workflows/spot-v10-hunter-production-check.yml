@@ -12,12 +12,15 @@ on:
       - 'backend/services/spotConvictionSizing.js'
       - 'backend/services/spotGrowthEngine.js'
       - 'backend/services/spotNativeProtectionPolicy.js'
+      - 'backend/services/spotExecutionCoordination.js'
       - 'backend/config/spot-growth-engine-v1.json'
       - 'backend/tests/spotAssetClassification.test.js'
       - 'backend/tests/spotEntryBurstGate.test.js'
       - 'backend/tests/spotConvictionSizing.test.js'
       - 'backend/tests/spotGrowthEngine.test.js'
       - 'backend/tests/spotNativeProtectionPolicy.test.js'
+      - 'backend/tests/spotExecutionCoordination.test.js'
+      - 'backend/tests/spotOrderSafety.test.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - '.github/workflows/spot-manual-approval.yml'
@@ -52,6 +55,9 @@ jobs:
           node --check backend/services/spotConvictionSizing.js
           node --check backend/services/spotGrowthEngine.js
           node --check backend/services/spotNativeProtectionPolicy.js
+          node --check backend/services/spotExecutionCoordination.js
+          node --check backend/tests/spotExecutionCoordination.test.js
+          node --check backend/tests/spotOrderSafety.test.js
           node --check backend/tests/spotAssetClassification.test.js
           node --check backend/tests/spotEntryBurstGate.test.js
           node --check backend/tests/spotConvictionSizing.test.js
@@ -67,6 +73,8 @@ jobs:
           node backend/tests/spotConvictionSizing.test.js
           node backend/tests/spotGrowthEngine.test.js
           node backend/tests/spotNativeProtectionPolicy.test.js
+          node backend/tests/spotExecutionCoordination.test.js
+          node backend/tests/spotOrderSafety.test.js
       - name: V10 exit wrapper patch compatibility
         shell: bash
         run: |

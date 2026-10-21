@@ -22,6 +22,30 @@ function temporaryJournal() {
   return directory;
 }
 
+function offlineFirestore() {
+  const documents = new Map();
+  let pending = Promise.resolve();
+  return {
+    collection(name) {
+      return { doc: (id) => ({ key: `${name}/${id}` }) };
+    },
+    runTransaction(callback) {
+      const run = pending.then(() => callback({
+        get: async (ref) => {
+          const value = documents.get(ref.key);
+          return { exists: Boolean(value), data: () => value && { ...value } };
+        },
+        set: (ref, value, options = {}) => documents.set(
+          ref.key,
+          options.merge ? { ...(documents.get(ref.key) || {}), ...value } : value
+        )
+      }));
+      pending = run.catch(() => {});
+      return run;
+    }
+  };
+}
+
 function missingOrder() {
   return Object.assign(new Error('HTTP 400: Order does not exist'), { body: { code: -2013 } });
 }
@@ -293,12 +317,21 @@ function workflowCoordinationTests() {
 
 async function wrapperCompatibilityTest() {
   const root = temporaryJournal();
-  const names = ['PROYPERS_SPOT_ORDER_JOURNAL_DIR', 'BINANCE_API_KEY', 'BINANCE_SECRET_KEY', 'BINANCE_SECRET'];
+  const names = ['PROYPERS_SPOT_ORDER_JOURNAL_DIR', 'BINANCE_API_KEY', 'BINANCE_SECRET_KEY', 'BINANCE_SECRET', 'SPOT_COORDINATION_ACCOUNT_ID'];
   const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   const oldFetch = global.fetch;
+  const configPath = require.resolve('../firebase-admin-config');
+  const previousConfigModule = require.cache[configPath];
+  require.cache[configPath] = {
+    id: configPath,
+    filename: configPath,
+    loaded: true,
+    exports: offlineFirestore()
+  };
   process.env.PROYPERS_SPOT_ORDER_JOURNAL_DIR = root;
   process.env.BINANCE_API_KEY = 'offline-test-key';
   process.env.BINANCE_SECRET_KEY = 'offline-test-secret';
+  process.env.SPOT_COORDINATION_ACCOUNT_ID = 'offline-test-spot-account';
   try {
     const engine = require('../scripts/github-spot-auto-exit-legacy-v10-aware');
     assert.equal(typeof engine.main, 'function');
@@ -499,6 +532,8 @@ async function wrapperCompatibilityTest() {
     assert.equal(orphanMutations, 2, 'orphan stop is canceled only after the sell transition is persisted');
   } finally {
     global.fetch = oldFetch;
+    if (previousConfigModule) require.cache[configPath] = previousConfigModule;
+    else delete require.cache[configPath];
     for (const name of names) {
       if (previous[name] === undefined) delete process.env[name];
       else process.env[name] = previous[name];

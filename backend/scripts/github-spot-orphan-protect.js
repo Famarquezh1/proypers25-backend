@@ -15,9 +15,11 @@ const {
   cancelOrder: cancelJournaledOrder,
   uncertain
 } = require('../services/spotOrderSafety');
+const { withLocalSpotMutation, resolveLocalSpotMutation } = require('../services/spotExecutionCoordination');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
+const COORDINATION_ACCOUNT_ID = process.env.SPOT_COORDINATION_ACCOUNT_ID || '';
 const GH_TOKEN = process.env.GITHUB_TOKEN || '';
 const REPOSITORY = process.env.GITHUB_REPOSITORY || '';
 const EXCLUDED_ASSETS = new Set(['USDT', 'USDC', 'FDUSD', 'TUSD', 'DAI', 'USDP', 'BUSD', 'XEC']);
@@ -42,17 +44,47 @@ async function request(base, path, options = {}) {
   const text = await response.text();
   let body;
   try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
+  if (!response.ok) {
+    const error = new Error(`HTTP ${response.status}: ${body.msg || body.raw || response.statusText}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
   return body;
 }
 
 async function signed(base, method, path, params = {}) {
   const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
   const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
-  return request(base, `${path}?${query}&signature=${signature}`, {
+  const send = () => request(base, `${path}?${query}&signature=${signature}`, {
     method,
     headers: { 'X-MBX-APIKEY': API_KEY }
   });
+  if (['POST', 'DELETE'].includes(String(method).toUpperCase()) && path === '/api/v3/order') {
+    const intentId = String(params.newClientOrderId || params.origClientOrderId || params.orderId || '');
+    const mutationOptions = { metadata: { clientOrderId: intentId, side: params.side, type: params.type, quantity: params.quantity || params.quoteOrderQty } };
+    if (String(method).toUpperCase() === 'POST' && params.newClientOrderId) {
+      mutationOptions.findExisting = async () => {
+        try { return await signed(base, 'GET', '/api/v3/order', { symbol: params.symbol, origClientOrderId: intentId }); }
+        catch (error) { if (Number(error.body?.code || error.code) === -2013) return null; throw error; }
+      };
+    }
+    return withLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol, intentId, send, mutationOptions);
+  }
+  const result = await send();
+  if (path === '/api/v3/order' && ['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(result?.status || '').toUpperCase())) {
+    const references = [params.origClientOrderId, params.orderId, result.clientOrderId, result.orderId].filter(Boolean);
+    for (const reference of references) {
+      await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol || result.symbol, String(reference), {
+        orderFound: true,
+        status: result.status,
+        side: result.side,
+        type: result.type,
+        orderId: result.orderId
+      });
+    }
+  }
+  return result;
 }
 
 async function chooseBase() {

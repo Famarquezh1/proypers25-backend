@@ -2,10 +2,12 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
-const { journalStore } = require('../services/spotOrderSafety');
+const { journalStore, deterministicClientOrderId } = require('../services/spotOrderSafety');
+const { withLocalSpotMutation, resolveLocalSpotMutation } = require('../services/spotExecutionCoordination');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
+const COORDINATION_ACCOUNT_ID = process.env.SPOT_COORDINATION_ACCOUNT_ID || '';
 let SYMBOL = String(process.env.SIGNAL_SYMBOL || '').toUpperCase();
 let SIGNAL_PRICE = Number(process.env.SIGNAL_PRICE || 0);
 let SIGNAL_PCT = Number(process.env.SIGNAL_PCT || 0);
@@ -33,6 +35,7 @@ function v61PositionFraction(){
   return clamp(BASE_POSITION_FRACTION + (quality - 0.5) * V61_SIZE_SLOPE,MIN_POSITION_FRACTION,MAX_POSITION_FRACTION);
 }
 function writeOutput(name,value){const file=process.env.GITHUB_OUTPUT;if(file)fs.appendFileSync(file,`${name}=${String(value).replace(/[\r\n]+/g,' ')}\n`);}
+function entryClientOrderId(){return deterministicClientOrderId('proypers-gh-entry-',SYMBOL,SIGNAL_CREATED_AT,SIGNAL_PRICE,SIGNAL_PCT);}
 function finish(outcome,reason='',orderId=''){writeOutput('outcome',outcome);writeOutput('reason',reason);writeOutput('order_id',orderId);writeOutput('symbol',SYMBOL);}
 function technicalFail(message){finish('technical_failure',message);console.error(`TECHNICAL_FAILURE: ${message}`);process.exit(2);}
 function decline(reason){finish('declined',reason);console.log(`SIGNAL_DECLINED symbol=${SYMBOL||'unknown'} reason=${reason}`);process.exit(0);}
@@ -45,7 +48,7 @@ function validateInputs(){
   if(Date.now()-created>MAX_SIGNAL_AGE_MS) decline('Signal is stale (>30 minutes)');
 }
 async function request(base,path,options={}){const response=await fetch(`${base}${path}`,options);const text=await response.text();let body;try{body=text?JSON.parse(text):{};}catch{body={raw:text};}if(!response.ok){const error=new Error(`HTTP ${response.status}: ${body.msg||body.raw||response.statusText}`);error.status=response.status;error.body=body;throw error;}return body;}
-async function signed(base,method,path,params={}){const query=new URLSearchParams({...params,recvWindow:'5000',timestamp:String(Date.now())}).toString();const signature=crypto.createHmac('sha256',API_SECRET).update(query).digest('hex');return request(base,`${path}?${query}&signature=${signature}`,{method,headers:{'X-MBX-APIKEY':API_KEY}});}
+async function signed(base,method,path,params={}){const query=new URLSearchParams({...params,recvWindow:'5000',timestamp:String(Date.now())}).toString(),signature=crypto.createHmac('sha256',API_SECRET).update(query).digest('hex'),send=()=>request(base,`${path}?${query}&signature=${signature}`,{method,headers:{'X-MBX-APIKEY':API_KEY}});if(['POST','DELETE'].includes(String(method).toUpperCase())&&path==='/api/v3/order'){const intentId=String(params.newClientOrderId||params.origClientOrderId||params.orderId||''),mutationOptions={metadata:{clientOrderId:intentId,side:params.side,type:params.type,quantity:params.quantity||params.quoteOrderQty}};if(String(method).toUpperCase()==='POST'&&params.newClientOrderId)mutationOptions.findExisting=async()=>{try{return await signed(base,'GET','/api/v3/order',{symbol:params.symbol,origClientOrderId:intentId});}catch(error){if(Number(error.body?.code||error.code)===-2013)return null;throw error;}};return withLocalSpotMutation(COORDINATION_ACCOUNT_ID,params.symbol,intentId,send,mutationOptions);}const result=await send();if(path==='/api/v3/order'&&['FILLED','CANCELED','EXPIRED','REJECTED','EXPIRED_IN_MATCH'].includes(String(result?.status||'').toUpperCase()))for(const reference of [params.origClientOrderId,params.orderId,result.clientOrderId,result.orderId].filter(Boolean))await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID,params.symbol||result.symbol,String(reference),{orderFound:true,status:result.status,side:result.side,type:result.type,orderId:result.orderId});return result;}
 async function chooseBase(){const failures=[];for(const base of BASES){try{await request(base,'/api/v3/ping');await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'});return base;}catch(error){failures.push(`${base}=${error.status||error.message}`);}}technicalFail(`Binance private API unreachable from local runner (${failures.join(', ')})`);}
 function balanceRow(account,asset){return (account.balances||[]).find(x=>x.asset===asset)||{};}
 function freeBalance(account,asset){return Number(balanceRow(account,asset).free||0);}
@@ -57,7 +60,7 @@ async function placeNativeProtection(base,order,entryPrice){
   if(!info||info.status!=='TRADING'||info.isSpotTradingAllowed!==true)throw new Error(`${SYMBOL} is not active Spot`);
   const account=await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'});const lot=info.filters?.find(f=>f.filterType==='LOT_SIZE');const priceFilter=info.filters?.find(f=>f.filterType==='PRICE_FILTER');if(!lot||!priceFilter)throw new Error(`filters missing for ${SYMBOL}`);
   const executedQty=Number(order.executedQty||0),free=freeBalance(account,info.baseAsset),quantity=floorToStep(Math.min(executedQty,free),lot.stepSize);if(!(quantity>=Number(lot.minQty||0)))throw new Error(`protection quantity below minimum for ${SYMBOL}`);
-  const stopPrice=floorToStep(entryPrice*(1-HARD_STOP_PCT),priceFilter.tickSize);if(!(stopPrice>0))throw new Error(`stop price invalid for ${SYMBOL}`);const clientId=`proypers-gh-protect-${Date.now()}`;let protectionOrder;
+  const stopPrice=floorToStep(entryPrice*(1-HARD_STOP_PCT),priceFilter.tickSize);if(!(stopPrice>0))throw new Error(`stop price invalid for ${SYMBOL}`);const clientId=deterministicClientOrderId('proypers-gh-protect-',SYMBOL,order.clientOrderId||order.orderId,quantity,stopPrice);let protectionOrder;
   if((info.orderTypes||[]).includes('STOP_LOSS')) protectionOrder=await signed(base,'POST','/api/v3/order',{symbol:SYMBOL,side:'SELL',type:'STOP_LOSS',quantity:String(quantity),stopPrice:String(stopPrice),newOrderRespType:'RESULT',newClientOrderId:clientId});
   else if((info.orderTypes||[]).includes('STOP_LOSS_LIMIT')){const limitPrice=floorToStep(stopPrice*(1-STOP_LIMIT_GAP_PCT),priceFilter.tickSize);protectionOrder=await signed(base,'POST','/api/v3/order',{symbol:SYMBOL,side:'SELL',type:'STOP_LOSS_LIMIT',timeInForce:'GTC',quantity:String(quantity),stopPrice:String(stopPrice),price:String(limitPrice),newOrderRespType:'RESULT',newClientOrderId:clientId});}
   else throw new Error(`${SYMBOL} does not support STOP_LOSS orders`);
@@ -85,7 +88,7 @@ async function main(){
   if(quoteOrderQty<MIN_USDT)decline(`Insufficient free USDT for minimum acquisition (${usdtFree} USDT free)`);
   const baseAsset=info.baseAsset;const existingAssetQty=totalBalance(account,baseAsset);if(existingAssetQty>0&&existingAssetQty*currentPrice>=MIN_USDT)decline(`${baseAsset} already has >= ${MIN_USDT} USDT equivalent balance; duplicate acquisition blocked`);
   console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT} current_pct=${currentPct} v61_score=${Number.isFinite(SIGNAL_V61_SCORE)?SIGNAL_V61_SCORE:'fallback'} position_fraction=${fraction.toFixed(4)} usdt_free=${usdtFree} quote_order_qty=${quoteOrderQty}`);
-  const order=await signed(base,'POST','/api/v3/order',{symbol:SYMBOL,side:'BUY',type:'MARKET',quoteOrderQty:quoteOrderQty.toFixed(2),newOrderRespType:'FULL',newClientOrderId:`proypers-gh-${Date.now()}`});
+  const order=await signed(base,'POST','/api/v3/order',{symbol:SYMBOL,side:'BUY',type:'MARKET',quoteOrderQty:quoteOrderQty.toFixed(2),newOrderRespType:'FULL',newClientOrderId:entryClientOrderId()});
   if(!order?.orderId)technicalFail('Binance returned no orderId');const executedQty=Number(order.executedQty||0),quoteFilled=Number(order.cummulativeQuoteQty||0),entryPrice=executedQty>0?quoteFilled/executedQty:currentPrice;console.log(`ORDER_CREATED symbol=${SYMBOL} orderId=${order.orderId} status=${order.status} quoteOrderQty=${quoteOrderQty}`);
   let protectedNow=false,protectionError='';for(let attempt=1;attempt<=2&&!protectedNow;attempt+=1){try{await placeNativeProtection(base,order,entryPrice);protectedNow=true;}catch(error){protectionError=error.message||String(error);if(attempt<2)await new Promise(r=>setTimeout(r,1500));}}
   if(!protectedNow){finish('executed_protection_pending',protectionError,order.orderId);console.warn(`BUY_EXECUTED_PROTECTION_PENDING symbol=${SYMBOL} orderId=${order.orderId} reason=${protectionError}`);return;}
