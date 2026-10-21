@@ -71,8 +71,8 @@ function fakeFirestore() {
   assert.strictEqual(mutationCalls, 0, 'an existing client ID is recovered without another Binance request');
 
   const [winner, loser] = await Promise.all([
-    first.acquire(accountId, 'BTCUSDT', 'exit-1'),
-    second.acquire(accountId, 'BTCUSDT', 'exit-2')
+    first.acquire(accountId, 'BTCUSDT', 'exit-1', { side: 'SELL' }),
+    second.acquire(accountId, 'BTCUSDT', 'exit-2', { side: 'SELL' })
   ]);
   assert.strictEqual([winner, loser].filter((lease) => lease.acquired).length, 1);
   assert.strictEqual([winner, loser].find((lease) => !lease.acquired).reason, 'SPOT_SYMBOL_BUSY');
