@@ -149,6 +149,19 @@ function createSpotExecutionCoordinator(db, options = {}) {
       const snap = await tx.get(ref);
       const current = snap.exists ? snap.data() : {};
       if (current.state !== 'AMBIGUOUS' || current.intentId !== String(expectedIntentId || '')) return false;
+      // An unrelated Binance order must never unlock an ambiguous mutation.
+      // Bind reconciliation to the exact account/symbol and order intent.
+      const expectedOrderReference = String(current.clientOrderId || current.intentId || '');
+      const observedClientOrderId = String(evidence?.clientOrderId || '');
+      const observedOrderId = String(evidence?.orderId || '');
+      if (!observedOrderId ||
+          !expectedOrderReference ||
+          (observedClientOrderId !== expectedOrderReference && observedOrderId !== expectedOrderReference) ||
+          String(evidence?.symbol || '').toUpperCase() !== String(current.symbol || '').toUpperCase() ||
+          (current.side && String(evidence?.side || '').toUpperCase() !== String(current.side).toUpperCase()) ||
+          (current.orderType && String(evidence?.type || '').toUpperCase() !== String(current.orderType).toUpperCase())) {
+        return false;
+      }
       tx.set(ref, {
         state: 'IDLE',
         owner: null,
