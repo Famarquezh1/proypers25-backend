@@ -8,6 +8,13 @@ const {
   decideProfitProtection,
   protectionInventory
 } = require('../services/spotOrphanProtection');
+const {
+  journalStore,
+  deterministicClientOrderId,
+  submitOrder,
+  cancelOrder: cancelJournaledOrder,
+  uncertain
+} = require('../services/spotOrderSafety');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -16,6 +23,7 @@ const REPOSITORY = process.env.GITHUB_REPOSITORY || '';
 const EXCLUDED_ASSETS = new Set(['USDT', 'USDC', 'FDUSD', 'TUSD', 'DAI', 'USDP', 'BUSD', 'XEC']);
 const ORPHAN_PREFIX = 'proypers-gh-orphan-';
 const STOP_LIMIT_GAP_PCT = 0.006;
+const orderJournal = journalStore();
 const BASES = [
   'https://api.binance.com',
   'https://api1.binance.com',
@@ -130,22 +138,63 @@ async function recentHigh24h(base, symbol, currentPrice) {
   }
 }
 
-async function cancelOrder(base, symbol, orderId) {
-  await signed(base, 'DELETE', '/api/v3/order', { symbol, orderId: String(orderId) });
-  console.log(`ORPHAN_STOP_CANCELLED symbol=${symbol} orderId=${orderId}`);
+function beginTransition({ symbol, intent, quantity, info, oldProtections = [], newClientOrderId, preBalanceQuantity = null, replacementStopPrice = null }) {
+  const id = crypto.randomUUID();
+  return orderJournal.begin(symbol, {
+    id,
+    intent,
+    phase: 'INTENT',
+    createdAt: Date.now(),
+    quantity: Number(quantity || 0),
+    preBalanceQuantity,
+    baseAsset: String(info?.baseAsset || ''),
+    orderIds: oldProtections.map((order) => String(order.orderId || '')).filter(Boolean),
+    clientOrderIds: [
+      ...oldProtections.map((order) => String(order.clientOrderId || '')).filter(Boolean),
+      ...(newClientOrderId ? [newClientOrderId] : [])
+    ],
+    newClientOrderId,
+    replacementStopPrice,
+    protectionClientPrefix: ORPHAN_PREFIX,
+    oldProtections: oldProtections.map((order) => ({
+      orderId: String(order.orderId || ''),
+      clientOrderId: String(order.clientOrderId || ''),
+      origQty: Number(order.origQty || 0),
+      executedQty: Number(order.executedQty || 0)
+    }))
+  });
 }
 
-async function placeProtection(base, info, symbol, quantity, stopPrice) {
+async function cancelOrder(base, symbol, order, intent) {
+  const canceled = await cancelJournaledOrder(signed, base, symbol, order, orderJournal, intent);
+  if (canceled) console.log(`ORPHAN_STOP_CANCELLED symbol=${symbol} orderId=${order.orderId}`);
+  return canceled;
+}
+
+async function placeProtection(base, info, symbol, quantity, stopPrice, transition = null) {
   const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
   const priceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');
   if (!lot || !priceFilter) throw new Error(`Protection filters missing for ${symbol}`);
   const normalizedQty = floorToStep(quantity, lot.stepSize);
   if (!(normalizedQty >= Number(lot.minQty || 0))) throw new Error(`ORPHAN quantity below minimum for ${symbol}`);
 
-  const clientId = `${ORPHAN_PREFIX}${Date.now().toString(36)}`;
+  const clientId = transition?.newClientOrderId || deterministicClientOrderId(
+    ORPHAN_PREFIX,
+    symbol,
+    normalizedQty,
+    stopPrice
+  );
+  const intent = transition || beginTransition({
+    symbol,
+    intent: 'PROTECT',
+    quantity: normalizedQty,
+    info,
+    newClientOrderId: clientId,
+    replacementStopPrice: stopPrice
+  });
   let order;
   if ((info.orderTypes || []).includes('STOP_LOSS')) {
-    order = await signed(base, 'POST', '/api/v3/order', {
+    order = await submitOrder(signed, base, {
       symbol,
       side: 'SELL',
       type: 'STOP_LOSS',
@@ -153,10 +202,10 @@ async function placeProtection(base, info, symbol, quantity, stopPrice) {
       stopPrice: String(stopPrice),
       newOrderRespType: 'RESULT',
       newClientOrderId: clientId
-    });
+    }, orderJournal, intent);
   } else if ((info.orderTypes || []).includes('STOP_LOSS_LIMIT')) {
     const limitPrice = floorToStep(stopPrice * (1 - STOP_LIMIT_GAP_PCT), priceFilter.tickSize);
-    order = await signed(base, 'POST', '/api/v3/order', {
+    order = await submitOrder(signed, base, {
       symbol,
       side: 'SELL',
       type: 'STOP_LOSS_LIMIT',
@@ -166,39 +215,85 @@ async function placeProtection(base, info, symbol, quantity, stopPrice) {
       price: String(limitPrice),
       newOrderRespType: 'RESULT',
       newClientOrderId: clientId
-    });
+    }, orderJournal, intent);
   } else {
     throw new Error(`${symbol} does not support native stop orders`);
   }
   if (!order?.orderId) throw new Error(`ORPHAN native stop returned no orderId for ${symbol}`);
+  orderJournal.complete(symbol, intent.id);
   console.log(`ORPHAN_STOP_ARMED symbol=${symbol} orderId=${order.orderId} stop=${stopPrice} quantity=${normalizedQty}`);
   return order;
 }
 
-async function marketSell(base, info, symbol, quantity, reason, entryPrice, currentPrice) {
+async function marketSell(base, info, symbol, quantity, reason, entryPrice, currentPrice, oldProtection = null) {
   const account = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
-  const free = Number(balanceRow(account, info.baseAsset).free || 0);
+  const balance = balanceRow(account, info.baseAsset);
+  const free = Number(balance.free || 0);
+  const total = free + Number(balance.locked || 0);
   const lot = info.filters?.find((f) => f.filterType === 'MARKET_LOT_SIZE' && Number(f.stepSize) > 0) || info.filters?.find((f) => f.filterType === 'LOT_SIZE');
   if (!lot) throw new Error(`LOT_SIZE missing for ${symbol}`);
-  const sellQty = floorToStep(Math.min(quantity, free), lot.stepSize);
-  if (!(sellQty >= Number(lot.minQty || 0))) throw new Error(`ORPHAN SELL quantity below minimum for ${symbol}`);
+  const sellQty = floorToStep(Math.min(quantity, total), lot.stepSize);
+  if (!(sellQty > 0 && sellQty >= Number(lot.minQty || 0))) {
+    console.log(`ORPHAN_SELL_SKIPPED_DUST symbol=${symbol} quantity=${sellQty} protection_preserved=${Boolean(oldProtection)}`);
+    return false;
+  }
   const notional = sellQty * currentPrice;
   const nf = info.filters?.find((f) => f.filterType === 'NOTIONAL') || info.filters?.find((f) => f.filterType === 'MIN_NOTIONAL');
-  if (Number(nf?.minNotional || 0) > notional) throw new Error(`ORPHAN SELL notional below minimum for ${symbol}`);
+  if (Number(nf?.minNotional || 0) > notional) {
+    console.log(`ORPHAN_SELL_SKIPPED_DUST symbol=${symbol} quantity=${sellQty} reason=BELOW_MINIMUM_NOTIONAL protection_preserved=${Boolean(oldProtection)}`);
+    return false;
+  }
 
-  const order = await signed(base, 'POST', '/api/v3/order', {
+  const clientOrderId = deterministicClientOrderId(
+    `${ORPHAN_PREFIX}exit-`,
+    symbol,
+    reason,
+    entryPrice,
+    sellQty
+  );
+  const intent = beginTransition({
+    symbol,
+    intent: 'SELL',
+    quantity: sellQty,
+    info,
+    oldProtections: oldProtection ? [oldProtection] : [],
+    newClientOrderId: clientOrderId,
+    preBalanceQuantity: total
+  });
+  if (oldProtection) {
+    const canceled = await cancelOrder(base, symbol, oldProtection, intent);
+    if (!canceled) {
+      const current = orderJournal.read(symbol);
+      if (current?.phase === 'CANCEL_NOT_APPLIED') orderJournal.complete(symbol, intent.id);
+      return false;
+    }
+  }
+  const refreshed = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
+  const refreshedBalance = balanceRow(refreshed, info.baseAsset);
+  const refreshedFree = Number(refreshedBalance.free || 0);
+  const refreshedTotal = refreshedFree + Number(refreshedBalance.locked || 0);
+  const confirmedQty = floorToStep(Math.min(quantity, refreshedFree), lot.stepSize);
+  if (confirmedQty < sellQty || refreshedTotal < sellQty) {
+    throw uncertain(`ORPHAN_SELL_BALANCE_RECONCILIATION_REQUIRED ${symbol}`);
+  }
+  const order = await submitOrder(signed, base, {
     symbol,
     side: 'SELL',
     type: 'MARKET',
-    quantity: String(sellQty),
+    quantity: String(confirmedQty),
     newOrderRespType: 'FULL',
-    newClientOrderId: `${ORPHAN_PREFIX}exit-${Date.now().toString(36)}`
-  });
+    newClientOrderId: clientOrderId
+  }, orderJournal, intent);
+  if (String(order.status || '').toUpperCase() !== 'FILLED') {
+    throw uncertain(`ORPHAN_SELL_NOT_CONFIRMED_FILLED ${symbol}`);
+  }
+  orderJournal.complete(symbol, intent.id);
   const executedQty = Number(order.executedQty || 0);
   const exitPrice = executedQty > 0 ? Number(order.cummulativeQuoteQty || 0) / executedQty : currentPrice;
   const pnlPct = exitPrice / entryPrice - 1;
   console.log(`ORPHAN_SELL_CREATED symbol=${symbol} reason=${reason} orderId=${order.orderId} quantity=${sellQty} entry=${entryPrice} exit=${exitPrice} pnl_pct=${(pnlPct * 100).toFixed(3)}`);
   await notifyExitOnce({ symbol, reason, orderId: order.orderId, entryPrice, exitPrice, pnlPct });
+  return order;
 }
 
 async function main() {
@@ -227,6 +322,12 @@ async function main() {
   for (const candidate of candidates) {
     const { asset, symbol, currentPrice } = candidate;
     try {
+      const pendingTransition = orderJournal.read(symbol);
+      if (pendingTransition) {
+        console.error(`ORPHAN_SYMBOL_MUTATIONS_BLOCKED symbol=${symbol} reason=journal_pending intent=${pendingTransition.intent} phase=${pendingTransition.phase}`);
+        skipped += 1;
+        continue;
+      }
       const [exchangeInfo, trades, openOrders] = await Promise.all([
         request(base, `/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`),
         signed(base, 'GET', '/api/v3/myTrades', { symbol, limit: '1000' }),
@@ -289,10 +390,8 @@ async function main() {
       }
 
       if (decision.action === 'EXIT') {
-        if (orphanStop) await cancelOrder(base, symbol, orphanStop.orderId);
         const exitReason = decision.reason || (decision.protection === 'ORPHAN_TRAILING' ? 'ORPHAN_TRAILING_STOP' : 'ORPHAN_BREAK_EVEN_STOP');
-        await marketSell(base, info, symbol, orphanQty, exitReason, reconstructed.entryPrice, currentPrice);
-        sold += 1;
+        if (await marketSell(base, info, symbol, orphanQty, exitReason, reconstructed.entryPrice, currentPrice, orphanStop)) sold += 1;
         continue;
       }
 
@@ -300,10 +399,41 @@ async function main() {
       const tickSize = Number(priceFilter.tickSize || 0);
       const shouldUpgrade = orphanStop && decision.stopPrice > existingStop + Math.max(tickSize * 0.5, Number.EPSILON);
       if (!orphanStop || shouldUpgrade) {
-        if (orphanStop) await cancelOrder(base, symbol, orphanStop.orderId);
+        let transition = null;
+        let protectionQty = orphanStop ? orphanQty : Math.min(orphanQty, free);
+        if (orphanStop) {
+          const lot = info.filters?.find((f) => f.filterType === 'LOT_SIZE');
+          const normalizedQty = lot ? floorToStep(protectionQty, lot.stepSize) : 0;
+          if (!lot || !(normalizedQty > 0 && normalizedQty >= Number(lot.minQty || 0))) {
+            console.log(`ORPHAN_KEEP_EXISTING symbol=${symbol} orderId=${orphanStop.orderId} reason=UNSELLABLE_REPLACEMENT`);
+            skipped += 1;
+            continue;
+          }
+          protectionQty = normalizedQty;
+          const replacementId = deterministicClientOrderId(ORPHAN_PREFIX, symbol, protectionQty, decision.stopPrice);
+          transition = beginTransition({
+            symbol,
+            intent: 'REPLACE_PROTECTION',
+            quantity: protectionQty,
+            info,
+            oldProtections: [orphanStop],
+            newClientOrderId: replacementId,
+            replacementStopPrice: decision.stopPrice
+          });
+          const canceled = await cancelOrder(base, symbol, orphanStop, transition);
+          if (!canceled) {
+            if (orderJournal.read(symbol)?.phase === 'CANCEL_NOT_APPLIED') {
+              orderJournal.complete(symbol, transition.id);
+            }
+            continue;
+          }
+        }
         const afterCancel = await signed(base, 'GET', '/api/v3/account', { omitZeroBalances: 'true' });
         const available = Number(balanceRow(afterCancel, asset).free || 0);
-        await placeProtection(base, info, symbol, Math.min(orphanQty, available), decision.stopPrice);
+        if (transition && floorToStep(available, info.filters.find((f) => f.filterType === 'LOT_SIZE').stepSize) < protectionQty) {
+          throw uncertain(`ORPHAN_REPLACEMENT_BALANCE_RECONCILIATION_REQUIRED ${symbol}`);
+        }
+        await placeProtection(base, info, symbol, Math.min(protectionQty, available), decision.stopPrice, transition);
         if (orphanStop) updated += 1; else adopted += 1;
       }
     } catch (error) {
@@ -315,4 +445,5 @@ async function main() {
   console.log(`ORPHAN_PROTECT_OK candidates=${candidates.length} adopted=${adopted} updated=${updated} sells=${sold} skipped=${skipped} xec_excluded=true`);
 }
 
-main().catch((error) => fail(error.message || String(error)));
+module.exports = { main, marketSell, placeProtection };
+if (require.main === module) main().catch((error) => fail(error.message || String(error)));

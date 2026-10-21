@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { journalStore } = require('../services/spotOrderSafety');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -23,6 +24,7 @@ const MAX_PRICE_ADVANCE_FROM_SIGNAL = 0.03;
 const HARD_STOP_PCT = 0.05;
 const STOP_LIMIT_GAP_PCT = 0.006;
 const BASES = ['https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'];
+const orderJournal = journalStore();
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
 function v61PositionFraction(){
@@ -63,6 +65,7 @@ async function placeNativeProtection(base,order,entryPrice){
 }
 async function main(){
   validateInputs();const base=await chooseBase();
+  const pendingTransition=orderJournal.read(SYMBOL);if(pendingTransition)technicalFail(`Spot symbol has unresolved order transition (${pendingTransition.intent}/${pendingTransition.phase})`);
   const [ticker,account,restrictions,exchangeInfo]=await Promise.all([
     request(base,`/api/v3/ticker/24hr?symbol=${encodeURIComponent(SYMBOL)}`),
     signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'}),

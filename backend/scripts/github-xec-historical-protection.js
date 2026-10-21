@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { evaluateXecHistoricalHolding } = require('../services/xecHistoricalHoldingPolicy');
+const { journalStore } = require('../services/spotOrderSafety');
 
 const VERSION = 'github_xec_historical_protection_v1';
 const SYMBOL = 'XECUSDT';
@@ -20,6 +21,7 @@ const BASES = [
 ];
 const STATE_DIR = process.env.PROYPERS_LOCAL_STATE_DIR || path.join(os.homedir(), '.proypers25');
 const STATE_FILE = path.join(STATE_DIR, 'xec-historical-state.json');
+const orderJournal = journalStore();
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -253,6 +255,11 @@ async function loadSnapshot(base) {
 async function main() {
   if (!API_KEY || !API_SECRET) throw new Error('BINANCE_API_KEY/BINANCE_SECRET_KEY missing');
   const base = await chooseBase();
+  const pendingTransition = orderJournal.read(SYMBOL);
+  if (pendingTransition) {
+    console.error(`XEC_MUTATIONS_BLOCKED symbol=${SYMBOL} intent=${pendingTransition.intent} phase=${pendingTransition.phase}`);
+    return;
+  }
   const snapshot = await loadSnapshot(base);
   const now = new Date().toISOString();
   let state = loadState();

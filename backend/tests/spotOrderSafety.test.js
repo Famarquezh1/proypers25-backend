@@ -111,6 +111,22 @@ async function orderRecoveryTests() {
   });
   assert.equal(replacementActive.resolved, true, 'restart recognizes the replacement stop instead of duplicating it');
 
+  const duplicateProtection = await reconcileTransition(afterRestart.read('ABCUSDT'), {
+    getOpenOrders: async () => [
+      { orderId: 1, clientOrderId: 'old-stop', side: 'SELL', status: 'NEW', origQty: '3' },
+      { orderId: 2, clientOrderId: 'new-stop', side: 'SELL', status: 'NEW', origQty: '3' }
+    ],
+    getOrder: async (_symbol, id) => ({
+      orderId: id === 'new-stop' ? 2 : 1,
+      clientOrderId: id,
+      side: 'SELL',
+      status: 'NEW',
+      origQty: '3'
+    }),
+    getAccount: async () => ({ balances: [{ asset: 'ABC', free: '0', locked: '3' }] })
+  });
+  assert.equal(duplicateProtection.resolved, false, 'two active sell protections remain ambiguous and block further mutations');
+
   const sellStore = journalStore(sellRoot);
   const sell = transition(sellStore, {
     intent: 'SELL',
@@ -149,7 +165,13 @@ async function orderRecoveryTests() {
 async function mutationTests() {
   const root = temporaryJournal();
   const store = journalStore(root);
+  const secondExecutor = journalStore(root);
   const intent = transition(store);
+  assert.throws(
+    () => secondExecutor.begin('ABCUSDT', { id: 'racing-executor', intent: 'SELL', phase: 'INTENT' }),
+    (error) => error.code === 'ORDER_OUTCOME_UNCERTAIN' && /SYMBOL_TRANSITION_PENDING/.test(error.message),
+    'a second executor using the shared journal cannot reserve an in-flight symbol'
+  );
   let posts = 0;
   let lookups = 0;
   const send = async (_base, method, endpoint, params) => {
@@ -218,6 +240,12 @@ async function mutationTests() {
   assert.equal(uncertainStore.read('ABCUSDT').phase, 'SUBMIT_INTENT', 'ambiguous submit remains persisted and blocks another mutation');
   assert.throws(() => uncertainStore.begin('ABCUSDT', { id: 'second', phase: 'INTENT' }),
     /SYMBOL_TRANSITION_PENDING/, 'another invocation cannot replace an ambiguous symbol journal');
+
+  const releaseStore = journalStore(temporaryJournal());
+  const completed = transition(releaseStore);
+  releaseStore.complete('ABCUSDT', completed.id);
+  assert.equal(releaseStore.read('ABCUSDT'), null, 'resolved intent releases its symbol reservation');
+  assert.equal(releaseStore.begin('ABCUSDT', { id: 'after-complete', phase: 'INTENT' }).id, 'after-complete');
 }
 
 function guardTests() {
@@ -245,6 +273,22 @@ function guardTests() {
   assert.equal(belowNotional.sellable, false);
   assert.equal(belowNotional.reason, 'BELOW_MINIMUM_NOTIONAL');
   assert.equal(uncertain('mock').code, 'ORDER_OUTCOME_UNCERTAIN');
+}
+
+function workflowCoordinationTests() {
+  const root = path.join(__dirname, '..', '..', '.github', 'workflows');
+  for (const file of ['spot-auto-exit-local.yml', 'spot-manual-approval.yml']) {
+    const workflow = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.match(workflow, /group:\s*spot-live-order-execution/);
+    assert.match(workflow, /cancel-in-progress:\s*false/);
+  }
+  const v61 = fs.readFileSync(path.join(root, 'spot-v61-production-check.yml'), 'utf8');
+  const v10 = fs.readFileSync(path.join(root, 'spot-v10-hunter-production-check.yml'), 'utf8');
+  assert.match(v61, /sampleIntervalMs: 15000/);
+  assert.match(v61, /samples: 7/);
+  assert.match(v61, /continuationRequired/);
+  assert.match(v10, /CORE_QUALITY_REQUIRED/);
+  assert.match(v10, /EARLY_CONFIRMATION_MIN_V61_SCORE/);
 }
 
 async function wrapperCompatibilityTest() {
@@ -366,6 +410,93 @@ async function wrapperCompatibilityTest() {
     }, 'ABCUSDT', 1, 'TIMEOUT_STALE', 9, 10, 42, 'entry-42');
     assert.equal(reconciledSell.orderId, 6);
     assert.equal(timeoutPosts, 1, 'accepted timeout is queried by client ID rather than retried');
+
+    const orphan = require('../scripts/github-spot-orphan-protect');
+    const orphanInfo = {
+      baseAsset: 'ORPHAN',
+      filters: [
+        { filterType: 'LOT_SIZE', minQty: '0.1', stepSize: '0.1' },
+        { filterType: 'MIN_NOTIONAL', minNotional: '5' }
+      ]
+    };
+    let orphanMutations = 0;
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+      if (parsed.pathname.endsWith('/account')) {
+        return apiResponse(200, { balances: [{ asset: 'ORPHAN', free: '0.2', locked: '0.2' }] });
+      }
+      if (parsed.pathname.endsWith('/order') && options.method === 'DELETE') {
+        orphanMutations += 1;
+        return apiResponse(200, { orderId: 8, status: 'CANCELED' });
+      }
+      throw new Error(`unexpected dust request ${parsed.pathname}`);
+    };
+    const orphanDust = await orphan.marketSell('https://mock', {
+      ...orphanInfo,
+      filters: [
+        { filterType: 'LOT_SIZE', minQty: '1', stepSize: '1' },
+        { filterType: 'MIN_NOTIONAL', minNotional: '1' }
+      ]
+    }, 'ORPHANUSDT', 0.4, 'ORPHAN_EXIT', 9, 10, {
+      orderId: 8,
+      clientOrderId: 'proypers-gh-orphan-old',
+      origQty: '0.4',
+      executedQty: '0',
+      side: 'SELL',
+      status: 'NEW'
+    });
+    assert.equal(orphanDust, false);
+    assert.equal(orphanMutations, 0, 'orphan dust does not cancel a native stop');
+
+    let orphanCanceled = false;
+    let orphanSells = 0;
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+      const params = parsed.searchParams;
+      if (parsed.pathname.endsWith('/account')) {
+        return apiResponse(200, {
+          balances: [{ asset: 'ORPHAN', free: orphanCanceled ? '0.4' : '0', locked: orphanCanceled ? '0' : '0.4' }]
+        });
+      }
+      if (parsed.pathname.endsWith('/order') && options.method === 'DELETE') {
+        orphanMutations += 1;
+        orphanCanceled = true;
+        return apiResponse(200, { orderId: 8, status: 'CANCELED' });
+      }
+      if (parsed.pathname.endsWith('/order') && options.method === 'POST') {
+        orphanMutations += 1;
+        orphanSells += 1;
+        return apiResponse(200, {
+          orderId: 9,
+          clientOrderId: params.get('newClientOrderId'),
+          side: 'SELL',
+          status: 'FILLED',
+          executedQty: '0.4',
+          cummulativeQuoteQty: '4'
+        });
+      }
+      if (parsed.pathname.endsWith('/order') && params.get('origClientOrderId')) {
+        return apiResponse(400, { code: -2013, msg: 'Order does not exist.' });
+      }
+      throw new Error(`unexpected orphan request ${parsed.pathname}`);
+    };
+    const orphanSale = await orphan.marketSell('https://mock', {
+      ...orphanInfo,
+      filters: [
+        { filterType: 'LOT_SIZE', minQty: '0.1', stepSize: '0.1' },
+        { filterType: 'MIN_NOTIONAL', minNotional: '1' }
+      ]
+    }, 'ORPHANUSDT', 0.4, 'ORPHAN_EXIT', 9, 10, {
+      orderId: 8,
+      clientOrderId: 'proypers-gh-orphan-old',
+      origQty: '0.4',
+      executedQty: '0',
+      side: 'SELL',
+      status: 'NEW'
+    });
+    assert.equal(orphanSale.status, 'FILLED');
+    assert.equal(orphanSells, 1, 'orphan exit uses a single journaled market sell');
+    assert.equal(orphanMutations, 2, 'orphan stop is canceled only after the sell transition is persisted');
   } finally {
     global.fetch = oldFetch;
     for (const name of names) {
@@ -379,6 +510,7 @@ async function wrapperCompatibilityTest() {
 
 (async () => {
   guardTests();
+  workflowCoordinationTests();
   await orderRecoveryTests();
   await mutationTests();
   await wrapperCompatibilityTest();

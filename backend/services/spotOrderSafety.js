@@ -61,9 +61,14 @@ function journalStore(root = process.env.PROYPERS_SPOT_ORDER_JOURNAL_DIR ||
       fs.mkdirSync(root, { recursive: true, mode: 0o700 });
       const target = fileFor(symbol);
       const existing = read(symbol);
-      if (existing && existing.phase !== 'COMPLETE') throw uncertain(`SYMBOL_TRANSITION_PENDING ${symbol}`);
-      if (existing) fs.unlinkSync(target);
-      const fd = fs.openSync(target, 'wx', 0o600);
+      if (existing) throw uncertain(`SYMBOL_TRANSITION_PENDING ${symbol}`);
+      let fd;
+      try {
+        fd = fs.openSync(target, 'wx', 0o600);
+      } catch (error) {
+        if (error.code === 'EEXIST') throw uncertain(`SYMBOL_TRANSITION_PENDING ${symbol}`, error);
+        throw error;
+      }
       try {
         fs.writeFileSync(fd, JSON.stringify({ ...intent, symbol: String(symbol).toUpperCase() }), 'utf8');
         fs.fsyncSync(fd);
@@ -83,8 +88,8 @@ function journalStore(root = process.env.PROYPERS_SPOT_ORDER_JOURNAL_DIR ||
     complete(symbol, intentId) {
       const current = read(symbol);
       if (!current || current.id !== intentId) throw uncertain(`TRANSITION_JOURNAL_CHANGED ${symbol}`);
-      replace(symbol, { ...current, phase: 'COMPLETE', completedAt: Date.now() });
       fs.unlinkSync(fileFor(symbol));
+      syncDirectory(root);
     }
   };
 }
@@ -298,12 +303,12 @@ async function reconcileTransition(record, { getOpenOrders, getOrder, getAccount
     if (filledOldOrder && activeOrders.length === 0) {
       return { resolved: true, outcome: 'OLD_PROTECTION_FILLED', order: filledOldOrder, balance: total };
     }
-    if (activeNewProtection && coveredByBalance(activeNewOrder)) {
+    if (activeNewProtection && activeOrders.length === 1 && coveredByBalance(activeNewOrder)) {
       return { resolved: true, outcome: 'NEW_PROTECTION_ACTIVE', order: activeNewOrder, balance: total };
     }
     const activeOldOrder = activeOrders.find((order) =>
       oldIds.has(String(order.clientOrderId || '')) || oldOrderIds.has(String(order.orderId || '')));
-    if (activeOldProtection && !ACTIVE_STATUSES.has(newStatus) && newStatus !== 'FILLED' && coveredByBalance(activeOldOrder)) {
+    if (activeOldProtection && activeOrders.length === 1 && !ACTIVE_STATUSES.has(newStatus) && newStatus !== 'FILLED' && coveredByBalance(activeOldOrder)) {
       return { resolved: true, outcome: 'OLD_PROTECTION_PRESERVED', order: activeOldOrder, balance: total };
     }
     if (newStatus === 'FILLED' && record.intent !== 'SELL') {

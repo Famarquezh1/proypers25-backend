@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { journalStore } = require('../services/spotOrderSafety');
 
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
@@ -21,6 +22,7 @@ const MAX_SIGNAL_AGE_MS = 30 * 60 * 1000;
 const MAX_PRICE_ADVANCE_FROM_SIGNAL = 0.03;
 const HARD_STOP_PCT = 0.05;
 const STOP_LIMIT_GAP_PCT = 0.006;
+const orderJournal = journalStore();
 const BASES = [
   'https://api.binance.com',
   'https://api1.binance.com',
@@ -150,6 +152,8 @@ async function main() {
   const usdtFree = freeBalance(account, 'USDT'); const quoteOrderQty = Math.min(MAX_USDT, Math.floor(usdtFree * fraction * 100) / 100);
   if (quoteOrderQty < MIN_USDT) decline(`Insufficient free USDT for minimum acquisition (${usdtFree} USDT free)`);
   const existingAssetQty = totalBalance(account, info.baseAsset); if (existingAssetQty > 0 && existingAssetQty * currentPrice >= MIN_USDT) decline(`${info.baseAsset} already has >= ${MIN_USDT} USDT equivalent balance; duplicate acquisition blocked`);
+  const pendingTransition = orderJournal.read(SYMBOL);
+  if (pendingTransition) technicalFail(`Spot symbol has unresolved order transition (${pendingTransition.intent}/${pendingTransition.phase})`);
   console.log(`APPROVED_V61 symbol=${SYMBOL} signal_pct=${SIGNAL_PCT} current_pct=${currentPct} v61_score=${Number.isFinite(score) ? score.toFixed(6) : 'fallback'} position_fraction=${fraction.toFixed(4)} usdt_free=${usdtFree} quote_order_qty=${quoteOrderQty}`);
   const order = await signed(base, 'POST', '/api/v3/order', { symbol: SYMBOL, side: 'BUY', type: 'MARKET', quoteOrderQty: quoteOrderQty.toFixed(2), newOrderRespType: 'FULL', newClientOrderId: `proypers-gh-${Date.now()}` });
   if (!order?.orderId) technicalFail('Binance returned no orderId');

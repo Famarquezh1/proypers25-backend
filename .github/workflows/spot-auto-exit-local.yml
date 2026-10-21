@@ -17,10 +17,6 @@ permissions:
   contents: read
   issues: write
 
-concurrency:
-  group: spot-auto-exit-local
-  cancel-in-progress: false
-
 jobs:
   exit:
     name: Monitor and sell managed Spot positions
@@ -32,6 +28,9 @@ jobs:
       )
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
+    concurrency:
+      group: spot-live-order-execution
+      cancel-in-progress: false
     env:
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
       BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
