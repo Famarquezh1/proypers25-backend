@@ -337,7 +337,7 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
                     status: existing.status,
                     side: existing.side,
                     type: existing.type,
-                    orderId: existing.orderId
+                    orderId: existing.orderId, symbol: existing.symbol, clientOrderId: existing.clientOrderId
                 });
             }
             if (String(existing.side || '').toUpperCase() !== 'BUY' ||
