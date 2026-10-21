@@ -57,10 +57,10 @@ jobs:
         shell: powershell
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SPOT_COORDINATION_ACCOUNT_ID)) {
-            Write-Error "SPOT_COORDINATION_ACCOUNT_REQUIRED: configure the same non-secret account identifier in GitHub Actions and Cloud Run before enabling Spot order mutations."
+            Write-Error "SPOT_COORDINATION_ACCOUNT_REQUIRED: configure a stable non-secret account identifier for every active Spot executor before enabling order mutations."
             exit 1
           }
-          Write-Host "SPOT_COORDINATION_ACCOUNT_ID configured (value withheld); Firestore project and Cloud Run parity still require independent verification."
+          Write-Host "SPOT_COORDINATION_ACCOUNT_ID configured (value withheld); shared Firestore access across active executors still requires independent verification."
 
       - name: Monitor positions and execute protective Spot sells
         working-directory: backend
