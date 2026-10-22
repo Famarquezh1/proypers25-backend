@@ -86,7 +86,7 @@ async function signed(base, method, path, params = {}) {
   if (path === '/api/v3/order' && ['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(result?.status || '').toUpperCase())) {
     for (const reference of [params.origClientOrderId, params.orderId, result.clientOrderId, result.orderId].filter(Boolean)) {
       await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol || result.symbol, String(reference), {
-        orderFound: true, status: result.status, side: result.side, type: result.type, orderId: result.orderId
+        orderFound: true, status: result.status, side: result.side, type: result.type, orderId: result.orderId, symbol: result.symbol || params.symbol, clientOrderId: result.clientOrderId
       });
     }
   }
