@@ -527,7 +527,7 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
             accountId,
             recoveredSymbol,
             intentId,
-            { orderFound: true, status: order.status, side: order.side, type: order.type, orderId: order.orderId }
+            { orderFound: true, status: order.status, side: order.side, type: order.type, orderId: order.orderId, symbol: order.symbol || recoveredSymbol, clientOrderId: order.clientOrderId }
           )
         }));
         continue;
