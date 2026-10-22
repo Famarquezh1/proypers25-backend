@@ -110,7 +110,7 @@ function fakeFirestore() {
   assert.strictEqual(wrongSide, false, 'an order with mismatched side must not unlock a SELL intent');
   const resolved = await second.resolveAmbiguous(accountId, 'BTCUSDT', 'exit-1', {
     orderFound: true, status: 'FILLED', orderId: 'mock-order-1',
-    symbol: 'BTCUSDT', clientOrderId: 'exit-1'
+    symbol: 'BTCUSDT', clientOrderId: 'exit-1', side: 'SELL'
   });
   assert.strictEqual(resolved, true);
   const nextLease = await second.acquire(accountId, 'BTCUSDT', 'retry-after-reconcile');
