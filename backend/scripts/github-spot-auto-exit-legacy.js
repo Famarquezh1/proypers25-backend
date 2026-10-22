@@ -132,7 +132,9 @@ async function signed(base, method, path, params = {}) {
         status: result.status,
         side: result.side,
         type: result.type,
-        orderId: result.orderId
+        orderId: result.orderId,
+        symbol: result.symbol || params.symbol,
+        clientOrderId: result.clientOrderId
       });
     }
   }
