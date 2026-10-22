@@ -17,6 +17,7 @@
 const crypto = require('crypto');
 const { getBinanceSpotCredentials, checkBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotEntry } = require('./spotPositionLifecycle');
+const { createSpotExecutionCoordinator } = require('./spotExecutionCoordination');
 
 const REAL_SPOT_CONFIG_PATH = 'real_spot_config/control';
 const REAL_SPOT_INTENTS_COLLECTION = 'real_spot_execution_intents';
@@ -233,7 +234,7 @@ async function lookupSpotOrderByClientId(symbol, clientOrderId) {
     });
 }
 
-async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clientOrderId = null) {
+async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clientOrderId = null, db = null) {
     try {
         // VALIDATION GATE 1: Config must allow real trading
         if (config.enabled !== true) {
@@ -305,10 +306,60 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
         if (!symbolUpper.endsWith('USDT')) {
             return { ok: false, blocked: true, reason: 'NOT_USDT_PAIR' };
         }
+        if (!clientOrderId) return { ok: false, blocked: true, reason: 'ENTRY_CLIENT_ORDER_ID_REQUIRED' };
 
         // Get credentials (throws if unavailable)
         const credentials = await getBinanceSpotCredentials();
         const { apiKey, apiSecret } = credentials;
+        const coordinator = createSpotExecutionCoordinator(db || require('../firebase-admin-config'));
+        const accountId = process.env.SPOT_COORDINATION_ACCOUNT_ID;
+        if (!accountId) return { ok: false, blocked: true, reason: 'SPOT_COORDINATION_ACCOUNT_REQUIRED' };
+        let existing;
+        try {
+            existing = await lookupSpotOrderByClientId(symbolUpper, clientOrderId);
+        } catch (error) {
+            const lease = await coordinator.acquire(accountId, symbolUpper, clientOrderId, {
+                clientOrderId, side: 'BUY', type: 'MARKET', quoteOrderQty: Number(quoteOrderQty)
+            });
+            if (lease.acquired) {
+                await coordinator.beginMutation(lease);
+                await coordinator.markAmbiguous(lease, 'ENTRY_ORDER_LOOKUP_FAILED');
+            }
+            throw Object.assign(new Error('ENTRY_ORDER_RECONCILIATION_REQUIRED'), {
+                code: lease.reason || 'ORDER_OUTCOME_UNCERTAIN',
+                cause: error
+            });
+        }
+        if (existing) {
+            if (['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(existing.status || '').toUpperCase())) {
+                await coordinator.resolveAmbiguous(accountId, symbolUpper, clientOrderId, {
+                    orderFound: true,
+                    status: existing.status,
+                    side: existing.side,
+                    type: existing.type,
+                    orderId: existing.orderId, symbol: existing.symbol, clientOrderId: existing.clientOrderId
+                });
+            }
+            if (String(existing.side || '').toUpperCase() !== 'BUY' ||
+                !['NEW', 'PARTIALLY_FILLED', 'FILLED'].includes(String(existing.status || '').toUpperCase())) {
+                return { ok: false, blocked: true, reason: 'ENTRY_ORDER_IDEMPOTENCY_CONFLICT' };
+            }
+            return {
+                ok: true,
+                order_created: false,
+                recovered_existing_order: true,
+                orderId: existing.orderId,
+                clientOrderId: existing.clientOrderId,
+                symbol: existing.symbol,
+                side: existing.side,
+                type: existing.type,
+                executedQty: Number(existing.executedQty || 0),
+                cummulativeQuoteQty: Number(existing.cummulativeQuoteQty || 0),
+                status: existing.status,
+                transactTime: existing.time,
+                fills: []
+            };
+        }
 
         // Create signed request
         const timestamp = Date.now();
@@ -337,7 +388,7 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
         const https = require('https');
         const url = require('url');
 
-        return new Promise((resolve) => {
+        return await coordinator.withMutation(accountId, symbolUpper, clientOrderId, async () => new Promise((resolve, reject) => {
             const urlObj = new url.URL(signedUrl);
             const options = {
                 hostname: urlObj.hostname,
@@ -381,7 +432,11 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
                             if (Number(error.code) === -2010 && clientOrderId) {
                                 lookupSpotOrderByClientId(symbolUpper, clientOrderId)
                                     .then((order) => {
-                                        if (!order) return resolve({ ok: false, blocked: false, reason: 'BINANCE_DUPLICATE_ORDER_NOT_FOUND' });
+                                        if (!order) {
+                                            const ambiguous = new Error('BINANCE_DUPLICATE_ORDER_NOT_FOUND');
+                                            ambiguous.code = 'ORDER_OUTCOME_UNCERTAIN';
+                                            return reject(ambiguous);
+                                        }
                                         return resolve({
                                             ok: true, order_created: false, recovered_existing_order: true,
                                             orderId: order.orderId, clientOrderId: order.clientOrderId,
@@ -390,8 +445,18 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
                                             cummulativeQuoteQty: Number(order.cummulativeQuoteQty || 0),
                                             status: order.status, transactTime: order.time, fills: []
                                         });
-                                    }).catch((lookupError) => resolve({ ok: false, blocked: false, reason: 'DUPLICATE_ORDER_LOOKUP_FAILED', error: lookupError.message }));
+                                    }).catch((lookupError) => {
+                                        const ambiguous = new Error('DUPLICATE_ORDER_LOOKUP_FAILED');
+                                        ambiguous.code = 'ORDER_OUTCOME_UNCERTAIN';
+                                        ambiguous.cause = lookupError;
+                                        reject(ambiguous);
+                                    });
                                 return;
+                            }
+                            if (res.statusCode >= 500 || res.statusCode === 408 || res.statusCode === 429) {
+                                const ambiguous = new Error(`BINANCE_HTTP_${res.statusCode}_OUTCOME_UNCERTAIN`);
+                                ambiguous.code = 'ORDER_OUTCOME_UNCERTAIN';
+                                return reject(ambiguous);
                             }
                             resolve({
                                 ok: false,
@@ -403,39 +468,36 @@ async function placeSpotMarketBuy(symbol, quoteOrderQty, config, preflight, clie
                             });
                         }
                     } catch (err) {
-                        resolve({
-                            ok: false,
-                            blocked: false,
-                            reason: 'RESPONSE_PARSE_ERROR',
-                            error: err.message,
-                            raw_data: data.substring(0, 200)
-                        });
+                        err.code = 'ORDER_OUTCOME_UNCERTAIN';
+                        reject(err);
                     }
                 });
             });
 
             req.on('timeout', () => {
                 req.destroy();
-                resolve({
-                    ok: false,
-                    blocked: false,
-                    reason: 'REQUEST_TIMEOUT'
-                });
+                const error = new Error('REQUEST_TIMEOUT');
+                error.code = 'ORDER_OUTCOME_UNCERTAIN';
+                reject(error);
             });
 
             req.on('error', (err) => {
-                resolve({
-                    ok: false,
-                    blocked: false,
-                    reason: 'REQUEST_ERROR',
-                    error: err.message
-                });
+                err.code = 'ORDER_OUTCOME_UNCERTAIN';
+                reject(err);
             });
 
             req.end();
+        }), {
+            clientOrderId,
+            side: 'BUY',
+            type: 'MARKET',
+            quoteOrderQty: Number(quoteOrderQty)
         });
 
     } catch (error) {
+        if (String(error.code || '').startsWith('SPOT_') || error.code === 'ORDER_OUTCOME_UNCERTAIN') {
+            return { ok: false, blocked: true, reason: error.code, error: error.message };
+        }
         if (error.message.includes('BINANCE_SPOT_SECRET')) {
             return { ok: false, blocked: true, reason: 'CREDENTIALS_ERROR' };
         }
@@ -1225,7 +1287,8 @@ async function runRealSpotExecutionCycle(db, options = {}) {
                     config.max_position_usdt || 10,
                     config,
                     preflight,
-                    intentResult.clientOrderId
+                    intentResult.clientOrderId,
+                    db
                 );
 
                 if (orderResult.ok && (orderResult.order_created || orderResult.recovered_existing_order)) {

@@ -17,10 +17,6 @@ permissions:
   contents: read
   issues: write
 
-concurrency:
-  group: spot-auto-exit-local
-  cancel-in-progress: false
-
 jobs:
   exit:
     name: Monitor and sell managed Spot positions
@@ -32,9 +28,13 @@ jobs:
       )
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
+    concurrency:
+      group: spot-live-order-execution
+      cancel-in-progress: false
     env:
       BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
       BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY || secrets.BINANCE_SECRET || secrets.BINANCE_API_SECRET || secrets.BINANCE_FUTURES_API_SECRET }}
+      SPOT_COORDINATION_ACCOUNT_ID: ${{ vars.SPOT_COORDINATION_ACCOUNT_ID }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
@@ -52,6 +52,15 @@ jobs:
           if ("${{ github.event_name }}" -eq "workflow_run") {
             Write-Host "AUTO_EXIT_TRIGGER_SOURCE workflow=${{ github.event.workflow_run.name }} run_id=${{ github.event.workflow_run.id }} conclusion=${{ github.event.workflow_run.conclusion }} head_branch=${{ github.event.workflow_run.head_branch }}"
           }
+
+      - name: Verify shared Spot coordination configuration (fail closed)
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SPOT_COORDINATION_ACCOUNT_ID)) {
+            Write-Error "SPOT_COORDINATION_ACCOUNT_REQUIRED: configure a stable non-secret account identifier for every active Spot executor before enabling order mutations."
+            exit 1
+          }
+          Write-Host "SPOT_COORDINATION_ACCOUNT_ID configured (value withheld); shared Firestore access across active executors still requires independent verification."
 
       - name: Monitor positions and execute protective Spot sells
         working-directory: backend

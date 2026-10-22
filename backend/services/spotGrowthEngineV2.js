@@ -13,7 +13,8 @@ function floorCents(value) {
 
 function growthRatchet({ equityUsdt = 0, previousHwmUsdt = 0, activated = false, policy = POLICY.equity_ratchet } = {}) {
   const equity = Math.max(0, n(equityUsdt));
-  const activation = Math.max(0, n(policy.activation_hwm_usdt, 600));
+  const configuredActivation = n(policy.activation_hwm_usdt, 0);
+  const activation = configuredActivation > 0 ? configuredActivation : 600;
   const previousHwm = Math.max(0, n(previousHwmUsdt));
   const hwm = Math.max(previousHwm, equity);
   const isActivated = activated === true || hwm >= activation;

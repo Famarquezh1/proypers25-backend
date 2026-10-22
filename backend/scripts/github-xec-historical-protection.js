@@ -5,12 +5,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { evaluateXecHistoricalHolding } = require('../services/xecHistoricalHoldingPolicy');
+const { journalStore } = require('../services/spotOrderSafety');
+const { withLocalSpotMutation, resolveLocalSpotMutation } = require('../services/spotExecutionCoordination');
 
 const VERSION = 'github_xec_historical_protection_v1';
 const SYMBOL = 'XECUSDT';
 const ASSET = 'XEC';
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const API_SECRET = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_SECRET || '';
+const COORDINATION_ACCOUNT_ID = process.env.SPOT_COORDINATION_ACCOUNT_ID || '';
 const BASES = [
   'https://api.binance.com',
   'https://api1.binance.com',
@@ -20,6 +23,7 @@ const BASES = [
 ];
 const STATE_DIR = process.env.PROYPERS_LOCAL_STATE_DIR || path.join(os.homedir(), '.proypers25');
 const STATE_FILE = path.join(STATE_DIR, 'xec-historical-state.json');
+const orderJournal = journalStore();
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -83,7 +87,27 @@ async function request(base, pathName, options = {}) {
 async function signed(base, method, pathName, params = {}) {
   const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) }).toString();
   const signature = crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
-  return request(base, `${pathName}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': API_KEY } });
+  const send = () => request(base, `${pathName}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': API_KEY } });
+  if (['POST', 'DELETE'].includes(String(method).toUpperCase()) && pathName === '/api/v3/order') {
+    const intentId = String(params.newClientOrderId || params.origClientOrderId || params.orderId || '');
+    const mutationOptions = { metadata: { clientOrderId: intentId, side: params.side, type: params.type, quantity: params.quantity || params.quoteOrderQty } };
+    if (String(method).toUpperCase() === 'POST' && params.newClientOrderId) {
+      mutationOptions.findExisting = async () => {
+        try { return await signed(base, 'GET', '/api/v3/order', { symbol: params.symbol, origClientOrderId: intentId }); }
+        catch (error) { if (Number(error.body?.code || error.code) === -2013) return null; throw error; }
+      };
+    }
+    return withLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol, intentId, send, mutationOptions);
+  }
+  const result = await send();
+  if (pathName === '/api/v3/order' && ['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(result?.status || '').toUpperCase())) {
+    for (const reference of [params.origClientOrderId, params.orderId, result.clientOrderId, result.orderId].filter(Boolean)) {
+      await resolveLocalSpotMutation(COORDINATION_ACCOUNT_ID, params.symbol || result.symbol, String(reference), {
+        orderFound: true, status: result.status, side: result.side, type: result.type, orderId: result.orderId
+      });
+    }
+  }
+  return result;
 }
 async function chooseBase() {
   const failures = [];
@@ -253,6 +277,11 @@ async function loadSnapshot(base) {
 async function main() {
   if (!API_KEY || !API_SECRET) throw new Error('BINANCE_API_KEY/BINANCE_SECRET_KEY missing');
   const base = await chooseBase();
+  const pendingTransition = orderJournal.read(SYMBOL);
+  if (pendingTransition) {
+    console.error(`XEC_MUTATIONS_BLOCKED symbol=${SYMBOL} intent=${pendingTransition.intent} phase=${pendingTransition.phase}`);
+    return;
+  }
   const snapshot = await loadSnapshot(base);
   const now = new Date().toISOString();
   let state = loadState();
