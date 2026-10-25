@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import io, json, os, urllib.error, urllib.parse, urllib.request, zipfile
+import io, json, os, urllib.error, urllib.parse, urllib.request, zipfile, time
 from datetime import datetime, timezone
 
 REPO=os.environ.get("GITHUB_REPOSITORY","Famarquezh1/proypers25-backend")
@@ -30,9 +30,20 @@ def get_json(url,github=False):
 
 def github_json(path,method="GET",payload=None):
     data=None if payload is None else json.dumps(payload).encode()
-    with request("https://api.github.com/repos/"+REPO+path,gh_headers(),method,data) as r:
-        raw=r.read()
-        return json.loads(raw.decode()) if raw else None
+    url="https://api.github.com/repos/"+REPO+path
+    for attempt in range(3):
+        try:
+            with request(url,gh_headers(),method,data) as r:
+                raw=r.read()
+                return json.loads(raw.decode()) if raw else None
+        except urllib.error.HTTPError as e:
+            remaining=e.headers.get("X-RateLimit-Remaining","")
+            retry_after=e.headers.get("Retry-After","")
+            print(f"GitHub API HTTP {e.code} method={method} path={path.split('?')[0]} remaining={remaining} retry_after={retry_after}",flush=True)
+            if e.code in (403,429) and attempt<2 and retry_after.isdigit() and int(retry_after)<=10:
+                time.sleep(int(retry_after))
+                continue
+            raise
 
 def download_artifact(artifact_id):
     first=request(f"https://api.github.com/repos/{REPO}/actions/artifacts/{artifact_id}/zip",gh_headers(),redirect=False)
@@ -42,7 +53,7 @@ def download_artifact(artifact_id):
 
 def list_artifacts():
     out=[]
-    for page in range(1,30):
+    for page in range(1,4):
         runs=github_json(f"/actions/workflows/{WORKFLOW}/runs?status=success&per_page=100&page={page}").get("workflow_runs",[])
         if not runs: break
         for run in runs:
