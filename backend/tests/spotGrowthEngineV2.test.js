@@ -3,19 +3,21 @@
 const assert = require('assert');
 const { growthRatchet, pyramidDecision, parseGrowthState, growthStateBody } = require('../services/spotGrowthEngineV2');
 
-const pre = growthRatchet({ equityUsdt: 559, previousHwmUsdt: 559, activated: false });
+const testPolicy = { ...require('../config/spot-growth-engine-v2.json').equity_ratchet, activation_hwm_usdt: 600 };
+
+const pre = growthRatchet({ equityUsdt: 559, previousHwmUsdt: 559, activated: false, policy: testPolicy });
 assert.strictEqual(pre.activated, false);
 assert.strictEqual(pre.size_multiplier, 1);
 
-const crossed = growthRatchet({ equityUsdt: 605, previousHwmUsdt: 599, activated: false });
+const crossed = growthRatchet({ equityUsdt: 605, previousHwmUsdt: 599, activated: false, policy: testPolicy });
 assert.strictEqual(crossed.activated, true);
 assert.strictEqual(crossed.hwm_usdt, 605);
 
-const dd = growthRatchet({ equityUsdt: 575, previousHwmUsdt: 605, activated: true });
+const dd = growthRatchet({ equityUsdt: 575, previousHwmUsdt: 605, activated: true, policy: testPolicy });
 assert.strictEqual(dd.activated, true);
 assert.strictEqual(dd.size_multiplier, 0.75);
 
-const blocked = growthRatchet({ equityUsdt: 550, previousHwmUsdt: 605, activated: true });
+const blocked = growthRatchet({ equityUsdt: 550, previousHwmUsdt: 605, activated: true, policy: testPolicy });
 assert.strictEqual(blocked.size_multiplier, 0);
 
 const eligible = pyramidDecision({
