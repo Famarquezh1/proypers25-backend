@@ -68,8 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '"shadow_only": true' qpu-v08-shadow-decision.json
-          grep -q '"no_order_created": true' qpu-v08-shadow-decision.json
+          python -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); assert d.get("shadow_only") is True and d.get("no_order_created") is True, "SHADOW_ISOLATION_INVALID"' qpu-v08-shadow-decision.json
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|placeOrder|createOrder|withdraw|api/v3/order' backend/scripts/github-qpu-v08-consensus-shadow.py
       - name: Show decision
         run: cat qpu-v08-shadow-decision.json
