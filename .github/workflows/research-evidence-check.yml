@@ -11,6 +11,7 @@ on:
       - '.github/workflows/*evidence*'
       - '.github/workflows/precore-*-audit.yml'
       - '.github/workflows/qpu-v0*-shadow-forward-eval.yml'
+      - '.github/workflows/qpu-v0*-consensus-shadow.yml'
       - '.github/workflows/spot-core-timesfm-mature-evaluation.yml'
       - '.github/workflows/core-resilience-accumulated-evaluation.yml'
   push:
