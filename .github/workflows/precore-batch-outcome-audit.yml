@@ -7,11 +7,14 @@ on:
       - 'research/continuator/precore_batch_outcome_audit.js'
       - '.github/workflows/precore-batch-outcome-audit.yml'
   schedule:
-    - cron: '13,28,43,58 * * * *'
+    - cron: '13 */2 * * *'
 permissions:
   actions: read
   contents: read
   issues: write
+concurrency:
+  group: precore-batch-outcome-audit
+  cancel-in-progress: false
 jobs:
   audit:
     runs-on: ubuntu-latest
