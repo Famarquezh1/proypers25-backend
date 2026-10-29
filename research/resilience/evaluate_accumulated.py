@@ -44,7 +44,38 @@ def download_artifact(artifact_id):
     return EVIDENCE.archive(artifact_id)
 
 def list_artifacts():
-    return list(EVIDENCE.successful_artifacts(WORKFLOW, 'core-post-signal-resilience-'))
+    """Join successful workflow runs to repository artifacts in bounded pages.
+
+    Avoid one GitHub artifact-manifest request per historical run.  Preserve
+    the successful-main-run filter and fail closed if pagination is incomplete.
+    """
+    successful = {}
+    for page in range(1, 31):
+        runs = EVIDENCE.json(
+            f'/actions/workflows/{WORKFLOW}/runs?branch=main&status=success&per_page=100&page={page}'
+        ).get('workflow_runs', [])
+        for run in runs:
+            if run.get('status') == 'completed' and run.get('conclusion') == 'success':
+                successful[run['id']] = run
+        if len(runs) < 100:
+            break
+    else:
+        raise EvidenceUnavailable('Successful run history exceeds 30 pages; evaluation incomplete')
+
+    found = []
+    for page in range(1, 31):
+        artifacts = EVIDENCE.json(
+            f'/actions/artifacts?per_page=100&page={page}'
+        ).get('artifacts', [])
+        for artifact in artifacts:
+            source = artifact.get('workflow_run') or {}
+            run = successful.get(source.get('id'))
+            if (run and not artifact.get('expired') and
+                    str(artifact.get('name', '')).startswith('core-post-signal-resilience-')):
+                found.append((run, artifact))
+        if len(artifacts) < 100:
+            return found
+    raise EvidenceUnavailable('Repository artifact history exceeds 30 pages; evaluation incomplete')
 
 def parse_iso(s): return datetime.fromisoformat(str(s).replace("Z","+00:00"))
 
