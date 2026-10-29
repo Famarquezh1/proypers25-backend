@@ -7,20 +7,9 @@ const ISSUE_TITLE='[RESEARCH] Pre-CORE Live Progression';
 const MAX_RUNS=40;
 const ORDER={NONE:0,PRECURSOR_BUILDING:1,PASS1_EARLY:2,PASS2_ESCALATED:3,CORE_FORMING:4};
 
-async function gh(path, options={}){
-  const r=await fetch('https://api.github.com/repos/'+REPO+path,{
-    ...options,
-    headers:{
-      'Authorization':'Bearer '+TOKEN,
-      'Accept':'application/vnd.github+json',
-      'X-GitHub-Api-Version':'2022-11-28',
-      'Content-Type':'application/json',
-      ...(options.headers||{})
-    }
-  });
-  if(!r.ok) throw new Error('GitHub '+r.status+' '+await r.text());
-  const t=await r.text(); return t?JSON.parse(t):{};
-}
+const evidenceClient=require('../lib/github_evidence').createEvidenceClient({repo:REPO,token:TOKEN});
+const gh=evidenceClient.request;
+
 function extractResult(log){
   const lines=String(log||'').split(/\r?\n/);
   for(const line of lines){
@@ -35,15 +24,8 @@ async function main(){
   const completed=(runs.workflow_runs||[]).filter(r=>r.conclusion==='success').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   const snapshots=[];
   for(const run of completed){
-    const jobs=await gh('/actions/runs/'+run.id+'/jobs?per_page=20');
-    const job=(jobs.jobs||[]).find(j=>j.name==='scan')||(jobs.jobs||[])[0];
-    if(!job) continue;
-    const r=await fetch('https://api.github.com/repos/'+REPO+'/actions/jobs/'+job.id+'/logs',{
-      headers:{'Authorization':'Bearer '+TOKEN,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
-    });
-    if(!r.ok) continue;
-    const result=extractResult(await r.text());
-    if(result) snapshots.push({run_id:run.id,at:run.created_at,result});
+    const result=await evidenceClient.evidence(run,WORKFLOW,'scan',extractResult);
+    snapshots.push({run_id:run.id,at:run.created_at,result});
   }
 
   const histories=new Map();

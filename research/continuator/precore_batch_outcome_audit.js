@@ -5,22 +5,11 @@ const TOKEN=process.env.GITHUB_TOKEN||'';
 const BASE='https://data-api.binance.vision';
 const WORKFLOW='precore-batch-planner.yml';
 const ISSUE_TITLE='[RESEARCH] Pre-CORE Batch Outcome Audit';
-const MAX_RUNS=8; // Bounded hourly research window; avoid exhausting shared installation API quota.
+const MAX_RUNS=24;
 
-async function gh(path, options={}){
-  const r=await fetch('https://api.github.com/repos/'+REPO+path,{
-    ...options,
-    headers:{
-      'Authorization':'Bearer '+TOKEN,
-      'Accept':'application/vnd.github+json',
-      'X-GitHub-Api-Version':'2022-11-28',
-      'Content-Type':'application/json',
-      ...(options.headers||{})
-    }
-  });
-  if(!r.ok) throw new Error('GitHub '+r.status+' '+await r.text());
-  const t=await r.text(); return t?JSON.parse(t):{};
-}
+const evidenceClient=require('../lib/github_evidence').createEvidenceClient({repo:REPO,token:TOKEN});
+const gh=evidenceClient.request;
+
 async function get(url){
   const r=await fetch(url,{headers:{'user-agent':'proypers25-batch-outcome/1.0'}});
   if(!r.ok) throw new Error('HTTP '+r.status+' '+url);
@@ -62,16 +51,8 @@ async function main(){
   const runs=await gh('/actions/workflows/'+WORKFLOW+'/runs?status=completed&per_page='+MAX_RUNS);
   const plans=[];
   for(const run of (runs.workflow_runs||[]).filter(r=>r.conclusion==='success')){
-    const jobs=await gh('/actions/runs/'+run.id+'/jobs?per_page=20');
-    const job=(jobs.jobs||[]).find(j=>j.name==='plan')||(jobs.jobs||[])[0];
-    if(!job) continue;
-    const lr=await fetch('https://api.github.com/repos/'+REPO+'/actions/jobs/'+job.id+'/logs',{
-      headers:{'Authorization':'Bearer '+TOKEN,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
-    });
-    if(lr.status===403 || lr.status===429) throw new Error('GitHub API quota or permission blocked job logs: HTTP '+lr.status);
-    if(!lr.ok) continue;
-    const plan=extractPlan(await lr.text());
-    if(plan) plans.push({...plan,run_id:run.id});
+    const result=await evidenceClient.evidence(run,WORKFLOW,'plan',extractPlan);
+    plans.push({...result,run_id:run.id});
   }
 
   const now=Date.now();
