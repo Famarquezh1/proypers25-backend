@@ -1,0 +1,41 @@
+name: Research Evidence Transport Check
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/lib/**'
+      - 'research/continuator/precore_batch_outcome_audit.js'
+      - 'research/continuator/precore_live_progression.js'
+      - 'research/timesfm/evaluate_recent_mature.py'
+      - 'research/resilience/evaluate_accumulated.py'
+      - '.github/workflows/*evidence*'
+      - '.github/workflows/precore-*-audit.yml'
+      - '.github/workflows/qpu-v0*-shadow-forward-eval.yml'
+      - '.github/workflows/spot-core-timesfm-mature-evaluation.yml'
+      - '.github/workflows/core-resilience-accumulated-evaluation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'research/lib/**'
+      - '.github/workflows/research-evidence-check.yml'
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline evidence transport tests
+        run: |
+          node --test research/lib/github_evidence.test.js
+          python -m unittest discover -s research/lib -p 'test_*evidence*.py'
+          node --check research/continuator/precore_batch_outcome_audit.js
+          node --check research/continuator/precore_live_progression.js
+          python -m py_compile research/timesfm/evaluate_recent_mature.py research/resilience/evaluate_accumulated.py
