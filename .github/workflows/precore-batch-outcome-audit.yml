@@ -6,12 +6,17 @@ on:
     paths:
       - 'research/continuator/precore_batch_outcome_audit.js'
       - '.github/workflows/precore-batch-outcome-audit.yml'
+      - 'research/lib/github_evidence.js'
+      - 'research/lib/github_evidence.test.js'
   schedule:
     - cron: '13,28,43,58 * * * *'
 permissions:
   actions: read
   contents: read
   issues: write
+concurrency:
+  group: precore-batch-outcome-audit
+  cancel-in-progress: false
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -21,6 +26,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Restore parsed evidence
+        uses: actions/cache/restore@v4
+        with:
+          path: .research-cache/precore
+          key: precore-batch-outcome-audit-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: precore-batch-outcome-audit-v1-
+      - name: Test evidence transport
+        run: node --test research/lib/github_evidence.test.js
       - name: Audit batch outcomes
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -39,3 +52,9 @@ jobs:
           set -euo pipefail
           ! grep -Eq 'BINANCE_(API|SECRET)_KEY|api/v3/order|placeOrder|createOrder|withdraw|signed\(' research/continuator/precore_batch_outcome_audit.js
           grep -q "production_action:'NONE'" research/continuator/precore_batch_outcome_audit.js
+      - name: Save validated evidence checkpoint
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .research-cache/precore
+          key: precore-batch-outcome-audit-v1-${{ github.run_id }}-${{ github.run_attempt }}
