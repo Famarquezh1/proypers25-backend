@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'research/lib/github_evidence.py'
+      - 'research/lib/test_github_evidence.py'
       - 'research/resilience/evaluate_accumulated.py'
       - '.github/workflows/core-resilience-accumulated-evaluation.yml'
   workflow_dispatch:
@@ -18,8 +20,12 @@ permissions:
   actions: read
   issues: write
 
+concurrency:
+  group: core-resilience-accumulated-evaluation
+  cancel-in-progress: false
 jobs:
   evaluate:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -33,6 +39,12 @@ jobs:
         run: |
           python -m py_compile research/resilience/evaluate_accumulated.py
           ! grep -Eq 'api/v3/order|BINANCE_API_KEY|BINANCE_SECRET|fapi/v1/order' research/resilience/evaluate_accumulated.py
+      - name: Restore immutable research evidence
+        uses: actions/cache/restore@v4
+        with:
+          path: .research-cache/github
+          key: core-resilience-accumulated-evaluation-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: core-resilience-accumulated-evaluation-v1-
       - name: Evaluate all mature CORE resilience artifacts
         run: python research/resilience/evaluate_accumulated.py
       - name: Upload accumulated report
@@ -42,3 +54,9 @@ jobs:
           name: core-resilience-accumulated-${{ github.run_id }}
           path: core-resilience-accumulated.json
           retention-days: 30
+      - name: Save evidence checkpoint
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .research-cache/github
+          key: core-resilience-accumulated-evaluation-v1-${{ github.run_id }}-${{ github.run_attempt }}

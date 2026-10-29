@@ -21,15 +21,20 @@ on:
         required: false
         type: string
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '3,33 * * * *'
   push:
     branches: [main]
     paths:
+      - 'research/lib/github_evidence.py'
+      - 'research/lib/test_github_evidence.py'
       - 'research/timesfm/evaluate_recent_mature.py'
       - '.github/workflows/spot-core-timesfm-mature-evaluation.yml'
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: spot-core-timesfm-mature-evaluation
+  cancel-in-progress: false
 jobs:
   evaluate-manual:
     if: github.event_name == 'workflow_dispatch' && inputs.symbol != ''
@@ -67,6 +72,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Restore immutable research evidence
+        uses: actions/cache/restore@v4
+        with:
+          path: .research-cache/github
+          key: spot-core-timesfm-mature-evaluation-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: spot-core-timesfm-mature-evaluation-v1-
       - name: Evaluate all mature frozen prospective decisions
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,3 +87,9 @@ jobs:
           name: core-timesfm-mature-batch-${{ github.run_id }}
           path: core-timesfm-mature-batch.json
           retention-days: 30
+      - name: Save evidence checkpoint
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .research-cache/github
+          key: spot-core-timesfm-mature-evaluation-v1-${{ github.run_id }}-${{ github.run_attempt }}

@@ -2,9 +2,15 @@
 import io, json, os, urllib.error, urllib.parse, urllib.request, zipfile
 from datetime import datetime, timezone
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from github_evidence import GitHubEvidence, EvidenceUnavailable
+
 REPO=os.environ.get("GITHUB_REPOSITORY","Famarquezh1/proypers25-backend")
 TOKEN=os.environ.get("GITHUB_TOKEN","")
 WORKFLOW="core-post-signal-resilience.yml"
+EVIDENCE=GitHubEvidence(REPO,TOKEN)
 COST=0.002
 HORIZONS=[30,60,120,240]
 ISSUE_TITLE="[RESEARCH] CORE Resilience Accumulated"
@@ -35,23 +41,10 @@ def github_json(path,method="GET",payload=None):
         return json.loads(raw.decode()) if raw else None
 
 def download_artifact(artifact_id):
-    first=request(f"https://api.github.com/repos/{REPO}/actions/artifacts/{artifact_id}/zip",gh_headers(),redirect=False)
-    loc=first.headers.get("Location"); first.close()
-    if not loc: raise RuntimeError(f"artifact {artifact_id}: no signed URL")
-    with request(loc,{"User-Agent":"proypers25-core-resilience-eval/1.0"}) as r: return r.read()
+    return EVIDENCE.archive(artifact_id)
 
 def list_artifacts():
-    out=[]
-    for page in range(1,30):
-        runs=github_json(f"/actions/workflows/{WORKFLOW}/runs?status=success&per_page=100&page={page}").get("workflow_runs",[])
-        if not runs: break
-        for run in runs:
-            arts=github_json(f"/actions/runs/{run['id']}/artifacts?per_page=100").get("artifacts",[])
-            for a in arts:
-                if not a.get("expired") and str(a.get("name","")).startswith("core-post-signal-resilience-"):
-                    out.append((run,a))
-        if len(runs)<100: break
-    return out
+    return list(EVIDENCE.successful_artifacts(WORKFLOW, 'core-post-signal-resilience-'))
 
 def parse_iso(s): return datetime.fromisoformat(str(s).replace("Z","+00:00"))
 
@@ -73,6 +66,8 @@ def load_observations():
             if key in seen: continue
             seen.add(key)
             rows.append({"run_id":run["id"],"head_sha":run.get("head_sha"),"artifact_id":a["id"],"meta":meta,"obs":obs})
+        except EvidenceUnavailable:
+            raise
         except Exception as e:
             errors.append({"artifact_id":a.get("id"),"error":f"{type(e).__name__}: {e}"})
     return rows,errors
@@ -157,6 +152,8 @@ def main():
         states=sorted([x for x in item["obs"] if x.get("type")=="resilience_state" and isinstance(x.get("at"),(int,float))],key=lambda x:x["at"])
         if not states: no_state+=1
         try: kl=binance_klines(symbol,signal_ms,min(now_ms,signal_ms+(4*3600+max(HORIZONS)+120)*1000))
+        except EvidenceUnavailable:
+            raise
         except Exception as e:
             errors.append({"symbol":symbol,"issue":meta.get("issue_number"),"error":f"klines: {e}"}); continue
         row={"symbol":symbol,"issue":meta.get("issue_number"),"signal_ms":signal_ms,"states":states,"klines":kl}

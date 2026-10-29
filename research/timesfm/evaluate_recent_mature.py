@@ -1,10 +1,16 @@
 import io, json, math, os, urllib.error, urllib.parse, urllib.request, zipfile
 from datetime import datetime, timezone, timedelta
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from github_evidence import GitHubEvidence, EvidenceUnavailable
+
 BINANCE="https://data-api.binance.vision"
 REPO=os.environ.get("GITHUB_REPOSITORY","Famarquezh1/proypers25-backend")
 TOKEN=os.environ.get("GH_TOKEN","")
 NOW=datetime.now(timezone.utc)
+EVIDENCE=GitHubEvidence(REPO,TOKEN)
 
 def request(url, github=False, redirect=True):
     headers={"User-Agent":"proypers25-timesfm-evaluator/3.0"}
@@ -31,39 +37,11 @@ def get_json(url, github=False):
         return json.load(r)
 
 def get_artifact_zip(artifact_id):
-    api=f"https://api.github.com/repos/{REPO}/actions/artifacts/{artifact_id}/zip"
-    first=request(api,github=True,redirect=False)
-    location=first.headers.get("Location")
-    first.close()
-    if not location:
-        raise RuntimeError(f"artifact {artifact_id}: GitHub did not return signed download URL")
-    # Important: do not forward the GitHub bearer token to Azure/blob storage.
-    with request(location,github=False,redirect=True) as r:
-        return r.read()
+    return EVIDENCE.archive(artifact_id)
 
 def list_successful_prospective_artifacts():
-    workflow="spot-core-timesfm-prospective.yml"
-    artifacts=[]
-    page=1
-    while True:
-        url=f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/runs?status=success&per_page=100&page={page}"
-        runs=get_json(url,github=True).get("workflow_runs",[])
-        if not runs:
-            break
-        for run in runs:
-            run_id=run.get("id")
-            if not run_id:
-                continue
-            aurl=f"https://api.github.com/repos/{REPO}/actions/runs/{run_id}/artifacts?per_page=100"
-            for a in get_json(aurl,github=True).get("artifacts",[]):
-                if a.get("expired"):
-                    continue
-                if str(a.get("name","")).startswith("core-timesfm-prospective-"):
-                    artifacts.append(a)
-        if len(runs)<100:
-            break
-        page+=1
-    return artifacts
+    return [artifact for run,artifact in EVIDENCE.successful_artifacts(
+        'spot-core-timesfm-prospective.yml', 'core-timesfm-prospective-')]
 
 def safe_avg(values):
     return sum(values)/len(values) if values else None
@@ -108,6 +86,8 @@ for a in artifacts:
             if not candidates:
                 continue
             d=json.loads(z.read(candidates[0]).decode("utf-8-sig"))
+    except EvidenceUnavailable:
+        raise
     except Exception as e:
         print(f"WARN artifact {a.get('id')} skipped: {type(e).__name__}: {e}")
         continue
