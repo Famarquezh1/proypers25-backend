@@ -30,7 +30,10 @@ jobs:
             -o UserKnownHostsFile="$WORKDIR/known_hosts" \
             -o ConnectTimeout=15 deploy@89.167.5.87 'bash -s' <<'REMOTE'
           set -euo pipefail
-          sudo timeout 150 cloud-init status --wait --long
+          if ! sudo timeout 150 cloud-init status --wait --long; then
+          sudo tail -n 60 /var/log/cloud-init-output.log
+          exit 1
+          fi
           test "$(. /etc/os-release; printf '%s' "$VERSION_ID")" = '24.04'
           node -e 'if(Number(process.versions.node.split(".")[0])!==22)process.exit(1)'
           test "$(git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
