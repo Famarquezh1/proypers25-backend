@@ -1,0 +1,57 @@
+name: Hetzner Binance read-only verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  private-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Install existing credentials securely and run GET-only probe
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BOOTSTRAP_SSH_KEY"
+          test -n "$BINANCE_API_KEY"
+          test -n "$BINANCE_SECRET_KEY"
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH=(ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=15 deploy@89.167.5.87)
+          python3 -c 'import json,os; print(json.dumps({"binance-key":os.environ["BINANCE_API_KEY"],"binance-secret":os.environ["BINANCE_SECRET_KEY"]}))' | "${SSH[@]}" 'sudo python3 -c '\''import json,os,sys,tempfile
+          data=json.load(sys.stdin)
+          assert set(data)=={"binance-key","binance-secret"}
+          assert all(isinstance(v,str) and len(v.strip())>=32 and "\n" not in v.strip() for v in data.values())
+          base="/etc/proypers25"
+          os.makedirs(base,mode=0o700,exist_ok=True)
+          os.chmod(base,0o700)
+          assert os.path.exists(base+"/TRADING_DISABLED")
+          for name,value in data.items():
+              fd,tmp=tempfile.mkstemp(prefix=".credential-",dir=base)
+              with os.fdopen(fd,"w") as out:
+                  out.write(value.strip())
+                  out.flush()
+                  os.fsync(out.fileno())
+              os.replace(tmp,base+"/"+name)
+          print("CREDENTIALS_INSTALLED trading_disabled=true")'\'''
+          unset BINANCE_API_KEY BINANCE_SECRET_KEY
+          "${SSH[@]}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo test -f /etc/proypers25/TRADING_DISABLED
+          if ! sudo systemctl start proypers25-preflight.service; then
+            sudo journalctl -u proypers25-preflight.service --since '-1 minute' --no-pager -o cat
+            exit 1
+          fi
+          sudo journalctl -u proypers25-preflight.service --since '-1 minute' --no-pager -o cat
+          printf '%s\n' 'PRIVATE_PREFLIGHT_COMPLETED trading_disabled=true'
+          REMOTE
