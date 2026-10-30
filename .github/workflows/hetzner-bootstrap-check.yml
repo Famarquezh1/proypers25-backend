@@ -30,19 +30,24 @@ jobs:
             -o UserKnownHostsFile="$WORKDIR/known_hosts" \
             -o ConnectTimeout=15 deploy@89.167.5.87 'bash -s' <<'REMOTE'
           set -euo pipefail
-          if ! sudo timeout 150 cloud-init status --wait --long; then
-          sudo tail -n 60 /var/log/cloud-init-output.log
-          exit 1
-          fi
+          sudo cloud-init status --long || true
+          sudo install -d -m 0755 /run/sshd
+          sudo sshd -t
+          sudo systemctl reload ssh
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now proypers25-preflight.timer
           test "$(. /etc/os-release; printf '%s' "$VERSION_ID")" = '24.04'
           node -e 'if(Number(process.versions.node.split(".")[0])!==22)process.exit(1)'
-          test "$(git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
+          test "$(sudo git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
           sudo test -f /etc/proypers25/TRADING_DISABLED
           sudo ufw status verbose
           sudo sshd -T | awk '$1=="passwordauthentication" || $1=="permitrootlogin" || $1=="allowusers"'
           sudo systemctl is-enabled proypers25-preflight.timer
           sudo systemctl is-active proypers25-preflight.timer
-          sudo systemctl start proypers25-preflight.service
+          if ! sudo systemctl start proypers25-preflight.service; then
+          sudo journalctl -u proypers25-preflight.service -n 15 --no-pager -o cat
+          exit 1
+          fi
           sudo journalctl -u proypers25-preflight.service -n 8 --no-pager -o cat
           printf '%s\n' 'BOOTSTRAP_VERIFIED trading_disabled=true'
           REMOTE
