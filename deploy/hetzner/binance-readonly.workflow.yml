@@ -48,6 +48,25 @@ jobs:
           "${SSH[@]}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           sudo test -f /etc/proypers25/TRADING_DISABLED
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/opt/proypers25/preflight.cjs')
+          source = p.read_text()
+          old = '  if (!response.ok) throw new Error(`BINANCE_HTTP_${response.status}`);'
+          new = '''  if (!response.ok) {
+              const failure = await response.json().catch(() => ({}));
+              console.error(JSON.stringify({mode: 'READ_ONLY', endpoint,
+                httpStatus: response.status,
+                binanceCode: Number.isSafeInteger(failure.code) ? failure.code : null,
+                tradingActivated: false}));
+              throw new Error(`BINANCE_HTTP_${response.status}`);
+            }'''
+          if old in source:
+              p.write_text(source.replace(old, new, 1))
+          elif 'binanceCode: Number.isSafeInteger' not in source:
+              raise SystemExit('UNEXPECTED_PROBE_VERSION')
+          PY
+          sudo node --check /opt/proypers25/preflight.cjs
           if ! sudo systemctl start proypers25-preflight.service; then
             sudo journalctl -u proypers25-preflight.service --since '-1 minute' --no-pager -o cat
             exit 1
