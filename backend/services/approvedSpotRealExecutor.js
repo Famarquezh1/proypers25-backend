@@ -176,7 +176,7 @@ async function executeApprovedSpotCandidate(db, candidate, options = {}) {
   if (!intent?.id) return { ok: false, skipped: true, reason: 'ENTRY_INTENT_RESERVATION_FAILED', asset_risk_policy: assetRiskPolicy, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_INTENT_RESERVATION_FAILED'] }) };
   if (intent.created === false && intent.status === 'REAL_FILLED') return { ok: true, skipped: true, reason: 'ENTRY_ALREADY_FILLED', asset_risk_policy: assetRiskPolicy, entry_diagnostic: diagnostic(normalizedCandidate, { rejected_reasons: ['ENTRY_ALREADY_FILLED'] }) };
 
-  const order = await placeSpotMarketBuy(normalizedCandidate.symbol, acquisitionUsdt, config, preflight, intent.clientOrderId);
+  const order = await placeSpotMarketBuy(normalizedCandidate.symbol, acquisitionUsdt, config, preflight, intent.clientOrderId, db);
   if (!(order.ok === true && (order.order_created === true || order.recovered_existing_order === true))) {
     const reason = order.reason || 'BINANCE_ORDER_NOT_CREATED';
     await db.collection('real_spot_execution_intents').doc(intent.id).set({ status: 'REAL_REJECTED', rejection_reason: reason, updated_at: new Date().toISOString() }, { merge: true });

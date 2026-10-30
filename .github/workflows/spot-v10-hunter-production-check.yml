@@ -12,12 +12,15 @@ on:
       - 'backend/services/spotConvictionSizing.js'
       - 'backend/services/spotGrowthEngine.js'
       - 'backend/services/spotNativeProtectionPolicy.js'
+      - 'backend/services/spotExecutionCoordination.js'
       - 'backend/config/spot-growth-engine-v1.json'
       - 'backend/tests/spotAssetClassification.test.js'
       - 'backend/tests/spotEntryBurstGate.test.js'
       - 'backend/tests/spotConvictionSizing.test.js'
       - 'backend/tests/spotGrowthEngine.test.js'
       - 'backend/tests/spotNativeProtectionPolicy.test.js'
+      - 'backend/tests/spotExecutionCoordination.test.js'
+      - 'backend/tests/spotOrderSafety.test.js'
       - 'backend/scripts/github-spot-auto-exit-legacy-v10-aware.js'
       - 'backend/scripts/github-spot-auto-exit.js'
       - '.github/workflows/spot-manual-approval.yml'
@@ -52,6 +55,9 @@ jobs:
           node --check backend/services/spotConvictionSizing.js
           node --check backend/services/spotGrowthEngine.js
           node --check backend/services/spotNativeProtectionPolicy.js
+          node --check backend/services/spotExecutionCoordination.js
+          node --check backend/tests/spotExecutionCoordination.test.js
+          node --check backend/tests/spotOrderSafety.test.js
           node --check backend/tests/spotAssetClassification.test.js
           node --check backend/tests/spotEntryBurstGate.test.js
           node --check backend/tests/spotConvictionSizing.test.js
@@ -67,6 +73,8 @@ jobs:
           node backend/tests/spotConvictionSizing.test.js
           node backend/tests/spotGrowthEngine.test.js
           node backend/tests/spotNativeProtectionPolicy.test.js
+          node backend/tests/spotExecutionCoordination.test.js
+          node backend/tests/spotOrderSafety.test.js
       - name: V10 exit wrapper patch compatibility
         shell: bash
         run: |
@@ -77,8 +85,8 @@ jobs:
           const required = [
             "const buy = managedBuys[managedBuys.length - 1];",
             "const { stopPrice, protection, tickSize } = protectionParams(info, effectiveEntryPrice, recentHigh);",
-            "let reason = null;\n    if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
-            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS'].includes(reason)) {"
+            "let reason = null;\n    if (managed.residualMode && gainPct >= 0.10) reason = 'RESIDUAL_TAKE_PROFIT';\n    else if (currentPrice <= stopPrice) reason = protection === 'TRAILING' ? 'TRAILING_STOP' : protection === 'BREAK_EVEN' ? 'BREAK_EVEN_STOP' : 'STOP_LOSS';\n    else if (growthExit.reason) reason = growthExit.reason;\n    else if (ageHours >= STALE_TIMEOUT_HOURS && gainPct <= STALE_TIMEOUT_MAX_GAIN_PCT) reason = 'TIMEOUT_STALE';",
+            "if (openProtect && !['TIMEOUT_STALE', 'MOMENTUM_FAILURE', 'NO_PROGRESS', 'RESIDUAL_TAKE_PROFIT'].includes(reason)) {"
           ];
           for (const target of required) {
             if (!source.includes(target)) throw new Error(`V10 wrapper patch target missing: ${target.slice(0, 90)}`);

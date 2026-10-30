@@ -12,6 +12,14 @@ assert.strictEqual(continuationRequiredForLane('CORE'), true);
 assert.strictEqual(continuationRequiredForLane('V10_HUNTER'), true);
 assert.strictEqual(continuationRequiredForLane('V8_SHADOW'), false);
 
+const weakContinuation = evaluateMicrostructure([
+  { bid: 100, ask: 100.1, mid: 100.05, spreadPct: 0.001 },
+  { bid: 100, ask: 100.1, mid: 100.05, spreadPct: 0.001 },
+  { bid: 100, ask: 100.1, mid: 100.05, spreadPct: 0.001 }
+], { latencyMs: 120, clockSkewMs: 80 }, { continuationRequired: true });
+assert.strictEqual(weakContinuation.allow, false);
+assert(weakContinuation.reason.includes('MOMENTUM_CONTINUATION_WEAK'));
+
 const healthy = evaluateMicrostructure([
   { bid: 100.00, ask: 100.10, mid: 100.05, spreadPct: 0.0010 },
   { bid: 100.15, ask: 100.25, mid: 100.20, spreadPct: 0.0010 },

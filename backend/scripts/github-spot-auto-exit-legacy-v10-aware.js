@@ -41,4 +41,15 @@ patch(
   'market exit permission'
 );
 
-eval(source);
+const Module = require('module');
+const engine = new Module(sourcePath, module);
+engine.filename = sourcePath;
+engine.paths = module.paths;
+engine._compile(source, sourcePath);
+module.exports = engine.exports;
+if (require.main === module) {
+  module.exports.main().catch((error) => {
+    console.error(error);
+    process.exitCode = 2;
+  });
+}

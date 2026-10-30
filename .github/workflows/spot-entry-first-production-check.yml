@@ -221,9 +221,10 @@ jobs:
           grep -q "enableWithdrawals !== false" backend/scripts/github-xec-historical-protection.js
           grep -q "RECOVERY_RUNNER_PROGRESSIVE_EXIT" backend/scripts/github-xec-historical-protection.js
           grep -Fq ".replace(/\\r\\n/g, '\\n')" backend/scripts/github-spot-auto-exit-legacy-v10-aware.js
-          grep -Fq 'proypers-gh-protect-v61-${Date.now().toString(36)}' backend/scripts/github-spot-v61-protect.js
+          grep -Fq "deterministicClientOrderId('proypers-gh-protect-v61-'" backend/scripts/github-spot-v61-protect.js
           node - <<'NODE'
-          const id = `proypers-gh-protect-v61-${Date.now().toString(36)}`;
+          const { deterministicClientOrderId } = require('./backend/services/spotOrderSafety');
+          const id = deterministicClientOrderId('proypers-gh-protect-v61-', 'BTCUSDT', 'entry-1', 0.1, 100);
           if (id.length > 36) throw new Error(`Binance clientOrderId too long: ${id.length}`);
           if (!/^[a-zA-Z0-9-_]{1,36}$/.test(id)) throw new Error(`Binance clientOrderId illegal: ${id}`);
           console.log(`Binance protective clientOrderId guard OK length=${id.length}`);
