@@ -6,6 +6,8 @@ const V42_THRESHOLDS = [
   { days: 60, i: 1.6626658194027173, c: 0.43305908219072103, e: 0.019614079751271593 }
 ];
 
+const EARLY_CONFIRM_MAX_24H_PCT = 8;
+const EARLY_CONFIRM_MIN_NORM = 0.82;
 const ENTRY_COOLDOWN_MS = 7 * 60 * 1000;
 const BURST_WINDOW_MS = 30 * 60 * 1000;
 const EXTENDED_24H_PCT = 12;
@@ -144,6 +146,16 @@ function evaluateSpotEntryBurstGate({
 
   const passCount = Number(v42Quality?.passCount || 0);
   const norm = Number(v42Quality?.norm || 0);
+  const earlyConfirmation = passCount === 2 &&
+    norm >= EARLY_CONFIRM_MIN_NORM &&
+    Number(currentPct) < EARLY_CONFIRM_MAX_24H_PCT &&
+    v42Quality.freshEnough === true &&
+    Number(v42Quality.detail?.confirm) > 0 &&
+    Number(v42Quality.detail?.r15) > 0 &&
+    Number(v42Quality.detail?.extension) > 0;
+  if (v42Quality.freshEnough !== true || !Number.isFinite(norm) || !(passCount === 3 || earlyConfirmation)) {
+    return { allow: false, code: 'CORE_QUALITY_REQUIRED', reason: 'CORE requires fresh 3/3 quality or strict early confirmation' };
+  }
   const highQuality = passCount === 3 && norm >= HIGH_QUALITY_NORM;
   const eliteQuality = passCount === 3 && norm >= ELITE_QUALITY_NORM;
   const recent = positions.filter((position) => position.openedAt > 0 && now >= position.openedAt && now - position.openedAt <= ENTRY_COOLDOWN_MS);
@@ -171,8 +183,8 @@ function evaluateSpotEntryBurstGate({
 
   return {
     allow: true,
-    reason: highQuality ? 'high-conviction entry admitted' : 'normal entry cadence',
-    code: highQuality ? 'HIGH_CONVICTION_ADMITTED' : 'NORMAL_ADMITTED',
+    reason: earlyConfirmation ? 'strict early-confirmation entry admitted' : highQuality ? 'high-conviction entry admitted' : 'normal entry cadence',
+    code: earlyConfirmation ? 'EARLY_CONFIRMATION_ADMITTED' : highQuality ? 'HIGH_CONVICTION_ADMITTED' : 'NORMAL_ADMITTED',
     diagnostics: { passCount, norm, recentEntries7m: recent.length, recentEntries30m: burst.length, maxCorrelation }
   };
 }

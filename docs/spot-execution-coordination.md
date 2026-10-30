@@ -1,0 +1,25 @@
+# Spot executor coordination
+
+Spot order mutations now use a Firestore transaction lock keyed by a configured account identifier and normalized symbol. The lease keeps a monotonically increasing fencing token, owner, intent/client order ID, order metadata, phase, and expiry. The Firestore real-entry and controlled-exit executors, XEC/legacy recovery exits, and local GitHub Spot order scripts use the same document path; local JSON journals remain in place for transition recovery.
+
+`SPOT_COORDINATION_ACCOUNT_ID` must be the same stable, non-secret identifier in the GitHub repository variable and the backend runtime environment. It is deliberately not derived from a Binance API key: multiple keys may control the same account. If the identifier, Firestore access, or lease is unavailable, order mutations fail closed. No value or credential was added to this change, and no deployment/configuration change was made.
+
+Before a Binance write, the holder advances the journal to `MUTATING` and validates the current owner/token in a Firestore transaction. Expired, in-flight mutations become ambiguous and cannot be acquired by another executor. A timeout or unknown response retains the symbol block; reconciliation only clears it after finding a terminal order or a confirmed active native stop. An absent order is not treated as proof that a timed-out request was rejected. Existing open sell orders also block a second controlled sell.
+
+GitHub Actions runs for V6.1 (`39611898414`) and V10 (`39611898321`) ended with `action_required`, each reporting zero jobs. The Actions API returned no job logs and no failed jobs, so these runs provide no test result; a maintainer must inspect the repository’s approval/permission policy before GitHub can execute them. No workflow checks or trading invariants were weakened.
+
+Offline mocks cover concurrent lease claims, expired-lease fencing, ambiguous timeout recovery, duplicate sell prevention, active protection, dust preflight, and V6.1/V10 source invariants. They do not prove Cloud Run/GitHub share the same Firestore project or account identifier, test Binance integration, or make Firestore fencing atomic with the exchange request. Binance does not accept these fencing tokens. Therefore the engine is **NO APTO** for live operation until the shared account identifier and Firestore access are configured and independently verified, Actions checks execute successfully, and controlled integration testing confirms the deployed runtime topology. No real orders were submitted and no deployment was performed.
+
+## GitHub/Windows topology and historical retention audit (2026-10-21)
+
+The currently active GitHub Spot workflow uses a Windows self-hosted runner; GCP fallback/research/export workflows explicitly declare their GCP integrations disabled. This does **not** prove that all legacy Cloud Run services or billing resources have been deleted. Do not re-enable them to satisfy this PR.
+
+The existing Firestore collection `spot_execution_leases` is a **new order-coordination dependency**, not the durable archive of historical predictions. The legacy backend still contains Firestore prediction/signal readers and writers; preserve that database until a separately verified export and reconciliation has been completed. No historical collection has been deleted or migrated by this PR.
+
+The local order-intent journal defaults to `~/.proypers25/order-intents/` on the runner machine (or `PROYPERS_SPOT_ORDER_JOURNAL_DIR`). It is neither a centralized archive nor a substitute for Binance order reconciliation. Back it up securely, offline, with access restricted; never publish order journals, API keys, or account identifiers as public GitHub artifacts.
+
+GitHub Actions training outputs are **temporary**: representative QUBO adaptive artifacts use a 14-day retention period, and CORE/V10 training artifacts use 30 days. Some radar jobs load the latest successful QUBO artifact and fall back to a static model if unavailable. Treat missing artifacts as missing evidence, not proof of historical learning. A long-lived archive needs an explicit retention, integrity, restoration, and cost policy before any automatic migration.
+
+Do not replace the Firestore transactional lease with only GitHub concurrency groups, GitHub Issues, or local JSON locks while multiple processes/machines or legacy executors might still submit orders. GitHub concurrency scopes workflow runs; local journals scope a filesystem; neither provides the same cross-executor atomic lease. Before removing Firestore, inventory every Binance-writing execution path, prove a single active order writer (or implement an equally durable cross-process lock), test crash/timeout recovery and Binance idempotency, and confirm there is no active legacy writer.
+
+Production readiness remains **HOLD** until the actual runner's Firestore credentials and project, `SPOT_COORDINATION_ACCOUNT_ID`, and all active order writers are verified. This PR intentionally does not touch real orders, historical data, or cloud resources.

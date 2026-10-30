@@ -4,6 +4,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { getBinanceSpotCredentials } = require('../lib/secretManager');
 const { recordConfirmedSpotClose } = require('./spotPositionLifecycle');
+const { createSpotExecutionCoordinator } = require('./spotExecutionCoordination');
 
 const POSITIONS = 'real_spot_positions';
 const SAFETY_VERSION = 'controlled_real_spot_exit_v7_exit_always_protects';
@@ -382,6 +383,15 @@ async function executeMarketSell(symbol, submittedQuantity, clientOrderId, depen
   const lookupExisting = dependencies.findExistingSellOrder || ((s, id) => findExistingSellOrder(s, id, { privateRequest: requestPrivate }));
   const existing = await lookupExisting(symbol, clientOrderId);
   if (existing) return existing;
+  const getOpenOrders = dependencies.getOpenOrders || ((s) => requestPrivate('GET', '/api/v3/openOrders', { symbol: s }));
+  const openOrders = await getOpenOrders(symbol);
+  if (!Array.isArray(openOrders)) throw new Error(`OPEN_SELL_ORDERS_UNAVAILABLE:${symbol}`);
+  if (openOrders.some((order) =>
+    String(order.side || '').toUpperCase() === 'SELL' &&
+    ['NEW', 'PARTIALLY_FILLED'].includes(String(order.status || '').toUpperCase()))) {
+    throw new Error(`ACTIVE_SELL_ORDER_BLOCKER:${symbol}`);
+  }
+  if (dependencies.beforeSubmit) await dependencies.beforeSubmit();
   try {
     return await requestPrivate('POST', '/api/v3/order', {
       symbol,
@@ -392,9 +402,20 @@ async function executeMarketSell(symbol, submittedQuantity, clientOrderId, depen
       newOrderRespType: 'FULL'
     });
   } catch (error) {
-    const recovered = await lookupExisting(symbol, clientOrderId);
+    let recovered;
+    try {
+      recovered = await lookupExisting(symbol, clientOrderId);
+    } catch (lookupError) {
+      throw Object.assign(new Error(`ORDER_OUTCOME_UNCERTAIN:${symbol}:${clientOrderId}`), {
+        code: 'ORDER_OUTCOME_UNCERTAIN',
+        cause: lookupError
+      });
+    }
     if (recovered) return recovered;
-    throw error;
+    throw Object.assign(new Error(`ORDER_OUTCOME_UNCERTAIN:${symbol}:${clientOrderId}`), {
+      code: 'ORDER_OUTCOME_UNCERTAIN',
+      cause: error
+    });
   }
 }
 
@@ -442,19 +463,28 @@ async function finalizeExit(db, ref, position, order, reason, observedPrice, qua
 async function recoverPendingExit(db, ref, position, dependencies = {}) {
   const lookupExistingSellOrder = dependencies.findExistingSellOrder || findExistingSellOrder;
   const finalizeRecoveredExit = dependencies.finalizeExit || finalizeExit;
-  const releasePendingClaim = dependencies.releaseClaim || releaseClaim;
   const symbol = String(position.symbol || '').toUpperCase();
   const claimId = position.exit_claim_id;
   const clientOrderId = position.exit_client_order_id;
   if (!claimId || !clientOrderId || !symbol) {
-    await releasePendingClaim(ref, claimId, new Error('PENDING_EXIT_RECOVERY_METADATA_MISSING'));
-    return { symbol, action: 'EXIT_RECOVERY_FAILED', error: 'PENDING_EXIT_RECOVERY_METADATA_MISSING' };
+    return { symbol, action: 'EXIT_RECOVERY_BLOCKED', error: 'PENDING_EXIT_RECOVERY_METADATA_MISSING' };
   }
   try {
     const order = await lookupExistingSellOrder(symbol, clientOrderId);
     if (!order) {
-      await ref.update({ exit_status: 'EXIT_RETRY_READY', exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND', exit_recovered_at: new Date().toISOString() });
-      return { symbol, action: 'EXIT_RETRY_READY', client_order_id: clientOrderId };
+      await ref.update({
+        exit_recovery_note: 'BINANCE_ORDER_NOT_FOUND_OUTCOME_AMBIGUOUS',
+        exit_recovered_at: new Date().toISOString()
+      });
+      return { symbol, action: 'EXIT_OUTCOME_AMBIGUOUS', client_order_id: clientOrderId };
+    }
+    const orderStatus = String(order.status || '').toUpperCase();
+    if (['NEW', 'PARTIALLY_FILLED'].includes(orderStatus)) {
+      return { symbol, action: 'EXIT_ORDER_PENDING', order_id: order.orderId || null, client_order_id: clientOrderId, order_status: orderStatus };
+    }
+    if (['CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(orderStatus) && !(Number(order.executedQty || 0) > 0)) {
+      await dependencies.resolveLease?.(symbol, clientOrderId, order);
+      return { symbol, action: 'EXIT_ORDER_TERMINAL_UNFILLED', order_id: order.orderId || null, client_order_id: clientOrderId, order_status: orderStatus };
     }
     if (Number(order.executedQty || 0) > 0) {
       const quantityEvidence = {
@@ -465,12 +495,14 @@ async function recoverPendingExit(db, ref, position, dependencies = {}) {
       };
       const result = await finalizeRecoveredExit(db, ref, { ...position, id: position.id || ref.id, claimId, clientOrderId }, order,
         position.exit_reason_pending || 'RECOVERED_EXIT', Number(position.exit_price_observed || 0), quantityEvidence);
+      if (['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'].includes(String(order.status || '').toUpperCase())) {
+        await dependencies.resolveLease?.(symbol, clientOrderId, order);
+      }
       return { symbol, action: 'RECOVERED_SELL', order_id: order.orderId || null, client_order_id: clientOrderId, ...result };
     }
     return { symbol, action: 'EXIT_ORDER_PENDING', order_id: order.orderId || null, client_order_id: clientOrderId, order_status: order.status || 'UNKNOWN' };
   } catch (error) {
-    await releasePendingClaim(ref, claimId, error);
-    return { symbol, action: 'EXIT_RECOVERY_FAILED', error: error.message };
+    return { symbol, action: 'EXIT_RECOVERY_AMBIGUOUS', error: error.message };
   }
 }
 
@@ -488,7 +520,16 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
     const symbol = String(position.symbol || '').toUpperCase();
     try {
       if (position.exit_status === 'EXIT_PENDING') {
-        outcomes.push(await recoverPendingExit(db, doc.ref, position));
+        const accountId = options.accountId || process.env.SPOT_COORDINATION_ACCOUNT_ID;
+        const coordinator = options.coordinator || createSpotExecutionCoordinator(db);
+        outcomes.push(await recoverPendingExit(db, doc.ref, position, {
+          resolveLease: (recoveredSymbol, intentId, order) => coordinator.resolveAmbiguous(
+            accountId,
+            recoveredSymbol,
+            intentId,
+            { orderFound: true, status: order.status, side: order.side, type: order.type, orderId: order.orderId, symbol: order.symbol || recoveredSymbol, clientOrderId: order.clientOrderId }
+          )
+        }));
         continue;
       }
       const ticker = options.currentPrices?.[symbol] ? { price: options.currentPrices[symbol] } : await publicGet('/api/v3/ticker/price', { symbol });
@@ -523,11 +564,40 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
         continue;
       }
       let quantityEvidence = null;
+      let lease = null;
+      let mutationStarted = false;
+      let orderObserved = false;
+      const coordinator = options.coordinator || createSpotExecutionCoordinator(db);
       try {
         const rawManagedQuantity = Number((claimed.managed_quantity ?? claimed.net_quantity ?? claimed.quantity) || 0);
         quantityEvidence = await getSellableQuantity(symbol, rawManagedQuantity);
         await doc.ref.set({ ...quantityEvidence, exit_quantity_evidence_at: new Date().toISOString() }, { merge: true });
-        const order = await executeMarketSell(symbol, quantityEvidence.submitted_quantity, claimed.clientOrderId);
+        const accountId = options.accountId || process.env.SPOT_COORDINATION_ACCOUNT_ID;
+        lease = await coordinator.acquire(accountId, symbol, claimed.clientOrderId, {
+          clientOrderId: claimed.clientOrderId,
+          side: 'SELL',
+          type: 'MARKET',
+          quantity: quantityEvidence.submitted_quantity
+        });
+        if (!lease.acquired) {
+          await releaseClaim(doc.ref, claimed.claimId, new Error(lease.reason));
+          outcomes.push({ symbol, action: 'SPOT_COORDINATION_BLOCKED', reason: lease.reason });
+          continue;
+        }
+        const order = await executeMarketSell(symbol, quantityEvidence.submitted_quantity, claimed.clientOrderId, {
+          beforeSubmit: async () => {
+            await coordinator.beginMutation(lease);
+            mutationStarted = true;
+          }
+        });
+        orderObserved = true;
+        if (['NEW', 'PARTIALLY_FILLED'].includes(String(order.status || '').toUpperCase())) {
+          throw Object.assign(new Error(`EXIT_ORDER_STILL_ACTIVE:${symbol}:${claimed.clientOrderId}`), {
+            code: 'ORDER_OUTCOME_UNCERTAIN'
+          });
+        }
+        const finalized = await finalizeExit(db, doc.ref, claimed, order, reason, currentPrice, quantityEvidence);
+        await coordinator.release(lease, order);
         outcomes.push({
           symbol,
           action: 'SELL',
@@ -535,13 +605,17 @@ async function evaluateAndExecuteRealSpotExits(db, config, options = {}) {
           order_id: order.orderId,
           client_order_id: claimed.clientOrderId,
           ...quantityEvidence,
-          ...(await finalizeExit(db, doc.ref, claimed, order, reason, currentPrice, quantityEvidence))
+          ...finalized
         });
       } catch (error) {
-        await releaseClaim(doc.ref, claimed.claimId, error);
+        if (lease?.acquired) {
+          if (mutationStarted || orderObserved) await coordinator.markAmbiguous(lease, error.code || error.message);
+          else await coordinator.release(lease);
+        }
+        if (!mutationStarted && !orderObserved) await releaseClaim(doc.ref, claimed.claimId, error);
         outcomes.push({
           symbol,
-          action: 'SELL_FAILED',
+          action: mutationStarted || orderObserved ? 'EXIT_OUTCOME_AMBIGUOUS' : 'SELL_FAILED',
           reason,
           error: error.message,
           ...(quantityEvidence || {
