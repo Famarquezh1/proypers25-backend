@@ -28,7 +28,14 @@ async function get(endpoint, params = {}, credentials) {
     method: 'GET', headers, signal: AbortSignal.timeout(15000)
   });
   // Never print URLs, signatures, response bodies, balances, or credentials.
-  if (!response.ok) throw new Error(`BINANCE_HTTP_${response.status}`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    console.error(JSON.stringify({mode: 'READ_ONLY', endpoint,
+      httpStatus: response.status,
+      binanceCode: Number.isSafeInteger(failure.code) ? failure.code : null,
+      tradingActivated: false}));
+    throw new Error(`BINANCE_HTTP_${response.status}`);
+  }
   return response.json();
 }
 
