@@ -33,3 +33,7 @@ After creating the server, verify SSH host identity through Hetzner's authentica
 Verified runs:
 - https://github.com/Famarquezh1/proypers25-backend/actions/runs/41088260465
 - https://github.com/Famarquezh1/proypers25-backend/actions/runs/41088601433
+
+## Dedicated VPS API verification
+
+The owner created `HETZNER_BINANCE_API_KEY` and `HETZNER_BINANCE_SECRET_KEY` in repository secrets. Existing runner secrets remain unchanged. Main workflow commit `d942fd2cbf128597f9bf57111e35bd14388a1cf0` installed the dedicated credentials successfully in run `41100613745`, but Binance returned HTTP 401. A bounded second diagnostic, run `41102916934` at `ff95e55960764b67ff05a7906669966afe3ec1da`, installed safe numeric error reporting and returned Spot account/openOrders code -2015 and apiRestrictions code -2008. No response messages, credential values, or account balances were logged. Authentication is blocked pending owner confirmation of the dedicated key's saved IP/reading settings and accurate copying from the original credentials. Do not broaden permissions or blindly retry. Trading remains disabled and protection reconciliation is not complete. GitHub UI/status endpoints were delayed; completed job logs provided the definitive outcome.
