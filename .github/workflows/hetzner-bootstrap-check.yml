@@ -35,6 +35,8 @@ jobs:
           sudo sshd -t
           sudo systemctl reload ssh
           sudo systemctl daemon-reload
+          sudo chgrp -R spot /opt/proypers25/repo
+          sudo chmod -R g+rX /opt/proypers25/repo
           sudo systemctl enable --now proypers25-preflight.timer
           test "$(. /etc/os-release; printf '%s' "$VERSION_ID")" = '24.04'
           node -e 'if(Number(process.versions.node.split(".")[0])!==22)process.exit(1)'
