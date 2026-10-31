@@ -1,0 +1,110 @@
+name: Hetzner staged Spot engine installation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+  actions: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  install-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 55b20c110cd864795dbdf5fce97df06950409133
+          persist-credentials: false
+      - name: Capture existing operational metadata and model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          gh api 'repos/Famarquezh1/proypers25-backend/issues?state=closed&per_page=100&sort=updated&direction=desc' > /tmp/spot-closed.json
+          gh api 'repos/Famarquezh1/proypers25-backend/issues?state=open&per_page=100&sort=updated&direction=desc' > /tmp/spot-open.json
+          python3 - <<'PY'
+          import json,datetime
+          rows=[]
+          for f in ['/tmp/spot-closed.json','/tmp/spot-open.json']:
+              rows += [i for i in json.load(open(f)) if 'pull_request' not in i]
+          fields=['number','title','body','created_at','updated_at','state','state_reason']
+          data={'capturedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'repository':'Famarquezh1/proypers25-backend','issues':[{k:i.get(k) for k in fields} for i in rows]}
+          json.dump(data,open('deploy/hetzner/runtime/managed-context.json','w'))
+          PY
+          MODEL_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow spot-qubo-adaptive-learning.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          mkdir -p /tmp/spot-adaptive
+          if [ -n "$MODEL_RUN" ] && gh run download "$MODEL_RUN" --repo "$GITHUB_REPOSITORY" --name spot-qubo-adaptive-v5 --dir /tmp/spot-adaptive >/dev/null 2>&1 && [ -f /tmp/spot-adaptive/spot-qubo-adaptive-v5.json ]; then
+            test "$(stat -c %s /tmp/spot-adaptive/spot-qubo-adaptive-v5.json)" -le 1048576
+            cp /tmp/spot-adaptive/spot-qubo-adaptive-v5.json deploy/hetzner/runtime/adaptive-model.json
+            echo "RADAR_MODEL_IMPORTED run=$MODEL_RUN"
+          else
+            echo 'RADAR_MODEL_STATIC_BASE existing_workflow_fallback=true'
+          fi
+      - name: Install, validate and exercise recovery (no trading)
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BOOTSTRAP_SSH_KEY"
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2)
+          SSH=(ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87)
+          tar -C deploy/hetzner -czf "$WORKDIR/runtime.tar.gz" runtime install-staging.sh
+          "${SSH[@]}" 'install -d -m 0700 /home/deploy/proypers25-stage'
+          scp "${SSH_OPTIONS[@]}" "$WORKDIR/runtime.tar.gz" deploy@89.167.5.87:/home/deploy/proypers25-stage/runtime.tar.gz
+          "${SSH[@]}" 'tar -xzf /home/deploy/proypers25-stage/runtime.tar.gz -C /home/deploy/proypers25-stage && sudo bash /home/deploy/proypers25-stage/install-staging.sh /home/deploy/proypers25-stage 55b20c110cd864795dbdf5fce97df06950409133'
+          check_health() {
+            "${SSH[@]}" 'sudo python3 -c '\''import json,datetime,os
+          h=json.load(open("/var/lib/proypers25/heartbeat.json"))
+          age=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(h["at"].replace("Z","+00:00"))).total_seconds()
+          assert 0<=age<180 and h["tradingActivated"] is False and h["liveReady"] is False
+          assert os.path.exists("/etc/proypers25/TRADING_DISABLED")
+          print("STAGED_HEARTBEAT_OK")'\'''
+          }
+          wait_health() {
+            for attempt in $(seq 1 80); do
+              if check_health >/dev/null 2>&1; then return 0; fi
+              sleep 5
+            done
+            "${SSH[@]}" 'sudo journalctl -u proypers25-engine.service -n 20 --no-pager -o cat'
+            return 1
+          }
+          wait_health
+          echo 'FIRST_STAGED_CYCLE_PASSED'
+          OLD_PID=$("${SSH[@]}" 'systemctl show proypers25-engine.service -p MainPID --value')
+          "${SSH[@]}" 'sudo systemctl kill --kill-whom=main --signal=SIGKILL proypers25-engine.service'
+          for attempt in $(seq 1 24); do
+            NEW_PID=$("${SSH[@]}" 'systemctl show proypers25-engine.service -p MainPID --value')
+            if [ "$NEW_PID" -gt 1 ] && [ "$NEW_PID" != "$OLD_PID" ]; then break; fi
+            sleep 5
+          done
+          test "$NEW_PID" -gt 1 && test "$NEW_PID" != "$OLD_PID"
+          "${SSH[@]}" 'sudo rm -f /var/lib/proypers25/heartbeat.json'
+          wait_health
+          echo 'CRASH_RECOVERY_PASSED'
+          OLD_BOOT=$("${SSH[@]}" 'cat /proc/sys/kernel/random/boot_id')
+          "${SSH[@]}" 'sudo rm -f /var/lib/proypers25/heartbeat.json && sudo systemctl reboot' || true
+          sleep 10
+          BOOT_CHANGED=false
+          for attempt in $(seq 1 30); do
+            NEW_BOOT=$("${SSH[@]}" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)
+            if [ -n "$NEW_BOOT" ] && [ "$NEW_BOOT" != "$OLD_BOOT" ]; then BOOT_CHANGED=true; break; fi
+            sleep 5
+          done
+          test "$BOOT_CHANGED" = true
+          wait_health
+          "${SSH[@]}" 'sudo systemctl is-enabled proypers25-engine.service && sudo systemctl is-active proypers25-engine.service && sudo journalctl -u proypers25-engine.service -n 8 --no-pager -o cat'
+          "${SSH[@]}" 'sudo python3 -c '\''import json,collections
+          a=json.load(open("/var/lib/proypers25/position-audit.json"))
+          s=json.load(open("/var/lib/proypers25/shadow-status.json"))
+          print(json.dumps({"security":a["security"],"positionStatuses":dict(collections.Counter(p["status"] for p in a["positions"])),"reviewRequired":a["reviewRequired"],"openOrders":a["openOrderCount"],"exitShadowCode":s["exitCode"],"radarShadowCode":s["radarCode"],"tradingActivated":False,"liveReady":False}))'\'''
+          echo 'REBOOT_RECOVERY_PASSED trading_activated=false'
