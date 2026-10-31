@@ -53,7 +53,14 @@ jobs:
             Write-Host "AUTO_EXIT_TRIGGER_SOURCE workflow=${{ github.event.workflow_run.name }} run_id=${{ github.event.workflow_run.id }} conclusion=${{ github.event.workflow_run.conclusion }} head_branch=${{ github.event.workflow_run.head_branch }}"
           }
 
+      - name: Verify maintenance buy pause without network
+        working-directory: backend
+        run: node --test scripts/test-spot-buy-pause.cjs
+
       - name: Monitor positions and execute protective Spot sells
+        env:
+          SPOT_NEW_BUYS_PAUSED: '1'
+          NODE_OPTIONS: '--require=./scripts/spot-buy-pause.cjs'
         working-directory: backend
         shell: powershell
         run: node scripts/github-spot-auto-exit.js
