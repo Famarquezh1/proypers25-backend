@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 55b20c110cd864795dbdf5fce97df06950409133
+          ref: c4c50a45ef1d6f669794336b1f79af9d29a90871
           persist-credentials: false
       - name: Capture existing operational metadata and model
         env:
@@ -61,12 +61,14 @@ jobs:
           tar -C deploy/hetzner -czf "$WORKDIR/runtime.tar.gz" runtime install-staging.sh
           "${SSH[@]}" 'install -d -m 0700 /home/deploy/proypers25-stage'
           scp "${SSH_OPTIONS[@]}" "$WORKDIR/runtime.tar.gz" deploy@89.167.5.87:/home/deploy/proypers25-stage/runtime.tar.gz
-          "${SSH[@]}" 'tar -xzf /home/deploy/proypers25-stage/runtime.tar.gz -C /home/deploy/proypers25-stage && sudo bash /home/deploy/proypers25-stage/install-staging.sh /home/deploy/proypers25-stage 55b20c110cd864795dbdf5fce97df06950409133'
+          "${SSH[@]}" 'tar -xzf /home/deploy/proypers25-stage/runtime.tar.gz -C /home/deploy/proypers25-stage && sudo bash /home/deploy/proypers25-stage/install-staging.sh /home/deploy/proypers25-stage c4c50a45ef1d6f669794336b1f79af9d29a90871'
           check_health() {
-            "${SSH[@]}" 'sudo python3 -c '\''import json,datetime,os
+            "${SSH[@]}" 'sudo python3 -c '\''import json,datetime,os,subprocess
           h=json.load(open("/var/lib/proypers25/heartbeat.json"))
           age=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(h["at"].replace("Z","+00:00"))).total_seconds()
           assert 0<=age<180 and h["tradingActivated"] is False and h["liveReady"] is False
+          assert h["bootId"]==open("/proc/sys/kernel/random/boot_id").read().strip()
+          assert h["pid"]==int(subprocess.check_output(["systemctl","show","proypers25-engine.service","-p","MainPID","--value"]))
           assert os.path.exists("/etc/proypers25/TRADING_DISABLED")
           print("STAGED_HEARTBEAT_OK")'\'''
           }
