@@ -1,0 +1,62 @@
+name: Hetzner execution safety update
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  safety-update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 98c14b14678372a11c8fc56ca625db7854aac94b
+          persist-credentials: false
+      - name: Apply tested safety adapter and verify staged service
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BOOTSTRAP_SSH_KEY"
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          SSH=(ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87)
+          tar -C deploy/hetzner -czf "$WORKDIR/runtime.tar.gz" runtime install-staging.sh
+          "${SSH[@]}" 'install -d -m 0700 /home/deploy/proypers25-safety'
+          scp "${SSH_OPTIONS[@]}" "$WORKDIR/runtime.tar.gz" deploy@89.167.5.87:/home/deploy/proypers25-safety/runtime.tar.gz
+          "${SSH[@]}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          tar -xzf /home/deploy/proypers25-safety/runtime.tar.gz -C /home/deploy/proypers25-safety
+          sudo cp /opt/proypers25/runtime/managed-context.json /home/deploy/proypers25-safety/runtime/managed-context.json
+          if sudo test -f /opt/proypers25/runtime/adaptive-model.json; then
+            sudo cp /opt/proypers25/runtime/adaptive-model.json /home/deploy/proypers25-safety/runtime/adaptive-model.json
+          fi
+          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 98c14b14678372a11c8fc56ca625db7854aac94b
+          REMOTE
+          HEALTH_OK=false
+          for attempt in $(seq 1 45); do
+            if "${SSH[@]}" 'sudo python3 -c '\''import json,datetime,subprocess
+          h=json.load(open("/var/lib/proypers25/heartbeat.json"))
+          age=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(h["at"].replace("Z","+00:00"))).total_seconds()
+          assert 0<=age<180 and h["tradingActivated"] is False
+          assert h["bootId"]==open("/proc/sys/kernel/random/boot_id").read().strip()
+          assert h["pid"]==int(subprocess.check_output(["systemctl","show","proypers25-engine.service","-p","MainPID","--value"]))'\''' >/dev/null 2>&1; then
+              HEALTH_OK=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$HEALTH_OK" != true ]; then
+            "${SSH[@]}" 'sudo journalctl -u proypers25-engine.service -n 12 --no-pager -o cat'
+            exit 1
+          fi
+          "${SSH[@]}" 'systemctl is-active proypers25-engine.service && readlink /opt/proypers25/runtime && sudo test -f /etc/proypers25/TRADING_DISABLED && sudo journalctl -u proypers25-engine.service -n 8 --no-pager -o cat'
+          echo 'EXECUTION_SAFETY_UPDATE_VERIFIED trading_activated=false'
