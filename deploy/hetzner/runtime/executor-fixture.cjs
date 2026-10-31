@@ -39,7 +39,11 @@ global.fetch=async(input,init={})=>{
     {asset,free:String(ledger.qty),locked:'0'}]});
   if(url.pathname==='/sapi/v1/account/apiRestrictions')return response({enableWithdrawals:false,ipRestrict:true,enableReading:true,enableSpotAndMarginTrading:true});
   if(url.pathname==='/api/v3/exchangeInfo')return response({symbols:[info]});
-  if(url.pathname==='/api/v3/openOrders')return response([]);
+  if(url.pathname==='/api/v3/openOrders')return response(ledger.stops.filter(o=>o.status==='NEW'));
+  if(url.pathname==='/api/v3/order'&&method==='GET'){
+    const order=[...ledger.buys,...ledger.stops].find(o=>o.clientOrderId===p.get('origClientOrderId'));
+    return order?response(order):response({code:-2013,msg:'Order does not exist'},400);
+  }
   if(url.pathname==='/api/v3/ticker/24hr')return response({symbol,lastPrice:'100',priceChangePercent:'5',quoteVolume:'10000000'});
   if(url.pathname==='/api/v3/ticker/price')return response([{symbol,price:'100'},{symbol:'BTCUSDT',price:'100'}]);
   if(url.pathname==='/api/v3/ticker/bookTicker')return response({symbol,bidPrice:'99.99',askPrice:'100.01'});
@@ -48,6 +52,7 @@ global.fetch=async(input,init={})=>{
   if(url.pathname==='/api/v3/klines')return response(bars(p.get('symbol'),Number(p.get('limit')||290)));
   if(url.pathname==='/api/v3/order'&&method==='POST'){
     if(p.get('side')==='BUY'){
+      if(mode==='unknown-not-found')throw new Error('FIXTURE_NETWORK_INTERRUPTED_BEFORE_ACCEPTANCE');
       const quote=Number(p.get('quoteOrderQty')),qty=quote/100;
       const order={symbol,orderId:ledger.buys.length+1,status:'FILLED',executedQty:String(qty),cummulativeQuoteQty:String(quote),clientOrderId:p.get('newClientOrderId')};
       ledger.buys.push(order);ledger.qty+=qty*(mode==='accepted-timeout'?0.999:1);ledger.cash-=quote;save();
@@ -56,9 +61,13 @@ global.fetch=async(input,init={})=>{
     }
     const qty=Number(p.get('quantity')),stop=Number(p.get('stopPrice')),price=Number(p.get('price')||stop);
     if(qty*price<5)return response({code:-1013,msg:'Filter failure: MIN_NOTIONAL'},400);
-    if(mode==='protection-rejected')return response({code:-2010,msg:'FIXTURE_PROTECTION_REJECTED'},400);
+    ledger.stopAttempts=(ledger.stopAttempts||0)+1;save();
+    if(mode==='stop-not-accepted'&&ledger.stopAttempts===1)throw new Error('FIXTURE_STOP_NOT_ACCEPTED_BEFORE_DISCONNECT');
+    if(mode==='protection-rejected'||(mode==='stop-retry-recovery'&&ledger.stopAttempts<=2))return response({code:-2010,msg:'FIXTURE_PROTECTION_REJECTED'},400);
     const order={symbol,orderId:100+ledger.stops.length,type:p.get('type'),side:'SELL',status:'NEW',origQty:String(qty),executedQty:'0',stopPrice:String(stop),price:p.get('price'),clientOrderId:p.get('newClientOrderId')};
-    ledger.stops.push(order);save();return response(order);
+    ledger.stops.push(order);save();
+    if(mode==='stop-response-lost')throw new Error('FIXTURE_STOP_RESPONSE_LOST_AFTER_ACCEPTANCE');
+    return response(order);
   }
   throw new Error(`FIXTURE_ROUTE_NOT_DEFINED ${method} ${url.pathname}`);
 };

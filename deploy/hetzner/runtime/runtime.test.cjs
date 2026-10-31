@@ -8,6 +8,22 @@ const {spawnSync}=require('node:child_process');
 const {makeFetch}=require('./readonly.cjs');
 const {Journal,atomic}=require('./journal.cjs');
 const {coverage}=require('./audit.cjs');
+const {createSafety,lock}=require('./execution-safety.cjs');
+test('the entry safety adapter cannot bypass the staging write barrier',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'spot-entry-barrier-'));
+  try{
+    let calls=0;const transport=makeFetch(()=>{calls++;throw new Error('NETWORK_MUST_NOT_RUN');});
+    const safety=createSafety({transport,dir,key:'dummy',secret:'dummy',context:{symbol:'BTCUSDT',lane:'CORE',createdAt:'2026-10-31T10:00:00Z'},
+      repo:process.env.PROYPERS_CHECK_REPO||path.resolve(__dirname,'../../..')});
+    const r=await safety.fetch('https://api.binance.com/api/v3/order?symbol=BTCUSDT&side=BUY&type=MARKET&quoteOrderQty=10',{method:'POST'});
+    assert.equal(r.status,403);assert.equal(calls,0);assert.equal(safety.current().state,'REJECTED');
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('the global execution lock rejects concurrent entry/recovery workers',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'spot-entry-lock-'));
+  try{const release=lock(dir);assert.throws(()=>lock(dir),/ALREADY_RUNNING/);release();lock(dir)();}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('exchangeInfo omits only unused permission expansion while retaining the symbol query',async()=>{
   const {EventEmitter}=require('node:events');let captured;
   const get=makeFetch((url,options,callback)=>{

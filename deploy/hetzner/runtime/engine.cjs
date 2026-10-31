@@ -9,7 +9,7 @@ const repo=process.env.PROYPERS_REPO||'/opt/proypers25/repo';
 const backend=path.join(repo,'backend');
 const guard=path.join(__dirname,'readonly.cjs');
 const journal=new Journal(path.join(state,'intents'));
-const allowed=new Set(['github-spot-production-radar-v42-active.js','github-spot-manual-execution-v10-aware.js','github-spot-auto-exit.js']);
+const allowed=new Set(['github-spot-production-radar-v42-active.js','github-spot-manual-execution-v10-aware.js','github-spot-auto-exit.js','recover-orders.cjs']);
 let stopping=false;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function summary(event,data={}) {console.log(JSON.stringify({at:new Date().toISOString(),event,mode:'STAGING_READ_ONLY',tradingActivated:false,...data}));}
@@ -25,11 +25,15 @@ async function run(script,extra={},timeoutMs=150000) {
   const env={PATH:process.env.PATH,HOME:state,LANG:'C.UTF-8',NODE_OPTIONS:`--require=${guard}`,
     PROYPERS_STAGING_PRELOAD:'1',CREDENTIALS_DIRECTORY:process.env.CREDENTIALS_DIRECTORY,
     PROYPERS_LOCAL_STATE_DIR:state,PROYPERS_MANAGED_CONTEXT:path.join(__dirname,'managed-context.json'),
+    PROYPERS_STATE_DIR:state,PROYPERS_REPO:repo,
     GITHUB_REPOSITORY:'Famarquezh1/proypers25-backend',GITHUB_TOKEN:'LOCAL_SNAPSHOT_ONLY',
     QUBO_V5_ADAPTIVE_CONFIG:path.join(__dirname,'adaptive-model.json'),...extra};
   if(script.includes('radar'))delete env.CREDENTIALS_DIRECTORY;
   return new Promise(resolve=>{
-    const child=spawn(process.execPath,['--require',guard,path.join(backend,'scripts',script)],{cwd:backend,env,detached:true,stdio:['ignore','pipe','pipe']});
+    const safeEntry=script==='github-spot-manual-execution-v10-aware.js'||script==='recover-orders.cjs';
+    const target=safeEntry?path.join(__dirname,'entry-safe.cjs'):path.join(backend,'scripts',script);
+    const args=['--require',guard,target,...(script==='recover-orders.cjs'?['--recover-only']:[])];
+    const child=spawn(process.execPath,args,{cwd:backend,env,detached:true,stdio:['ignore','pipe','pipe']});
     let stdout='',stderr='',timedOut=false,closed=false;
     const stop=()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}};
     const timer=setTimeout(()=>{timedOut=true;stop();},timeoutMs);
@@ -44,6 +48,8 @@ async function run(script,extra={},timeoutMs=150000) {
 }
 async function cycle(scanDue) {
   if(!process.env.CREDENTIALS_DIRECTORY||!fs.existsSync(path.join(process.env.CREDENTIALS_DIRECTORY,'trading-disabled')))throw new Error('TRADING_DISABLED_MARKER_REQUIRED');
+  const recovery=await run('recover-orders.cjs',{},90000);
+  if(recovery.code!==0)summary('NEW_BUYS_BLOCKED_PENDING_RECOVERY');
   const report=await audit();atomic(path.join(state,'position-audit.json'),report);
   summary('ACCOUNT_AUDIT',{reviewRequired:report.reviewRequired,positions:report.positions.length,
     openOrders:report.openOrderCount,security:report.security});
@@ -54,7 +60,7 @@ async function cycle(scanDue) {
     if(scan.code!==0)throw new Error('RADAR_FAILED');
     let signal;try{signal=JSON.parse(scan.stdout.trim());}catch{throw new Error('RADAR_OUTPUT_INVALID');}
     atomic(path.join(state,'radar-last.json'),{at:new Date().toISOString(),signal});
-    if(signal.notify===true){
+    if(signal.notify===true&&recovery.code===0){
       const latestFile=path.join(state,'signal-dedupe.json');
       const latest=fs.existsSync(latestFile)?JSON.parse(fs.readFileSync(latestFile,'utf8')):{};
       const now=Date.now();
@@ -72,7 +78,7 @@ async function cycle(scanDue) {
     }
     atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:false,liveReady:false});
   }
-  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false});
+  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false,newBuysBlocked:recovery.code!==0});
 }
 async function main(){
   fs.mkdirSync(state,{recursive:true,mode:0o700});
