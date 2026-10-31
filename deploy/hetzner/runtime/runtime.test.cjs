@@ -8,6 +8,18 @@ const {spawnSync}=require('node:child_process');
 const {makeFetch}=require('./readonly.cjs');
 const {Journal,atomic}=require('./journal.cjs');
 const {coverage}=require('./audit.cjs');
+test('exchangeInfo omits only unused permission expansion while retaining the symbol query',async()=>{
+  const {EventEmitter}=require('node:events');let captured;
+  const get=makeFetch((url,options,callback)=>{
+    captured=new URL(url);assert.equal(options.family,4);
+    const request=new EventEmitter(),response=new EventEmitter();response.statusCode=200;
+    callback(response);queueMicrotask(()=>{response.emit('data',Buffer.from('{"symbols":[]}'));response.emit('end');});return request;
+  });
+  const response=await get('https://api.binance.com/api/v3/exchangeInfo?symbol=BTCUSDT');
+  assert.equal(captured.searchParams.get('symbol'),'BTCUSDT');
+  assert.equal(captured.searchParams.get('showPermissionSets'),'false');
+  assert.deepEqual(await response.json(),{symbols:[]});
+});
 test('writes are rejected before transport, regardless of activation environment',async()=>{
   let calls=0;const get=makeFetch(()=>{calls++;throw new Error('NETWORK_MUST_NOT_RUN');});
   process.env.PROYPERS_LIVE='true';

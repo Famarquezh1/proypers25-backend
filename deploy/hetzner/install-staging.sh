@@ -57,5 +57,7 @@ WantedBy=multi-user.target
 UNIT
 systemd-analyze verify /etc/systemd/system/proypers25-engine.service
 systemctl daemon-reload
-systemctl enable --now proypers25-engine.service
+systemctl reset-failed proypers25-engine.service || true
+systemctl enable proypers25-engine.service
+systemctl restart proypers25-engine.service
 printf '%s\n' 'STAGING_ENGINE_INSTALLED trading_activated=false'

@@ -72,7 +72,7 @@ async function cycle(scanDue) {
     }
     atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:false,liveReady:false});
   }
-  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false});
+  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false});
 }
 async function main(){
   fs.mkdirSync(state,{recursive:true,mode:0o700});

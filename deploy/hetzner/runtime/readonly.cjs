@@ -25,6 +25,9 @@ function makeFetch(request = https.get) {
       return new Response(JSON.stringify(rows), {status:200,headers:{'content-type':'application/json'}});
     }
     if (!HOSTS.has(target.hostname)) throw new Error('TRANSPORT_HOST_DENIED');
+    // Binance's permission-set expansion can exceed the bounded response budget.
+    // None of these operational scripts consume that expansion; retain symbol/filter data.
+    if(target.pathname==='/api/v3/exchangeInfo'&&!target.searchParams.has('showPermissionSets'))target.searchParams.set('showPermissionSets','false');
     const headers = new Headers(init.headers || input?.headers || {});
     if (headers.has('X-MBX-APIKEY') && !/^api[1-4]?\.binance\.com$/.test(target.hostname)) throw new Error('CREDENTIAL_DESTINATION_DENIED');
     return new Promise((resolve, reject) => {
