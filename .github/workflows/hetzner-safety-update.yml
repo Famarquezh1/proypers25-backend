@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: hetzner-bootstrap-check
   cancel-in-progress: false
@@ -13,8 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 98c14b14678372a11c8fc56ca625db7854aac94b
+          ref: 14fb834a4bd754d7a47a80ba1c5dc99213b304ab
           persist-credentials: false
+      - name: Inventory legacy executors without changing their state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/hetzner/runtime/collect-cutover.cjs deploy/hetzner/runtime/cutover-inventory.json
       - name: Apply tested safety adapter and verify staged service
         env:
           BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
@@ -39,7 +44,7 @@ jobs:
           if sudo test -f /opt/proypers25/runtime/adaptive-model.json; then
             sudo cp /opt/proypers25/runtime/adaptive-model.json /home/deploy/proypers25-safety/runtime/adaptive-model.json
           fi
-          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 98c14b14678372a11c8fc56ca625db7854aac94b
+          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 14fb834a4bd754d7a47a80ba1c5dc99213b304ab
           REMOTE
           HEALTH_OK=false
           for attempt in $(seq 1 45); do
