@@ -5,7 +5,7 @@ release_id=$2
 test "$(git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
 test -f /etc/proypers25/TRADING_DISABLED
 test -f "$source_dir/runtime/managed-context.json"
-PROYPERS_CHECK_REPO=/opt/proypers25/repo node --test "$source_dir/runtime/runtime.test.cjs"
+PROYPERS_CHECK_REPO=/opt/proypers25/repo node --test "$source_dir/runtime/runtime.test.cjs" "$source_dir/runtime/exit-safety.test.cjs" "$source_dir/runtime/cutover-check.test.cjs"
 PROYPERS_CHECK_REPO=/opt/proypers25/repo node "$source_dir/runtime/executor-check.cjs"
 target="/opt/proypers25/releases/$release_id"
 install -d -m 0750 -o root -g spot "$target"

@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: hetzner-bootstrap-check
   cancel-in-progress: false
@@ -15,6 +16,10 @@ jobs:
         with:
           ref: KIT_REF
           persist-credentials: false
+      - name: Inventory legacy executors without changing their state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/hetzner/runtime/collect-cutover.cjs deploy/hetzner/runtime/cutover-inventory.json
       - name: Apply tested safety adapter and verify staged service
         env:
           BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}

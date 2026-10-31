@@ -31,7 +31,7 @@ async function run(script,extra={},timeoutMs=150000) {
   if(script.includes('radar'))delete env.CREDENTIALS_DIRECTORY;
   return new Promise(resolve=>{
     const safeEntry=script==='github-spot-manual-execution-v10-aware.js'||script==='recover-orders.cjs';
-    const target=safeEntry?path.join(__dirname,'entry-safe.cjs'):path.join(backend,'scripts',script);
+    const target=safeEntry?path.join(__dirname,'entry-safe.cjs'):script==='github-spot-auto-exit.js'?path.join(__dirname,'exit-safe.cjs'):path.join(backend,'scripts',script);
     const args=['--require',guard,target,...(script==='recover-orders.cjs'?['--recover-only']:[])];
     const child=spawn(process.execPath,args,{cwd:backend,env,detached:true,stdio:['ignore','pipe','pipe']});
     let stdout='',stderr='',timedOut=false,closed=false;
@@ -53,14 +53,16 @@ async function cycle(scanDue) {
   const report=await audit();atomic(path.join(state,'position-audit.json'),report);
   summary('ACCOUNT_AUDIT',{reviewRequired:report.reviewRequired,positions:report.positions.length,
     openOrders:report.openOrderCount,security:report.security});
+  let newBuysBlocked=recovery.code!==0||report.reviewRequired>0;
   if(scanDue){
     // Original exit chain, including XEC/V61/V10/orphans, with every mutation blocked.
     const exits=await run('github-spot-auto-exit.js',{},150000);
+    if(exits.code!==0){newBuysBlocked=true;summary('NEW_BUYS_BLOCKED_EXIT_CHECK_FAILED');}
     const scan=await run('github-spot-production-radar-v42-active.js',{},180000);
     if(scan.code!==0)throw new Error('RADAR_FAILED');
     let signal;try{signal=JSON.parse(scan.stdout.trim());}catch{throw new Error('RADAR_OUTPUT_INVALID');}
     atomic(path.join(state,'radar-last.json'),{at:new Date().toISOString(),signal});
-    if(signal.notify===true&&recovery.code===0){
+    if(signal.notify===true&&!newBuysBlocked){
       const latestFile=path.join(state,'signal-dedupe.json');
       const latest=fs.existsSync(latestFile)?JSON.parse(fs.readFileSync(latestFile,'utf8')):{};
       const now=Date.now();
@@ -78,7 +80,7 @@ async function cycle(scanDue) {
     }
     atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:false,liveReady:false});
   }
-  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false,newBuysBlocked:recovery.code!==0});
+  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false,newBuysBlocked});
 }
 async function main(){
   fs.mkdirSync(state,{recursive:true,mode:0o700});
