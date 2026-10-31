@@ -1,0 +1,43 @@
+name: Hetzner staged runtime health
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read VPS state without trading or private account details
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo test -f /etc/proypers25/TRADING_DISABLED
+          sudo systemctl show proypers25-engine.service -p ActiveState -p SubState -p MainPID -p NRestarts -p ExecMainStatus -p MemoryCurrent
+          sudo journalctl -u proypers25-engine.service -n 12 --no-pager -o cat
+          sudo python3 - <<'PY'
+          import json,pathlib,re,collections
+          base=pathlib.Path('/var/lib/proypers25')
+          for name in ['heartbeat.json','shadow-status.json']:
+              p=base/name
+              if p.exists(): print(name,json.dumps(json.load(open(p))))
+          p=base/'position-audit.json'
+          if p.exists():
+              a=json.load(open(p))
+              print('AUDIT_SUMMARY',json.dumps({'security':a['security'],'reviewRequired':a['reviewRequired'],'positionStatuses':dict(collections.Counter(p['status'] for p in a['positions'])),'openOrderCount':a['openOrderCount']}))
+          for p in base.glob('*.last.json'):
+              d=json.load(open(p))
+              text=d.get('stderr','')
+              errors=sorted(set(re.findall(r'MODULE_NOT_FOUND|EACCES|ENOENT|TRANSPORT_[A-Z_]+|GITHUB_ROUTE_DENIED|VPS_STAGING_WRITE_BLOCKED|MANAGED_CONTEXT_REQUIRED|HTTP [0-9]{3}|SCRIPT_NOT_ALLOWED',text)))
+              print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text)}))
+          PY
+          REMOTE
