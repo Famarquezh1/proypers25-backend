@@ -22,6 +22,12 @@ jobs:
           test -n "$BOOTSTRAP_SSH_KEY"
           test -n "$BINANCE_API_KEY"
           test -n "$BINANCE_SECRET_KEY"
+          python3 - <<'PY'
+          import os,json
+          key=os.environ["BINANCE_API_KEY"]
+          secret=os.environ["BINANCE_SECRET_KEY"]
+          print(json.dumps({"credentialFormat":{"keyHasWhitespace":any(c.isspace() for c in key),"secretHasWhitespace":any(c.isspace() for c in secret),"keyAsciiAlphanumeric":key.isascii() and key.isalnum(),"secretAsciiAlphanumeric":secret.isascii() and secret.isalnum(),"keyEqualsSecret":key==secret},"tradingActivated":False}))
+          PY
           umask 077
           WORKDIR=$(mktemp -d)
           trap 'rm -rf "$WORKDIR"' EXIT
@@ -48,29 +54,38 @@ jobs:
           "${SSH[@]}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           sudo test -f /etc/proypers25/TRADING_DISABLED
-          sudo python3 - <<'PY'
-          from pathlib import Path
-          p = Path('/opt/proypers25/preflight.cjs')
-          source = p.read_text()
-          old = '  if (!response.ok) throw new Error(`BINANCE_HTTP_${response.status}`);'
-          new = '''  if (!response.ok) {
-              const failure = await response.json().catch(() => ({}));
-              console.error(JSON.stringify({mode: 'READ_ONLY', endpoint,
-                httpStatus: response.status,
-                binanceCode: Number.isSafeInteger(failure.code) ? failure.code : null,
-                tradingActivated: false}));
-              throw new Error(`BINANCE_HTTP_${response.status}`);
-            }'''
-          if old in source:
-              p.write_text(source.replace(old, new, 1))
-          elif 'binanceCode: Number.isSafeInteger' not in source:
-              raise SystemExit('UNEXPECTED_PROBE_VERSION')
-          PY
-          sudo node --check /opt/proypers25/preflight.cjs
-          if ! sudo systemctl start proypers25-preflight.service; then
-            sudo journalctl -u proypers25-preflight.service --since '-1 minute' --no-pager -o cat
-            exit 1
-          fi
-          sudo journalctl -u proypers25-preflight.service --since '-1 minute' --no-pager -o cat
-          printf '%s\n' 'PRIVATE_PREFLIGHT_COMPLETED trading_disabled=true'
+          sudo tee /opt/proypers25/ipv4-preflight.cjs >/dev/null <<'JS'
+          'use strict';
+          const https = require('node:https');
+          global.fetch = async (url, options = {}) => new Promise((resolve, reject) => {
+            const target = new URL(url);
+            if (target.origin !== 'https://api.binance.com' || options.method !== 'GET') {
+              return reject(new Error('ENDPOINT_NOT_ALLOWED'));
+            }
+            const request = https.get(target, {family: 4, headers: options.headers,
+              signal: options.signal}, response => {
+              console.log(JSON.stringify({transport:'IPV4',localAddress:response.socket.localAddress,
+                peerFamily:response.socket.remoteFamily,tradingActivated:false}));
+              const chunks = [];
+              let size = 0;
+              response.on('data', chunk => {
+                size += chunk.length;
+                if (size > 4194304) response.destroy(new Error('RESPONSE_TOO_LARGE'));
+                else chunks.push(chunk);
+              });
+              response.on('error', reject);
+              response.on('end', () => resolve({ok:response.statusCode >= 200 && response.statusCode < 300,
+                status:response.statusCode, json:async () => JSON.parse(Buffer.concat(chunks).toString('utf8'))}));
+            });
+            request.on('error', reject);
+          });
+          require('/opt/proypers25/preflight.cjs').main().catch(() => {
+            console.error('IPV4_READONLY_CHECK_FAILED');
+            process.exitCode = 1;
+          });
+          JS
+          sudo chmod 0644 /opt/proypers25/ipv4-preflight.cjs
+          sudo node --check /opt/proypers25/ipv4-preflight.cjs
+          sudo systemd-run --quiet --wait --pipe --collect --uid=spot -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes -p MemoryMax=256M -p RuntimeMaxSec=90 -p LoadCredential=binance-key:/etc/proypers25/binance-key -p LoadCredential=binance-secret:/etc/proypers25/binance-secret /usr/bin/node /opt/proypers25/ipv4-preflight.cjs
+          printf '%s\n' 'IPV4_PRIVATE_PREFLIGHT_COMPLETED trading_disabled=true'
           REMOTE
