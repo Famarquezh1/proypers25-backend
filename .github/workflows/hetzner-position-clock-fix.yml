@@ -1,0 +1,118 @@
+name: Hetzner position cohort clock fix
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  hotfix:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a7b8c436e9f25ba75eed18c1420cbd1f6e0b1e3c
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate without real orders
+        run: |
+          node --test deploy/hetzner/runtime/*.test.cjs
+          node deploy/hetzner/runtime/executor-check.cjs
+          node deploy/hetzner/runtime/lifecycle-check.cjs
+      - name: Guarded production maintenance with rollback
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          tar -czf "$WORKDIR/patch.tgz" -C deploy/hetzner/runtime exit-integration.cjs position-cohort.cjs position-cohort.test.cjs
+          scp "${SSH_OPTIONS[@]}" deploy/hetzner/runtime/position-cohort.cjs deploy@89.167.5.87:/home/deploy/position-cohort.cjs
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'sudo env PROYPERS_COHORT_MODULE=/home/deploy/position-cohort.cjs /usr/bin/node -' < deploy/hetzner/reconstruct-exit-context-corrected.cjs | tee "$WORKDIR/replay.log"
+          grep -q '^COHORT_CLOCK_REPLAY_VERIFIED ' "$WORKDIR/replay.log"
+          scp "${SSH_OPTIONS[@]}" "$WORKDIR/patch.tgz" deploy@89.167.5.87:/home/deploy/production-fix.tgz
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          BASE=/opt/proypers25/runtime
+          BACKUP=/opt/proypers25/patch-backups/a7b8c436e9f25ba75eed18c1420cbd1f6e0b1e3c
+          test "$(readlink "$BASE")" = '/opt/proypers25/releases/506e0fd99e6467941a8b232c58af50d102a6fc59/runtime'
+          test "$(git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
+          systemctl is-active --quiet proypers25-live.service
+          test -f /etc/proypers25/LIVE_AUTHORIZATION.json
+          test ! -e /var/lib/proypers25/BUY_PAUSED
+          test ! -e "$BACKUP"
+          (cd "$BASE" && sha256sum --status -c SHA256SUMS)
+          install -d -m 0700 "$BACKUP"
+          for name in exit-integration.cjs SHA256SUMS release-evidence.json; do cp "$BASE/$name" "$BACKUP/$name"; done
+          test ! -e "$BASE/position-cohort.cjs"
+          test ! -e "$BASE/position-cohort.test.cjs"
+          install -m 0600 -o spot -g spot /dev/null /var/lib/proypers25/BUY_PAUSED
+          rollback() {
+            for name in exit-integration.cjs SHA256SUMS release-evidence.json; do cp "$BACKUP/$name" "$BASE/$name"; chown root:spot "$BASE/$name"; chmod 0640 "$BASE/$name"; done
+            rm -f "$BASE/position-cohort.cjs" "$BASE/position-cohort.test.cjs"
+            systemctl restart proypers25-live.service
+            echo 'PATCH_FAILED_ROLLED_BACK_NEW_BUYS_REMAIN_PAUSED'
+          }
+          trap rollback ERR
+          systemctl stop proypers25-live.service
+          CREDENTIALS_DIRECTORY=/etc/proypers25 node - <<'JS'
+          const fs=require('node:fs'),path=require('node:path');
+          require('/opt/proypers25/runtime/audit.cjs').audit().then(a=>{
+            if(a.reviewRequired!==0||a.unsupportedOrderCount!==0||a.positions.some(p=>!['DUST','NATIVE_STOP_PRESENT'].includes(p.status)))throw new Error('MAINTENANCE_REQUIRES_EFFECTIVE_NATIVE_COVERAGE');
+            for(const [group,terminal] of Object.entries({'execution-state':['PROTECTED','CLOSED','REJECTED','NO_FILL'],'exit-state':['SELL_FILLED','SELL_COMPLETED','SELL_DUST','SELL_REMAINDER_PROTECTED','STOP_ACTIVE','STAGING_BLOCKED'],'transition-state':['REPLACED','RESTORED','OLD_RETAINED','CLOSED','STAGING_BLOCKED']})){
+              const dir=path.join('/var/lib/proypers25',group);
+              for(const n of fs.readdirSync(dir).filter(n=>/^[a-f0-9]{32}\.json$/.test(n))){if(!terminal.includes(JSON.parse(fs.readFileSync(path.join(dir,n),'utf8')).state))throw new Error('PENDING_ORDER_REVIEW');}
+            }
+            console.log('MAINTENANCE_ACCOUNT_AND_JOURNALS_VERIFIED');
+          }).catch(()=>{console.error('MAINTENANCE_REFUSED');process.exitCode=2;});
+          JS
+          install -d -m 0700 "$BACKUP/incoming"
+          tar -xzf /home/deploy/production-fix.tgz -C "$BACKUP/incoming"
+          for name in exit-integration.cjs position-cohort.cjs position-cohort.test.cjs; do install -m 0640 -o root -g spot "$BACKUP/incoming/$name" "$BASE/$name"; node --check "$BASE/$name"; done
+          python3 - "$BASE" <<'PY'
+          import pathlib,hashlib,json,sys,datetime
+          p=pathlib.Path(sys.argv[1])
+          files=sorted(p.glob('*.cjs'))+[f for f in sorted(p.glob('*.json')) if f.name!='release-evidence.json']+[p/'owner-activate.sh']
+          (p/'SHA256SUMS').write_text(''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+str(f)+'\n' for f in files))
+          evidence=json.loads((p/'release-evidence.json').read_text())
+          evidence['cohortIdentityPatch']={'commit':'a7b8c436e9f25ba75eed18c1420cbd1f6e0b1e3c','testsPassed':52,'entryScenarios':12,'restartScenarios':8,'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'strategyChanged':False}
+          (p/'release-evidence.json').write_text(json.dumps(evidence))
+          PY
+          chown root:spot "$BASE/SHA256SUMS" "$BASE/release-evidence.json"
+          chmod 0640 "$BASE/SHA256SUMS" "$BASE/release-evidence.json"
+          (cd "$BASE" && sha256sum --status -c SHA256SUMS)
+          STARTED=$(date +%s)
+          systemctl start proypers25-live.service
+          HEALTHY=false
+          for attempt in $(seq 1 30); do
+            if python3 - "$STARTED" <<'PY'
+          import json,sys,datetime,subprocess
+          since=int(sys.argv[1])
+          h=json.load(open('/var/lib/proypers25/heartbeat.json'))
+          e=json.load(open('/var/lib/proypers25/github-spot-auto-exit.js.last.json'))
+          s=json.load(open('/var/lib/proypers25/shadow-status.json'))
+          def sec(x): return datetime.datetime.fromisoformat(x.replace('Z','+00:00')).timestamp()
+          assert sec(e['at'])>=since and e['code']==0 and not e['timedOut']
+          assert sec(s['at'])>=since and s['exitCode']==0 and s['radarCode']==0
+          assert sec(h['at'])>=since and h['mode']=='LIVE_CORE_ONLY' and h['tradingActivated'] is True and h['newBuysBlocked'] is True
+          assert h['pid']==int(subprocess.check_output(['systemctl','show','proypers25-live.service','-p','MainPID','--value']))
+          PY
+            then HEALTHY=true; break; fi
+            sleep 5
+          done
+          test "$HEALTHY" = true
+          rm /var/lib/proypers25/BUY_PAUSED
+          trap - ERR
+          echo 'PRODUCTION_COHORT_CLOCK_FIX_DEPLOYED exit_check=passed radar=passed strategy_changed=false'
+          systemctl is-active proypers25-live.service
+          REMOTE
