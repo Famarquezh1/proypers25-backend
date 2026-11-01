@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 444c9b2b81ca3f027fe13cfb02f634cca2ef35f6
+          ref: 506e0fd99e6467941a8b232c58af50d102a6fc59
           persist-credentials: false
       - name: Inventory legacy executors without changing their state
         env:
@@ -44,7 +44,7 @@ jobs:
           if sudo test -f /opt/proypers25/runtime/adaptive-model.json; then
             sudo cp /opt/proypers25/runtime/adaptive-model.json /home/deploy/proypers25-safety/runtime/adaptive-model.json
           fi
-          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 444c9b2b81ca3f027fe13cfb02f634cca2ef35f6
+          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 506e0fd99e6467941a8b232c58af50d102a6fc59
           REMOTE
           HEALTH_OK=false
           for attempt in $(seq 1 45); do
