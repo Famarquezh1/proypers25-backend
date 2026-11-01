@@ -1,0 +1,34 @@
+name: Hetzner fixed first-15 trade attribution
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-first15-readonly-analysis
+  cancel-in-progress: false
+jobs:
+  reconstruct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 81ce6937e00b59f7d5ee7a1095d627279046ec15
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate commission and inventory attribution without network
+        run: node --test deploy/hetzner/reconstruct-first15.test.cjs
+      - name: Read Binance executions and public historical prices without sending orders
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo /usr/bin/node -' < deploy/hetzner/reconstruct-first15.cjs
