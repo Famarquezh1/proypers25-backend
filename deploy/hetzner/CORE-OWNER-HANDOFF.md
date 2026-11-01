@@ -1,4 +1,16 @@
-# CORE owner handoff — verified 2026-11-01 UTC
+# CORE production handoff — owner activated 2026-11-01 UTC
+
+Owner activation succeeded: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41266869602
+Read-only post-activation health succeeded: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41267073894
+
+Verified service active/running, heartbeat LIVE_CORE_ONLY, tradingActivated=true, liveReady=true, newBuysBlocked=false. Recovery, original CORE radar and exit scripts completed with code 0 and no timeout. Authenticated account audit: reviewRequired=0, three dust balances, zero open orders; Spot enabled, withdrawals disabled, IP restricted, Futures/transfers disabled. V10 remains observation only. Service enabled at server boot. This verifies autonomous live operation, not a completed real-money buy/sell cycle; no real trade has been confirmed. Entries require valid original CORE signals.
+
+The owner personally submitted the final financial confirmation; the assistant only dispatched read-only health checks after activation. Old financial executors remain isolated per the passing activation preflight.
+
+---
+
+## Pre-activation evidence (historical)
+
 
 ## Installed and tested
 Runtime release: `506e0fd99e6467941a8b232c58af50d102a6fc59`.
