@@ -37,3 +37,15 @@ test('original resolver quantities/native protection stay unchanged while contam
 test('missing or corrupt filters refuse to replace lifecycle identity',()=>{
   assert.throws(()=>splitInventory({trades:scenario(),orders:[],baseAsset:'SOL',info:{filters:[]}}),/FILTER_REVIEW/);
 });
+test('sold dust bypasses identity reconciliation; operable and protected inventory still reaches it',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const {transform}=require('./exit-integration.cjs');
+  const src=fs.readFileSync(path.resolve(__dirname,'../../../backend/scripts/github-spot-auto-exit-legacy.js'),'utf8');
+  const out=transform(src,'github-spot-auto-exit-legacy.js');
+  const start=out.indexOf('    if (require('),end=out.indexOf('    const multipleManagedBuys =');
+  assert(start>=0&&end>start&&end<out.indexOf('    const managed = resolveManagedResidual'));
+  const reach=new Function('require','info','ownedTotal','currentPrice','openProtect','symbol',`let reached=false; for(let i=0;i<1;i++){${out.slice(start,end)} reached=true;}return reached;`);
+  assert.equal(reach(require,info,.00001,100,null,'TESTUSDT'),false);
+  assert.equal(reach(require,info,1,100,null,'TESTUSDT'),true);
+  assert.equal(reach(require,info,.00001,100,{orderId:1},'TESTUSDT'),true);
+});
