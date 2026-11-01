@@ -40,7 +40,7 @@ jobs:
               d=json.load(open(p))
               text=d.get('stderr','')
               errors=sorted(set(re.findall(r'MODULE_NOT_FOUND|EACCES|ENOENT|TRANSPORT_[A-Z_]+|GITHUB_ROUTE_DENIED|VPS_STAGING_WRITE_BLOCKED|MANAGED_CONTEXT_REQUIRED|HTTP [0-9]{3}|SCRIPT_NOT_ALLOWED',text)))
-              print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text)}))
+              print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text),'diagnosticCodes':sorted(set(re.findall(r'\b[A-Z][A-Z_]{5,}\b',text)))}))
           PY
           sudo env CREDENTIALS_DIRECTORY=/etc/proypers25 /usr/bin/node - <<'JS'
           const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');
@@ -71,7 +71,7 @@ jobs:
             const valid=new Set(audit.positions.map(p=>p.symbol).filter(Boolean));
             for(const s of symbols)if(!valid.has(s)&&!Object.keys(groups['execution-state']).length)symbols.delete(s);
             if(symbols.size>40)throw new Error('HISTORY_SYMBOL_LIMIT');
-            const rows=[];let complete=true;
+            const rows=[];let complete=true,spent=0,received=0,nativeStopExecutions=0;
             for(const symbol of symbols){
               const orders=[];
               for(let from=start;from<end;from+=23*3600000){
@@ -83,12 +83,13 @@ jobs:
               const unique=[...new Map(orders.map(o=>[o.orderId,o])).values()];
               const managed=unique.filter(o=>/^proypers-gh-/.test(o.clientOrderId||''));
               const executed=managed.filter(o=>Number(o.executedQty)>0);
+              for(const o of executed){if(o.side==='BUY')spent+=Number(o.cummulativeQuoteQty||0);if(o.side==='SELL'){received+=Number(o.cummulativeQuoteQty||0);if(['STOP_LOSS','STOP_LOSS_LIMIT'].includes(o.type))nativeStopExecutions++;}}
               rows.push({symbol,managedOrders:managed.length,executedBuys:executed.filter(o=>o.side==='BUY').length,executedSells:executed.filter(o=>o.side==='SELL').length,
                 otherExecutedOrders:unique.filter(o=>!/^proypers-gh-/.test(o.clientOrderId||'')&&Number(o.executedQty)>0).length,
                 lastManagedExecutionAt:executed.length?new Date(Math.max(...executed.map(o=>Number(o.updateTime)))).toISOString():null});
             }
             let radar=null;try{const r=JSON.parse(fs.readFileSync(path.join(base,'radar-last.json'),'utf8'));radar={at:r.at,notify:r.signal?.notify===true,symbol:r.signal?.symbol||null,reason:r.signal?.reason||null};}catch{}
-            console.log('TRADE_HISTORY_SUMMARY',JSON.stringify({since:auth.authorizedAt,through:new Date(end).toISOString(),scope:'VPS intent and currently held symbols',complete,groups,radar,rows}));
+            console.log('TRADE_HISTORY_SUMMARY',JSON.stringify({since:auth.authorizedAt,through:new Date(end).toISOString(),scope:'VPS intent and currently held symbols',complete,groups,radar,rows,cashDifferencePctBeforeFeesAndRemainingDust:spent>0?(received-spent)/spent*100:null,nativeStopExecutions}));
           })().catch(e=>{console.error(/^[A-Z_0-9]+$/.test(e.message)?e.message:'READ_ONLY_HISTORY_FAILED');process.exitCode=1;});
           JS
           REMOTE
