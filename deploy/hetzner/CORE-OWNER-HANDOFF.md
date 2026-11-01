@@ -13,19 +13,19 @@ CORE candidate service is installed, disabled and inactive. Staging remains read
 Local staging refusal was authenticated as an absent Binance order and archived with private evidence; no actual exchange order was deleted or canceled.
 
 ## Final current preflight — after authorized maintenance
-Evidence: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41266166660
-Result: readyToActivate=false, tradingActivated=false.
+Evidence: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41266474141
+Result: readyToActivate=true, blocks=[], tradingActivated=false.
 All required legacy financial writers are disabled and drained. Inventory is complete; legacyWritersIsolated=true, reasons=[].
 Three dust balances, zero open orders; no pending execution-review blocker.
-The only remaining block is OWNER_MUST_ENABLE_SPOT_PERMISSION.
+The owner enabled the dedicated API Spot permission. A fresh authenticated check from the VPS passed all gates. This is readiness evidence, not activation or a real-money test.
 The disabled public CORE detector's old queued run remains advisory only.
 
 ## Cutover boundary
 An earlier automatic review rejected disabling Windows before an authorized maintenance window. The owner subsequently explicitly authorized that window. Windows auto-exit and dust-sale workflows were then disabled through GitHub, and fresh read-only verification proved all required legacy writers isolated and drained. No live activation or order placement occurred.
 
-The owner must enable only the required Spot permission on the dedicated VPS Binance API, retaining IP restriction and no withdrawals, Futures or transfers.
+The dedicated VPS API now has the required Spot permission, with the existing IP restriction and no withdrawals, Futures or transfers checked by the passing preflight.
 
-The manual GitHub workflow `Hetzner OWNER - preflight or activate CORE` defaults to check-only. Its activate-core option requires the owner-entered exact financial confirmation and passing a fresh server/account/cutover preflight. It will refuse the current state until the owner enables Spot and a fresh preflight passes.
+The manual GitHub workflow `Hetzner OWNER - preflight or activate CORE` defaults to check-only. Its activate-core option requires the owner-entered exact financial confirmation and passing a fresh server/account/cutover preflight. It reruns the fresh preflight immediately before activation; new account or legacy-writer changes can still block activation.
 The owner must perform the final financial activation personally; the assistant must not dispatch activate-core.
 After a successful owner activation, verify a fresh LIVE_CORE_ONLY heartbeat and systemd process identity. Actual entries still require a valid original CORE signal; do not force a trade to demonstrate activity.
 No actual-money complete trade cycle has been tested.
