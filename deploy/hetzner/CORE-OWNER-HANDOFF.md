@@ -1,3 +1,16 @@
+## Operational fix deployed — 2026-11-01
+
+Source patch: `cf4d62fbfe4c4de88e5d04fadee5669fea34a4cc`.
+Production deployment: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41349611330
+
+Root cause: a sold GIGGLE remainder was below Binance LOT_SIZE minimum and the legacy exit chain attempted to place protection, raising "Protection quantity below minimum" and terminating the exit check. The runtime integration now recognizes residual quantities below LOT_SIZE or notional minima before exit/protection processing. Existing native protection is retained; invalid filters still fail closed; operable positions continue through the unchanged strategy.
+The engine now retains failed/missing/stale exit-check health across intervening minute cycles and reports liveReady=false while any operational buy block exists. A fresh successful exit check restores readiness when account/recovery checks also pass.
+44 tests, 12 entry scenarios and 8 restart scenarios passed in GitHub. Deployment paused new entries, stopped the existing service, verified dust-only account/no open orders/terminal journals, installed only the operational patch, refreshed file integrity evidence, and verified a fresh successful exit and radar cycle before removing the temporary maintenance pause. Original strategy pin, owner authorization, credentials, limits and systemd settings were preserved. Root-only backup and rollback are available under the patch commit ID. Runtime base release remains 506e0fd99e6467941a8b232c58af50d102a6fc59 with the patch recorded in release-evidence.json.
+
+Next useful engineering work: fee-adjusted per-trade outcomes including residual balances, daily strategy-vs-market measurement, and alerts when heartbeat or protection checks become unhealthy. Do not infer profitability from successful order execution or green diagnostics.
+
+---
+
 # CORE production handoff — owner activated 2026-11-01 UTC
 
 Owner activation succeeded: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41266869602
