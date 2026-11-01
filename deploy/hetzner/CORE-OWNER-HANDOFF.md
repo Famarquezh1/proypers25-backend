@@ -12,22 +12,20 @@ V10 runs with original calibration, resource limits and no execution credentials
 CORE candidate service is installed, disabled and inactive. Staging remains read-only. Root-only live authorization is absent.
 Local staging refusal was authenticated as an absent Binance order and archived with private evidence; no actual exchange order was deleted or canceled.
 
-## Final current preflight
-Evidence: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41264956941
+## Final current preflight — after authorized maintenance
+Evidence: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41266166660
 Result: readyToActivate=false, tradingActivated=false.
+All required legacy financial writers are disabled and drained. Inventory is complete; legacyWritersIsolated=true, reasons=[].
 Three dust balances, zero open orders; no pending execution-review blocker.
-Remaining blocks:
-- INCOMPLETE_EXECUTOR_INVENTORY (collector did not establish complete inventory; do not waive).
-- Windows exit workflow active and not drained.
-- Manual dust-sale workflow active.
-- Dedicated VPS API does not yet have Spot permission.
-The disabled public CORE detector's old queued run is advisory only, not authority to bypass financial-writer isolation.
+The only remaining block is OWNER_MUST_ENABLE_SPOT_PERMISSION.
+The disabled public CORE detector's old queued run remains advisory only.
 
 ## Cutover boundary
-Automatic approval review rejected disabling the Windows exit workflow while its VPS replacement is inactive and the API remains read-only: it would remove the existing exit backup before a coordinated handover. The disable action was canceled. No indirect workaround or live activation was performed.
-The final handover must resolve inventory completeness, coordinate disabling/draining legacy financial writers and confirm the owner's Spot API change. Never enable withdrawals, Futures or transfers.
+An earlier automatic review rejected disabling Windows before an authorized maintenance window. The owner subsequently explicitly authorized that window. Windows auto-exit and dust-sale workflows were then disabled through GitHub, and fresh read-only verification proved all required legacy writers isolated and drained. No live activation or order placement occurred.
 
-The manual GitHub workflow `Hetzner OWNER - preflight or activate CORE` defaults to check-only. Its activate-core option requires the owner-entered exact financial confirmation and passing a fresh server/account/cutover preflight. It will refuse the current state.
+The owner must enable only the required Spot permission on the dedicated VPS Binance API, retaining IP restriction and no withdrawals, Futures or transfers.
+
+The manual GitHub workflow `Hetzner OWNER - preflight or activate CORE` defaults to check-only. Its activate-core option requires the owner-entered exact financial confirmation and passing a fresh server/account/cutover preflight. It will refuse the current state until the owner enables Spot and a fresh preflight passes.
 The owner must perform the final financial activation personally; the assistant must not dispatch activate-core.
 After a successful owner activation, verify a fresh LIVE_CORE_ONLY heartbeat and systemd process identity. Actual entries still require a valid original CORE signal; do not force a trade to demonstrate activity.
 No actual-money complete trade cycle has been tested.
