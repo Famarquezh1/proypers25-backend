@@ -94,3 +94,14 @@ The staged adapter refuses cancel-first, bulk/OCO cancellation, cancelReplace an
 The cutover collector checked entry, auto-exit and manual dust workflows and all five non-terminal run statuses. On this run all three workflows remained active, and auto-exit had unfinished work. The handover assessment correctly returned legacyWritersIsolated=false. No existing protective monitoring was disabled. Missing access, stale or truncated inventory fails closed; this administrative snapshot is not reusable authorization for a later activation.
 
 The VPS retains TRADING_DISABLED and liveReady=false. Remaining live engineering includes a fully validated replacement/exit path, durable managed-position lifecycle, V10 detector/calibration migration and a drained cutover. Do not remove the read-only transport to activate this kit. Binance documents that cancelReplace can cancel the old order while placement of the new order fails: https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#cancel-an-existing-order-and-send-a-new-order-trade .
+
+
+### Legacy new-buy pause applied and verified — 2026-10-31 (Punta Arenas)
+
+The legacy entry workflow spot-manual-approval.yml is disabled manually. Main commit df2834e9ebc9d390549cf7b3430ac0c18917adb3 adds a maintenance BUY guard to spot-auto-exit-local.yml through NODE_OPTIONS, inherited by nested exit workers. This also pauses pyramid/add-on BUYs. Existing GET, SELL, cancellation and GitHub notification behavior is unchanged. No live exchange call was dispatched manually during verification.
+
+Run 41257884854, job 124704834769, completed successfully using this commit: all three network-isolated maintenance guard tests passed on Windows, followed by successful completion of the pre-existing exit/protection chain (zero sells and zero protection updates reported). The legacy logs' two open-position counters correspond to balances that cannot meet quantity/notional filters; they must not be represented as fully protected live positions. No extra purchase was made to bring a residue above the minimum.
+
+Read-only VPS health run 41234929483, job 124707874449, confirmed active/running, NRestarts=0 and a fresh heartbeat. Authenticated account audit classified all three balances DUST, with no open orders or review-required operable balances. Reading remains enabled, Spot/Futures/transfer/withdrawal permissions disabled, IP restriction enabled. The VPS remains STAGING_READ_ONLY, tradingActivated=false and liveReady=false. The separate heartbeat field newBuysBlocked is only the reconciliation interlock, not an activation switch; the immutable transport still denies all writes.
+
+This is a safe maintenance pause, not a completed Windows-to-VPS trading cutover. Legacy exit monitoring stays enabled. The migration limitations in the prior section still apply.
