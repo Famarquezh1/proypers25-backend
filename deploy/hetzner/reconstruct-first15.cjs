@@ -44,7 +44,7 @@ async function main(){
     if(!r.ok)throw new Error('RECONSTRUCTION_HTTP_'+r.status);return r.json();
   }
   const records=fs.readdirSync(path.join(root,'execution-state')).filter(n=>/^[a-f0-9]{32}\.json$/.test(n)).map(n=>JSON.parse(fs.readFileSync(path.join(root,'execution-state',n),'utf8')));
-  const wanted=records.filter(r=>Number(r.buy?.executedQty)>0&&Number(r.buy.updateTime||r.buy.time)<=CUTOFF);
+  const wanted=records.filter(r=>Number(r.buy?.executedQty)>0&&Number(r.buy.updateTime||r.buy.time||r.buy.transactTime||Date.parse(r.createdAt))<=CUTOFF);
   if(wanted.length!==15)throw new Error('FIXED_COHORT_IS_NOT_15');
   const symbols=[...new Set(wanted.map(r=>r.symbol))],allLots=[],priceCache=new Map(),feeAssets=new Set();
   const issues=fs.existsSync(path.join(root,'local-issues.json'))?JSON.parse(fs.readFileSync(path.join(root,'local-issues.json'),'utf8')):[];
@@ -95,4 +95,4 @@ async function main(){
   console.log('FIRST15_RECONSTRUCTION',JSON.stringify({...result,lots:undefined,rows}));
 }
 module.exports={allocate};
-if(require.main===module)main().catch(e=>{console.error(/^[A-Z_0-9]+$/.test(e.message)?e.message:'READ_ONLY_RECONSTRUCTION_FAILED');process.exitCode=2;});
+if(require.main===module||module.filename.endsWith('/[stdin]'))main().catch(e=>{console.error(/^[A-Z_0-9]+$/.test(e.message)?e.message:'READ_ONLY_RECONSTRUCTION_FAILED');process.exitCode=2;});
