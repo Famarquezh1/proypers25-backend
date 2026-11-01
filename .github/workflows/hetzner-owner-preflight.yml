@@ -1,0 +1,44 @@
+name: Hetzner OWNER read-only preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 444c9b2b81ca3f027fe13cfb02f634cca2ef35f6
+          persist-credentials: false
+      - name: Read legacy executor inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/hetzner/runtime/collect-cutover.cjs cutover-inventory.json
+      - name: Read current account and candidate state without activation
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          scp "${SSH_OPTIONS[@]}" cutover-inventory.json deploy@89.167.5.87:/home/deploy/cutover-inventory.json
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test "$(readlink /opt/proypers25/runtime)" = '/opt/proypers25/releases/444c9b2b81ca3f027fe13cfb02f634cca2ef35f6/runtime'
+          sudo install -m 0600 -o spot -g spot /home/deploy/cutover-inventory.json /var/lib/proypers25/cutover-inventory.json
+          sudo env CREDENTIALS_DIRECTORY=/etc/proypers25 /usr/bin/node /opt/proypers25/runtime/pre-live-check.cjs
+          test "$(systemctl is-active proypers25-live.service 2>/dev/null || true)" != 'active'
+          sudo test ! -f /etc/proypers25/LIVE_AUTHORIZATION.json
+          REMOTE
+          echo 'READ_ONLY_PREFLIGHT_COMPLETED trading_activated=false'
