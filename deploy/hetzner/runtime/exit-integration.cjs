@@ -1,5 +1,14 @@
 'use strict';
 const Module=require('node:module'),path=require('node:path');
+function untradeableResidual({info,quantity,price,hasProtection=false}) {
+  if(hasProtection)return false;
+  const lot=info?.filters?.find(f=>f.filterType==='LOT_SIZE');
+  const nf=info?.filters?.find(f=>f.filterType==='NOTIONAL'||f.filterType==='MIN_NOTIONAL');
+  const step=Number(lot?.stepSize),min=Number(lot?.minQty),notional=Number(nf?.minNotional);
+  if(!Number.isFinite(quantity)||quantity<0||!Number.isFinite(price)||price<=0||!(step>0)||!(min>0)||!Number.isFinite(notional)||notional<0)throw new Error('RESIDUAL_FILTER_REVIEW_REQUIRED');
+  const qty=Math.floor((quantity+Number.EPSILON)/step)*step;
+  return qty<min||qty*price<notional;
+}
 function transform(source,name) {
   const replace=(old,next)=>{if(!source.includes(old))throw new Error('EXIT_INTEGRATION_SOURCE_MISMATCH');source=source.replace(old,next);};
   if(name==='github-spot-auto-exit-legacy-v10-aware.js')replace('eval(source);',
@@ -8,6 +17,8 @@ function transform(source,name) {
     "if(open)await cancel(base,symbol,open);const refreshed=await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'}),free=freeBalance(refreshed,info.baseAsset);await place(base,info,symbol,Math.min(qty,free),desired);",
     "if(open){await module.__protectionTransitions.tighten({symbol,oldOrder:open,stopPrice:desired,info});}else{const refreshed=await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'}),free=freeBalance(refreshed,info.baseAsset);await place(base,info,symbol,Math.min(qty,free),desired);}");
   if(name==='github-spot-auto-exit-legacy.js'){
+    replace('    const managedQty = managed.managedQty;',
+      `    const managedQty = managed.managedQty;\n    if (require(${JSON.stringify(__filename)}).untradeableResidual({info,quantity:Math.min(managedQty,ownedTotal),price:currentPrice,hasProtection:Boolean(openProtect)})) { console.warn('EXIT_DUST_RECONCILED symbol='+symbol); continue; }`);
     replace("      if (openProtect) await cancelProtection(base, symbol, openProtect);\n      try {\n        await marketSell",
       "      if (openProtect) { await module.__protectionTransitions.exit({symbol,oldOrder:openProtect,info,managedQty}); soldCount += 1; continue; }\n      try {\n        await marketSell");
     replace("      if (openProtect) await cancelProtection(base, symbol, openProtect);\n      const refreshed = await signed",
@@ -30,4 +41,4 @@ function install(transitions) {
     return original.call(this,source,filename);
   };
 }
-module.exports={install,transform};
+module.exports={install,transform,untradeableResidual};

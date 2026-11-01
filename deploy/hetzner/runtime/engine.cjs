@@ -6,6 +6,7 @@ const {audit}=require('./audit.cjs');
 const {atomic,Journal}=require('./journal.cjs');
 const {updatePositions}=require('./positions.cjs');
 const {fresh}=require('./v10-scan.cjs');
+const {exitHealthy}=require('./exit-health.cjs');
 const state=process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25';
 const repo=process.env.PROYPERS_REPO||'/opt/proypers25/repo';
 const backend=path.join(repo,'backend');
@@ -61,9 +62,12 @@ async function cycle(scanDue) {
     openOrders:report.openOrderCount,security:report.security});
   let newBuysBlocked=recovery.code!==0||report.reviewRequired>0;
   if(candidate&&(report.accountCanTrade!==true||report.unsupportedOrderCount>0||report.security.spotPermission!==true||report.security.reading!==true||report.security.futuresPermission||report.security.transferPermission||fs.existsSync(path.join(state,'BUY_PAUSED'))))newBuysBlocked=true;
+  const accountBlocked=newBuysBlocked;
+  newBuysBlocked=accountBlocked||!exitHealthy(state);
   if(scanDue){
     // Original exit chain, including XEC/V61/V10/orphans, with every mutation blocked.
     const exits=await run('github-spot-auto-exit.js',{},150000);
+    newBuysBlocked=accountBlocked||exits.code!==0||exits.timedOut;
     if(exits.code!==0){newBuysBlocked=true;summary('NEW_BUYS_BLOCKED_EXIT_CHECK_FAILED');}
     const scan=await run('github-spot-production-radar-v42-active.js',{},180000);
     if(scan.code!==0)throw new Error('RADAR_FAILED');
@@ -98,9 +102,9 @@ async function cycle(scanDue) {
         }
       }
     }
-    atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:candidate,liveReady:candidate});
+    atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:candidate,liveReady:candidate&&!newBuysBlocked});
   }
-  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:candidate?'LIVE_CORE_ONLY':'STAGING_READ_ONLY',tradingActivated:candidate,liveReady:candidate,newBuysBlocked});
+  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:candidate?'LIVE_CORE_ONLY':'STAGING_READ_ONLY',tradingActivated:candidate,liveReady:candidate&&!newBuysBlocked,newBuysBlocked});
 }
 async function main(){
   if(candidate)require('./candidate-gate.cjs').authorization();
