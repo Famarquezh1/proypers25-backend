@@ -1,0 +1,60 @@
+name: Hetzner cohort current read-only diagnosis
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  hotfix:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a7b8c436e9f25ba75eed18c1420cbd1f6e0b1e3c
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate without real orders
+        run: |
+          node --test deploy/hetzner/runtime/*.test.cjs
+          node deploy/hetzner/runtime/executor-check.cjs
+          node deploy/hetzner/runtime/lifecycle-check.cjs
+      - name: Guarded production maintenance with rollback
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'sudo node -' <<'JS'
+          'use strict';
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          process.env.PROYPERS_REPO='/opt/proypers25/repo';
+          const {resolveManagedResidual}=require('/home/deploy/position-cohort.cjs');
+          const {isProypersSpotBuyOrder}=require('/opt/proypers25/repo/backend/services/spotOrphanProtection.js');
+          const transport=require('/opt/proypers25/runtime/readonly.cjs').makeFetch();
+          const key=fs.readFileSync('/etc/proypers25/binance-key','utf8').trim(),secret=fs.readFileSync('/etc/proypers25/binance-secret','utf8').trim();
+          async function get(endpoint,params={}){const q=new URLSearchParams({...params,recvWindow:'5000',timestamp:String(Date.now())});q.set('signature',crypto.createHmac('sha256',secret).update(q.toString()).digest('hex'));const r=await transport('https://api.binance.com'+endpoint+'?'+q,{headers:{'X-MBX-APIKEY':key}});if(!r.ok)throw new Error('READ_HTTP_'+r.status);return r.json();}
+          (async()=>{
+           const a=await get('/api/v3/account',{omitZeroBalances:'true'});
+           for(const b of a.balances.filter(b=>b.asset!=='USDT'&&Number(b.free)+Number(b.locked)>0)){
+           const symbol=b.asset+'USDT';
+           const [orders,trades,response]=await Promise.all([get('/api/v3/allOrders',{symbol,limit:'100'}),get('/api/v3/myTrades',{symbol,limit:'1000'}),transport('https://api.binance.com/api/v3/exchangeInfo?symbol='+symbol+'&showPermissionSets=false')]);
+           const info=(await response.json()).symbols[0],buys=orders.filter(isProypersSpotBuyOrder).sort((x,y)=>Number(x.updateTime||x.time)-Number(y.updateTime||y.time));
+           if(!buys.length)continue;
+           try{const r=resolveManagedResidual({buy:buys.at(-1),orders,trades,ownedTotal:Number(b.free)+Number(b.locked),baseAsset:b.asset,info,forceReconstruct:true});console.log('CURRENT_COHORT',JSON.stringify({symbol,active:r.active,reason:r.reason}));}
+           catch(e){console.log('CURRENT_COHORT_FAILURE',symbol,/^[A-Z_0-9]+$/.test(e.message)?e.message:'UNCLASSIFIED');}
+           }
+          })().catch(()=>{console.error('CURRENT_DIAG_FAILED');process.exitCode=2;});
+          
+          JS
