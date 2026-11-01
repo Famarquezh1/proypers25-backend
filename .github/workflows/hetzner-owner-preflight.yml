@@ -38,6 +38,15 @@ jobs:
           test "$(readlink /opt/proypers25/runtime)" = '/opt/proypers25/releases/444c9b2b81ca3f027fe13cfb02f634cca2ef35f6/runtime'
           sudo install -m 0600 -o spot -g spot /home/deploy/cutover-inventory.json /var/lib/proypers25/cutover-inventory.json
           sudo env CREDENTIALS_DIRECTORY=/etc/proypers25 /usr/bin/node /opt/proypers25/runtime/pre-live-check.cjs
+          sudo python3 - <<'PY'
+          import pathlib,json,re
+          for group in ['execution-state','exit-state','transition-state']:
+              p=pathlib.Path('/var/lib/proypers25')/group
+              for f in p.glob('*.json'):
+                  if not re.fullmatch('[a-f0-9]{32}\\.json',f.name): continue
+                  r=json.loads(f.read_text())
+                  print('INTENT_REVIEW_SUMMARY',json.dumps({'group':group,'state':r.get('state'),'symbol':r.get('symbol'),'hasOrder':bool(r.get('order')),'hasBuy':bool(r.get('buy')),'hasStop':bool(r.get('stop')),'fields':sorted(r.keys())}))
+          PY
           test "$(systemctl is-active proypers25-live.service 2>/dev/null || true)" != 'active'
           sudo test ! -f /etc/proypers25/LIVE_AUTHORIZATION.json
           REMOTE
