@@ -25,3 +25,9 @@ test('missing, stale or truncated inventory cannot approve a cutover',()=>{
     const s=snapshot();change(s);assert.equal(assess(s).legacyWritersIsolated,false);
   }
 });
+test('disabled public detector backlog is advisory while every financial writer must be drained',()=>{
+  const s=snapshot();s.workflows.find(w=>w.path.endsWith('spot-github-radar.yml')).runs=[{status:'queued'}];
+  assert.equal(assess(s).legacyWritersIsolated,true);assert.equal(assess(s).advisories.length,1);
+  s.workflows.find(w=>w.path.endsWith('spot-auto-exit-local.yml')).runs=[{status:'queued'}];
+  assert.equal(assess(s).legacyWritersIsolated,false);
+});

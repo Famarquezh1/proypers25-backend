@@ -128,6 +128,11 @@ systemd-analyze verify /etc/systemd/system/proypers25-v10.service /etc/systemd/s
 systemctl daemon-reload
 systemctl reset-failed proypers25-engine.service || true
 systemctl enable proypers25-engine.service
+systemctl stop proypers25-engine.service
+if ! env CREDENTIALS_DIRECTORY=/etc/proypers25 node "$target/runtime/review-staging-intents.cjs"; then
+  systemctl restart proypers25-engine.service
+  exit 2
+fi
 systemctl restart proypers25-engine.service
 test "$(systemctl is-enabled proypers25-live.service 2>/dev/null || true)" != 'enabled'
 test "$(systemctl is-active proypers25-live.service 2>/dev/null || true)" != 'active'

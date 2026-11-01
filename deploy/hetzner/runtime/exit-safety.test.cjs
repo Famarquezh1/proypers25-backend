@@ -85,7 +85,8 @@ test('SELL adapter preserves immutable staging barrier',async()=>{
   const f=fixture('normal');try{
     const get=makeFetch(()=>assert.fail('no live exchange write'));
     const s=createExitSafety({transport:(input,init)=>init.method==='GET'?Promise.resolve(Response.json([buy])):get(input,init),dir:f.dir,key:'fixture',secret:'fixture'});
-    assert.equal((await s.fetch(request,{method:'POST'})).status,403);assert.equal(s.pending(),1);
+    assert.equal((await s.fetch(request,{method:'POST'})).status,403);assert.equal(s.pending(),0);
+    assert.equal(s.records()[0].state,'STAGING_BLOCKED');assert.equal(s.records()[0].transportOutcome,'LOCAL_WRITE_DENIED_BEFORE_NETWORK');
   }finally{f.clean();}
 });
 test('pending SELL blocks a new entry in the real entry worker before any network',()=>{

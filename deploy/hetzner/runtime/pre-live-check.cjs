@@ -21,7 +21,7 @@ async function check(){
     for(const n of fs.readdirSync(dir).filter(n=>/^[a-f0-9]{32}\.json$/.test(n))){
       const r=JSON.parse(fs.readFileSync(path.join(dir,n),'utf8'));
       const terminal=name==='transition-state'?['REPLACED','RESTORED','OLD_RETAINED','CLOSED','STAGING_BLOCKED']:
-        name==='exit-state'?['SELL_FILLED','SELL_COMPLETED','SELL_DUST','SELL_REMAINDER_PROTECTED','STOP_ACTIVE']:['PROTECTED','CLOSED','REJECTED','NO_FILL'];
+        name==='exit-state'?['SELL_FILLED','SELL_COMPLETED','SELL_DUST','SELL_REMAINDER_PROTECTED','STOP_ACTIVE','STAGING_BLOCKED']:['PROTECTED','CLOSED','REJECTED','NO_FILL'];
       if(STATES.has(r.state)||!terminal.includes(r.state))blocks.push('PENDING_EXECUTION_REVIEW');
     }
   }

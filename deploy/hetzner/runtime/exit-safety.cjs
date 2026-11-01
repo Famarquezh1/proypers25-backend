@@ -6,7 +6,7 @@ const crypto=require('node:crypto');
 const {atomic}=require('./journal.cjs');
 const {planResidual}=require('./residual-sale.cjs');
 const PENDING=new Set(['SELL_INTENT','SELL_UNKNOWN','SELL_PENDING','SELL_REVIEW','SELL_PARTIAL','SELL_RESIDUAL_PENDING','STOP_INTENT','STOP_UNKNOWN','STOP_REVIEW']);
-const TERMINAL=new Set(['SELL_FILLED','SELL_COMPLETED','SELL_DUST','SELL_REMAINDER_PROTECTED','STOP_ACTIVE']);
+const TERMINAL=new Set(['SELL_FILLED','SELL_COMPLETED','SELL_DUST','SELL_REMAINDER_PROTECTED','STOP_ACTIVE','STAGING_BLOCKED']);
 function createExitSafety({transport,dir,key,secret,now=Date.now}){
   fs.mkdirSync(dir,{recursive:true,mode:0o700});
   const records=()=>fs.readdirSync(dir).filter(n=>/^[a-f0-9]{32}\.json$/.test(n)).map(n=>{
@@ -124,7 +124,12 @@ function createExitSafety({transport,dir,key,secret,now=Date.now}){
     try{response=await signed('POST','/api/v3/order',params);body=await response.clone().json();}
     catch{r.state=stop?'STOP_UNKNOWN':'SELL_UNKNOWN';save(r);throw new Error('SELL_RESULT_UNKNOWN');}
     if(response.ok){try{apply(r,body);}catch{r.state=stop?'STOP_UNKNOWN':'SELL_UNKNOWN';save(r);throw new Error('SELL_RESULT_UNKNOWN');}}
-    else {r.state=response.status>=500||[-1006,-1007].includes(body?.code)?(stop?'STOP_UNKNOWN':'SELL_UNKNOWN'):(stop?'STOP_REVIEW':'SELL_REVIEW');save(r);}
+    else {
+      if(response.status===403&&body?.msg==='VPS_STAGING_WRITE_BLOCKED'){
+        r.state='STAGING_BLOCKED';r.transportOutcome='LOCAL_WRITE_DENIED_BEFORE_NETWORK';
+      }else r.state=response.status>=500||[-1006,-1007].includes(body?.code)?(stop?'STOP_UNKNOWN':'SELL_UNKNOWN'):(stop?'STOP_REVIEW':'SELL_REVIEW');
+      save(r);
+    }
     return response;
   }
   return {fetch,recover,resumeConfirmedSell,records,pending:()=>records().filter(r=>PENDING.has(r.state)).length};
