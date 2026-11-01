@@ -39,6 +39,9 @@ jobs:
           for p in base.glob('*.last.json'):
               d=json.load(open(p))
               text=d.get('stderr','')
+              for line in text.splitlines():
+                  if line.startswith('EXIT_ENGINE_BLOCKED:'):
+                      print('EXIT_FAILURE_REASON',re.sub(r'https?://\S+','[url]',line)[:500])
               errors=sorted(set(re.findall(r'MODULE_NOT_FOUND|EACCES|ENOENT|TRANSPORT_[A-Z_]+|GITHUB_ROUTE_DENIED|VPS_STAGING_WRITE_BLOCKED|MANAGED_CONTEXT_REQUIRED|HTTP [0-9]{3}|SCRIPT_NOT_ALLOWED',text)))
               print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text),'diagnosticCodes':sorted(set(re.findall(r'\b[A-Z][A-Z_]{5,}\b',text)))}))
           PY
