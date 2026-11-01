@@ -17,6 +17,11 @@ function transform(source,name) {
     "if(open)await cancel(base,symbol,open);const refreshed=await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'}),free=freeBalance(refreshed,info.baseAsset);await place(base,info,symbol,Math.min(qty,free),desired);",
     "if(open){await module.__protectionTransitions.tighten({symbol,oldOrder:open,stopPrice:desired,info});}else{const refreshed=await signed(base,'GET','/api/v3/account',{omitZeroBalances:'true'}),free=freeBalance(refreshed,info.baseAsset);await place(base,info,symbol,Math.min(qty,free),desired);}");
   if(name==='github-spot-auto-exit-legacy.js'){
+    replace("const { latestOpenProtection, latestFilledExit, resolveManagedResidual } = require('../services/spotManagedResidual');",
+      `const { latestOpenProtection, latestFilledExit } = require('../services/spotManagedResidual');\nconst { resolveManagedResidual } = require(${JSON.stringify(path.join(__dirname,'position-cohort.cjs'))});`);
+    replace('      baseAsset: info.baseAsset,\n      forceReconstruct:', '      baseAsset: info.baseAsset,\n      info,\n      forceReconstruct:');
+    replace('    if (reason) {\n      if (openProtect',
+      `    if (reason) {\n      require(${JSON.stringify(path.join(__dirname,'position-cohort.cjs'))}).recordExitDecision({symbol,reason,buyOrderId:currentBaseBuy.orderId,oldNativeOrderId:openProtect?.orderId||null,entryPrice:effectiveEntryPrice,startTime:effectiveStartTime,ageHours,gainPct,recentHigh,stopPrice,cohortStartTime:managed.cohort?.startTime||null,historicalDustQuantity:managed.cohort?.dustQuantity||0});\n      if (openProtect`);
     replace('    const managedQty = managed.managedQty;',
       `    const managedQty = managed.managedQty;\n    if (require(${JSON.stringify(__filename)}).untradeableResidual({info,quantity:Math.min(managedQty,ownedTotal),price:currentPrice,hasProtection:Boolean(openProtect)})) { console.warn('EXIT_DUST_RECONCILED symbol='+symbol); continue; }`);
     replace("      if (openProtect) await cancelProtection(base, symbol, openProtect);\n      try {\n        await marketSell",
