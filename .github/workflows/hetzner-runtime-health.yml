@@ -22,8 +22,10 @@ jobs:
           ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'bash -s' <<'REMOTE'
           set -euo pipefail
           sudo test -f /etc/proypers25/TRADING_DISABLED
-          sudo systemctl show proypers25-engine.service -p ActiveState -p SubState -p MainPID -p NRestarts -p ExecMainStatus -p MemoryCurrent
-          sudo journalctl -u proypers25-engine.service -n 12 --no-pager -o cat
+          UNIT=proypers25-engine.service
+          if systemctl is-active --quiet proypers25-live.service; then UNIT=proypers25-live.service; fi
+          sudo systemctl show "$UNIT" -p ActiveState -p SubState -p MainPID -p NRestarts -p ExecMainStatus -p MemoryCurrent
+          sudo journalctl -u "$UNIT" -n 12 --no-pager -o cat
           sudo python3 - <<'PY'
           import json,pathlib,re,collections
           base=pathlib.Path('/var/lib/proypers25')
