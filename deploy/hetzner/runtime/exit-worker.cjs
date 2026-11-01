@@ -2,6 +2,7 @@
 const path=require('node:path');
 const {lock}=require('./execution-safety.cjs');
 const {createExitSafety}=require('./exit-safety.cjs');
+const {createTransitions}=require('./protection-transition.cjs');
 const LEAVES=new Set(['github-xec-historical-protection.js','github-spot-v61-protect.js',
   'github-spot-auto-exit-legacy-v10-aware.js','github-spot-orphan-protect.js','github-spot-orphan-audit.js']);
 async function main(){
@@ -11,6 +12,9 @@ async function main(){
   const safety=createExitSafety({transport:global.fetch,dir:path.join(state,'exit-state'),
     key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
   if((await safety.recover()).pending)throw new Error('EXIT_RECOVERY_PENDING');
+  const transitions=createTransitions({transport:global.fetch,dir:path.join(state,'transition-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
+  if((await transitions.recover()).pending)throw new Error('TRANSITION_RECOVERY_PENDING');
+  require('./exit-integration.cjs').install(transitions);
   global.fetch=safety.fetch;
   require(path.join(process.env.PROYPERS_REPO||'/opt/proypers25/repo','backend/scripts',script));
 }

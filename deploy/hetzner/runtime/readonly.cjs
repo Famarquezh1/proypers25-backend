@@ -21,7 +21,8 @@ function makeFetch(request = https.get) {
       const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (!Array.isArray(snapshot.issues)) throw new Error('INVALID_MANAGED_CONTEXT');
       const state = target.searchParams.get('state') || 'open';
-      const rows = snapshot.issues.filter(i => state === 'all' || i.state === state);
+      const local = require('./positions.cjs').localManagedIssues(process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25');
+      const rows = [...local,...snapshot.issues].filter(i => state === 'all' || i.state === state);
       return new Response(JSON.stringify(rows), {status:200,headers:{'content-type':'application/json'}});
     }
     if (!HOSTS.has(target.hostname)) throw new Error('TRANSPORT_HOST_DENIED');

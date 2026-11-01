@@ -60,9 +60,9 @@ test('exit orchestration passes the write barrier to its nested Node children',a
   try{
     const scripts=path.join(dir,'backend','scripts');fs.mkdirSync(scripts,{recursive:true});
     const child="fetch('https://unreachable.invalid/api/v3/order',{method:'POST'}).then(r=>{if(r.status!==403)process.exit(1);console.log('NESTED_WRITE_BLOCKED')}).catch(()=>process.exit(2))";
-    fs.writeFileSync(path.join(scripts,'github-spot-v61-protect.js'),child);
+    fs.writeFileSync(path.join(scripts,'github-spot-orphan-audit.js'),child);
     fs.writeFileSync(path.join(scripts,'github-spot-auto-exit.js'),
-      `const r=require('node:child_process').spawnSync(process.execPath,[require('node:path').join(__dirname,'github-spot-v61-protect.js')],{stdio:'inherit',env:process.env});process.exit(r.status||0);`);
+      `const r=require('node:child_process').spawnSync(process.execPath,[require('node:path').join(__dirname,'github-spot-orphan-audit.js')],{stdio:'inherit',env:process.env});process.exit(r.status||0);`);
     process.env.PROYPERS_REPO=dir;process.env.PROYPERS_STATE_DIR=path.join(dir,'state');
     const {run}=require('./engine.cjs');
     const result=await run('github-spot-auto-exit.js',{},5000);

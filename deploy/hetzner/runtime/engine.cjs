@@ -4,6 +4,8 @@ const path=require('node:path');
 const {spawn}=require('node:child_process');
 const {audit}=require('./audit.cjs');
 const {atomic,Journal}=require('./journal.cjs');
+const {updatePositions}=require('./positions.cjs');
+const {fresh}=require('./v10-scan.cjs');
 const state=process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25';
 const repo=process.env.PROYPERS_REPO||'/opt/proypers25/repo';
 const backend=path.join(repo,'backend');
@@ -51,6 +53,8 @@ async function cycle(scanDue) {
   const recovery=await run('recover-orders.cjs',{},90000);
   if(recovery.code!==0)summary('NEW_BUYS_BLOCKED_PENDING_RECOVERY');
   const report=await audit();atomic(path.join(state,'position-audit.json'),report);
+  const positions=updatePositions(state,report);
+  summary('POSITION_LEDGER_UPDATED',{tracked:Object.keys(positions.positions).length});
   summary('ACCOUNT_AUDIT',{reviewRequired:report.reviewRequired,positions:report.positions.length,
     openOrders:report.openOrderCount,security:report.security});
   let newBuysBlocked=recovery.code!==0||report.reviewRequired>0;
@@ -62,18 +66,31 @@ async function cycle(scanDue) {
     if(scan.code!==0)throw new Error('RADAR_FAILED');
     let signal;try{signal=JSON.parse(scan.stdout.trim());}catch{throw new Error('RADAR_OUTPUT_INVALID');}
     atomic(path.join(state,'radar-last.json'),{at:new Date().toISOString(),signal});
-    if(signal.notify===true&&!newBuysBlocked){
+    const signals=[{signal,lane:'CORE',createdAt:new Date().toISOString()}];
+    const v10File=path.join(state,'v10-last.json');
+    if(fs.existsSync(v10File)) {
+      const snapshot=JSON.parse(fs.readFileSync(v10File,'utf8'));
+      const candidate=fresh(snapshot);
+      if(candidate)signals.push({signal:candidate,lane:'V10_HUNTER',createdAt:snapshot.completedAt});
+      else summary('V10_SIGNAL_ABSTAIN',{reason:'stale or failed detector snapshot'});
+    }
+    for(const {signal,lane,createdAt} of signals)if(signal.notify===true&&!newBuysBlocked){
       const latestFile=path.join(state,'signal-dedupe.json');
       const latest=fs.existsSync(latestFile)?JSON.parse(fs.readFileSync(latestFile,'utf8')):{};
       const now=Date.now();
-      if(now-Number(latest[signal.symbol]||0)>=20*60000){
-        const payload={symbol:signal.symbol,createdAt:new Date(now).toISOString(),lane:'CORE',price:signal.price,pct:signal.pct};
+      const symbolKey=`${lane}:${signal.symbol}`,globalKey=`${lane}:global`;
+      const symbolCd=lane==='V10_HUNTER'?180*60000:20*60000;
+      if(now-Number(latest[symbolKey]||0)>=symbolCd&&(lane!=='V10_HUNTER'||now-Number(latest[globalKey]||0)>=30*60000)){
+        const payload={symbol:signal.symbol,createdAt,lane,price:signal.price,pct:signal.pct};
         const intent=journal.claim(payload);
-        latest[signal.symbol]=now;atomic(latestFile,latest);
+        latest[symbolKey]=now;latest[globalKey]=now;atomic(latestFile,latest);
         if(intent){
           const output=path.join(state,'entry-output.txt');fs.writeFileSync(output,'',{mode:0o600});
           const entry=await run('github-spot-manual-execution-v10-aware.js',{SIGNAL_SYMBOL:payload.symbol,SIGNAL_PRICE:String(payload.price),
-            SIGNAL_PCT:String(payload.pct),SIGNAL_CREATED_AT:payload.createdAt,SIGNAL_LANE:payload.lane,GITHUB_OUTPUT:output},150000);
+            SIGNAL_PCT:String(payload.pct),SIGNAL_CREATED_AT:payload.createdAt,SIGNAL_LANE:payload.lane,GITHUB_OUTPUT:output,
+            SIGNAL_MICROFLOW_SCORE:String(signal.microflow_score??''),SIGNAL_MICROFLOW_CUT:String(signal.score_cut??''),
+            SIGNAL_MICROFLOW_MARGIN:String(signal.microflow_margin??''),SIGNAL_MICROFLOW_MARGIN_CUT:String(signal.margin_cut??''),
+            SIGNAL_CALIBRATION_WIN_RATE:String(signal.calibration?.winRate??'')},150000);
           journal.finish(intent,{code:entry.code,blockedWrites:entry.blocked,outcome:fs.readFileSync(output,'utf8').slice(0,8192)});
         }
       }

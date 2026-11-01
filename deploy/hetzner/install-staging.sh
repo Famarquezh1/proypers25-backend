@@ -5,7 +5,7 @@ release_id=$2
 test "$(git -C /opt/proypers25/repo rev-parse HEAD)" = '8d88021dea30eb87f786b5685818d01204d132a3'
 test -f /etc/proypers25/TRADING_DISABLED
 test -f "$source_dir/runtime/managed-context.json"
-PROYPERS_CHECK_REPO=/opt/proypers25/repo node --test "$source_dir/runtime/runtime.test.cjs" "$source_dir/runtime/exit-safety.test.cjs" "$source_dir/runtime/cutover-check.test.cjs"
+PROYPERS_CHECK_REPO=/opt/proypers25/repo node --test "$source_dir/runtime/runtime.test.cjs" "$source_dir/runtime/exit-safety.test.cjs" "$source_dir/runtime/cutover-check.test.cjs" "$source_dir/runtime/migration.test.cjs" "$source_dir/runtime/protection-transition.test.cjs"
 PROYPERS_CHECK_REPO=/opt/proypers25/repo node "$source_dir/runtime/executor-check.cjs"
 target="/opt/proypers25/releases/$release_id"
 install -d -m 0750 -o root -g spot "$target"
@@ -56,9 +56,63 @@ LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
 UNIT
+cat >/etc/systemd/system/proypers25-v10.service <<'UNIT'
+[Unit]
+Description=Proypers25 public-data V10 detector (bounded original calibration)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=spot
+Group=spot
+WorkingDirectory=/opt/proypers25/repo/backend
+Environment=HOME=/var/lib/proypers25
+Environment=PROYPERS_STATE_DIR=/var/lib/proypers25
+Environment=PROYPERS_REPO=/opt/proypers25/repo
+EnvironmentFile=/etc/proypers25/v10-release.env
+ExecStart=/usr/bin/node /opt/proypers25/runtime/v10-scan.cjs
+TimeoutStartSec=260
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/proypers25
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=512M
+CPUQuota=25%
+TasksMax=32
+KillMode=control-group
+UNIT
+printf 'PROYPERS_RELEASE_ID=%s\n' "$release_id" >/etc/proypers25/v10-release.env
+chmod 0600 /etc/proypers25/v10-release.env
+cat >/etc/systemd/system/proypers25-v10.timer <<'UNIT'
+[Unit]
+Description=Proypers25 V10 scan every 15 minutes
+[Timer]
+OnCalendar=*-*-* *:07,22,37,52:00 UTC
+Persistent=true
+Unit=proypers25-v10.service
+[Install]
+WantedBy=timers.target
+UNIT
 systemd-analyze verify /etc/systemd/system/proypers25-engine.service
+systemd-analyze verify /etc/systemd/system/proypers25-v10.service /etc/systemd/system/proypers25-v10.timer
 systemctl daemon-reload
 systemctl reset-failed proypers25-engine.service || true
 systemctl enable proypers25-engine.service
 systemctl restart proypers25-engine.service
+systemctl enable --now proypers25-v10.timer
+systemctl start proypers25-v10.service
+python3 - "$release_id" <<'PY'
+import json,sys
+s=json.load(open('/var/lib/proypers25/v10-last.json'))
+assert s['release']==sys.argv[1] and s['code']==0 and s['result']['ok'] is True
+print('V10_ORIGINAL_DETECTOR_VERIFIED trading_activated=false notify='+str(s['result']['notify']))
+PY
 printf '%s\n' 'STAGING_ENGINE_INSTALLED trading_activated=false'
