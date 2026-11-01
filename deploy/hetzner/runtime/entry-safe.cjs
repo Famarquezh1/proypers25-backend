@@ -13,7 +13,7 @@ async function main(){
   const safety=createSafety({transport:global.fetch,dir,repo,key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY,context});
   const exitSafety=createExitSafety({transport:global.fetch,dir:path.join(process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25','exit-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
   if((await exitSafety.recover()).pending)throw new Error('SELL_RECOVERY_PENDING_NEW_BUYS_BLOCKED');
-  const transitions=createTransitions({transport:global.fetch,dir:path.join(process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25','transition-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
+  const transitions=createTransitions({transport:global.fetch,dir:path.join(process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25','transition-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY,resumeSell:exitSafety.resumeConfirmedSell});
   if((await transitions.recover()).pending)throw new Error('TRANSITION_RECOVERY_PENDING_NEW_BUYS_BLOCKED');
   const recovery=await safety.recover();
   if(recovery.pending)throw new Error('PROTECTION_OR_ORDER_RECOVERY_PENDING_NEW_BUYS_BLOCKED');

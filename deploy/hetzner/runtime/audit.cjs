@@ -51,10 +51,12 @@ async function audit() {
   const positions=coverage(account,orders,market.symbols,prices);
   const review=positions.filter(p=>!['DUST','NATIVE_STOP_PRESENT'].includes(p.status));
   return {at:new Date().toISOString(),mode:'STAGING_READ_ONLY',tradingActivated:false,
+    accountCanTrade:account.canTrade===true,
     security:{withdrawalsDisabled:true,ipRestricted:true,reading:permissions.enableReading===true,
       spotPermission:permissions.enableSpotAndMarginTrading===true,futuresPermission:permissions.enableFutures===true,
       transferPermission:permissions.permitsUniversalTransfer===true},
     positions,openOrderCount:orders.length,reviewRequired:review.length,
+    unsupportedOrderCount:orders.filter(o=>Number(o.orderListId??-1)!==-1||o.side!=='SELL'||!['STOP_LOSS','STOP_LOSS_LIMIT'].includes(o.type)||!/^(proypers-gh-protect-|proypers-gh-orphan-)/.test(o.clientOrderId||'')).length,
     liveReady:false,protectionReconciled:false};
 }
 module.exports={audit,coverage};

@@ -4,7 +4,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {atomic}=require('./journal.cjs');
 const TERMINAL=new Set(['REPLACED','RESTORED','OLD_RETAINED','CLOSED','STAGING_BLOCKED']);
-function createTransitions({transport,dir,key,secret,now=Date.now}) {
+function createTransitions({transport,dir,key,secret,resumeSell,now=Date.now}) {
   fs.mkdirSync(dir,{recursive:true,mode:0o700});
   function records(){return fs.readdirSync(dir).filter(n=>/^[a-f0-9]{32}\.json$/.test(n)).map(n=>{
     const file=path.join(dir,n),r=JSON.parse(fs.readFileSync(file,'utf8'));
@@ -31,6 +31,10 @@ function createTransitions({transport,dir,key,secret,now=Date.now}) {
     if(!old||old.symbol!==r.symbol||old.orderId!==r.old.orderId)throw new Error('OLD_STOP_IDENTITY_INVALID');
     for(const [order,id] of [[next,r.nextId],[restore,r.restoreId]])if(order&&!valid(order,r,id))throw new Error('NEW_STOP_IDENTITY_INVALID');
     if(old.status==='FILLED'&&!next&&!restore){r.state='CLOSED';save(r);return;}
+    if(old.status==='CANCELED'&&r.kind==='EXIT'&&next&&!restore&&['CANCELED','EXPIRED','EXPIRED_IN_MATCH'].includes(next.status)&&resumeSell){
+      const residual=await resumeSell(next,r.id);r.residual=residual;
+      r.state=residual.complete?'CLOSED':'UNKNOWN';save(r);return;
+    }
     if(old.status==='CANCELED'&&next&&!restore&&['NEW','PARTIALLY_FILLED','FILLED'].includes(next.status)){
       if(r.kind!=='EXIT'&&Number(next.stopPrice)!==Number(r.params.stopPrice))throw new Error('NEW_STOP_PRICE_INVALID');
       if(r.kind==='EXIT'&&next.status!=='FILLED'){r.state='UNKNOWN';save(r);return;}
@@ -40,7 +44,7 @@ function createTransitions({transport,dir,key,secret,now=Date.now}) {
       if(Number(restore.stopPrice)!==Number(r.old.stopPrice))throw new Error('RESTORE_STOP_PRICE_INVALID');
       r.state=restore.status==='FILLED'?'CLOSED':'RESTORED';r.confirmed=restore;save(r);return;
     }
-    if(old.status==='NEW'&&!next&&!restore&&r.definitiveNoChange){r.state='OLD_RETAINED';save(r);return;}
+    if(['NEW','PARTIALLY_FILLED'].includes(old.status)&&!next&&!restore&&r.definitiveNoChange){r.state='OLD_RETAINED';save(r);return;}
     // Only a definitive new-order rejection permits restoration, never an ambiguous -2013 observation.
     if(old.status==='CANCELED'&&!next&&!restore&&r.definitiveNewFailed&&r.state!=='RESTORE_INTENT'&&r.state!=='RESTORE_UNKNOWN'){
       r.state='RESTORE_INTENT';save(r);
@@ -65,9 +69,12 @@ function createTransitions({transport,dir,key,secret,now=Date.now}) {
     if(!['STOP','EXIT'].includes(kind))throw new Error('TRANSITION_KIND_INVALID');
     if(records().some(r=>!TERMINAL.has(r.state)))throw new Error('TRANSITION_RECOVERY_PENDING');
     const old=await find(symbol,{orderId:String(oldOrder?.orderId)});
-    if(!old||old.symbol!==symbol||old.side!=='SELL'||old.status!=='NEW'||Number(old.executedQty)!==0||
-      !['STOP_LOSS','STOP_LOSS_LIMIT'].includes(old.type)||!String(old.clientOrderId||'').startsWith('proypers-gh-protect-')||
+    if(!old||old.symbol!==symbol||old.side!=='SELL'||!['NEW','PARTIALLY_FILLED'].includes(old.status)||
+      !['STOP_LOSS','STOP_LOSS_LIMIT'].includes(old.type)||!/^(proypers-gh-protect-|proypers-gh-orphan-)/.test(old.clientOrderId||'')||
       Number(old.orderListId??-1)!==-1)throw new Error('OLD_PROTECTION_REVIEW_REQUIRED');
+    // A partially filled native order already owns/protects its remainder. Do not race it with a stale replacement quantity.
+    if(old.status==='PARTIALLY_FILLED')return {state:'OLD_RETAINED',confirmed:old,reason:'PARTIAL_NATIVE_REMAINDER_RETAINED'};
+    if(Number(old.executedQty)!==0)throw new Error('OLD_PROTECTION_QUANTITY_INVALID');
     const lot=info?.filters?.find(f=>f.filterType==='LOT_SIZE'),pf=info?.filters?.find(f=>f.filterType==='PRICE_FILTER');
     const nf=info?.filters?.find(f=>f.filterType==='NOTIONAL')||info?.filters?.find(f=>f.filterType==='MIN_NOTIONAL');
     const quantity=Number(old.origQty),tick=Number(pf?.tickSize),step=Number(lot?.stepSize);
@@ -87,8 +94,11 @@ function createTransitions({transport,dir,key,secret,now=Date.now}) {
     if(kind==='EXIT'&&(quantity*market<Number(nf.minNotional)||nf.maxNotional&&quantity*market>Number(nf.maxNotional)))throw new Error('EXIT_NOTIONAL_REFUSED_OLD_RETAINED');
     const id=crypto.createHash('sha256').update(`${symbol}:${old.orderId}:${kind}:${kind==='EXIT'?'market':stopPrice}`).digest('hex').slice(0,32);
     const prior=records().find(r=>r.id===id);if(prior)return prior;
+    const orphan=String(old.clientOrderId).startsWith('proypers-gh-orphan-');
+    const prefix=orphan?'proypers-gh-orphan-':'proypers-gh-protect-';
     const r={version:1,id,file:path.join(dir,id+'.json'),symbol,old,kind,
-      nextId:kind==='EXIT'?`proypers-gh-exit-${id.slice(0,19)}`:`proypers-gh-protect-${id.slice(0,16)}`,restoreId:`proypers-gh-protect-r${id.slice(0,15)}`,state:'INTENT'};
+      nextId:kind==='EXIT'?(orphan?`proypers-gh-orphan-exit-${id.slice(0,12)}`:`proypers-gh-exit-${id.slice(0,19)}`):`${prefix}${id.slice(0,16)}`,
+      restoreId:`${prefix}r${id.slice(0,15)}`,state:'INTENT'};
     r.params={symbol,side:'SELL',type:old.type,quantity:old.origQty,stopPrice:String(stopPrice),
       cancelOrderId:String(old.orderId),cancelReplaceMode:'STOP_ON_FAILURE',cancelRestrictions:'ONLY_NEW',
       orderRateLimitExceededMode:'DO_NOTHING',newClientOrderId:r.nextId,newOrderRespType:'RESULT'};

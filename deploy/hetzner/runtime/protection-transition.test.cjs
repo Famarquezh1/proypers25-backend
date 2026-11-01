@@ -98,3 +98,17 @@ test('all pinned exit integration anchors compile and unknown source fails close
     assert.throws(()=>transform('invalid',name),/SOURCE_MISMATCH/);
   }
 });
+test('partially filled native stop retains its protected remainder without a second SELL',async()=>{
+  const f=fixture('normal');try{
+    f.old.status='PARTIALLY_FILLED';f.old.executedQty='.5';
+    assert.equal((await f.create().replace(f.request)).state,'OLD_RETAINED');assert.equal(f.posts(),0);
+  }finally{f.clean();}
+});
+test('orphan stop replacement preserves its ownership prefix',async()=>{
+  const f=fixture('lost');try{
+    f.old.clientOrderId='proypers-gh-orphan-original';
+    await assert.rejects(f.create().replace(f.request),/RECOVERY_REQUIRED/);
+    assert.equal((await f.create().recover()).pending,0);
+    assert.match(f.orders.at(-1).clientOrderId,/^proypers-gh-orphan-/);assert(f.orders.at(-1).clientOrderId.length<=36);
+  }finally{f.clean();}
+});

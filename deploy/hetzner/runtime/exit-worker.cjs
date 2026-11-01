@@ -12,7 +12,7 @@ async function main(){
   const safety=createExitSafety({transport:global.fetch,dir:path.join(state,'exit-state'),
     key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
   if((await safety.recover()).pending)throw new Error('EXIT_RECOVERY_PENDING');
-  const transitions=createTransitions({transport:global.fetch,dir:path.join(state,'transition-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY});
+  const transitions=createTransitions({transport:global.fetch,dir:path.join(state,'transition-state'),key:process.env.BINANCE_API_KEY,secret:process.env.BINANCE_SECRET_KEY,resumeSell:safety.resumeConfirmedSell});
   if((await transitions.recover()).pending)throw new Error('TRANSITION_RECOVERY_PENDING');
   require('./exit-integration.cjs').install(transitions);
   global.fetch=safety.fetch;

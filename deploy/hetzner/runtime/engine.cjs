@@ -9,12 +9,13 @@ const {fresh}=require('./v10-scan.cjs');
 const state=process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25';
 const repo=process.env.PROYPERS_REPO||'/opt/proypers25/repo';
 const backend=path.join(repo,'backend');
-const guard=path.join(__dirname,'readonly.cjs');
+const candidate=process.argv.includes('--candidate');
+const guard=path.join(__dirname,candidate?'candidate-preload.cjs':'readonly.cjs');
 const journal=new Journal(path.join(state,'intents'));
 const allowed=new Set(['github-spot-production-radar-v42-active.js','github-spot-manual-execution-v10-aware.js','github-spot-auto-exit.js','recover-orders.cjs']);
 let stopping=false;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function summary(event,data={}) {console.log(JSON.stringify({at:new Date().toISOString(),event,mode:'STAGING_READ_ONLY',tradingActivated:false,...data}));}
+function summary(event,data={}) {console.log(JSON.stringify({at:new Date().toISOString(),event,mode:candidate?'LIVE_CORE_ONLY':'STAGING_READ_ONLY',tradingActivated:candidate,...data}));}
 function redact(text) {
   for(const name of ['binance-key','binance-secret']){
     const file=path.join(process.env.CREDENTIALS_DIRECTORY||'/nonexistent',name);
@@ -25,7 +26,7 @@ function redact(text) {
 async function run(script,extra={},timeoutMs=150000) {
   if(!allowed.has(script))throw new Error('SCRIPT_NOT_ALLOWED');
   const env={PATH:process.env.PATH,HOME:state,LANG:'C.UTF-8',NODE_OPTIONS:`--require=${guard}`,
-    PROYPERS_STAGING_PRELOAD:'1',CREDENTIALS_DIRECTORY:process.env.CREDENTIALS_DIRECTORY,
+    PROYPERS_STAGING_PRELOAD:candidate?'0':'1',PROYPERS_CANDIDATE_PRELOAD:candidate?'1':'0',CREDENTIALS_DIRECTORY:process.env.CREDENTIALS_DIRECTORY,
     PROYPERS_LOCAL_STATE_DIR:state,PROYPERS_MANAGED_CONTEXT:path.join(__dirname,'managed-context.json'),
     PROYPERS_STATE_DIR:state,PROYPERS_REPO:repo,
     GITHUB_REPOSITORY:'Famarquezh1/proypers25-backend',GITHUB_TOKEN:'LOCAL_SNAPSHOT_ONLY',
@@ -49,7 +50,8 @@ async function run(script,extra={},timeoutMs=150000) {
   });
 }
 async function cycle(scanDue) {
-  if(!process.env.CREDENTIALS_DIRECTORY||!fs.existsSync(path.join(process.env.CREDENTIALS_DIRECTORY,'trading-disabled')))throw new Error('TRADING_DISABLED_MARKER_REQUIRED');
+  if(candidate)require('./candidate-gate.cjs').authorization();
+  else if(!process.env.CREDENTIALS_DIRECTORY||!fs.existsSync(path.join(process.env.CREDENTIALS_DIRECTORY,'trading-disabled')))throw new Error('TRADING_DISABLED_MARKER_REQUIRED');
   const recovery=await run('recover-orders.cjs',{},90000);
   if(recovery.code!==0)summary('NEW_BUYS_BLOCKED_PENDING_RECOVERY');
   const report=await audit();atomic(path.join(state,'position-audit.json'),report);
@@ -58,6 +60,7 @@ async function cycle(scanDue) {
   summary('ACCOUNT_AUDIT',{reviewRequired:report.reviewRequired,positions:report.positions.length,
     openOrders:report.openOrderCount,security:report.security});
   let newBuysBlocked=recovery.code!==0||report.reviewRequired>0;
+  if(candidate&&(report.accountCanTrade!==true||report.unsupportedOrderCount>0||report.security.spotPermission!==true||report.security.reading!==true||report.security.futuresPermission||report.security.transferPermission||fs.existsSync(path.join(state,'BUY_PAUSED'))))newBuysBlocked=true;
   if(scanDue){
     // Original exit chain, including XEC/V61/V10/orphans, with every mutation blocked.
     const exits=await run('github-spot-auto-exit.js',{},150000);
@@ -68,7 +71,7 @@ async function cycle(scanDue) {
     atomic(path.join(state,'radar-last.json'),{at:new Date().toISOString(),signal});
     const signals=[{signal,lane:'CORE',createdAt:new Date().toISOString()}];
     const v10File=path.join(state,'v10-last.json');
-    if(fs.existsSync(v10File)) {
+    if(!candidate&&fs.existsSync(v10File)) {
       const snapshot=JSON.parse(fs.readFileSync(v10File,'utf8'));
       const candidate=fresh(snapshot);
       if(candidate)signals.push({signal:candidate,lane:'V10_HUNTER',createdAt:snapshot.completedAt});
@@ -95,11 +98,12 @@ async function cycle(scanDue) {
         }
       }
     }
-    atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:false,liveReady:false});
+    atomic(path.join(state,'shadow-status.json'),{at:new Date().toISOString(),exitCode:exits.code,radarCode:scan.code,tradingActivated:candidate,liveReady:candidate});
   }
-  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:'STAGING_READ_ONLY',tradingActivated:false,liveReady:false,newBuysBlocked});
+  atomic(path.join(state,'heartbeat.json'),{at:new Date().toISOString(),pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),mode:candidate?'LIVE_CORE_ONLY':'STAGING_READ_ONLY',tradingActivated:candidate,liveReady:candidate,newBuysBlocked});
 }
 async function main(){
+  if(candidate)require('./candidate-gate.cjs').authorization();
   fs.mkdirSync(state,{recursive:true,mode:0o700});
   const lock=path.join(state,'engine.lock');let fd;
   try{fd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(fd,String(process.pid));fs.fsyncSync(fd);}catch(e){

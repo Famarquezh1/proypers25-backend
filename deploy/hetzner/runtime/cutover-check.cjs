@@ -1,6 +1,7 @@
 'use strict';
 // Read-only inventory gate. It cannot enable either executor or disable protective monitoring.
-const REQUIRED=['.github/workflows/spot-manual-approval.yml','.github/workflows/spot-auto-exit-local.yml','.github/workflows/spot-dust-under-one-usdt.yml'];
+const REQUIRED=['.github/workflows/spot-manual-approval.yml','.github/workflows/spot-auto-exit-local.yml','.github/workflows/spot-dust-under-one-usdt.yml',
+  '.github/workflows/spot-github-radar.yml','.github/workflows/spot-microflow-hunter-v10.yml'];
 function assess(snapshot,now=Date.now()){
   const reasons=[];
   const age=now-Date.parse(snapshot.checkedAt);

@@ -1,0 +1,83 @@
+name: Hetzner OWNER - preflight or activate CORE
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'check-only never activates trading; activate-core is the owner financial activation.'
+        required: true
+        type: choice
+        default: check-only
+        options:
+          - check-only
+          - activate-core
+      confirmation:
+        description: 'Owner action: type ACTIVATE_CORE_WITH_REAL_MONEY to enable real orders. V10 remains observation only.'
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hetzner-bootstrap-check
+  cancel-in-progress: false
+jobs:
+  owner-activation:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: KIT_REF
+          persist-credentials: false
+      - name: Require explicit owner confirmation
+        if: inputs.operation == 'activate-core'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = 'ACTIVATE_CORE_WITH_REAL_MONEY'
+      - name: Read fresh legacy executor inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/hetzner/runtime/collect-cutover.cjs cutover-inventory.json
+      - name: Owner activation after current account and cutover checks
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+          OPERATION: ${{ inputs.operation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in check-only|activate-core) ;; *) exit 2 ;; esac
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          scp "${SSH_OPTIONS[@]}" cutover-inventory.json deploy@89.167.5.87:/home/deploy/cutover-inventory.json
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 "bash -s -- $OPERATION" <<'REMOTE'
+          set -euo pipefail
+          test "$(readlink /opt/proypers25/runtime)" = '/opt/proypers25/releases/KIT_REF/runtime'
+          sudo install -m 0600 -o spot -g spot /home/deploy/cutover-inventory.json /var/lib/proypers25/cutover-inventory.json
+          if [ "$1" = 'check-only' ]; then
+            sudo env CREDENTIALS_DIRECTORY=/etc/proypers25 /usr/bin/node /opt/proypers25/runtime/pre-live-check.cjs
+          elif [ "$1" = 'activate-core' ]; then
+            sudo /opt/proypers25/runtime/owner-activate.sh --activate-core-with-real-money
+          else
+            exit 2
+          fi
+          REMOTE
+          if [ "$OPERATION" = 'check-only' ]; then
+            echo 'Read-only preflight completed. Trading was NOT activated.'
+            exit 0
+          fi
+          HEALTHY=false
+          for attempt in $(seq 1 45); do
+            if ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'sudo python3 -c '\''import json,subprocess,datetime
+          h=json.load(open("/var/lib/proypers25/heartbeat.json"))
+          age=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(h["at"].replace("Z","+00:00"))).total_seconds()
+          assert h["mode"]=="LIVE_CORE_ONLY" and h["tradingActivated"] is True and 0<=age<180
+          assert h["pid"]==int(subprocess.check_output(["systemctl","show","proypers25-live.service","-p","MainPID","--value"]))'\''' >/dev/null 2>&1; then HEALTHY=true; break; fi
+            sleep 5
+          done
+          test "$HEALTHY" = true
+          echo 'Owner activation verified: LIVE_CORE_ONLY; V10 observation only.'
