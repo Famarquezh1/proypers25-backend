@@ -42,4 +42,53 @@ jobs:
               errors=sorted(set(re.findall(r'MODULE_NOT_FOUND|EACCES|ENOENT|TRANSPORT_[A-Z_]+|GITHUB_ROUTE_DENIED|VPS_STAGING_WRITE_BLOCKED|MANAGED_CONTEXT_REQUIRED|HTTP [0-9]{3}|SCRIPT_NOT_ALLOWED',text)))
               print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text)}))
           PY
+          sudo env CREDENTIALS_DIRECTORY=/etc/proypers25 /usr/bin/node - <<'JS'
+          const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');
+          const transport=require('/opt/proypers25/runtime/readonly.cjs').makeFetch();
+          const base='/var/lib/proypers25',auth=JSON.parse(fs.readFileSync('/etc/proypers25/LIVE_AUTHORIZATION.json','utf8'));
+          const start=Date.parse(auth.authorizedAt),end=Date.now();
+          const key=fs.readFileSync('/etc/proypers25/binance-key','utf8').trim(),secret=fs.readFileSync('/etc/proypers25/binance-secret','utf8').trim();
+          async function get(endpoint,params={}) {
+            const q=new URLSearchParams(params);q.set('recvWindow','5000');q.set('timestamp',String(Date.now()));
+            q.set('signature',crypto.createHmac('sha256',secret).update(q.toString()).digest('hex'));
+            const r=await transport('https://api.binance.com'+endpoint+'?'+q,{headers:{'X-MBX-APIKEY':key}});
+            if(!r.ok)throw new Error('READ_ONLY_HISTORY_HTTP_'+r.status);return r.json();
+          }
+          (async()=>{
+            const symbols=new Set(),groups={};
+            for(const group of ['execution-state','exit-state','transition-state']){
+              const dir=path.join(base,group);groups[group]={};
+              if(!fs.existsSync(dir))continue;
+              for(const n of fs.readdirSync(dir).filter(n=>/^[a-f0-9]{32}\.json$/.test(n))){
+                const r=JSON.parse(fs.readFileSync(path.join(dir,n),'utf8'));
+                groups[group][r.state]=(groups[group][r.state]||0)+1;
+                if(/^[A-Z0-9]+USDT$/.test(r.symbol||''))symbols.add(r.symbol);
+              }
+            }
+            const account=await get('/api/v3/account',{omitZeroBalances:'true'});
+            for(const b of account.balances||[])if(b.asset!=='USDT'&&Number(b.free)+Number(b.locked)>0)symbols.add(b.asset+'USDT');
+            const audit=JSON.parse(fs.readFileSync(path.join(base,'position-audit.json'),'utf8'));
+            const valid=new Set(audit.positions.map(p=>p.symbol).filter(Boolean));
+            for(const s of symbols)if(!valid.has(s)&&!Object.keys(groups['execution-state']).length)symbols.delete(s);
+            if(symbols.size>40)throw new Error('HISTORY_SYMBOL_LIMIT');
+            const rows=[];let complete=true;
+            for(const symbol of symbols){
+              const orders=[];
+              for(let from=start;from<end;from+=23*3600000){
+                const page=await get('/api/v3/allOrders',{symbol,startTime:String(from),endTime:String(Math.min(end,from+23*3600000-1)),limit:'1000'});
+                if(!Array.isArray(page))throw new Error('INVALID_HISTORY');
+                if(page.length===1000)complete=false;
+                orders.push(...page);
+              }
+              const unique=[...new Map(orders.map(o=>[o.orderId,o])).values()];
+              const managed=unique.filter(o=>/^proypers-gh-/.test(o.clientOrderId||''));
+              const executed=managed.filter(o=>Number(o.executedQty)>0);
+              rows.push({symbol,managedOrders:managed.length,executedBuys:executed.filter(o=>o.side==='BUY').length,executedSells:executed.filter(o=>o.side==='SELL').length,
+                otherExecutedOrders:unique.filter(o=>!/^proypers-gh-/.test(o.clientOrderId||'')&&Number(o.executedQty)>0).length,
+                lastManagedExecutionAt:executed.length?new Date(Math.max(...executed.map(o=>Number(o.updateTime)))).toISOString():null});
+            }
+            let radar=null;try{const r=JSON.parse(fs.readFileSync(path.join(base,'radar-last.json'),'utf8'));radar={at:r.at,notify:r.signal?.notify===true,symbol:r.signal?.symbol||null,reason:r.signal?.reason||null};}catch{}
+            console.log('TRADE_HISTORY_SUMMARY',JSON.stringify({since:auth.authorizedAt,through:new Date(end).toISOString(),scope:'VPS intent and currently held symbols',complete,groups,radar,rows}));
+          })().catch(e=>{console.error(/^[A-Z_0-9]+$/.test(e.message)?e.message:'READ_ONLY_HISTORY_FAILED');process.exitCode=1;});
+          JS
           REMOTE
