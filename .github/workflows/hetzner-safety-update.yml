@@ -10,11 +10,11 @@ concurrency:
 jobs:
   safety-update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 9
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 14fb834a4bd754d7a47a80ba1c5dc99213b304ab
+          ref: e734b0a0ee7b4151a993eb03b8b85f048a97a190
           persist-credentials: false
       - name: Inventory legacy executors without changing their state
         env:
@@ -44,7 +44,7 @@ jobs:
           if sudo test -f /opt/proypers25/runtime/adaptive-model.json; then
             sudo cp /opt/proypers25/runtime/adaptive-model.json /home/deploy/proypers25-safety/runtime/adaptive-model.json
           fi
-          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety 14fb834a4bd754d7a47a80ba1c5dc99213b304ab
+          sudo bash /home/deploy/proypers25-safety/install-staging.sh /home/deploy/proypers25-safety e734b0a0ee7b4151a993eb03b8b85f048a97a190
           REMOTE
           HEALTH_OK=false
           for attempt in $(seq 1 45); do
