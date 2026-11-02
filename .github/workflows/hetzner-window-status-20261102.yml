@@ -1,0 +1,70 @@
+name: Hetzner read-only window status 20261102
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read VPS state without trading or private account details
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo test -f /etc/proypers25/TRADING_DISABLED
+          UNIT=proypers25-engine.service
+          if systemctl is-active --quiet proypers25-live.service; then UNIT=proypers25-live.service; fi
+          sudo systemctl show "$UNIT" -p ActiveState -p SubState -p MainPID -p NRestarts -p ExecMainStatus -p MemoryCurrent
+          sudo journalctl -u "$UNIT" -n 12 --no-pager -o cat
+          sudo python3 - <<'PY'
+          import json,pathlib,re,collections
+          base=pathlib.Path('/var/lib/proypers25')
+          for name in ['heartbeat.json','shadow-status.json']:
+              p=base/name
+              if p.exists(): print(name,json.dumps(json.load(open(p))))
+          p=base/'position-audit.json'
+          if p.exists():
+              a=json.load(open(p))
+              print('AUDIT_SUMMARY',json.dumps({'security':a['security'],'reviewRequired':a['reviewRequired'],'positionStatuses':dict(collections.Counter(p['status'] for p in a['positions'])),'openOrderCount':a['openOrderCount']}))
+          for p in base.glob('*.last.json'):
+              d=json.load(open(p))
+              text=d.get('stderr','')
+              for line in text.splitlines():
+                  if line.startswith('EXIT_ENGINE_BLOCKED:'):
+                      print('EXIT_FAILURE_REASON',re.sub(r'https?://\S+','[url]',line)[:500])
+              errors=sorted(set(re.findall(r'MODULE_NOT_FOUND|EACCES|ENOENT|TRANSPORT_[A-Z_]+|GITHUB_ROUTE_DENIED|VPS_STAGING_WRITE_BLOCKED|MANAGED_CONTEXT_REQUIRED|HTTP [0-9]{3}|SCRIPT_NOT_ALLOWED',text)))
+              print('SCRIPT_STATE',json.dumps({'script':p.name,'code':d.get('code'),'timedOut':d.get('timedOut'),'errorCodes':errors,'stderrLength':len(text),'diagnosticCodes':sorted(set(re.findall(r'\b[A-Z][A-Z_]{5,}\b',text)))}))
+          PY
+          sudo node - <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const start=Date.parse('2026-11-01T23:00:00.000Z'),end=Date.now(),symbol='SOXLBUSDT',baseAsset='SOXLB';
+          const fetch=require('/opt/proypers25/runtime/readonly.cjs').makeFetch();
+          const key=fs.readFileSync('/etc/proypers25/binance-key','utf8').trim(),secret=fs.readFileSync('/etc/proypers25/binance-secret','utf8').trim();
+          async function get(ep,p={},signed=true){const q=new URLSearchParams(p);if(signed){q.set('recvWindow','5000');q.set('timestamp',String(Date.now()));q.set('signature',crypto.createHmac('sha256',secret).update(q.toString()).digest('hex'));}const r=await fetch('https://api.binance.com'+ep+'?'+q,{method:'GET',headers:signed?{'X-MBX-APIKEY':key}:{}});if(!r.ok)throw new Error('WINDOW_READ_HTTP_'+r.status);return r.json();}
+          (async()=>{
+           const [orders,trades,ticker,account]=await Promise.all([get('/api/v3/allOrders',{symbol,limit:'1000'}),get('/api/v3/myTrades',{symbol,limit:'1000'}),get('/api/v3/ticker/price',{symbol},false),get('/api/v3/account',{omitZeroBalances:'true'})]);
+           if(orders.length===1000||trades.length===1000)throw new Error('WINDOW_HISTORY_TRUNCATED');
+           const managed=orders.filter(o=>o.clientOrderId?.startsWith('proypers-gh-')&&Number(o.executedQty)>0&&Number(o.updateTime)>=start&&Number(o.updateTime)<=end);
+           const fills=trades.filter(t=>managed.some(o=>String(o.orderId)===String(t.orderId))&&Number(t.time)>=start&&Number(t.time)<=end);
+           let spent=0,received=0,quantity=0,feeQuote=0,otherFees=false;
+           for(const t of fills){const q=Number(t.qty),v=Number(t.quoteQty),f=Number(t.commission);if(t.isBuyer){spent+=v;quantity+=q;}else{received+=v;quantity-=q;}if(t.commissionAsset===baseAsset){quantity-=f;feeQuote+=f*Number(t.price);}else if(t.commissionAsset==='USDT'){feeQuote+=f;if(t.isBuyer)spent+=f;else received-=f;}else if(f>0)otherFees=true;}
+           const remainingValue=Math.max(0,quantity)*Number(ticker.price);
+           const rows=managed.map(o=>({side:o.side,type:o.type,status:o.status,at:new Date(Number(o.updateTime)).toISOString(),quantity:Number(o.executedQty),quote:Number(o.cummulativeQuoteQty),stopPrice:Number(o.stopPrice||0)}));
+           const pending=[];
+           for(const n of fs.readdirSync('/var/lib/proypers25/execution-state').filter(n=>/^[a-f0-9]{32}\.json$/.test(n))){const r=JSON.parse(fs.readFileSync(path.join('/var/lib/proypers25/execution-state',n),'utf8'));if(r.symbol===symbol)pending.push({state:r.state,createdAt:r.createdAt,updatedAt:r.updatedAt,originalStopPresent:orders.some(o=>o.clientOrderId===r.stopId),originalStopStatuses:orders.filter(o=>o.clientOrderId===r.stopId).map(o=>o.status)});}
+           const dec='/var/lib/proypers25/exit-decisions.jsonl';const reasons=fs.existsSync(dec)?fs.readFileSync(dec,'utf8').split('\n').filter(Boolean).map(x=>JSON.parse(x)).filter(x=>x.symbol===symbol&&Date.parse(x.at)>=start).map(x=>({at:x.at,reason:x.reason,ageHours:x.ageHours,gainPct:x.gainPct})):[];
+           console.log('WINDOW_RESULT',JSON.stringify({start:new Date(start).toISOString(),through:new Date(end).toISOString(),symbol,rows,spentUsdt:spent,receivedUsdt:received,commissionsUsdt:otherFees?null:feeQuote,remainingQuantity:quantity,remainingMarkedUsdt:remainingValue,netMarkedUsdt:otherFees?null:received+remainingValue-spent,netMarkedReturnPct:!otherFees&&spent>0?(received+remainingValue-spent)/spent*100:null,heldQuantity:account.balances.filter(b=>b.asset===baseAsset).map(b=>Number(b.free)+Number(b.locked)),pending,reasons,realOrdersSent:0}));
+          })().catch(e=>{console.error(/^[A-Z_0-9]+$/.test(e.message)?e.message:'WINDOW_READ_FAILED');process.exitCode=2;});
+          
+          JS
+          REMOTE
