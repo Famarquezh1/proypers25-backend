@@ -12,11 +12,18 @@ const {createSafety,lock}=require('./execution-safety.cjs');
 test('the entry safety adapter cannot bypass the staging write barrier',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'spot-entry-barrier-'));
   try{
-    let calls=0;const transport=makeFetch(()=>{calls++;throw new Error('NETWORK_MUST_NOT_RUN');});
+    let calls=0,reads=0;const blocked=makeFetch(()=>{calls++;throw new Error('NETWORK_MUST_NOT_RUN');});
+    const transport=(input,init={})=>{
+      if((init.method||'GET')!=='GET')return blocked(input,init);
+      reads++;const u=new URL(input);
+      if(u.pathname==='/api/v3/ticker/price')return Response.json({symbol:'BTCUSDT',price:'100'});
+      if(u.pathname==='/api/v3/exchangeInfo')return Response.json({symbols:[{symbol:'BTCUSDT',status:'TRADING',isSpotTradingAllowed:true,orderTypes:['STOP_LOSS'],filters:[{filterType:'LOT_SIZE',stepSize:'.001',minQty:'.001'},{filterType:'PRICE_FILTER',tickSize:'.01'},{filterType:'MIN_NOTIONAL',minNotional:'5'}]}]});
+      throw new Error('UNEXPECTED_READ');
+    };
     const safety=createSafety({transport,dir,key:'dummy',secret:'dummy',context:{symbol:'BTCUSDT',lane:'CORE',createdAt:'2026-10-31T10:00:00Z'},
       repo:process.env.PROYPERS_CHECK_REPO||path.resolve(__dirname,'../../..')});
     const r=await safety.fetch('https://api.binance.com/api/v3/order?symbol=BTCUSDT&side=BUY&type=MARKET&quoteOrderQty=10',{method:'POST'});
-    assert.equal(r.status,403);assert.equal(calls,0);assert.equal(safety.current().state,'REJECTED');
+    assert.equal(r.status,403);assert.equal(calls,0);assert.equal(reads,2);assert.equal(safety.current().state,'REJECTED');
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('the global execution lock rejects concurrent entry/recovery workers',()=>{

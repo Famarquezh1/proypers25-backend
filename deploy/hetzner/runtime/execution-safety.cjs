@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const {atomic}=require('./journal.cjs');
+const {protectionFits,isDust,closureProof}=require('./entry-reconciliation.cjs');
 const PENDING=new Set(['BUY_INTENT','BUY_UNKNOWN','BUY_PENDING','BUY_FILLED','PROTECTION_PENDING','STOP_INTENT','STOP_UNKNOWN']);
 function floor(value,stepText){const step=Number(stepText);if(!(step>0))throw new Error('INVALID_FILTER');const decimals=(String(stepText).replace(/0+$/,'').split('.')[1]||'').length;return Number((Math.floor((value+Number.EPSILON)/step)*step).toFixed(decimals));}
 function lock(dir){
@@ -82,6 +83,14 @@ function createSafety({transport,dir,key,secret,context,repo,now=Date.now}){
         const total=Number(row.free||0)+Number(row.locked||0),free=Number(row.free||0);
         const quantity=floor(Math.min(Number(record.buy.executedQty),free),lot.stepSize);
         if(!(total>0)){record.state='CLOSED';save(record);continue;}
+        const ticker=await get('/api/v3/ticker/price',{symbol:record.symbol},false);
+        const currentPrice=Number((Array.isArray(ticker)?ticker.find(t=>t.symbol===record.symbol):ticker)?.price);
+        if(isDust(info,total,currentPrice)){
+          const [openOrders,orders,trades]=await Promise.all([get('/api/v3/openOrders',{symbol:record.symbol}),get('/api/v3/allOrders',{symbol:record.symbol,limit:'1000'}),get('/api/v3/myTrades',{symbol:record.symbol,limit:'1000'})]);
+          const proof=closureProof({record,info,total,price:currentPrice,openOrders,orders,trades});
+          if(proof){record.state='CLOSED';record.closure=proof;save(record);console.log('ENTRY_CLOSED_CONFIRMED_EXIT_WITH_DUST symbol='+record.symbol);}
+          continue;
+        }
         if(quantity<Number(lot.minQty))continue;
         const entry=Number(record.buy.cummulativeQuoteQty)/Number(record.buy.executedQty);
         const stopPrice=floor(entry*(1-record.stopPct),price.tickSize);
@@ -119,6 +128,12 @@ function createSafety({transport,dir,key,secret,context,repo,now=Date.now}){
       record={id,file:path.join(dir,id+'.json'),symbol:context.symbol,lane:context.lane,createdAt:context.createdAt,
         buyId:`proypers-gh-${context.lane==='V10_HUNTER'?'v10-':''}${id.slice(0,18)}`,
         stopId:`proypers-gh-protect-${id.slice(0,16)}`,stopPct:classifySpotAsset(context.symbol).is_leveraged?Math.min(lanePct,.03):lanePct,state:'BUY_INTENT'};
+      const [ei,ticker]=await Promise.all([get('/api/v3/exchangeInfo',{symbol:record.symbol,showPermissionSets:'false'},false),get('/api/v3/ticker/price',{symbol:record.symbol},false)]);
+      const info=ei.symbols?.find(s=>s.symbol===record.symbol),price=Number((Array.isArray(ticker)?ticker.find(t=>t.symbol===record.symbol):ticker)?.price);
+      if(!protectionFits({info,price,quote:Number(p.get('quoteOrderQty')),stopPct:record.stopPct})){
+        record.state='REJECTED';record.reason='PRE_BUY_NATIVE_PROTECTION_MINIMUM';save(record);
+        return Response.json({code:-1013,msg:'PRE_BUY_NATIVE_PROTECTION_MINIMUM'},{status:400});
+      }
       save(record);
     }else{
       if(!record?.buy||!['BUY_FILLED','PROTECTION_PENDING','STOP_INTENT','STOP_UNKNOWN','PROTECTED'].includes(record.state))throw new Error('NATIVE_STOP_WITHOUT_RECONCILED_BUY');
