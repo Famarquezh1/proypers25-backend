@@ -1,3 +1,21 @@
+## Sold-entry recovery repair deployed — 2026-11-02 UTC
+
+Source patch: `5da033f81004160e99b2b094992e09754a6cc2cd`.
+Deployment: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41510216960
+
+SOXLBUSDT's initial stop was rejected by Binance NOTIONAL after a 5.17595 USDT BUY. A later native stop from the exit chain sold 0.064 SOXLB, leaving 0.000935 SOXLB. The entry journal still held PROTECTION_PENDING for its original stop client ID. Recovery only looked up that ID and would not clear a nonzero sub-lot balance, blocking every subsequent BUY despite a confirmed sale and dust-only account.
+
+The recovery adapter now closes operational entry state as CLOSED / CONFIRMED_EXIT_WITH_DUST only after authenticated full order/fill history proves the exact original BUY, a managed terminal SELL, base-asset fee accounting and an exact match to the current non-tradeable residual, with no open symbol orders. Truncated history, missing fills, other BUYs, external executions, operable inventory and mismatched balances retain the block. Closure preserves the actual coin balance and its residual evidence. No second SELL or BUY is sent.
+
+Before dispatching a new BUY, an additional native-stop minimum check now applies base-fee reserve, Binance lot/price rounding, the existing lane stop percentage and the minimum stop notional. Insufficient amounts are REJECTED before any BUY dispatch; the guard never increases order size or changes strategy limits. This is a preflight check, not a guarantee against all market movement between requests.
+
+59 runtime tests plus 12 entry and 8 restart scenarios passed. The real SOXLB data independently passed closure proof and showed its original BUY would be rejected by the new minimum gate. A bounded maintenance script using an explicit GET-only transport then reconciled the existing journal, preserving spot ownership/0600 permissions, and reported pending=0 / realOrdersSent=0. Service restart, fresh recovery, exit and radar success were required before removing the temporary maintenance pause. File-integrity evidence and root-only rollback backups were refreshed. Original strategy pin, owner authorization, capital limits, credentials, V10 observation-only setting and systemd configuration remain unchanged.
+
+Independent read-only health: https://github.com/Famarquezh1/proypers25-backend/actions/runs/41510653721
+Fresh heartbeat at 2026-11-02T19:30:30.650Z: LIVE_CORE_ONLY, tradingActivated=true, liveReady=true, newBuysBlocked=false, PID=94157. Systemd active with NRestarts=0. Current recovery, exits and radar returned code 0, no timeout; entry journal groups show PROTECTED=15, REJECTED=1, CLOSED=1 and no pending entry state. Audit reviewRequired=0, 15 dust balances, zero open orders, Spot enabled, withdrawals/Futures/transfers disabled, IP restricted. The old last-entry NOTIONAL stderr is historical evidence from the already reconciled SOXLB BUY, not a fresh recovery failure. No new trade was forced for testing; next entries still require valid original CORE signals and all safety checks.
+
+---
+
 ## Position cohort repair deployed — 2026-11-01 UTC
 
 Source patch: `98fd8dd58abda671a63dfe24e3ed0166edf51fb3`.
