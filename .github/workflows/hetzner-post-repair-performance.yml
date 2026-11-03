@@ -1,0 +1,29 @@
+name: Hetzner post-repair performance snapshot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  performance:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cc97edfbcf56793441e19970cb29005f2fd76782
+          persist-credentials: false
+      - name: Read actual fills and commissions without changing production
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          node --check deploy/hetzner/post-repair-performance.cjs
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo node -' < deploy/hetzner/post-repair-performance.cjs | tee "$WORKDIR/performance.log"
+          grep -q '^POST_REPAIR_PERFORMANCE ' "$WORKDIR/performance.log"
