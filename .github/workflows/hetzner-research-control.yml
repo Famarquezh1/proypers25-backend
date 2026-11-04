@@ -1,0 +1,77 @@
+name: Hetzner research deployment and verification
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/hetzner-research-control.yml'
+permissions:
+  contents: read
+concurrency:
+  group: hetzner-research-only
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'push' && github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c1ef9fe63266e9cfcb8b46a94d913c403fda98d7
+          persist-credentials: false
+      - name: Test bounded evidence and deploy isolated collector
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test deploy/hetzner/research/collector.test.cjs
+          bash -n deploy/hetzner/research/install.sh
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          SSH_OPTIONS=(-i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10)
+          (cd deploy/hetzner/research && sha256sum collector.cjs collector.test.cjs proposals.json install.sh > SHA256SUMS)
+          tar -czf "$WORKDIR/research-release.tgz" -C deploy/hetzner/research collector.cjs collector.test.cjs proposals.json install.sh SHA256SUMS
+          scp "${SSH_OPTIONS[@]}" "$WORKDIR/research-release.tgz" deploy@89.167.5.87:/home/deploy/research-release.tgz
+          scp "${SSH_OPTIONS[@]}" deploy/hetzner/research/install.sh deploy@89.167.5.87:/home/deploy/install-research.sh
+          ssh "${SSH_OPTIONS[@]}" deploy@89.167.5.87 'sudo bash /home/deploy/install-research.sh c1ef9fe63266e9cfcb8b46a94d913c403fda98d7' | tee "$WORKDIR/deploy.log"
+          grep -q '^RESEARCH_DEPLOYED ' "$WORKDIR/deploy.log"
+  status:
+    needs: deploy
+    if: always() && github.actor == 'Famarquezh1' && (needs.deploy.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Independently verify timer, fresh evidence and live heartbeat
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo python3 -' <<'PY'
+          import json,pathlib,subprocess,datetime
+          base=pathlib.Path('/var/lib/proypers25/research')
+          health=json.loads((base/'health.json').read_text())
+          report=json.loads((base/'report.json').read_text())
+          age=datetime.datetime.now(datetime.timezone.utc).timestamp()-datetime.datetime.fromisoformat(health['at'].replace('Z','+00:00')).timestamp()
+          timer=subprocess.check_output(['systemctl','is-active','proypers25-research.timer'],text=True).strip()
+          result=subprocess.check_output(['systemctl','show','proypers25-research.service','-p','Result','--value'],text=True).strip()
+          live=json.loads(pathlib.Path('/var/lib/proypers25/heartbeat.json').read_text())
+          print('RESEARCH_STATUS',json.dumps({'health':health,'ageSeconds':age,'timer':timer,'serviceResult':result,'live':live,'report':report}))
+          ledger=json.loads((base/'ledger.json').read_text())
+          freeze=datetime.datetime.fromisoformat(report['freezeAt'].replace('Z','+00:00')).timestamp()*1000
+          discovery=[o for o in ledger['observations'] if o['at']<freeze and 'outcome' in o]
+          print('RESEARCH_DISCOVERY',json.dumps({'total':len(discovery),'truncated':len(discovery)>400,'rows':discovery[-400:]}))
+          events=subprocess.check_output(['journalctl','-u','proypers25-research.service','-n','12','--no-pager','-o','cat'],text=True)
+          print('RESEARCH_JOURNAL',events)
+          if age>900 or not health['ok'] or timer!='active' or result!='success':raise SystemExit('RESEARCH_HEALTH_FAILED')
+          if datetime.datetime.now(datetime.timezone.utc).timestamp()-datetime.datetime.fromisoformat(live['at'].replace('Z','+00:00')).timestamp()>600:raise SystemExit('LIVE_HEARTBEAT_STALE')
+          PY
