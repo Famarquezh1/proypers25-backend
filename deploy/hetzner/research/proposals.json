@@ -1,0 +1,9 @@
+{
+  "version": "20261104-v1",
+  "hypothesis": "Compare CORE continuation against abstention when short momentum reverses or entry has already stretched.",
+  "candidates": [
+    {"id":"core-reference","conditions":[]},
+    {"id":"continuation-confirmed","conditions":[{"feature":"last15mPct","op":"gt","value":0},{"feature":"last5mPct","op":"gt","value":0}]},
+    {"id":"continuation-without-chasing","conditions":[{"feature":"last15mPct","op":"gt","value":0},{"feature":"last5mPct","op":"gt","value":0},{"feature":"last60mPct","op":"lt","value":5}]}
+  ]
+}
