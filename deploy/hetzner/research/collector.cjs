@@ -34,8 +34,11 @@ async function main(){
     if(now>=FREEZE){if(ledger.frozenHash&&ledger.frozenHash!==hash)throw Error('HOLDOUT_FROZEN');ledger.frozenHash=hash;}
     ledger.versions[p.version]=hash;let requests=0;
     async function get(endpoint,params){if(!['klines','ticker/bookTicker'].includes(endpoint)||++requests>14)throw Error('PUBLIC_READ_BUDGET');const r=await fetch('https://api.binance.com/api/v3/'+endpoint+'?'+new URLSearchParams(params),{method:'GET',signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('PUBLIC_DATA_HTTP_'+r.status);return r.json();}
+    let publicDataVerified=false,lastRadarAt=null,lastNotify=null;
     if(now<END){
+      const probe=await get('ticker/bookTicker',{symbol:'BTCUSDT'});if(!(Number(probe.askPrice)>0&&Number(probe.bidPrice)>0))throw Error('PUBLIC_PROBE_INVALID');publicDataVerified=true;
       const radar=JSON.parse(fs.readFileSync(path.join(state,'radar-last.json'),'utf8')),s=radar.signal;
+      lastRadarAt=radar.at;lastNotify=s?.notify===true;
       if(s?.notify===true&&/^[A-Z0-9]{2,24}USDT$/.test(s.symbol||'')&&now-Date.parse(radar.at)>=0&&now-Date.parse(radar.at)<=7*60000){
         const previous=ledger.observations.filter(o=>o.symbol===s.symbol).at(-1);
         if(!previous||now-previous.at>=20*60000){
@@ -52,7 +55,7 @@ async function main(){
       if(!b||Number(b[6])!==o.targetAt||!(Number(b[4])>0))throw Error('LABEL_DATA_INVALID');
       const grossPct=(Number(b[4])/o.entryAsk-1)*100;o.outcome={grossPct,netPct:grossPct-.30,close:Number(b[4]),labelAt:now};atomic(file,ledger);
     }
-    ledger.updatedAt=Date.now();atomic(file,ledger);const result=report(ledger,Date.now());atomic(path.join(root,'report.json'),result);atomic(path.join(root,'health.json'),{at:new Date().toISOString(),ok:true,requests,ended:now>=END,observations:ledger.observations.length});console.log('RESEARCH_CYCLE_OK',JSON.stringify(result));
+    ledger.updatedAt=Date.now();atomic(file,ledger);const result=report(ledger,Date.now());atomic(path.join(root,'report.json'),result);atomic(path.join(root,'health.json'),{at:new Date().toISOString(),ok:true,requests,publicDataVerified,lastRadarAt,lastNotify,ended:now>=END,observations:ledger.observations.length});console.log('RESEARCH_CYCLE_OK',JSON.stringify(result));
   }finally{fs.closeSync(fd);fs.unlinkSync(lock);}
 }
 module.exports={validate,predict,features,metric,report,END,FREEZE};
