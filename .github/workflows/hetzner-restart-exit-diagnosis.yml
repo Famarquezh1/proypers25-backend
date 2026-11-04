@@ -37,7 +37,7 @@ jobs:
               try:
                   d=json.loads(m)
                   if d.get('event'):counts[d['event']]+=1
-                  if d.get('code',0)!=0 or d.get('timedOut') or d.get('event') in ['ERROR','FATAL','ENGINE_ERROR']:
+                  if d.get('code',0)!=0 or d.get('timedOut') or d.get('event') in ['ERROR','FATAL','ENGINE_ERROR','CYCLE_FAILED','ENGINE_FAILED']:
                       errors.append({k:d.get(k) for k in ['at','event','script','code','timedOut','reason'] if k in d})
               except:
                   codes=re.findall(r'ERR_[A-Z_]+|ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|ENOMEM|SIG[A-Z]+|[A-Za-z]*Error|heap out of memory',m)
@@ -58,7 +58,7 @@ jobs:
               for d in rows:
                   symbol=d.get('symbol')
                   if symbol:latest[symbol]=d
-              allowed=['at','symbol','action','reason','entryPrice','currentPrice','pnlPct','ageHours','stopPrice','decision','profitPct','mfePct']
+              allowed=['at','symbol','action','reason','entryPrice','currentPrice','pnlPct','ageHours','stopPrice','decision','profitPct','mfePct','gainPct']
               print('RECENT_EXIT_DECISIONS',json.dumps([{k:d[k] for k in allowed if k in d} for d in latest.values()]))
           p=base/'analysis/post-repair-20261103.json'
           if p.exists():
