@@ -1,0 +1,66 @@
+name: Hetzner bounded restart and exit diagnosis
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/hetzner-restart-exit-diagnosis.yml'
+permissions:
+  contents: read
+jobs:
+  diagnosis:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read lifecycle and existing exit records without financial writes
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo python3 -' <<'PY'
+          import json,subprocess,pathlib,collections,re
+          base=pathlib.Path('/var/lib/proypers25')
+          cmd=['journalctl','-u','proypers25-live.service','--since','2026-11-02 19:29:31 UTC','-n','12000','-o','json','--no-pager']
+          lines=subprocess.check_output(cmd,text=True).splitlines()
+          lifecycle=[];errors=[];counts=collections.Counter()
+          for line in lines:
+              j=json.loads(line);m=j.get('MESSAGE','');at=j.get('__REALTIME_TIMESTAMP')
+              if j.get('_PID')=='1':
+                  lifecycle.append({'timestampUs':at,'message':m[:350]})
+                  continue
+              try:
+                  d=json.loads(m)
+                  if d.get('event'):counts[d['event']]+=1
+                  if d.get('code',0)!=0 or d.get('timedOut') or d.get('event') in ['ERROR','FATAL','ENGINE_ERROR']:
+                      errors.append({k:d.get(k) for k in ['at','event','script','code','timedOut','reason'] if k in d})
+              except:
+                  codes=re.findall(r'ERR_[A-Z_]+|ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|ENOMEM|SIG[A-Z]+|[A-Za-z]*Error|heap out of memory',m)
+                  if codes:errors.append({'timestampUs':at,'codes':codes[:8]})
+          print('RESTART_DIAGNOSIS',json.dumps({'journalRows':len(lines),'possiblyTruncated':len(lines)==12000,'lifecycle':lifecycle[-60:],'errors':errors[-60:],'eventCounts':dict(counts)}))
+          for name in ['exit-decisions.jsonl.previous','exit-decisions.jsonl']:
+              p=base/name
+              if not p.exists():continue
+              rows=[]
+              for line in p.read_text().splitlines():
+                  try:d=json.loads(line)
+                  except:continue
+                  if str(d.get('at',''))<'2026-11-03T13:43:10.971Z':continue
+                  rows.append(d)
+              keys=sorted({k for d in rows for k in d})
+              print('EXIT_DECISION_FIELDS',json.dumps({'file':name,'rows':len(rows),'keys':keys}))
+              latest={}
+              for d in rows:
+                  symbol=d.get('symbol')
+                  if symbol:latest[symbol]=d
+              allowed=['at','symbol','action','reason','entryPrice','currentPrice','pnlPct','ageHours','stopPrice','decision','profitPct','mfePct']
+              print('RECENT_EXIT_DECISIONS',json.dumps([{k:d[k] for k in allowed if k in d} for d in latest.values()]))
+          p=base/'analysis/post-repair-20261103.json'
+          if p.exists():
+              r=json.loads(p.read_text());print('PERFORMANCE_ATTRIBUTION',json.dumps({'at':r['at'],'summary':r['summary'],'rows':r['rows']}))
+          PY
