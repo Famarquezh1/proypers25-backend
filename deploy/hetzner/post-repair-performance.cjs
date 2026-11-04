@@ -26,11 +26,11 @@ function attribute({trades,openingQuantity,buyIds,asset,price,minNotional}){
 async function main(){
   const key=fs.readFileSync('/etc/proypers25/binance-key','utf8').trim(),secret=fs.readFileSync('/etc/proypers25/binance-secret','utf8').trim();
   const transport=require('/opt/proypers25/runtime/readonly.cjs').makeFetch();let requests=0;
-  async function get(endpoint,params={},signed=true){if(++requests>120)throw new Error('PERFORMANCE_READ_BUDGET');const q=new URLSearchParams(params);if(signed){q.set('recvWindow','5000');q.set('timestamp',String(Date.now()));q.set('signature',crypto.createHmac('sha256',secret).update(q.toString()).digest('hex'));}const r=await transport('https://api.binance.com'+endpoint+'?'+q,{method:'GET',headers:signed?{'X-MBX-APIKEY':key}:{}});if(!r.ok)throw new Error('PERFORMANCE_HTTP_'+r.status);return r.json();}
+  async function get(endpoint,params={},signed=true){if(++requests>360)throw new Error('PERFORMANCE_READ_BUDGET');const q=new URLSearchParams(params);if(signed){q.set('recvWindow','5000');q.set('timestamp',String(Date.now()));q.set('signature',crypto.createHmac('sha256',secret).update(q.toString()).digest('hex'));}const r=await transport('https://api.binance.com'+endpoint+'?'+q,{method:'GET',headers:signed?{'X-MBX-APIKEY':key}:{}});if(!r.ok)throw new Error('PERFORMANCE_HTTP_'+r.status);return r.json();}
   const records=()=>fs.readdirSync(root+'/execution-state').filter(n=>/^[a-f0-9]{32}\.json$/.test(n)).map(n=>JSON.parse(fs.readFileSync(root+'/execution-state/'+n,'utf8'))).filter(r=>Number(r.buy?.executedQty)>0&&Date.parse(r.createdAt)>=SINCE);
   for(let attempt=0;attempt<2;attempt++){
     const wanted=records(),ids=new Set(wanted.map(r=>String(r.buy.orderId))),symbols=[...new Set(wanted.map(r=>r.symbol))];
-    if(!symbols.length||symbols.length>20||Date.now()-SINCE>3*86400000)throw new Error('PERFORMANCE_SCOPE_REVIEW_REQUIRED');
+    if(!symbols.length||symbols.length>40||Date.now()-SINCE>3*86400000)throw new Error('PERFORMANCE_SCOPE_REVIEW_REQUIRED');
     const before=await get('/api/v3/account',{omitZeroBalances:'true'}),end=Date.now(),rows=[];let sells=0,fees=0;
     const owned=(account,asset)=>{const b=account.balances.find(b=>b.asset===asset)||{};return Number(b.free||0)+Number(b.locked||0);};
     for(const symbol of symbols){
