@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: cc97edfbcf56793441e19970cb29005f2fd76782
+          ref: edcc3c29ca778e7d1a588f4e4bf55400e9a98527
           persist-credentials: false
       - name: Read actual fills and commissions without changing production
         env:
