@@ -318,7 +318,11 @@ async function placeProtection(base, info, symbol, quantity, stopPrice, currentP
   const priceFilter = info.filters?.find((f) => f.filterType === 'PRICE_FILTER');
   if (!lot || !priceFilter) throw new Error(`Protection filters missing for ${symbol}`);
   const normalizedQty = floorToStep(quantity, lot.stepSize);
-  if (!(normalizedQty >= Number(lot.minQty || 0))) throw new Error(`Protection quantity below minimum for ${symbol}`);
+  if (!(normalizedQty >= Number(lot.minQty || 0))) {
+    const error = new Error(`Protection quantity below minimum for ${symbol}`);
+    error.code = 'PROTECTION_QUANTITY_TOO_SMALL';
+    throw error;
+  }
 
   const resolved = resolveNativeProtectionStop({
     info,
@@ -685,6 +689,7 @@ async function main() {
         protectedCount += 1;
       } catch (error) {
         const nativeProtectionFailure = isNotionalFilterError(error) ||
+          error?.code === 'PROTECTION_QUANTITY_TOO_SMALL' ||
           error?.code === 'PROTECTION_NOTIONAL_TOO_SMALL' ||
           error?.code === 'PROTECTION_NATIVE_UNAVAILABLE';
         if (!nativeProtectionFailure) throw error;
