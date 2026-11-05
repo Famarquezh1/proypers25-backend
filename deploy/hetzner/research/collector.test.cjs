@@ -1,6 +1,24 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {validate,predict,features,metric,report,FREEZE}=require('./collector.cjs');
+test('spread budget is prospective, strict, and independent of momentum',()=>{
+  const p=validate(require('./proposals.json')),c=p.candidates.find(c=>c.id==='spread-budget-reference');
+  assert.ok(c);assert.equal(predict(c,{spreadPct:.099,last5mPct:-1}),true);
+  assert.equal(predict(c,{spreadPct:.1}),false);assert.equal(predict(c,{spreadPct:.101}),false);
+  assert.equal(predict(c,{}),false);assert.equal(predict(c,{spreadPct:NaN}),false);
+});
+test('monetary totals reconcile gains, losses, fixed costs and abstentions',()=>{
+  const predictions=[{id:'core-reference',up:true},{id:'spread-budget-reference',up:false}];
+  const rows=[{grossPct:1,netPct:.7},{grossPct:-2,netPct:-2.3}];
+  const r=report({observations:rows.map((outcome,i)=>({version:'old',at:FREEZE-2+i,predictions,outcome}))},FREEZE);
+  const m=r.groups['old:core-reference'].discovery;
+  assert.ok(Math.abs(m.hypotheticalNetGainsUsdtAt10Each-.07)<1e-12);
+  assert.ok(Math.abs(m.hypotheticalAbsoluteNetLossesUsdtAt10Each-.23)<1e-12);
+  assert.ok(Math.abs(m.assumedCostsUsdtAt10Each-.06)<1e-12);
+  assert.ok(Math.abs(m.hypotheticalNetUsdtAt10Each+.16)<1e-12);
+  assert.equal(r.groups['old:spread-budget-reference'].discovery.n,0);
+  assert.equal(r.groups['old:spread-budget-reference'].discovery.upAccuracy,null);
+});
 test('proposal grammar refuses executable text and unknown features',()=>{
   assert.throws(()=>validate({version:'20261104-v1',candidates:[{id:'x',conditions:[{feature:'process.exit()',op:'gt',value:0}]}]}));
   assert.throws(()=>validate({version:'20261104-v1',candidates:[{id:'x',conditions:[{feature:'last5mPct',op:'eval',value:0}]}]}));

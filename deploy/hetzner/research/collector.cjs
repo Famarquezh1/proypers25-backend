@@ -15,7 +15,7 @@ function features(bars,book,at){
   const f={last5mPct:pct(a[11][1]),last15mPct:pct(a[9][1]),last60mPct:pct(a[0][1]),range60mPct:(Math.max(...a.map(b=>Number(b[2])))/Math.min(...a.map(b=>Number(b[3])))-1)*100,spreadPct:(Number(book.askPrice)/Number(book.bidPrice)-1)*100};
   if(Object.values(f).some(v=>!Number.isFinite(v)))throw Error('FEATURE_NUMBER_INVALID');return f;
 }
-function metric(rows){const n=rows.length,wins=rows.filter(r=>r.netPct>0),losses=rows.filter(r=>r.netPct<=0),gain=wins.reduce((s,r)=>s+r.netPct/10,0),loss=-losses.reduce((s,r)=>s+r.netPct/10,0);return {n,upAccuracy:n?rows.filter(r=>r.grossPct>0).length/n:null,netWins:wins.length,netLosses:losses.length,hypotheticalNetUsdtAt10Each:gain-loss,profitFactor:loss>0?gain/loss:null,meanNetPct:n?rows.reduce((s,r)=>s+r.netPct,0)/n:null};}
+function metric(rows){const n=rows.length,wins=rows.filter(r=>r.netPct>0),losses=rows.filter(r=>r.netPct<=0),gain=wins.reduce((s,r)=>s+r.netPct/10,0),loss=-losses.reduce((s,r)=>s+r.netPct/10,0);return {n,hypotheticalNetGainsUsdtAt10Each:gain,hypotheticalAbsoluteNetLossesUsdtAt10Each:loss,assumedCostsUsdtAt10Each:rows.reduce((s,r)=>s+(r.grossPct-r.netPct)/10,0),upAccuracy:n?rows.filter(r=>r.grossPct>0).length/n:null,netWins:wins.length,netLosses:losses.length,hypotheticalNetUsdtAt10Each:gain-loss,profitFactor:loss>0?gain/loss:null,meanNetPct:n?rows.reduce((s,r)=>s+r.netPct,0)/n:null};}
 function report(ledger,now){
   const all=ledger.observations,groups={};
   for(const o of all)for(const p of o.predictions){const k=o.version+':'+p.id;groups[k]??={observed:0,selected:0,discovery:[],holdout:[]};const g=groups[k];g.observed++;if(!p.up)continue;g.selected++;if(o.outcome)g[o.at>=FREEZE?'holdout':'discovery'].push(o.outcome);}
