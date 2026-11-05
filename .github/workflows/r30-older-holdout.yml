@@ -1,0 +1,18 @@
+name: R30 Older Holdout 500USDT
+on:
+  pull_request:
+    paths: ['backend/scripts/github-r30-older-holdout.js','.github/workflows/r30-older-holdout.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-r30-older-holdout.js
+      - run: node backend/scripts/github-r30-older-holdout.js
+      - uses: actions/upload-artifact@v4
+        with: {name: r30-older-holdout-500usdt, path: r30-older-holdout-500usdt.json, retention-days: 30}

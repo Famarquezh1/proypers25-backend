@@ -1,0 +1,21 @@
+name: Explosion False Positive Search
+on:
+  pull_request:
+    paths:
+      - 'backend/scripts/github-explosion-false-positive-search.js'
+      - '.github/workflows/explosion-false-positive-search.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env: {REPLAY_DAYS: '35'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: node --check backend/scripts/github-explosion-false-positive-search.js
+      - run: node backend/scripts/github-explosion-false-positive-search.js
+      - uses: actions/upload-artifact@v4
+        with: {name: explosion-false-positive-search, path: explosion-false-positive-search.json, retention-days: 30}
