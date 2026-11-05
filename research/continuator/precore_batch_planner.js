@@ -188,7 +188,8 @@ async function main(){
     return {...x,...observed,lane,stats,plan,spreadPct:spread};
   });
 
-  const observed=scanned.filter(x=>x);
+  const probeErrors=scanned.filter(x=>x&&x.error);
+  const observed=scanned.filter(x=>x&&!x.error&&x.plan&&Number.isFinite(x.score));
   const candidates=observed.filter(x=>x.plan?.eligible)
     .sort((a,b)=>(b.plan.confidence-a.plan.confidence)||(b.score-a.score))
     .slice(0,MAX_SLOTS);
