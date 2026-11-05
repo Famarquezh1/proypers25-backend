@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {closedReference,outcome}=require('./shadow_outcome_safe');
+const bar=(open,high,low,close)=>[open,'100',String(high),String(low),String(close),'0',open+299999];
+const t=1800000;
+assert.equal(closedReference([bar(t-300000,101,99,100),bar(t,120,80,110)],t),100);
+assert.equal(outcome([bar(t,104,99.5,103)],100,t).status,'TP_HIT');
+assert.equal(outcome([bar(t,101,98,99)],100,t).net_pct,-1.2);
+assert.equal(outcome([bar(t,104,98,101)],100,t).status,'AMBIGUOUS_SAME_BAR');
+assert.equal(outcome([bar(t-300000,140,50,100),bar(t,101,99.5,100)],100,t).status,'TIMEOUT');
+assert.equal(outcome([bar(t,101,99.5,100)],100,t).net_pct,-0.2);
+console.log('shadow causal outcomes PASS');
