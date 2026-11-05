@@ -31,8 +31,8 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
     managedPositions: [],
     v42Quality: quality(2, 0.72)
   });
-  assert.strictEqual(result.allow, true);
-  assert.strictEqual(result.code, 'NORMAL_ADMITTED');
+  assert.strictEqual(result.allow, false);
+  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
 })();
 
 (function isolatedHighQualityCoreIsAdmitted() {
@@ -115,7 +115,7 @@ function quality(passCount, norm, detail = {}, freshEnough = true) {
     v42Quality: quality(2, 0.84)
   });
   assert.strictEqual(result.allow, false);
-  assert.strictEqual(result.code, 'EXTENDED_ENTRY');
+  assert.strictEqual(result.code, 'CORE_QUALITY_REQUIRED');
 })();
 
 (function correlatedEntryNeedsEliteQuality() {

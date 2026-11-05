@@ -3,10 +3,10 @@
 const assert = require('assert');
 const { DEFAULTS, evaluateMicrostructure, continuationRequiredForLane } = require('../services/localPretradeGuard');
 
-assert.strictEqual(DEFAULTS.samples, 7);
+assert.strictEqual(DEFAULTS.samples, 5);
 assert.strictEqual(DEFAULTS.maxLastSpreadPct, 0.006);
 assert.strictEqual(DEFAULTS.minEndReturnPct, -0.006);
-assert.strictEqual(DEFAULTS.sampleIntervalMs, 15000);
+assert.strictEqual(DEFAULTS.sampleIntervalMs, 3500);
 assert.strictEqual(DEFAULTS.minContinuationScore, 0);
 assert.strictEqual(continuationRequiredForLane('CORE'), true);
 assert.strictEqual(continuationRequiredForLane('V10_HUNTER'), true);

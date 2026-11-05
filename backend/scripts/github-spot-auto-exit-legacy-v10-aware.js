@@ -41,4 +41,13 @@ patch(
   'market exit permission'
 );
 
-eval(source);
+function loadEngine() {
+  const Module = require('module');
+  const engine = new Module(sourcePath, module);
+  engine.filename = sourcePath;
+  engine.paths = module.paths;
+  engine._compile(source, sourcePath);
+  return engine.exports;
+}
+module.exports = loadEngine();
+if (require.main === module) module.exports.main().catch((error) => { console.error(error); process.exitCode = 2; });
