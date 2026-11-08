@@ -1,0 +1,72 @@
+name: Hetzner invalid signal recovery
+on:
+  push:
+    paths:
+      - '.github/workflows/hetzner-invalid-signal-recovery.yml'
+permissions:
+  contents: read
+jobs:
+  recover:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f4357ba81fad4fc74147e98410bc4fed63f166a0
+          persist-credentials: false
+      - name: Test narrow rejection recovery
+        run: node --test deploy/hetzner/runtime/invalid-signal.test.cjs
+      - name: Patch known failed runtime and verify fresh heartbeat
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo python3 -' <<'PY'
+          import pathlib,hashlib,subprocess,shutil,os,time,json,datetime
+          target=pathlib.Path('/opt/proypers25/runtime/engine.cjs')
+          original=target.read_bytes()
+          expected='77e4da6b667e796e47e2c064734b0b213b60b576913db001bbcd0d7a589f69b3'
+          if hashlib.sha256(original).hexdigest()!=expected:raise SystemExit('UNEXPECTED_RUNTIME_HASH')
+          if subprocess.run(['systemctl','is-active','--quiet','proypers25-live.service']).returncode==0:raise SystemExit('SERVICE_ALREADY_ACTIVE_REVIEW_REQUIRED')
+          text=original.decode()
+          old="        const intent=journal.claim(payload);"
+          new="""        let intent;
+                  try { intent=journal.claim(payload); }
+                  catch(error) {
+                    if(error.message!=='INVALID_SIGNAL')throw error;
+                    summary('SIGNAL_REJECTED',{reason:'INVALID_SIGNAL',lane});
+                    continue;
+                  }"""
+          if text.count(old)!=1:raise SystemExit('PATCH_PRECONDITION_FAILED')
+          patched=text.replace(old,new)
+          tmp=target.with_name('engine.invalid-signal-staged.cjs')
+          backup=target.with_name('engine.before-invalid-signal.cjs')
+          if backup.exists():raise SystemExit('BACKUP_ALREADY_EXISTS_REVIEW_REQUIRED')
+          shutil.copy2(target,backup)
+          shutil.copy2(target,tmp)
+          tmp.write_text(patched)
+          os.chown(tmp,target.stat().st_uid,target.stat().st_gid)
+          subprocess.run(['node','--check',str(tmp)],check=True)
+          os.replace(tmp,target)
+          print('PATCH_INSTALLED',json.dumps({'before':expected,'after':hashlib.sha256(target.read_bytes()).hexdigest(),'backup':str(backup),'strategyChanged':False}))
+          subprocess.run(['systemctl','reset-failed','proypers25-live.service'],check=True)
+          started=time.time()
+          subprocess.run(['systemctl','start','proypers25-live.service'],check=True)
+          heartbeat=pathlib.Path('/var/lib/proypers25/heartbeat.json')
+          for attempt in range(24):
+              time.sleep(10)
+              active=subprocess.run(['systemctl','is-active','--quiet','proypers25-live.service']).returncode==0
+              h=json.loads(heartbeat.read_text())
+              at=datetime.datetime.fromisoformat(h['at'].replace('Z','+00:00')).timestamp()
+              if active and at>started:
+                  print('RECOVERY_VERIFIED',json.dumps({'service':'active','heartbeat':h,'engineSha256':hashlib.sha256(target.read_bytes()).hexdigest()}))
+                  break
+          else:raise SystemExit('RECOVERY_NOT_VERIFIED')
+          PY
