@@ -50,6 +50,15 @@ async function run(script,extra={},timeoutMs=150000) {
     child.on('error',()=>done(-1));child.on('close',done);
   });
 }
+function claimSignal(journal, payload) {
+  try { return journal.claim(payload); }
+  catch (error) {
+    if (error.message !== 'INVALID_SIGNAL') throw error;
+    // Reject malformed detector output without stopping account/exit supervision.
+    summary('SIGNAL_REJECTED', {reason:'INVALID_SIGNAL',lane:payload.lane});
+    return undefined;
+  }
+}
 async function cycle(scanDue) {
   if(candidate)require('./candidate-gate.cjs').authorization();
   else if(!process.env.CREDENTIALS_DIRECTORY||!fs.existsSync(path.join(process.env.CREDENTIALS_DIRECTORY,'trading-disabled')))throw new Error('TRADING_DISABLED_MARKER_REQUIRED');
@@ -89,7 +98,8 @@ async function cycle(scanDue) {
       const symbolCd=lane==='V10_HUNTER'?180*60000:20*60000;
       if(now-Number(latest[symbolKey]||0)>=symbolCd&&(lane!=='V10_HUNTER'||now-Number(latest[globalKey]||0)>=30*60000)){
         const payload={symbol:signal.symbol,createdAt,lane,price:signal.price,pct:signal.pct};
-        const intent=journal.claim(payload);
+        const intent=claimSignal(journal,payload);
+        if(intent===undefined)continue;
         latest[symbolKey]=now;latest[globalKey]=now;atomic(latestFile,latest);
         if(intent){
           const output=path.join(state,'entry-output.txt');fs.writeFileSync(output,'',{mode:0o600});
@@ -131,4 +141,4 @@ async function main(){
   }
 }
 if(require.main===module)main().catch(()=>{summary('ENGINE_FAILED');process.exitCode=1;});
-module.exports={run,cycle};
+module.exports={run,cycle,claimSignal};
