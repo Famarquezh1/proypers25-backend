@@ -1,0 +1,45 @@
+name: Hetzner stalled heartbeat diagnosis
+on:
+  push:
+    paths:
+      - '.github/workflows/hetzner-stalled-heartbeat-diagnosis.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.actor == 'Famarquezh1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read service and resource state without account requests
+        env:
+          BOOTSTRAP_SSH_KEY: ${{ secrets.HETZNER_BOOTSTRAP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORKDIR=$(mktemp -d)
+          trap 'rm -rf "$WORKDIR"' EXIT
+          printf '%s\n' "$BOOTSTRAP_SSH_KEY" > "$WORKDIR/key"
+          unset BOOTSTRAP_SSH_KEY
+          ssh -i "$WORKDIR/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$WORKDIR/known_hosts" -o ConnectTimeout=10 deploy@89.167.5.87 'sudo python3 -' <<'PY'
+          import subprocess,json,pathlib,re,datetime,shutil
+          print('DIAG_AT',datetime.datetime.now(datetime.timezone.utc).isoformat())
+          for unit in ['proypers25-live.service','proypers25-engine.service','proypers25-research.timer']:
+              r=subprocess.run(['systemctl','show',unit,'-p','ActiveState','-p','SubState','-p','MainPID','-p','NRestarts','-p','ExecMainStatus','-p','Result','-p','MemoryCurrent','-p','ActiveEnterTimestamp','-p','ExecMainExitTimestamp'],capture_output=True,text=True)
+              print('UNIT',unit,r.stdout)
+              j=subprocess.run(['journalctl','-u',unit,'-n','100','--no-pager','-o','cat'],capture_output=True,text=True)
+              counts={}
+              for token in re.findall(r'oom-kill|Out of memory|Killed process|ENOSPC|EACCES|ECONNRESET|ETIMEDOUT|MODULE_NOT_FOUND|SyntaxError|TypeError|FATAL ERROR|heap out of memory|Main process exited|Failed with result|Deactivated successfully|Scheduled restart job',j.stdout,re.I):
+                  counts[token]=counts.get(token,0)+1
+              print('JOURNAL_CODES',unit,json.dumps(counts))
+          for name in ['heartbeat.json','radar-last.json']:
+              p=pathlib.Path('/var/lib/proypers25')/name
+              if p.exists():
+                  d=json.loads(p.read_text())
+                  print('FILE_STATE',name,json.dumps({'mtime':p.stat().st_mtime,'at':d.get('at'),'pid':d.get('pid'),'mode':d.get('mode')}))
+          disk=shutil.disk_usage('/var/lib/proypers25')
+          print('DISK',json.dumps({'total':disk.total,'used':disk.used,'free':disk.free}))
+          print('MEMORY',subprocess.check_output(['free','-m'],text=True))
+          PY
