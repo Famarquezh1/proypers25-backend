@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Proypers25 financial report 08:00 America/Punta_Arenas
+[Timer]
+OnCalendar=*-*-* 08:00:00 America/Punta_Arenas
+Persistent=true
+Unit=alpha-daily.service
+[Install]
+WantedBy=timers.target
