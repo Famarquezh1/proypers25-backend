@@ -1,0 +1,32 @@
+name: Alpha MVP read-only accounting tests
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/alpha-mvp/**'
+      - '.github/workflows/alpha-mvp-tests.yml'
+  push:
+    branches:
+      - feat/alpha-mvp-readonly-ledger-20261109
+    paths:
+      - 'backend/alpha-mvp/**'
+      - '.github/workflows/alpha-mvp-tests.yml'
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax validation
+        run: |
+          node --check backend/alpha-mvp/accounting.cjs
+          node --check backend/alpha-mvp/capture.cjs
+          node --check backend/alpha-mvp/reconcile.cjs
+          node --check backend/alpha-mvp/morning-report.cjs
+      - name: Read-only accounting unit tests (no secrets)
+        run: node --test backend/alpha-mvp/mvp.test.cjs

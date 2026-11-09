@@ -1,0 +1,17 @@
+[Unit]
+Description=Proypers25 passive Alpha evidence watcher
+After=network.target
+[Service]
+Type=simple
+User=proypers25
+Group=proypers25
+WorkingDirectory=/opt/proypers25/repo
+Environment=PROYPERS_STATE_DIR=/var/lib/proypers25
+Environment=PROYPERS_REPO=/opt/proypers25/repo
+ExecStart=/usr/bin/node backend/alpha-mvp/capture.cjs --watch
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+UMask=0077
+[Install]
+WantedBy=multi-user.target
