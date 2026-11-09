@@ -1,0 +1,19 @@
+[Unit]
+Description=Proypers25 GET-only reconciliation and daily financial report
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=proypers25
+Group=proypers25
+WorkingDirectory=/opt/proypers25/repo
+Environment=PROYPERS_STATE_DIR=/var/lib/proypers25
+Environment=PROYPERS_REPO=/opt/proypers25/repo
+Environment=CREDENTIALS_DIRECTORY=/etc/proypers25
+# Firestore ADC must be provided via a local override; do not commit secrets.
+# Report runs even after partial reconciliation and labels it PARCIAL.
+ExecStart=/bin/sh -c '/usr/bin/node backend/alpha-mvp/reconcile.cjs --write-firestore; /usr/bin/node backend/alpha-mvp/morning-report.cjs'
+NoNewPrivileges=true
+UMask=0077
+[Install]
+WantedBy=multi-user.target
