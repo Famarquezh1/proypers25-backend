@@ -74,3 +74,23 @@ test('external Binance activity forces an incomplete reconciliation instead of a
  assert.equal(r.totals.closed_complete,0);
  assert.equal(r.trades[0].reconciliation_status,'REVIEW_REQUIRED');
 });
+
+test('entry strategy hash is captured against executed BUY, even when original signal is older',()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {captureOnce,allCaptured}=require('./capture.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'px25-alpha-test-')),state=path.join(root,'state'),repo=path.join(root,'repo'),runtime=path.join(root,'runtime');
+ try{
+  const inputs=['backend/scripts/github-spot-production-radar-v42.js','backend/scripts/github-spot-manual-execution-v10-aware.js','backend/scripts/github-spot-manual-execution.js','backend/scripts/github-spot-auto-exit-legacy-v10-aware.js','backend/scripts/github-spot-auto-exit-legacy.js','backend/config/spot-qubo-production-v5.json','backend/config/spot-exit-policy-v2.json','backend/config/spot-growth-engine-v1.json'];
+  for(const f of inputs){const p=path.join(repo,f);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,'test content');}
+  for(const f of ['engine.cjs','exit-integration.cjs','entry-safe.cjs','exit-safe.cjs']){fs.mkdirSync(runtime,{recursive:true});fs.writeFileSync(path.join(runtime,f),'test content');}
+  const createdAt=new Date(Date.now()-200000).toISOString(),buyTime=Date.now()-5000;
+  const folder=path.join(state,'execution-state');fs.mkdirSync(folder,{recursive:true});
+  fs.writeFileSync(path.join(folder,'a'.repeat(32)+'.json'),JSON.stringify({symbol,lane:'CORE',createdAt,buy:{orderId:123,time:buyTime}}));
+  fs.writeFileSync(path.join(state,'radar-last.json'),JSON.stringify({at:new Date(Date.parse(createdAt)+50000).toISOString(),signal:{symbol,mode:'PRODUCTION_V42_QUBO_V5',v42_norm:0.84,utility:0.71}}));
+  fs.writeFileSync(path.join(state,'github-spot-manual-execution-v10-aware.js.last.json'),JSON.stringify({stdout:'APPROVED_V61 symbol=BTCUSDT v61_score=0.553322\nORDER_CREATED symbol=BTCUSDT orderId=123 status=FILLED'}));
+  captureOnce({state,repo,runtimeDir:runtime});
+  const e=allCaptured(state)[0];assert.match(e.strategy_hash,/^[a-f0-9]{64}$/);
+  assert.equal(e.v42_prediction,0.84);assert.equal(e.qubo_decision.qubo_score,0.71);
+  assert.equal(e.entry_v61_decision.entry_score,0.553322);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

@@ -38,7 +38,10 @@ function captureOnce({state=ROOT,repo,runtimeDir}={}){
   const matching=radar?.signal?.symbol===entry.symbol&&Number.isFinite(Date.parse(radar.at))&&Math.abs(Date.parse(radar.at)-Date.parse(entry.createdAt))<120000;
   const signal=matching?radar.signal:null;
   const parsed=parseEntryOutput(output,entry.symbol,orderId);
-  const timely=Math.abs(Date.now()-Date.parse(entry.createdAt))<120000;
+  // Entry can execute minutes after the scan: bind version to the confirmed BUY execution time.
+  // Missing/old Binance timestamps never permit assigning today's code to historical trades.
+  const buyTime=Number(entry.buy.time??entry.buy.updateTime);
+  const timely=Number.isFinite(buyTime)&&buyTime>0&&Math.abs(Date.now()-buyTime)<120000;
   const evidence={buy_order_id:orderId,symbol:entry.symbol,signal_created_at:entry.createdAt,lane:entry.lane||null,
    strategy_version:old.strategy_version||(timely&&entry.lane==='CORE'?manifest.strategy_version:null),
    strategy_hash:old.strategy_hash||(timely&&entry.lane==='CORE'?manifest.strategy_hash:null),

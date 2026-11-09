@@ -16,6 +16,7 @@ function buildReport(trades,{day=previousDay(),reconciliationRun=null}={}){
  const sorted=[...closed].sort((a,b)=>d(a.net_pnl_usdt)<d(b.net_pnl_usdt)?-1:d(a.net_pnl_usdt)>d(b.net_pnl_usdt)?1:0);
  const pending=trades.filter(t=>t.reconciliation_status!=='COMPLETE'||(t.anomalies||[]).some(x=>/^(INCOMPLETE_ORDER|SELL_WITHOUT|FOREIGN_|UNVALUED_)/.test(x)));
  const issues=Array.isArray(reconciliationRun?.issues)?reconciliationRun.issues:[];
+ const missingMetadata=trades.filter(t=>(t.anomalies||[]).some(x=>/^(STRATEGY_HASH_MISSING|ORIGIN_SIGNAL_MISSING|CAPITAL_AT_ENTRY_MISSING|EXIT_REASON_UNVERIFIED)$/.test(x))).length;
  const fresh=reconciliationRun?.at&&Math.abs(Date.now()-Date.parse(reconciliationRun.at))<4*3600000;
  const complete=Boolean(fresh&&reconciliationRun?.ok===true&&issues.length===0&&pending.length===0);
  const strategies=[...new Set(closed.map(t=>t.strategy_version||'DESCONOCIDA'))];
@@ -33,13 +34,14 @@ function buildReport(trades,{day=previousDay(),reconciliationRun=null}={}){
   'Rendimiento sobre capital: N/D (sin patrimonio histórico comparable)',
   'Drawdown patrimonial: N/D (sin curva patrimonial verificable)',
   'Anomalías contables: '+(pending.length+issues.length),
+  'Operaciones con metadatos faltantes: '+missingMetadata,
   'Estado conciliación: '+(complete?'COMPLETA':'PARCIAL / NO VERIFICADA'),
   '', 'DETALLE DE VENTAS REALIZADAS EN EL DÍA'];
  if(!realized.length)lines.push('Sin ventas conciliadas en este período.');
  for(const e of realized)lines.push(e.trade.symbol+' | '+e.trade.trade_id+' | '+e.net_pnl_usdt+' USDT | fee '+e.fees_usdt+' USDT | '+(e.trade.exit_reason||'MOTIVO NO VERIFICADO'));
  for(const issue of issues)lines.push('PENDIENTE '+issue.symbol+': '+issue.error);
  lines.push('','Generado: '+new Date().toISOString());
- return{day,text:lines.join('\n')+'\n',summary:{net_pnl_usdt:fmt(net),fees_usdt:fmt(fees),closed:closed.length,win_rate:closed.length?(100*wins.length/closed.length).toFixed(2):null,profit_factor:pf,anomalies:pending.length+issues.length,complete}};
+ return{day,text:lines.join('\n')+'\n',summary:{net_pnl_usdt:fmt(net),fees_usdt:fmt(fees),closed:closed.length,win_rate:closed.length?(100*wins.length/closed.length).toFixed(2):null,profit_factor:pf,anomalies:pending.length+issues.length,missing_metadata:missingMetadata,complete}};
 }
 async function run({db,state=process.env.PROYPERS_STATE_DIR||'/var/lib/proypers25',now=new Date()}={}){
  if(!db)throw Error('FIRESTORE_REQUIRED');
