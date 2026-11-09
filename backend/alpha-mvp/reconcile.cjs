@@ -92,6 +92,9 @@ async function reconcile({api=makeBinance(),state=ROOT,symbols,since=process.env
   const orders=rawOrders.map(x=>({...x,managed:ownedOrder(x)})),fills=await valueFees(api,symbol,rawFills);
   const result=allocate({symbol,orders,fills,metadataByOrder:metadata});
   if(orders.some(x=>!x.managed&&Number(x.executedQty)>0))result.anomalies.push('FOREIGN_SYMBOL_HISTORY_PRESENT_REVIEW');
+  // A completed SELL with a BUY outside the requested history must never disappear from the report.
+  // Record symbol-level anomalies even if no managed BUY lot could be constructed.
+  if(result.anomalies.length)issues.push({symbol,error:'BINANCE_RECONCILIATION_INCOMPLETE',details:[...new Set(result.anomalies)]});
   for(const trade of result.trades){
    trade.exit_reason=exitReason(trade,orders,decisions);
    trade.anomalies=[...new Set([...result.anomalies,...(trade.anomalies||[]),
@@ -124,6 +127,10 @@ if(require.main===module){
  (async()=>{
   if(args.includes('--replay')){const db=require('../firebase-admin-config'),snap=await db.collection(COLLECTION).doc(getArg('--replay')).get();if(!snap.exists)throw Error('TRADE_NOT_FOUND');console.log(JSON.stringify(replay(snap.data())));return;}
   const write=args.includes('--write-firestore'),db=write?require('../firebase-admin-config'):null;
+  // Mark the current run incomplete before any authenticated Binance call.
+  // If credentials or API access fail, the next report cannot reuse a prior green checkpoint.
+  if(write){const dir=path.join(ROOT,'alpha-mvp');fs.mkdirSync(dir,{recursive:true,mode:0o700});
+   fs.writeFileSync(path.join(dir,'reconcile-last.json'),JSON.stringify({at:new Date().toISOString(),ok:false,issues:[{symbol:'*',error:'RECONCILIATION_INTERRUPTED'}],scope:null,totals:null}),{mode:0o600});}
   const r=await reconcile({symbols:getArg('--symbols')?.split(','),since:getArg('--since'),db,write});
   if(write){const dir=path.join(ROOT,'alpha-mvp');fs.mkdirSync(dir,{recursive:true,mode:0o700});
    fs.writeFileSync(path.join(dir,'reconcile-last.json'),JSON.stringify({at:r.at,ok:r.issues.length===0,issues:r.issues,scope:r.scope,totals:r.totals}),{mode:0o600});}

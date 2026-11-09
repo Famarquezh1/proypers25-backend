@@ -53,3 +53,24 @@ test('Binance transport never allows write endpoints or verbs',async()=>{
  const client=makeBinance({credentials:{key:'test',secret:'test'},transport:()=>{throw Error('NETWORK_SHOULD_NOT_BE_CALLED');}});
  await assert.rejects(client.get('/api/v3/order',{},true),/ENDPOINT_NOT_ALLOWED/);
 });
+
+test('sell with opening BUY outside the queried history is not silently omitted',async()=>{
+ const orphanSell=order(96,'SELL');
+ const orphanFill=fill(997,96,'1','120','0.1','USDT',at+60000);
+ const api={get:async endpoint=>endpoint.endsWith('allOrders')?[orphanSell]:[orphanFill]};
+ const r=await reconcile({api,symbols:[symbol],since:'2026-11-07T00:00:00Z',until:'2026-11-08T00:00:00Z',state:'/nonexistent-alpha-check'});
+ assert.equal(r.totals.closed_complete,0);
+ assert.equal(r.trades.length,0);
+ assert.equal(r.issues.length,1);
+ assert.match(r.issues[0].details.join(','),/SELL_WITHOUT_MANAGED_INVENTORY/);
+});
+
+test('external Binance activity forces an incomplete reconciliation instead of a green result',async()=>{
+ const foreign={...order(98,'BUY'),clientOrderId:'manual-from-outside'};
+ const base=rows();
+ const api={get:async endpoint=>endpoint.endsWith('allOrders')?[...base.orders,foreign]:[...base.fills,fill(998,98,'1','100','0','USDT',at+120000)]};
+ const r=await reconcile({api,symbols:[symbol],since:'2026-11-07T00:00:00Z',until:'2026-11-08T00:00:00Z',state:'/nonexistent-alpha-check'});
+ assert.equal(r.issues.length,1);
+ assert.equal(r.totals.closed_complete,0);
+ assert.equal(r.trades[0].reconciliation_status,'REVIEW_REQUIRED');
+});
