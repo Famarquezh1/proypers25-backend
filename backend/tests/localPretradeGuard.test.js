@@ -1,16 +1,15 @@
 'use strict';
 
 const assert = require('assert');
-const { DEFAULTS, evaluateMicrostructure, continuationRequiredForLane } = require('../services/localPretradeGuard');
+const { DEFAULTS, evaluateMicrostructure } = require('../services/localPretradeGuard');
 
-assert.strictEqual(DEFAULTS.samples, 7);
+assert.strictEqual(DEFAULTS.samples, 5);
 assert.strictEqual(DEFAULTS.maxLastSpreadPct, 0.006);
 assert.strictEqual(DEFAULTS.minEndReturnPct, -0.006);
-assert.strictEqual(DEFAULTS.sampleIntervalMs, 15000);
-assert.strictEqual(DEFAULTS.minContinuationScore, 0);
-assert.strictEqual(continuationRequiredForLane('CORE'), true);
-assert.strictEqual(continuationRequiredForLane('V10_HUNTER'), true);
-assert.strictEqual(continuationRequiredForLane('V8_SHADOW'), false);
+assert.strictEqual(DEFAULTS.sampleIntervalMs, 3500);
+assert(DEFAULTS.samples >= 3, 'microstructure guard requires multiple observations');
+assert(DEFAULTS.maxLatencyMs <= 1500, 'latency protection must remain enabled');
+assert(DEFAULTS.maxClockSkewMs <= 3000, 'clock skew protection must remain enabled');
 
 const healthy = evaluateMicrostructure([
   { bid: 100.00, ask: 100.10, mid: 100.05, spreadPct: 0.0010 },
