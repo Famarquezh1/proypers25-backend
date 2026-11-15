@@ -51,7 +51,8 @@ async function main() {
     for (const name of fs.readdirSync(dir).filter(n => /^[a-f0-9]{32}\.json$/.test(n))) {
       const row = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
       stateCounts[group][row.state] = (stateCounts[group][row.state] || 0) + 1;
-      if (/^[A-Z0-9]{2,24}USDT$/.test(row.symbol || '')) symbols.add(row.symbol);
+      if (group === 'execution-state' && Number(row.buy?.executedQty) > 0 &&
+          /^[A-Z0-9]{2,24}USDT$/.test(row.symbol || '')) symbols.add(row.symbol);
     }
   }
   const before = await get('/api/v3/account', {omitZeroBalances: 'true'});
@@ -60,11 +61,8 @@ async function main() {
   for (const order of openOrders) if (/^[A-Z0-9]{2,24}USDT$/.test(order.symbol)) symbols.add(order.symbol);
   const held = balances(before);
   for (const balance of held) if (balance.asset !== 'USDT') symbols.add(balance.asset + 'USDT');
-  const auditPath = path.join(root, 'position-audit.json');
-  if (fs.existsSync(auditPath)) {
-    const audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
-    for (const position of audit.positions || []) if (/^[A-Z0-9]{2,24}USDT$/.test(position.symbol || '')) symbols.add(position.symbol);
-  }
+  console.log('ACCOUNT_SCOPE', JSON.stringify({symbols: [...symbols].sort(), stateCounts, balances: held,
+    openOrderCount: openOrders.length}));
   if (symbols.size > 40) throw Error('ACCOUNT_SYMBOL_SCOPE');
   const tickerRows = await get('/api/v3/ticker/price', {}, false);
   if (!Array.isArray(tickerRows)) throw Error('ACCOUNT_TICKER_SCHEMA');
@@ -84,7 +82,7 @@ async function main() {
   const after = await get('/api/v3/account', {omitZeroBalances: 'true'});
   const authorization = JSON.parse(fs.readFileSync('/etc/proypers25/LIVE_AUTHORIZATION.json', 'utf8'));
   console.log('ACCOUNT_REVIEW', JSON.stringify({at: new Date().toISOString(), authorizedAt: authorization.authorizedAt,
-    scope: 'VPS intent, audit, currently held and open USDT symbols; up to 3000 orders and fills per symbol; retained API history',
+    scope: 'VPS executed-buy, currently held and open USDT symbols; up to 3000 orders and fills per symbol; retained API history',
     transfersReviewed: false, vpsCostsIncluded: false, stateCounts, balancesBefore: held, balancesAfter: balances(after),
     balanceSnapshotStable: JSON.stringify(held) === JSON.stringify(balances(after)),
     openOrders: openOrders.map(o => ({symbol: o.symbol, orderId: o.orderId, clientOrderId: o.clientOrderId,
