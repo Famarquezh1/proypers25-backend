@@ -63,7 +63,7 @@ async function main() {
   for (const balance of held) if (balance.asset !== 'USDT') symbols.add(balance.asset + 'USDT');
   console.log('ACCOUNT_SCOPE', JSON.stringify({symbols: [...symbols].sort(), stateCounts, balances: held,
     openOrderCount: openOrders.length}));
-  if (symbols.size > 40) throw Error('ACCOUNT_SYMBOL_SCOPE');
+  if (symbols.size > 100) throw Error('ACCOUNT_SYMBOL_SCOPE');
   const tickerRows = await get('/api/v3/ticker/price', {}, false);
   if (!Array.isArray(tickerRows)) throw Error('ACCOUNT_TICKER_SCHEMA');
   const prices = new Map(tickerRows.map(row => [row.symbol, row.price]));
