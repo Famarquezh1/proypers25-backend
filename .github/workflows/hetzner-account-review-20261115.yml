@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 22fc05411649658f3c043e557e5500797f2d21f0
+          ref: b4738a9261bf11545fc75fe14b6613607173e217
           persist-credentials: false
       - name: Read account balances orders fills and fees
         env:
